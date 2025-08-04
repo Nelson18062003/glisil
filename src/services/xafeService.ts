@@ -447,17 +447,18 @@ export class XafeService {
       }
 
       // Get the mint operation
-      const { data: mintOp, error: fetchError } = await supabase
+      const { data: mintOps, error: fetchError } = await supabase
         .from('mint_operations')
         .select('*')
         .eq('reference_id', referenceId)
-        .eq('user_id', userId)
-        .single();
+        .eq('user_id', userId);
 
-      if (fetchError || !mintOp) {
+      if (fetchError || !mintOps || mintOps.length === 0) {
         console.error('Error fetching mint operation:', fetchError);
         return false;
       }
+
+      const mintOp = mintOps[0];
 
       // Mint XAFe to user's wallet
       const wallet = await this.getWallet(userId);
