@@ -119,6 +119,80 @@ export const XafeApp = () => {
     }
   };
 
+  const handleConvertToUSDT = async () => {
+    if (!user || !wallet) return;
+    
+    const exchangeRates = await XafeService.getExchangeRates();
+    const usdtRate = exchangeRates.find(rate => rate.to_currency === 'USDT');
+    
+    if (!usdtRate) {
+      toast({ title: "Erreur", description: "Taux de change indisponible", variant: "destructive" });
+      return;
+    }
+
+    const convertAmount = Math.min(50000, wallet.xafe_balance); // Convert up to 50k XAF
+    if (convertAmount <= 0) {
+      toast({ title: "Solde insuffisant", description: "Pas assez de XAF à convertir", variant: "destructive" });
+      return;
+    }
+
+    const success = await XafeService.simulateConversion(
+      user.id, 
+      'XAF', 
+      'USDT', 
+      convertAmount, 
+      usdtRate.rate
+    );
+    
+    if (success) {
+      const usdtAmount = (convertAmount * usdtRate.rate).toFixed(2);
+      toast({ 
+        title: "Conversion réussie", 
+        description: `${convertAmount.toLocaleString()} XAF → ${usdtAmount} USDT` 
+      });
+      loadUserData();
+    } else {
+      toast({ title: "Erreur", description: "Échec de la conversion", variant: "destructive" });
+    }
+  };
+
+  const handleConvertToXAF = async () => {
+    if (!user || !wallet) return;
+    
+    const exchangeRates = await XafeService.getExchangeRates();
+    const xafRate = exchangeRates.find(rate => rate.from_currency === 'USDT' && rate.to_currency === 'XAF');
+    
+    if (!xafRate) {
+      toast({ title: "Erreur", description: "Taux de change indisponible", variant: "destructive" });
+      return;
+    }
+
+    const convertAmount = Math.min(50, wallet.usdt_balance); // Convert up to 50 USDT
+    if (convertAmount <= 0) {
+      toast({ title: "Solde insuffisant", description: "Pas assez d'USDT à convertir", variant: "destructive" });
+      return;
+    }
+
+    const success = await XafeService.simulateConversion(
+      user.id, 
+      'USDT', 
+      'XAF', 
+      convertAmount, 
+      xafRate.rate
+    );
+    
+    if (success) {
+      const xafAmount = (convertAmount * xafRate.rate).toLocaleString();
+      toast({ 
+        title: "Conversion réussie", 
+        description: `${convertAmount} USDT → ${xafAmount} XAF` 
+      });
+      loadUserData();
+    } else {
+      toast({ title: "Erreur", description: "Échec de la conversion", variant: "destructive" });
+    }
+  };
+
   const WalletTab = () => (
     <div className="space-y-6 animate-fade-in">
       {/* Price Ticker */}
@@ -244,12 +318,30 @@ export const XafeApp = () => {
           </div>
           <span className="font-heading font-semibold">Mobile Money + Banques</span>
         </Button>
-        <Button variant="orange" size="lg" className="h-20 flex-col action-button group">
-          <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
-            <ArrowUpDown className="h-6 w-6" />
-          </div>
-          <span className="font-heading font-semibold">Convertir</span>
-        </Button>
+        <div className="grid grid-cols-2 gap-3">
+          <Button 
+            variant="orange" 
+            size="lg" 
+            className="h-20 flex-col action-button group"
+            onClick={() => handleConvertToUSDT()}
+          >
+            <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
+              <ArrowUpDown className="h-6 w-6" />
+            </div>
+            <span className="font-heading font-semibold text-xs">XAF → USDT</span>
+          </Button>
+          <Button 
+            variant="orange" 
+            size="lg" 
+            className="h-20 flex-col action-button group"
+            onClick={() => handleConvertToXAF()}
+          >
+            <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
+              <ArrowUpDown className="h-6 w-6" />
+            </div>
+            <span className="font-heading font-semibold text-xs">USDT → XAF</span>
+          </Button>
+        </div>
       </div>
 
       {/* Recent Transactions */}
