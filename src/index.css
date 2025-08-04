@@ -8,33 +8,51 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 240 10% 5.9%;
+    --card-foreground: 0 0% 98%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 240 10% 5.9%;
+    --popover-foreground: 0 0% 98%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 142 76% 36%;
+    --primary-foreground: 0 0% 98%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 240 4% 16%;
+    --secondary-foreground: 0 0% 98%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 240 4% 16%;
+    --muted-foreground: 240 5% 64.9%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 240 4% 16%;
+    --accent-foreground: 0 0% 98%;
 
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 240 4% 16%;
+    --input: 240 4% 16%;
+    --ring: 142 76% 36%;
+
+    /* XAFé App custom colors */
+    --xafe-green: 142 76% 36%;
+    --xafe-green-dark: 142 76% 26%;
+    --xafe-orange: 24 95% 53%;
+    --xafe-blue: 213 94% 68%;
+    --xafe-gold: 43 96% 56%;
+    
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(142 76% 36%) 0%, hsl(142 76% 26%) 100%);
+    --gradient-orange: linear-gradient(135deg, hsl(24 95% 53%) 0%, hsl(16 85% 43%) 100%);
+    --gradient-blue: linear-gradient(135deg, hsl(213 94% 68%) 0%, hsl(213 84% 58%) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(240 10% 5.9%) 0%, hsl(240 8% 4.9%) 100%);
+    
+    /* Shadows with glow effects */
+    --shadow-glow-green: 0 4px 20px hsl(142 76% 36% / 0.3);
+    --shadow-glow-orange: 0 4px 20px hsl(24 95% 53% / 0.3);
+    --shadow-glow-blue: 0 4px 20px hsl(213 94% 68% / 0.3);
 
     --radius: 0.5rem;
 
