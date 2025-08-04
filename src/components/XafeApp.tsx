@@ -21,7 +21,9 @@ import {
   Zap,
   ArrowRight,
   DollarSign,
-  LogOut
+  LogOut,
+  Download,
+  Upload
 } from "lucide-react";
 import xafeLogo from "@/assets/xafe-logo.png";
 import { AuthComponent } from "./AuthWithSupabase";
@@ -29,6 +31,8 @@ import { XafeService, Wallet as WalletType, Transaction, ExchangeRate } from "@/
 import { useLanguage } from "@/contexts/LanguageContext";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { PriceChart } from "@/components/PriceChart";
+import { DepositModal } from "@/components/DepositModal";
+import { WithdrawModal } from "@/components/WithdrawModal";
 
 export const XafeApp = () => {
   const { t } = useLanguage();
@@ -40,6 +44,9 @@ export const XafeApp = () => {
   const [wallet, setWallet] = useState<WalletType | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [exchangeRates, setExchangeRates] = useState<ExchangeRate[]>([]);
+  const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
+  const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
+  const [walletAddresses, setWalletAddresses] = useState<Record<string, string>>({});
   const { toast } = useToast();
 
   useEffect(() => {
@@ -66,8 +73,31 @@ export const XafeApp = () => {
       setWallet(walletData);
       setTransactions(transactionsData);
       setExchangeRates(ratesData);
+      
+      // Load wallet addresses if available
+      await loadWalletAddresses();
     } catch (error) {
       console.error('Error loading user data:', error);
+    }
+  };
+
+  const loadWalletAddresses = async () => {
+    if (!user) return;
+    
+    try {
+      const { data: walletData, error } = await supabase
+        .from('wallets')
+        .select('deposit_addresses')
+        .eq('user_id', user.id)
+        .single();
+      
+      if (error) throw error;
+      
+      if (walletData?.deposit_addresses && typeof walletData.deposit_addresses === 'object') {
+        setWalletAddresses(walletData.deposit_addresses as Record<string, string>);
+      }
+    } catch (error) {
+      console.error('Error loading wallet addresses:', error);
     }
   };
 
@@ -308,24 +338,28 @@ export const XafeApp = () => {
             variant="xafe" 
             size="lg" 
             className="h-16 sm:h-20 flex-col action-button group p-3 sm:p-4"
-            onClick={() => handleDepositXafe()}
+            onClick={() => setIsDepositModalOpen(true)}
           >
             <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
-              <Plus className="h-4 w-4 sm:h-6 sm:w-6" />
+              <Download className="h-4 w-4 sm:h-6 sm:w-6" />
             </div>
-            <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">{t('depositXafe')}</span>
+            <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">
+              {t('language') === 'fr' ? 'Déposer XAFe' : 'Deposit XAFe'}
+            </span>
           </Button>
           
           <Button 
             variant="destructive" 
             size="lg" 
             className="h-16 sm:h-20 flex-col action-button group p-3 sm:p-4"
-            onClick={() => {}}
+            onClick={() => setIsWithdrawModalOpen(true)}
           >
             <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
-              <Minus className="h-4 w-4 sm:h-6 sm:w-6" />
+              <Upload className="h-4 w-4 sm:h-6 sm:w-6" />
             </div>
-            <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">{t('withdrawXafe')}</span>
+            <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">
+              {t('language') === 'fr' ? 'Retirer XAFe' : 'Withdraw XAFe'}
+            </span>
           </Button>
           
           <Button 
@@ -922,6 +956,20 @@ export const XafeApp = () => {
           </TabsContent>
         </Tabs>
       </div>
+      
+      {/* Deposit Modal */}
+      <DepositModal 
+        isOpen={isDepositModalOpen}
+        onClose={() => setIsDepositModalOpen(false)}
+        walletAddresses={walletAddresses}
+      />
+      
+      {/* Withdraw Modal */}
+      <WithdrawModal 
+        isOpen={isWithdrawModalOpen}
+        onClose={() => setIsWithdrawModalOpen(false)}
+        balance={wallet?.xafe_balance || 0}
+      />
     </div>
   );
 };
