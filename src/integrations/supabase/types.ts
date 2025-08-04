@@ -98,14 +98,17 @@ export type Database = {
           from_amount: number | null
           from_currency: string | null
           id: string
+          network: string | null
           notes: string | null
           payment_method: string | null
           status: string | null
           to_amount: number | null
           to_currency: string | null
+          transaction_hash: string | null
           type: string
           updated_at: string | null
           user_id: string
+          wallet_address: string | null
         }
         Insert: {
           created_at?: string | null
@@ -115,14 +118,17 @@ export type Database = {
           from_amount?: number | null
           from_currency?: string | null
           id?: string
+          network?: string | null
           notes?: string | null
           payment_method?: string | null
           status?: string | null
           to_amount?: number | null
           to_currency?: string | null
+          transaction_hash?: string | null
           type: string
           updated_at?: string | null
           user_id: string
+          wallet_address?: string | null
         }
         Update: {
           created_at?: string | null
@@ -132,20 +138,24 @@ export type Database = {
           from_amount?: number | null
           from_currency?: string | null
           id?: string
+          network?: string | null
           notes?: string | null
           payment_method?: string | null
           status?: string | null
           to_amount?: number | null
           to_currency?: string | null
+          transaction_hash?: string | null
           type?: string
           updated_at?: string | null
           user_id?: string
+          wallet_address?: string | null
         }
         Relationships: []
       }
       wallets: {
         Row: {
           created_at: string | null
+          deposit_addresses: Json | null
           id: string
           total_deposited: number | null
           total_withdrawn: number | null
@@ -156,6 +166,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          deposit_addresses?: Json | null
           id?: string
           total_deposited?: number | null
           total_withdrawn?: number | null
@@ -166,6 +177,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          deposit_addresses?: Json | null
           id?: string
           total_deposited?: number | null
           total_withdrawn?: number | null
@@ -181,7 +193,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      generate_deposit_addresses: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never
