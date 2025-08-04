@@ -51,7 +51,7 @@ export const XafeApp = () => {
               <Zap className="h-4 w-4 text-white" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">XAFé/USDT</p>
+              <p className="text-sm text-muted-foreground">XAFe/USDT</p>
               <p className="font-heading font-bold text-lg text-xafe-green">
                 {mockData.xafToUsdt}
               </p>
@@ -79,10 +79,10 @@ export const XafeApp = () => {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-gradient-primary rounded-xl flex items-center justify-center shadow-glow-green animate-float">
-                  <img src={xafeLogo} alt="XAFé" className="w-6 h-6 rounded" />
+                  <img src={xafeLogo} alt="XAFe" className="w-6 h-6 rounded" />
                 </div>
                 <div>
-                  <h3 className="font-heading font-semibold text-foreground">XAFé</h3>
+                  <h3 className="font-heading font-semibold text-foreground">XAFe</h3>
                   <p className="text-xs text-muted-foreground">Franc CFA numérique</p>
                 </div>
               </div>
@@ -148,13 +148,13 @@ export const XafeApp = () => {
           <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
             <Plus className="h-6 w-6" />
           </div>
-          <span className="font-heading font-semibold">Déposer XAF</span>
+          <span className="font-heading font-semibold">Déposer XAFe</span>
         </Button>
         <Button variant="momo" size="lg" className="h-20 flex-col action-button group">
           <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
             <Smartphone className="h-6 w-6" />
           </div>
-          <span className="font-heading font-semibold">Mobile Money</span>
+          <span className="font-heading font-semibold">Mobile Money + Banques</span>
         </Button>
         <Button variant="orange" size="lg" className="h-20 flex-col action-button group">
           <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
@@ -282,7 +282,7 @@ export const XafeApp = () => {
               <div className="bg-secondary/10 p-6 rounded-xl border border-white/10 hover-lift">
                 <div className="flex items-center justify-between mb-4">
                   <span className="font-heading font-semibold">
-                    De: {swapDirection ? 'XAFé' : 'USDT'}
+                    De: {swapDirection ? 'XAFe' : 'USDT'}
                   </span>
                   <span className="text-sm text-muted-foreground">
                     Solde: {swapDirection 
@@ -294,7 +294,7 @@ export const XafeApp = () => {
                 <div className="flex items-center gap-4">
                   <div className={`w-12 h-12 ${swapDirection ? 'bg-gradient-primary' : 'bg-gradient-blue'} rounded-xl flex items-center justify-center`}>
                     {swapDirection ? (
-                      <img src={xafeLogo} alt="XAFé" className="w-6 h-6 rounded" />
+                      <img src={xafeLogo} alt="XAFe" className="w-6 h-6 rounded" />
                     ) : (
                       <span className="text-white font-bold">₮</span>
                     )}
@@ -328,7 +328,7 @@ export const XafeApp = () => {
               <div className="bg-secondary/10 p-6 rounded-xl border border-white/10 hover-lift">
                 <div className="flex items-center justify-between mb-4">
                   <span className="font-heading font-semibold">
-                    Vers: {swapDirection ? 'USDT' : 'XAFé'}
+                    Vers: {swapDirection ? 'USDT' : 'XAFe'}
                   </span>
                   <span className="text-sm text-muted-foreground">
                     Solde: {swapDirection 
@@ -342,7 +342,7 @@ export const XafeApp = () => {
                     {swapDirection ? (
                       <span className="text-white font-bold">₮</span>
                     ) : (
-                      <img src={xafeLogo} alt="XAFé" className="w-6 h-6 rounded" />
+                      <img src={xafeLogo} alt="XAFe" className="w-6 h-6 rounded" />
                     )}
                   </div>
                   <input 
@@ -391,7 +391,7 @@ export const XafeApp = () => {
                 <TrendingUp className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h3 className="text-2xl font-heading font-bold">XAFé/USDT</h3>
+                <h3 className="text-2xl font-heading font-bold">XAFe/USDT</h3>
                 <p className="text-sm text-muted-foreground">Marché Spot</p>
               </div>
             </div>
@@ -422,11 +422,11 @@ export const XafeApp = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <Button variant="xafe" size="lg" className="action-button font-heading font-bold">
               <Plus className="h-5 w-5 mr-2" />
-              Acheter XAFé
+              Acheter XAFe
             </Button>
             <Button variant="outline" size="lg" className="action-button font-heading font-bold border-destructive text-destructive hover:bg-destructive hover:text-white">
               <Minus className="h-5 w-5 mr-2" />
-              Vendre XAFé
+              Vendre XAFe
             </Button>
           </div>
         </CardContent>
@@ -665,9 +665,9 @@ export const XafeApp = () => {
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <img src={xafeLogo} alt="XAFé" className="w-10 h-10 rounded-lg animate-float" />
+              <img src={xafeLogo} alt="XAFe" className="w-10 h-10 rounded-lg animate-float" />
               <div>
-                <h1 className="text-xl font-heading font-bold text-foreground">XAFé App</h1>
+                <h1 className="text-xl font-heading font-bold text-foreground">XAFe App</h1>
                 <p className="text-sm text-muted-foreground">Votre crypto-monnaie XAF</p>
               </div>
             </div>

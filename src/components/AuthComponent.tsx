@@ -41,7 +41,7 @@ export const AuthComponent = ({ onLogin }: AuthProps) => {
 
   const features = [
     { icon: Shield, text: "Sécurité renforcée avec 2FA" },
-    { icon: Smartphone, text: "Compatible Mobile Money" },
+    { icon: Smartphone, text: "Compatible Mobile Money + Banques" },
     { icon: Star, text: "Frais réduits pour CEMAC" }
   ];
 
@@ -52,9 +52,9 @@ export const AuthComponent = ({ onLogin }: AuthProps) => {
         {/* Left Side - Branding */}
         <div className="space-y-8 text-center lg:text-left animate-fade-in">
           <div className="flex items-center justify-center lg:justify-start gap-4">
-            <img src={xafeLogo} alt="XAFé" className="w-16 h-16 rounded-2xl animate-float" />
+            <img src={xafeLogo} alt="XAFe" className="w-16 h-16 rounded-2xl animate-float" />
             <div>
-              <h1 className="text-4xl font-heading font-bold text-foreground">XAFé App</h1>
+              <h1 className="text-4xl font-heading font-bold text-foreground">XAFe App</h1>
               <p className="text-lg text-muted-foreground">L'avenir des paiements en Afrique</p>
             </div>
           </div>
@@ -64,8 +64,8 @@ export const AuthComponent = ({ onLogin }: AuthProps) => {
               Votre stablecoin XAF sur blockchain
             </h2>
             <p className="text-lg text-muted-foreground leading-relaxed">
-              Achetez, stockez et échangez des XAFé contre des cryptomonnaies. 
-              Compatible avec MTN MoMo et Orange Money pour le Cameroun et la CEMAC.
+              Achetez, stockez et échangez des XAFe contre des cryptomonnaies. 
+              Compatible avec MTN MoMo, Orange Money et toutes les banques pour le Cameroun et la CEMAC.
             </p>
           </div>
 
@@ -108,7 +108,7 @@ export const AuthComponent = ({ onLogin }: AuthProps) => {
             </CardTitle>
             <p className="text-muted-foreground">
               {isLogin 
-                ? "Accédez à votre portefeuille XAFé" 
+                ? "Accédez à votre portefeuille XAFe" 
                 : "Rejoignez la révolution crypto africaine"
               }
             </p>
@@ -138,7 +138,7 @@ export const AuthComponent = ({ onLogin }: AuthProps) => {
               {!isLogin && (
                 <div className="space-y-2">
                   <Label htmlFor="phone" className="font-heading font-semibold">
-                    Téléphone <Badge variant="secondary" className="ml-2 text-xs">MoMo</Badge>
+                    Téléphone <Badge variant="secondary" className="ml-2 text-xs">MoMo + Banque</Badge>
                   </Label>
                   <div className="relative">
                     <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
