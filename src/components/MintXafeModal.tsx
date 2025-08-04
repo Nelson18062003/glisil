@@ -348,7 +348,7 @@ Important: This payment must be completed within 24 hours.
         </p>
       </div>
 
-      <Card className="bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 border-yellow-200 dark:border-yellow-800">
+      <Card className="bg-gradient-subtle border-primary/20 dark:border-primary/30">
         <CardContent className="p-6">
           <div className="space-y-4">
             <div className="flex justify-between">
