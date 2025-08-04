@@ -5,9 +5,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Copy, QrCode, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { Copy, QrCode, CheckCircle, Clock, AlertCircle, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { CryptoService } from '@/services/cryptoService';
+import QRCode from 'qrcode';
 
 interface DepositModalProps {
   isOpen: boolean;
@@ -30,6 +31,8 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
   const [depositAddress, setDepositAddress] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
+  const [showQRCode, setShowQRCode] = useState(false);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -43,6 +46,8 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
     try {
       const address = await CryptoService.getDepositAddress(selectedNetwork);
       setDepositAddress(address);
+      // Generate QR code
+      await generateQRCode(address);
     } catch (error) {
       console.error('Error loading deposit address:', error);
       toast({
@@ -59,6 +64,22 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
       setRecentTransactions(transactions);
     } catch (error) {
       console.error('Error loading transactions:', error);
+    }
+  };
+
+  const generateQRCode = async (address: string) => {
+    try {
+      const url = await QRCode.toDataURL(address, {
+        width: 256,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      });
+      setQrCodeDataUrl(url);
+    } catch (error) {
+      console.error('Error generating QR code:', error);
     }
   };
 
@@ -180,7 +201,9 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
               <Button
                 variant="outline"
                 size="icon"
+                onClick={() => setShowQRCode(true)}
                 disabled={!depositAddress}
+                title="Afficher le QR Code"
               >
                 <QrCode className="h-4 w-4" />
               </Button>
@@ -264,6 +287,74 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
           </div>
         </div>
       </DialogContent>
+
+      {/* QR Code Modal */}
+      {showQRCode && (
+        <Dialog open={showQRCode} onOpenChange={setShowQRCode}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <div className="flex items-center justify-between">
+                <DialogTitle>QR Code de dépôt</DialogTitle>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowQRCode(false)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground mb-4">
+                  Scannez ce QR code pour déposer des USDT sur le réseau {selectedNetwork}
+                </p>
+                
+                {qrCodeDataUrl && (
+                  <div className="flex justify-center mb-4">
+                    <img 
+                      src={qrCodeDataUrl} 
+                      alt="QR Code" 
+                      className="border rounded-lg"
+                    />
+                  </div>
+                )}
+                
+                <div className="bg-gray-50 dark:bg-gray-900 border rounded-lg p-3">
+                  <p className="text-xs font-mono break-all text-center">
+                    {depositAddress}
+                  </p>
+                </div>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => copyToClipboard(depositAddress)}
+                  className="mt-2"
+                >
+                  <Copy className="h-3 w-3 mr-1" />
+                  Copier l'adresse
+                </Button>
+              </div>
+              
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3">
+                <div className="flex items-start space-x-2">
+                  <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 mt-0.5" />
+                  <div className="text-xs text-yellow-700 dark:text-yellow-400">
+                    <p className="font-medium mb-1">Important:</p>
+                    <ul className="space-y-1">
+                      <li>• Envoyez uniquement des USDT sur {selectedNetwork}</li>
+                      <li>• Vérifiez que votre wallet supporte ce réseau</li>
+                      <li>• Les dépôts incorrects sont perdus définitivement</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </Dialog>
   );
 }
