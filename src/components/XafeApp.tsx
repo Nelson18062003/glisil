@@ -123,7 +123,7 @@ export const XafeApp = () => {
     if (!user || !wallet) return;
     
     const exchangeRates = await XafeService.getExchangeRates();
-    const usdtRate = exchangeRates.find(rate => rate.to_currency === 'USDT');
+    const usdtRate = exchangeRates.find(rate => rate.from_currency === 'USDT' && rate.to_currency === 'XAF');
     
     if (!usdtRate) {
       toast({ title: "Erreur", description: "Taux de change indisponible", variant: "destructive" });
@@ -136,16 +136,17 @@ export const XafeApp = () => {
       return;
     }
 
+    // Converting XAF to USDT using the USDT/XAF rate (inverse)
     const success = await XafeService.simulateConversion(
       user.id, 
       'XAF', 
       'USDT', 
       convertAmount, 
-      usdtRate.rate
+      1 / usdtRate.rate // Use inverse rate since we have USDT/XAF but need XAF/USDT
     );
     
     if (success) {
-      const usdtAmount = (convertAmount * usdtRate.rate).toFixed(2);
+      const usdtAmount = (convertAmount / usdtRate.rate).toFixed(2);
       toast({ 
         title: "Conversion réussie", 
         description: `${convertAmount.toLocaleString()} XAF → ${usdtAmount} USDT` 
@@ -203,7 +204,7 @@ export const XafeApp = () => {
               <Zap className="h-4 w-4 text-white" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">XAFe/USDT</p>
+              <p className="text-sm text-muted-foreground">USDT/XAF</p>
               <p className="font-heading font-bold text-lg text-xafe-green">
                 {rates.xafToUsdt}
               </p>
