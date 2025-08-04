@@ -98,6 +98,66 @@ export type Database = {
         }
         Relationships: []
       }
+      mint_operations: {
+        Row: {
+          account_name: string | null
+          account_number: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          minted_at: string | null
+          notes: string | null
+          payment_channel: string
+          payment_method: string
+          proof_file_url: string | null
+          reference_id: string
+          status: string | null
+          updated_at: string
+          user_id: string
+          verified_at: string | null
+          xaf_amount: number
+          xafe_amount: number
+        }
+        Insert: {
+          account_name?: string | null
+          account_number?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          minted_at?: string | null
+          notes?: string | null
+          payment_channel: string
+          payment_method: string
+          proof_file_url?: string | null
+          reference_id: string
+          status?: string | null
+          updated_at?: string
+          user_id: string
+          verified_at?: string | null
+          xaf_amount: number
+          xafe_amount: number
+        }
+        Update: {
+          account_name?: string | null
+          account_number?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          minted_at?: string | null
+          notes?: string | null
+          payment_channel?: string
+          payment_method?: string
+          proof_file_url?: string | null
+          reference_id?: string
+          status?: string | null
+          updated_at?: string
+          user_id?: string
+          verified_at?: string | null
+          xaf_amount?: number
+          xafe_amount?: number
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string | null
@@ -274,6 +334,10 @@ export type Database = {
       generate_deposit_addresses: {
         Args: Record<PropertyKey, never>
         Returns: Json
+      }
+      generate_mint_reference: {
+        Args: Record<PropertyKey, never>
+        Returns: string
       }
     }
     Enums: {
