@@ -296,7 +296,7 @@ export const XafeApp = () => {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-slide-up" style={{ animationDelay: '0.3s' }}>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-slide-up" style={{ animationDelay: '0.3s' }}>
         <Button 
           variant="xafe" 
           size="lg" 
@@ -306,7 +306,18 @@ export const XafeApp = () => {
           <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
             <Plus className="h-6 w-6" />
           </div>
-          <span className="font-heading font-semibold">Déposer XAFe</span>
+          <span className="font-heading font-semibold text-xs">Déposer des XAFe</span>
+        </Button>
+        <Button 
+          variant="destructive" 
+          size="lg" 
+          className="h-20 flex-col action-button group"
+          onClick={() => {}}
+        >
+          <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
+            <Minus className="h-6 w-6" />
+          </div>
+          <span className="font-heading font-semibold text-xs">Retirer des XAFe</span>
         </Button>
         <Button 
           variant="momo" 
@@ -315,34 +326,21 @@ export const XafeApp = () => {
           onClick={() => handleMobileMoneyDeposit()}
         >
           <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
-            <Smartphone className="h-6 w-6" />
+            <CreditCard className="h-6 w-6" />
           </div>
-          <span className="font-heading font-semibold">Mobile Money + Banques</span>
+          <span className="font-heading font-semibold text-xs">Créer des XAFe</span>
         </Button>
-        <div className="grid grid-cols-2 gap-3">
-          <Button 
-            variant="orange" 
-            size="lg" 
-            className="h-20 flex-col action-button group"
-            onClick={() => handleConvertToUSDT()}
-          >
-            <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
-              <ArrowUpDown className="h-6 w-6" />
-            </div>
-            <span className="font-heading font-semibold text-xs">XAF → USDT</span>
-          </Button>
-          <Button 
-            variant="orange" 
-            size="lg" 
-            className="h-20 flex-col action-button group"
-            onClick={() => handleConvertToXAF()}
-          >
-            <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
-              <ArrowUpDown className="h-6 w-6" />
-            </div>
-            <span className="font-heading font-semibold text-xs">USDT → XAF</span>
-          </Button>
-        </div>
+        <Button 
+          variant="orange" 
+          size="lg" 
+          className="h-20 flex-col action-button group"
+          onClick={() => handleConvertToXAF()}
+        >
+          <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
+            <ArrowUpDown className="h-6 w-6" />
+          </div>
+          <span className="font-heading font-semibold text-xs">Échanger XAFe → XAF</span>
+        </Button>
       </div>
 
       {/* Recent Transactions */}
