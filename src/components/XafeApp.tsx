@@ -33,6 +33,7 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { PriceChart } from "@/components/PriceChart";
 import { DepositModal } from "@/components/DepositModal";
 import { WithdrawalModal } from "@/components/WithdrawalModal";
+import { MintXafeModal } from "@/components/MintXafeModal";
 
 export const XafeApp = () => {
   const { t } = useLanguage();
@@ -46,6 +47,7 @@ export const XafeApp = () => {
   const [exchangeRates, setExchangeRates] = useState<ExchangeRate[]>([]);
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
+  const [isMintModalOpen, setIsMintModalOpen] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -250,6 +252,11 @@ export const XafeApp = () => {
     }
   };
 
+  // Handle mint completion
+  const handleMintComplete = () => {
+    loadUserData(); // Refresh wallet and transaction data
+  };
+
   const WalletTab = () => {
     const { t } = useLanguage();
     
@@ -388,7 +395,7 @@ export const XafeApp = () => {
             variant="momo" 
             size="lg" 
             className="h-16 sm:h-20 flex-col action-button group p-3 sm:p-4"
-            onClick={() => handleMobileMoneyDeposit()}
+            onClick={() => setIsMintModalOpen(true)}
           >
             <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
               <CreditCard className="h-4 w-4 sm:h-6 sm:w-6" />
@@ -992,6 +999,13 @@ export const XafeApp = () => {
         onClose={() => setIsWithdrawModalOpen(false)}
         onWithdraw={handleCryptoWithdrawal}
         currentBalance={wallet?.xafe_balance || 0}
+      />
+      
+      {/* Mint XAFe Modal */}
+      <MintXafeModal 
+        isOpen={isMintModalOpen}
+        onClose={() => setIsMintModalOpen(false)}
+        onMintComplete={handleMintComplete}
       />
     </div>
   );

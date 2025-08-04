@@ -55,6 +55,26 @@ export interface ExchangeRate {
   created_at: string;
 }
 
+export interface MintOperation {
+  id: string;
+  user_id: string;
+  reference_id: string;
+  xaf_amount: number;
+  xafe_amount: number;
+  payment_method: string;
+  payment_channel: string;
+  account_name?: string;
+  account_number?: string;
+  status: 'pending' | 'verified' | 'minted' | 'expired' | 'rejected';
+  proof_file_url?: string;
+  notes?: string;
+  expires_at?: string;
+  verified_at?: string;
+  minted_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export class XafeService {
   static async getProfile(userId: string): Promise<UserProfile | null> {
     const { data, error } = await supabase
@@ -335,6 +355,160 @@ export class XafeService {
       return true;
     } catch (error) {
       console.error('Error simulating conversion:', error);
+      return false;
+    }
+  }
+
+  // Mint operation methods
+  static async createMintOperation(
+    userId: string,
+    xafAmount: number,
+    paymentMethod: string,
+    paymentChannel: string,
+    accountName?: string,
+    accountNumber?: string
+  ): Promise<string | null> {
+    try {
+      // Generate unique reference ID
+      const { data: refData, error: refError } = await supabase
+        .rpc('generate_mint_reference');
+
+      if (refError) {
+        console.error('Error generating reference:', refError);
+        return null;
+      }
+
+      const { data, error } = await supabase
+        .from('mint_operations')
+        .insert({
+          user_id: userId,
+          reference_id: refData,
+          xaf_amount: xafAmount,
+          xafe_amount: xafAmount, // 1:1 ratio
+          payment_method: paymentMethod,
+          payment_channel: paymentChannel,
+          account_name: accountName,
+          account_number: accountNumber,
+          status: 'pending'
+        })
+        .select('reference_id')
+        .single();
+
+      if (error) {
+        console.error('Error creating mint operation:', error);
+        return null;
+      }
+
+      return data.reference_id;
+    } catch (error) {
+      console.error('Error creating mint operation:', error);
+      return null;
+    }
+  }
+
+  static async getMintOperations(userId: string, limit = 10): Promise<MintOperation[]> {
+    const { data, error } = await supabase
+      .from('mint_operations')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.error('Error fetching mint operations:', error);
+      return [];
+    }
+
+    return (data || []) as MintOperation[];
+  }
+
+  static async simulateMintVerification(
+    userId: string,
+    referenceId: string,
+    proofFileUrl?: string,
+    notes?: string
+  ): Promise<boolean> {
+    try {
+      // Update mint operation with proof
+      const { error: updateError } = await supabase
+        .from('mint_operations')
+        .update({
+          proof_file_url: proofFileUrl,
+          notes: notes,
+          status: 'verified',
+          verified_at: new Date().toISOString()
+        })
+        .eq('reference_id', referenceId)
+        .eq('user_id', userId);
+
+      if (updateError) {
+        console.error('Error updating mint operation:', updateError);
+        return false;
+      }
+
+      // Get the mint operation
+      const { data: mintOp, error: fetchError } = await supabase
+        .from('mint_operations')
+        .select('*')
+        .eq('reference_id', referenceId)
+        .eq('user_id', userId)
+        .single();
+
+      if (fetchError || !mintOp) {
+        console.error('Error fetching mint operation:', fetchError);
+        return false;
+      }
+
+      // Mint XAFe to user's wallet
+      const wallet = await this.getWallet(userId);
+      if (!wallet) return false;
+
+      const newBalance = wallet.xafe_balance + mintOp.xafe_amount;
+      const newTotalDeposited = wallet.total_deposited + mintOp.xaf_amount;
+
+      const { error: walletError } = await supabase
+        .from('wallets')
+        .update({ 
+          xafe_balance: newBalance, 
+          total_deposited: newTotalDeposited 
+        })
+        .eq('user_id', userId);
+
+      if (walletError) {
+        console.error('Error updating wallet:', walletError);
+        return false;
+      }
+
+      // Update mint operation status to minted
+      const { error: finalUpdateError } = await supabase
+        .from('mint_operations')
+        .update({
+          status: 'minted',
+          minted_at: new Date().toISOString()
+        })
+        .eq('reference_id', referenceId)
+        .eq('user_id', userId);
+
+      if (finalUpdateError) {
+        console.error('Error finalizing mint operation:', finalUpdateError);
+      }
+
+      // Create transaction record for the mint
+      await this.createTransaction({
+        user_id: userId,
+        type: 'deposit',
+        status: 'completed',
+        to_currency: 'XAF',
+        to_amount: mintOp.xafe_amount,
+        payment_method: `${mintOp.payment_method} (Mint)`,
+        external_ref: referenceId,
+        fee_amount: 0,
+        notes: `XAFe minted via ${mintOp.payment_method}`
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Error simulating mint verification:', error);
       return false;
     }
   }
