@@ -20,8 +20,10 @@ import {
   DollarSign
 } from "lucide-react";
 import xafeLogo from "@/assets/xafe-logo.png";
+import { AuthComponent } from "./AuthComponent";
 
 export const XafeApp = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [activeTab, setActiveTab] = useState("wallet");
   const [animateCards, setAnimateCards] = useState(false);
@@ -227,151 +229,461 @@ export const XafeApp = () => {
     </div>
   );
 
-  const ConvertTab = () => (
-    <div className="space-y-6">
-      <Card className="bg-gradient-card">
-        <CardContent className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Conversion rapide</h3>
-          <div className="space-y-4">
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground mb-2">Taux actuel</p>
-              <p className="text-2xl font-bold text-xafe-green">1 USDT = {mockData.usdtToXaf} XAF</p>
+  const ConvertTab = () => {
+    const [fromAmount, setFromAmount] = useState("");
+    const [toAmount, setToAmount] = useState("");
+    const [swapDirection, setSwapDirection] = useState(true); // true: XAF->USDT, false: USDT->XAF
+
+    const handleSwap = () => {
+      setSwapDirection(!swapDirection);
+      setFromAmount(toAmount);
+      setToAmount(fromAmount);
+    };
+
+    const calculateConversion = (amount: string) => {
+      const num = parseFloat(amount);
+      if (isNaN(num)) return "";
+      
+      if (swapDirection) {
+        return (num * mockData.xafToUsdt).toFixed(6);
+      } else {
+        return (num * mockData.usdtToXaf).toFixed(2);
+      }
+    };
+
+    const handleFromAmountChange = (value: string) => {
+      setFromAmount(value);
+      setToAmount(calculateConversion(value));
+    };
+
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <Card className="balance-card animate-scale-in">
+          <CardContent className="p-8">
+            <div className="text-center mb-8">
+              <h3 className="text-2xl font-heading font-bold mb-2">Conversion rapide</h3>
+              <p className="text-muted-foreground">Échangez instantanément vos cryptomonnaies</p>
             </div>
             
-            <div className="bg-secondary/20 p-4 rounded-lg">
-              <div className="flex items-center justify-between mb-4">
-                <span>De: XAFé</span>
-                <span>Solde: {mockData.xafeBalance.toLocaleString()} XAF</span>
+            <div className="space-y-6">
+              <div className="text-center p-4 bg-gradient-primary/10 rounded-xl border border-xafe-green/20">
+                <p className="text-sm text-muted-foreground mb-2">Taux de change actuel</p>
+                <p className="text-3xl font-heading font-bold text-xafe-green">
+                  1 USDT = {mockData.usdtToXaf.toLocaleString()} XAF
+                </p>
+                <div className="flex items-center justify-center gap-2 mt-2">
+                  <Badge variant="secondary" className="bg-xafe-green/20 text-xafe-green animate-pulse-glow">
+                    +{mockData.priceChange}% 24h
+                  </Badge>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <input 
-                  type="number" 
-                  placeholder="0"
-                  className="flex-1 bg-transparent text-2xl font-semibold outline-none"
-                />
-                <span className="text-muted-foreground">XAF</span>
+              
+              {/* From Currency */}
+              <div className="bg-secondary/10 p-6 rounded-xl border border-white/10 hover-lift">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="font-heading font-semibold">
+                    De: {swapDirection ? 'XAFé' : 'USDT'}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    Solde: {swapDirection 
+                      ? `${mockData.xafeBalance.toLocaleString()} XAF` 
+                      : `${mockData.usdtBalance} USDT`
+                    }
+                  </span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className={`w-12 h-12 ${swapDirection ? 'bg-gradient-primary' : 'bg-gradient-blue'} rounded-xl flex items-center justify-center`}>
+                    {swapDirection ? (
+                      <img src={xafeLogo} alt="XAFé" className="w-6 h-6 rounded" />
+                    ) : (
+                      <span className="text-white font-bold">₮</span>
+                    )}
+                  </div>
+                  <input 
+                    type="number" 
+                    placeholder="0"
+                    value={fromAmount}
+                    onChange={(e) => handleFromAmountChange(e.target.value)}
+                    className="flex-1 bg-transparent text-3xl font-heading font-bold outline-none text-foreground placeholder-muted-foreground"
+                  />
+                  <span className="text-muted-foreground font-semibold">
+                    {swapDirection ? 'XAF' : 'USDT'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Swap Button */}
+              <div className="flex justify-center">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={handleSwap}
+                  className="rounded-full w-12 h-12 bg-gradient-primary hover:scale-110 transition-all duration-300 shadow-glow-green"
+                >
+                  <ArrowUpDown className="h-6 w-6 text-white" />
+                </Button>
+              </div>
+
+              {/* To Currency */}
+              <div className="bg-secondary/10 p-6 rounded-xl border border-white/10 hover-lift">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="font-heading font-semibold">
+                    Vers: {swapDirection ? 'USDT' : 'XAFé'}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    Solde: {swapDirection 
+                      ? `${mockData.usdtBalance} USDT`
+                      : `${mockData.xafeBalance.toLocaleString()} XAF`
+                    }
+                  </span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className={`w-12 h-12 ${swapDirection ? 'bg-gradient-blue' : 'bg-gradient-primary'} rounded-xl flex items-center justify-center`}>
+                    {swapDirection ? (
+                      <span className="text-white font-bold">₮</span>
+                    ) : (
+                      <img src={xafeLogo} alt="XAFé" className="w-6 h-6 rounded" />
+                    )}
+                  </div>
+                  <input 
+                    type="number" 
+                    placeholder="0"
+                    value={toAmount}
+                    readOnly
+                    className="flex-1 bg-transparent text-3xl font-heading font-bold outline-none text-foreground placeholder-muted-foreground"
+                  />
+                  <span className="text-muted-foreground font-semibold">
+                    {swapDirection ? 'USDT' : 'XAF'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <Button 
+                  variant="xafe" 
+                  size="xl" 
+                  className="w-full action-button font-heading font-bold text-lg"
+                  disabled={!fromAmount || parseFloat(fromAmount) <= 0}
+                >
+                  <Zap className="h-5 w-5 mr-2" />
+                  Convertir maintenant
+                </Button>
+                
+                <div className="text-center text-sm text-muted-foreground">
+                  <p>Frais de conversion: 0.1% • Traitement instantané</p>
+                </div>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
 
-            <div className="flex justify-center">
-              <Button variant="ghost" size="icon" className="rounded-full">
-                <ArrowUpDown className="h-5 w-5" />
-              </Button>
-            </div>
-
-            <div className="bg-secondary/20 p-4 rounded-lg">
-              <div className="flex items-center justify-between mb-4">
-                <span>Vers: USDT</span>
-                <span>Solde: {mockData.usdtBalance} USDT</span>
+  const MarketTab = () => (
+    <div className="space-y-6 animate-fade-in">
+      {/* Market Overview */}
+      <Card className="balance-card animate-scale-in">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-gradient-primary rounded-xl flex items-center justify-center animate-float">
+                <TrendingUp className="h-6 w-6 text-white" />
               </div>
-              <div className="flex items-center gap-2">
-                <input 
-                  type="number" 
-                  placeholder="0"
-                  className="flex-1 bg-transparent text-2xl font-semibold outline-none"
-                />
-                <span className="text-muted-foreground">USDT</span>
+              <div>
+                <h3 className="text-2xl font-heading font-bold">XAFé/USDT</h3>
+                <p className="text-sm text-muted-foreground">Marché Spot</p>
               </div>
             </div>
+            <Badge variant="secondary" className="bg-xafe-green/20 text-xafe-green animate-pulse-glow text-lg px-3 py-1">
+              +{mockData.priceChange}%
+            </Badge>
+          </div>
+          
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="text-center p-4 bg-secondary/10 rounded-xl hover-lift">
+              <p className="text-sm text-muted-foreground mb-1">Prix actuel</p>
+              <p className="text-xl font-heading font-bold text-xafe-green">{mockData.xafToUsdt}</p>
+            </div>
+            <div className="text-center p-4 bg-secondary/10 rounded-xl hover-lift">
+              <p className="text-sm text-muted-foreground mb-1">24h High</p>
+              <p className="text-xl font-heading font-bold">0.00172</p>
+            </div>
+            <div className="text-center p-4 bg-secondary/10 rounded-xl hover-lift">
+              <p className="text-sm text-muted-foreground mb-1">24h Low</p>
+              <p className="text-xl font-heading font-bold">0.00164</p>
+            </div>
+            <div className="text-center p-4 bg-secondary/10 rounded-xl hover-lift">
+              <p className="text-sm text-muted-foreground mb-1">Volume 24h</p>
+              <p className="text-xl font-heading font-bold">2.4M XAF</p>
+            </div>
+          </div>
 
-            <Button variant="xafe" size="xl" className="w-full">
-              Convertir maintenant
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <Button variant="xafe" size="lg" className="action-button font-heading font-bold">
+              <Plus className="h-5 w-5 mr-2" />
+              Acheter XAFé
+            </Button>
+            <Button variant="outline" size="lg" className="action-button font-heading font-bold border-destructive text-destructive hover:bg-destructive hover:text-white">
+              <Minus className="h-5 w-5 mr-2" />
+              Vendre XAFé
             </Button>
           </div>
         </CardContent>
       </Card>
-    </div>
-  );
 
-  const MarketTab = () => (
-    <div className="space-y-6">
-      <Card className="bg-gradient-card">
+      {/* Order Book */}
+      <Card className="balance-card animate-slide-up" style={{ animationDelay: '0.2s' }}>
         <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold">XAFé/USDT</h3>
-            <Badge variant="secondary" className="bg-xafe-green/20 text-xafe-green">
-              +2.4%
-            </Badge>
+          <div className="flex items-center justify-between mb-6">
+            <h4 className="text-xl font-heading font-bold">Carnet d'ordres</h4>
+            <Badge variant="secondary" className="text-xs">DEMO</Badge>
           </div>
           
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground">Prix</p>
-              <p className="text-lg font-bold text-xafe-green">{mockData.xafToUsdt}</p>
-            </div>
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground">24h High</p>
-              <p className="text-lg font-bold">0.00172</p>
-            </div>
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground">24h Low</p>
-              <p className="text-lg font-bold">0.00164</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <Button variant="xafe" className="w-full">
-                Acheter XAFé
-              </Button>
-              <Button variant="outline" className="w-full">
-                Vendre XAFé
-              </Button>
-            </div>
-            
-            <div className="bg-secondary/20 p-4 rounded-lg">
-              <h4 className="font-semibold mb-3">Carnet d'ordres (Demo)</h4>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-destructive font-medium mb-2">Ventes</p>
-                  {[
-                    { price: "0.00170", amount: "5,000" },
-                    { price: "0.00169", amount: "12,000" },
-                    { price: "0.00168", amount: "8,500" }
-                  ].map((order, index) => (
-                    <div key={index} className="flex justify-between py-1">
-                      <span className="text-destructive">{order.price}</span>
-                      <span>{order.amount}</span>
-                    </div>
-                  ))}
-                </div>
-                <div>
-                  <p className="text-xafe-green font-medium mb-2">Achats</p>
-                  {[
-                    { price: "0.00167", amount: "3,200" },
-                    { price: "0.00166", amount: "15,000" },
-                    { price: "0.00165", amount: "7,800" }
-                  ].map((order, index) => (
-                    <div key={index} className="flex justify-between py-1">
-                      <span className="text-xafe-green">{order.price}</span>
-                      <span>{order.amount}</span>
-                    </div>
-                  ))}
-                </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Sell Orders */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-3 h-3 bg-destructive rounded-full"></div>
+                <h5 className="font-heading font-semibold text-destructive">Ordres de vente</h5>
+              </div>
+              <div className="space-y-2">
+                {[
+                  { price: "0.00170", amount: "5,000", total: "8.50" },
+                  { price: "0.00169", amount: "12,000", total: "20.28" },
+                  { price: "0.00168", amount: "8,500", total: "14.28" }
+                ].map((order, index) => (
+                  <div key={index} className="flex justify-between items-center p-3 rounded-lg bg-destructive/5 hover:bg-destructive/10 transition-colors cursor-pointer">
+                    <span className="text-destructive font-semibold">{order.price}</span>
+                    <span className="text-sm">{order.amount}</span>
+                    <span className="text-xs text-muted-foreground">{order.total}</span>
+                  </div>
+                ))}
               </div>
             </div>
+
+            {/* Buy Orders */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-3 h-3 bg-xafe-green rounded-full"></div>
+                <h5 className="font-heading font-semibold text-xafe-green">Ordres d'achat</h5>
+              </div>
+              <div className="space-y-2">
+                {[
+                  { price: "0.00167", amount: "3,200", total: "5.34" },
+                  { price: "0.00166", amount: "15,000", total: "24.90" },
+                  { price: "0.00165", amount: "7,800", total: "12.87" }
+                ].map((order, index) => (
+                  <div key={index} className="flex justify-between items-center p-3 rounded-lg bg-xafe-green/5 hover:bg-xafe-green/10 transition-colors cursor-pointer">
+                    <span className="text-xafe-green font-semibold">{order.price}</span>
+                    <span className="text-sm">{order.amount}</span>
+                    <span className="text-xs text-muted-foreground">{order.total}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          
+          <div className="mt-6 p-4 bg-gradient-primary/10 rounded-xl border border-xafe-green/20">
+            <p className="text-center text-sm text-muted-foreground">
+              💡 Le carnet d'ordres sera connecté à l'infrastructure Hyperliquid dans la version finale
+            </p>
           </div>
         </CardContent>
       </Card>
     </div>
   );
+
+  const HistoryTab = () => (
+    <div className="space-y-6 animate-fade-in">
+      {/* Filter Options */}
+      <Card className="balance-card animate-scale-in">
+        <CardContent className="p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+            <h3 className="text-xl font-heading font-bold">Historique des transactions</h3>
+            <div className="flex gap-2">
+              <Badge variant="secondary" className="cursor-pointer hover:bg-xafe-green/20 hover:text-xafe-green">
+                Tout
+              </Badge>
+              <Badge variant="outline" className="cursor-pointer hover:bg-xafe-green/20 hover:text-xafe-green">
+                Dépôts
+              </Badge>
+              <Badge variant="outline" className="cursor-pointer hover:bg-xafe-blue/20 hover:text-xafe-blue">
+                Conversions
+              </Badge>
+              <Badge variant="outline" className="cursor-pointer hover:bg-xafe-orange/20 hover:text-xafe-orange">
+                Mobile Money
+              </Badge>
+            </div>
+          </div>
+          
+          <div className="space-y-3">
+            {[
+              {
+                id: "TXN001",
+                type: "Dépôt",
+                amount: "+50,000 XAF",
+                time: "2024-01-15 14:30",
+                method: "MTN MoMo",
+                status: "Confirmé",
+                icon: Plus,
+                color: "text-xafe-green",
+                bgColor: "bg-xafe-green/20",
+                statusColor: "bg-xafe-green/20 text-xafe-green"
+              },
+              {
+                id: "TXN002",
+                type: "Conversion",
+                amount: "-10,000 XAF → +16.8 USDT",
+                time: "2024-01-15 09:15",
+                method: "Marché Spot",
+                status: "Terminé",
+                icon: ArrowUpDown,
+                color: "text-xafe-blue",
+                bgColor: "bg-xafe-blue/20",
+                statusColor: "bg-xafe-blue/20 text-xafe-blue"
+              },
+              {
+                id: "TXN003",
+                type: "Dépôt",
+                amount: "+25,000 XAF",
+                time: "2024-01-14 16:45",
+                method: "Orange Money",
+                status: "Confirmé",
+                icon: Smartphone,
+                color: "text-xafe-orange",
+                bgColor: "bg-xafe-orange/20",
+                statusColor: "bg-xafe-orange/20 text-xafe-orange"
+              },
+              {
+                id: "TXN004",
+                type: "Conversion",
+                amount: "+5,000 XAF ← -8.4 USDT",
+                time: "2024-01-14 11:20",
+                method: "Conversion rapide",
+                status: "Terminé",
+                icon: ArrowUpDown,
+                color: "text-xafe-blue",
+                bgColor: "bg-xafe-blue/20",
+                statusColor: "bg-xafe-blue/20 text-xafe-blue"
+              },
+              {
+                id: "TXN005",
+                type: "Dépôt",
+                amount: "+75,000 XAF",
+                time: "2024-01-13 08:30",
+                method: "MTN MoMo",
+                status: "En attente",
+                icon: Plus,
+                color: "text-muted-foreground",
+                bgColor: "bg-secondary/20",
+                statusColor: "bg-yellow-500/20 text-yellow-600"
+              }
+            ].map((tx, index) => {
+              const IconComponent = tx.icon;
+              return (
+                <div 
+                  key={index} 
+                  className="flex items-center justify-between p-4 rounded-xl bg-secondary/5 hover:bg-secondary/10 transition-all duration-300 hover-lift border border-white/5"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`w-12 h-12 ${tx.bgColor} rounded-xl flex items-center justify-center`}>
+                      <IconComponent className={`h-6 w-6 ${tx.color}`} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-3 mb-1">
+                        <p className="font-heading font-semibold text-foreground">{tx.type}</p>
+                        <Badge variant="secondary" className={`text-xs ${tx.statusColor}`}>
+                          {tx.status}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{tx.method}</p>
+                      <p className="text-xs text-muted-foreground">ID: {tx.id}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className={`font-heading font-bold text-lg ${tx.color}`}>{tx.amount}</p>
+                    <p className="text-xs text-muted-foreground">{tx.time}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          
+          <div className="text-center mt-6">
+            <Button variant="outline" className="action-button">
+              Charger plus de transactions
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+      
+      {/* Summary Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-slide-up" style={{ animationDelay: '0.2s' }}>
+        <Card className="balance-card hover-lift">
+          <CardContent className="p-6 text-center">
+            <div className="w-12 h-12 bg-gradient-primary rounded-xl flex items-center justify-center mx-auto mb-3">
+              <Plus className="h-6 w-6 text-white" />
+            </div>
+            <p className="text-2xl font-heading font-bold text-xafe-green">150,000 XAF</p>
+            <p className="text-sm text-muted-foreground">Total déposé ce mois</p>
+          </CardContent>
+        </Card>
+        
+        <Card className="balance-card hover-lift">
+          <CardContent className="p-6 text-center">
+            <div className="w-12 h-12 bg-gradient-blue rounded-xl flex items-center justify-center mx-auto mb-3">
+              <ArrowUpDown className="h-6 w-6 text-white" />
+            </div>
+            <p className="text-2xl font-heading font-bold text-xafe-blue">25.2 USDT</p>
+            <p className="text-sm text-muted-foreground">Total converti</p>
+          </CardContent>
+        </Card>
+        
+        <Card className="balance-card hover-lift">
+          <CardContent className="p-6 text-center">
+            <div className="w-12 h-12 bg-gradient-orange rounded-xl flex items-center justify-center mx-auto mb-3">
+              <Smartphone className="h-6 w-6 text-white" />
+            </div>
+            <p className="text-2xl font-heading font-bold text-xafe-orange">12</p>
+            <p className="text-sm text-muted-foreground">Transactions MoMo</p>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+
+  // Show authentication screen if not authenticated
+  if (!isAuthenticated) {
+    return <AuthComponent onLogin={() => setIsAuthenticated(true)} />;
+  }
 
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <div className="bg-gradient-card border-b border-border/40 px-4 py-6">
+      <div className="bg-gradient-card border-b border-border/40 px-4 py-6 animate-slide-up">
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <img src={xafeLogo} alt="XAFé" className="w-10 h-10 rounded-lg" />
+              <img src={xafeLogo} alt="XAFé" className="w-10 h-10 rounded-lg animate-float" />
               <div>
-                <h1 className="text-xl font-bold text-foreground">XAFé App</h1>
+                <h1 className="text-xl font-heading font-bold text-foreground">XAFé App</h1>
                 <p className="text-sm text-muted-foreground">Votre crypto-monnaie XAF</p>
               </div>
             </div>
-            <Button variant="ghost" size="icon">
-              <Settings className="h-5 w-5" />
-            </Button>
+            <div className="flex items-center gap-3">
+              <Badge variant="secondary" className="bg-xafe-green/20 text-xafe-green animate-pulse-glow">
+                En ligne
+              </Badge>
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={() => setIsAuthenticated(false)}
+                className="action-button"
+              >
+                <Settings className="h-5 w-5" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -379,20 +691,20 @@ export const XafeApp = () => {
       {/* Main Content */}
       <div className="max-w-6xl mx-auto p-4">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 mb-6">
-            <TabsTrigger value="wallet" className="flex items-center gap-2">
+          <TabsList className="grid w-full grid-cols-4 mb-6 animate-fade-in">
+            <TabsTrigger value="wallet" className="flex items-center gap-2 font-heading">
               <Wallet className="h-4 w-4" />
               <span className="hidden sm:inline">Portefeuille</span>
             </TabsTrigger>
-            <TabsTrigger value="convert" className="flex items-center gap-2">
+            <TabsTrigger value="convert" className="flex items-center gap-2 font-heading">
               <ArrowUpDown className="h-4 w-4" />
               <span className="hidden sm:inline">Convertir</span>
             </TabsTrigger>
-            <TabsTrigger value="market" className="flex items-center gap-2">
+            <TabsTrigger value="market" className="flex items-center gap-2 font-heading">
               <TrendingUp className="h-4 w-4" />
               <span className="hidden sm:inline">Marché</span>
             </TabsTrigger>
-            <TabsTrigger value="history" className="flex items-center gap-2">
+            <TabsTrigger value="history" className="flex items-center gap-2 font-heading">
               <History className="h-4 w-4" />
               <span className="hidden sm:inline">Historique</span>
             </TabsTrigger>
@@ -411,14 +723,7 @@ export const XafeApp = () => {
           </TabsContent>
 
           <TabsContent value="history">
-            <Card className="bg-gradient-card">
-              <CardContent className="p-6">
-                <h3 className="text-lg font-semibold mb-4">Historique complet</h3>
-                <p className="text-muted-foreground text-center py-8">
-                  Fonctionnalité en développement...
-                </p>
-              </CardContent>
-            </Card>
+            <HistoryTab />
           </TabsContent>
         </Tabs>
       </div>
