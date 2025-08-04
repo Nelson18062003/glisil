@@ -296,50 +296,53 @@ export const XafeApp = () => {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-slide-up" style={{ animationDelay: '0.3s' }}>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 animate-slide-up" style={{ animationDelay: '0.3s' }}>
         <Button 
           variant="xafe" 
           size="lg" 
-          className="h-20 flex-col action-button group"
+          className="h-16 sm:h-20 flex-col action-button group p-3 sm:p-4"
           onClick={() => handleDepositXafe()}
         >
-          <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
-            <Plus className="h-6 w-6" />
+          <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
+            <Plus className="h-4 w-4 sm:h-6 sm:w-6" />
           </div>
-          <span className="font-heading font-semibold text-xs">Déposer des XAFe</span>
+          <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">Déposer des XAFe</span>
         </Button>
+        
         <Button 
           variant="destructive" 
           size="lg" 
-          className="h-20 flex-col action-button group"
+          className="h-16 sm:h-20 flex-col action-button group p-3 sm:p-4"
           onClick={() => {}}
         >
-          <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
-            <Minus className="h-6 w-6" />
+          <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
+            <Minus className="h-4 w-4 sm:h-6 sm:w-6" />
           </div>
-          <span className="font-heading font-semibold text-xs">Retirer des XAFe</span>
+          <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">Retirer des XAFe</span>
         </Button>
+        
         <Button 
           variant="momo" 
           size="lg" 
-          className="h-20 flex-col action-button group"
+          className="h-16 sm:h-20 flex-col action-button group p-3 sm:p-4"
           onClick={() => handleMobileMoneyDeposit()}
         >
-          <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
-            <CreditCard className="h-6 w-6" />
+          <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
+            <CreditCard className="h-4 w-4 sm:h-6 sm:w-6" />
           </div>
-          <span className="font-heading font-semibold text-xs">Créer des XAFe</span>
+          <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">Créer des XAFe</span>
         </Button>
+        
         <Button 
           variant="orange" 
           size="lg" 
-          className="h-20 flex-col action-button group"
+          className="h-16 sm:h-20 flex-col action-button group p-3 sm:p-4"
           onClick={() => handleConvertToXAF()}
         >
-          <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
-            <ArrowUpDown className="h-6 w-6" />
+          <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
+            <ArrowUpDown className="h-4 w-4 sm:h-6 sm:w-6" />
           </div>
-          <span className="font-heading font-semibold text-xs">Échanger XAFe → XAF</span>
+          <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">Échanger XAFe → XAF</span>
         </Button>
       </div>
 
