@@ -861,7 +861,7 @@ export const XafeApp = () => {
               <div>
                 <h1 className="text-xl font-heading font-bold text-foreground">XAFe App</h1>
                 <p className="text-sm text-muted-foreground">
-                  {t('language') === 'fr' ? 'Votre crypto-monnaie XAF' : 'Your XAF cryptocurrency'}
+                  {t('language') === 'fr' ? 'Votre stablecoin XAF' : 'Your XAF stablecoin'}
                 </p>
               </div>
             </div>
