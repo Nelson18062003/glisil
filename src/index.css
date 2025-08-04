@@ -53,8 +53,12 @@ All colors MUST be HSL.
     --shadow-glow-green: 0 4px 20px hsl(142 76% 36% / 0.3);
     --shadow-glow-orange: 0 4px 20px hsl(24 95% 53% / 0.3);
     --shadow-glow-blue: 0 4px 20px hsl(213 94% 68% / 0.3);
+    
+    /* Animation and transition variables */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
     --sidebar-background: 0 0% 98%;
 
@@ -118,6 +122,33 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
+  }
+}
+
+@layer components {
+  /* Custom component classes */
+  .animate-stagger {
+    animation-delay: calc(var(--stagger) * 0.1s);
+  }
+  
+  .hover-lift {
+    @apply transition-all duration-300 hover:transform hover:-translate-y-1 hover:shadow-xl;
+  }
+  
+  .gradient-text {
+    @apply bg-gradient-to-r from-xafe-green to-xafe-blue bg-clip-text text-transparent;
+  }
+  
+  .glass-effect {
+    @apply backdrop-blur-md bg-white/5 border border-white/10;
+  }
+  
+  .balance-card {
+    @apply bg-gradient-card border border-white/10 backdrop-blur-sm;
+  }
+  
+  .action-button {
+    @apply transition-all duration-300 hover:scale-105 active:scale-95;
   }
 }

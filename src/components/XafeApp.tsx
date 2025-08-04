@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,119 +14,213 @@ import {
   EyeOff,
   Plus,
   Minus,
-  CreditCard
+  CreditCard,
+  Zap,
+  ArrowRight,
+  DollarSign
 } from "lucide-react";
 import xafeLogo from "@/assets/xafe-logo.png";
 
 export const XafeApp = () => {
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [activeTab, setActiveTab] = useState("wallet");
+  const [animateCards, setAnimateCards] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setAnimateCards(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   const mockData = {
     xafeBalance: 125000,
     usdtBalance: 85.50,
     xafToUsdt: 0.00168,
-    usdtToXaf: 595.24
+    usdtToXaf: 595.24,
+    priceChange: +2.4
   };
 
   const WalletTab = () => (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
+      {/* Price Ticker */}
+      <div className="bg-gradient-card border border-xafe-green/20 rounded-xl p-4 animate-slide-up">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-gradient-primary rounded-full flex items-center justify-center animate-pulse-glow">
+              <Zap className="h-4 w-4 text-white" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">XAFé/USDT</p>
+              <p className="font-heading font-bold text-lg text-xafe-green">
+                {mockData.xafToUsdt}
+              </p>
+            </div>
+          </div>
+          <div className="text-right">
+            <Badge 
+              variant="secondary" 
+              className={`bg-xafe-green/20 text-xafe-green animate-pulse ${
+                mockData.priceChange > 0 ? 'animate-pulse-glow' : ''
+              }`}
+            >
+              +{mockData.priceChange}%
+            </Badge>
+            <p className="text-xs text-muted-foreground mt-1">24h</p>
+          </div>
+        </div>
+      </div>
+
       {/* Balance Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card className="bg-gradient-card border-xafe-green/20">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card className={`balance-card border-xafe-green/20 hover-lift ${animateCards ? 'animate-scale-in' : ''}`} 
+              style={{ animationDelay: '0.1s' }}>
           <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-gradient-primary rounded-full flex items-center justify-center">
-                  <span className="text-white text-sm font-bold">X</span>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-primary rounded-xl flex items-center justify-center shadow-glow-green animate-float">
+                  <img src={xafeLogo} alt="XAFé" className="w-6 h-6 rounded" />
                 </div>
-                <span className="text-foreground font-semibold">XAFé</span>
+                <div>
+                  <h3 className="font-heading font-semibold text-foreground">XAFé</h3>
+                  <p className="text-xs text-muted-foreground">Franc CFA numérique</p>
+                </div>
               </div>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => setBalanceVisible(!balanceVisible)}
-                className="h-8 w-8"
+                className="h-8 w-8 action-button"
               >
                 {balanceVisible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
               </Button>
             </div>
-            <div className="space-y-1">
-              <p className="text-2xl font-bold text-xafe-green">
-                {balanceVisible ? `${mockData.xafeBalance.toLocaleString()} XAF` : "***"}
+            <div className="space-y-2">
+              <p className="text-3xl font-heading font-bold text-xafe-green">
+                {balanceVisible ? `${mockData.xafeBalance.toLocaleString()}` : "***"}
+                <span className="text-lg text-muted-foreground ml-2">XAF</span>
               </p>
-              <p className="text-sm text-muted-foreground">
-                ≈ {balanceVisible ? `${(mockData.xafeBalance * mockData.xafToUsdt).toFixed(2)} USDT` : "***"}
-              </p>
+              <div className="flex items-center gap-2">
+                <DollarSign className="h-3 w-3 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  ≈ {balanceVisible ? `${(mockData.xafeBalance * mockData.xafToUsdt).toFixed(2)} USDT` : "***"}
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-card border-xafe-blue/20">
+        <Card className={`balance-card border-xafe-blue/20 hover-lift ${animateCards ? 'animate-scale-in' : ''}`}
+              style={{ animationDelay: '0.2s' }}>
           <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-gradient-blue rounded-full flex items-center justify-center">
-                  <span className="text-white text-sm font-bold">U</span>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-blue rounded-xl flex items-center justify-center shadow-glow-blue animate-float" 
+                     style={{ animationDelay: '1s' }}>
+                  <span className="text-white text-sm font-bold">₮</span>
                 </div>
-                <span className="text-foreground font-semibold">USDT</span>
+                <div>
+                  <h3 className="font-heading font-semibold text-foreground">USDT</h3>
+                  <p className="text-xs text-muted-foreground">Tether USD</p>
+                </div>
               </div>
-              <Badge variant="secondary" className="text-xs">BEP20</Badge>
+              <Badge variant="secondary" className="text-xs bg-xafe-blue/20 text-xafe-blue">BEP20</Badge>
             </div>
-            <div className="space-y-1">
-              <p className="text-2xl font-bold text-xafe-blue">
-                {balanceVisible ? `${mockData.usdtBalance.toFixed(2)} USDT` : "***"}
+            <div className="space-y-2">
+              <p className="text-3xl font-heading font-bold text-xafe-blue">
+                {balanceVisible ? `${mockData.usdtBalance.toFixed(2)}` : "***"}
+                <span className="text-lg text-muted-foreground ml-2">USDT</span>
               </p>
-              <p className="text-sm text-muted-foreground">
-                ≈ {balanceVisible ? `${(mockData.usdtBalance * mockData.usdtToXaf).toLocaleString()} XAF` : "***"}
-              </p>
+              <div className="flex items-center gap-2">
+                <DollarSign className="h-3 w-3 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  ≈ {balanceVisible ? `${(mockData.usdtBalance * mockData.usdtToXaf).toLocaleString()} XAF` : "***"}
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Button variant="xafe" size="lg" className="h-16 flex-col">
-          <Plus className="h-6 w-6 mb-1" />
-          <span>Déposer XAF</span>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-slide-up" style={{ animationDelay: '0.3s' }}>
+        <Button variant="xafe" size="lg" className="h-20 flex-col action-button group">
+          <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
+            <Plus className="h-6 w-6" />
+          </div>
+          <span className="font-heading font-semibold">Déposer XAF</span>
         </Button>
-        <Button variant="momo" size="lg" className="h-16 flex-col">
-          <Smartphone className="h-6 w-6 mb-1" />
-          <span>Mobile Money</span>
+        <Button variant="momo" size="lg" className="h-20 flex-col action-button group">
+          <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
+            <Smartphone className="h-6 w-6" />
+          </div>
+          <span className="font-heading font-semibold">Mobile Money</span>
         </Button>
-        <Button variant="orange" size="lg" className="h-16 flex-col">
-          <ArrowUpDown className="h-6 w-6 mb-1" />
-          <span>Convertir</span>
+        <Button variant="orange" size="lg" className="h-20 flex-col action-button group">
+          <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
+            <ArrowUpDown className="h-6 w-6" />
+          </div>
+          <span className="font-heading font-semibold">Convertir</span>
         </Button>
       </div>
 
       {/* Recent Transactions */}
-      <Card className="bg-gradient-card">
+      <Card className="balance-card animate-slide-up" style={{ animationDelay: '0.4s' }}>
         <CardContent className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Transactions récentes</h3>
-          <div className="space-y-3">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-heading font-bold text-foreground">Transactions récentes</h3>
+            <Button variant="ghost" size="sm" className="text-xafe-green hover:text-xafe-green">
+              Voir tout
+              <ArrowRight className="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+          <div className="space-y-4">
             {[
-              { type: "Dépôt", amount: "+50,000 XAF", time: "Il y a 2h", method: "MTN MoMo" },
-              { type: "Conversion", amount: "-10,000 XAF → +16.8 USDT", time: "Il y a 5h", method: "Spot" },
-              { type: "Dépôt", amount: "+25,000 XAF", time: "Hier", method: "Orange Money" }
-            ].map((tx, index) => (
-              <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-secondary/20">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gradient-primary rounded-full flex items-center justify-center">
-                    <CreditCard className="h-5 w-5 text-white" />
+              { 
+                type: "Dépôt", 
+                amount: "+50,000 XAF", 
+                time: "Il y a 2h", 
+                method: "MTN MoMo",
+                icon: Plus,
+                color: "text-xafe-green",
+                bgColor: "bg-xafe-green/20"
+              },
+              { 
+                type: "Conversion", 
+                amount: "-10,000 XAF → +16.8 USDT", 
+                time: "Il y a 5h", 
+                method: "Spot",
+                icon: ArrowUpDown,
+                color: "text-xafe-blue",
+                bgColor: "bg-xafe-blue/20"
+              },
+              { 
+                type: "Dépôt", 
+                amount: "+25,000 XAF", 
+                time: "Hier", 
+                method: "Orange Money",
+                icon: Smartphone,
+                color: "text-xafe-orange",
+                bgColor: "bg-xafe-orange/20"
+              }
+            ].map((tx, index) => {
+              const IconComponent = tx.icon;
+              return (
+                <div key={index} className="flex items-center justify-between p-4 rounded-xl bg-secondary/10 hover:bg-secondary/20 transition-all duration-300 hover-lift group">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-12 h-12 ${tx.bgColor} rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                      <IconComponent className={`h-6 w-6 ${tx.color}`} />
+                    </div>
+                    <div>
+                      <p className="font-heading font-semibold text-foreground">{tx.type}</p>
+                      <p className="text-sm text-muted-foreground">{tx.method}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-medium">{tx.type}</p>
-                    <p className="text-sm text-muted-foreground">{tx.method}</p>
+                  <div className="text-right">
+                    <p className={`font-heading font-bold ${tx.color}`}>{tx.amount}</p>
+                    <p className="text-xs text-muted-foreground">{tx.time}</p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-semibold text-xafe-green">{tx.amount}</p>
-                  <p className="text-xs text-muted-foreground">{tx.time}</p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       </Card>
