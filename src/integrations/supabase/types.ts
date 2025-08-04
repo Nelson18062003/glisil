@@ -14,6 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      crypto_transactions: {
+        Row: {
+          amount: number
+          confirmations: number | null
+          created_at: string | null
+          currency: string
+          id: string
+          network: string
+          required_confirmations: number | null
+          status: string | null
+          tx_hash: string | null
+          type: string
+          updated_at: string | null
+          user_id: string
+          wallet_address: string
+        }
+        Insert: {
+          amount: number
+          confirmations?: number | null
+          created_at?: string | null
+          currency: string
+          id?: string
+          network: string
+          required_confirmations?: number | null
+          status?: string | null
+          tx_hash?: string | null
+          type: string
+          updated_at?: string | null
+          user_id: string
+          wallet_address: string
+        }
+        Update: {
+          amount?: number
+          confirmations?: number | null
+          created_at?: string | null
+          currency?: string
+          id?: string
+          network?: string
+          required_confirmations?: number | null
+          status?: string | null
+          tx_hash?: string | null
+          type?: string
+          updated_at?: string | null
+          user_id?: string
+          wallet_address?: string
+        }
+        Relationships: []
+      }
       exchange_rates: {
         Row: {
           change_24h: number | null
@@ -149,6 +197,36 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
           wallet_address?: string | null
+        }
+        Relationships: []
+      }
+      wallet_addresses: {
+        Row: {
+          address: string
+          created_at: string | null
+          id: string
+          is_primary: boolean | null
+          network: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          address: string
+          created_at?: string | null
+          id?: string
+          is_primary?: boolean | null
+          network: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          address?: string
+          created_at?: string | null
+          id?: string
+          is_primary?: boolean | null
+          network?: string
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }

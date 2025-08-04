@@ -1,371 +1,269 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Copy, QrCode, ExternalLink, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Copy, QrCode, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useLanguage } from '@/contexts/LanguageContext';
-
-const BLOCKCHAIN_NETWORKS = [
-  {
-    id: 'ethereum',
-    name: 'Ethereum',
-    symbol: 'ETH',
-    type: 'ERC20',
-    color: 'bg-blue-500',
-    fees: '~$5-15',
-    time: '5-15 min',
-    icon: '⟠'
-  },
-  {
-    id: 'tron',
-    name: 'Tron',
-    symbol: 'TRX',
-    type: 'TRC20',
-    color: 'bg-red-500',
-    fees: '~$1-3',
-    time: '1-3 min',
-    icon: '⬡'
-  },
-  {
-    id: 'bsc',
-    name: 'BNB Smart Chain',
-    symbol: 'BNB',
-    type: 'BEP20',
-    color: 'bg-yellow-500',
-    fees: '~$0.5-1',
-    time: '1-5 min',
-    icon: '◆'
-  },
-  {
-    id: 'polygon',
-    name: 'Polygon',
-    symbol: 'MATIC',
-    type: 'ERC20',
-    color: 'bg-purple-500',
-    fees: '~$0.01-0.1',
-    time: '1-3 min',
-    icon: '⬢'
-  },
-  {
-    id: 'arbitrum',
-    name: 'Arbitrum',
-    symbol: 'ARB',
-    type: 'ERC20',
-    color: 'bg-sky-500',
-    fees: '~$0.1-1',
-    time: '1-5 min',
-    icon: '△'
-  },
-  {
-    id: 'avalanche',
-    name: 'Avalanche',
-    symbol: 'AVAX',
-    type: 'ERC20',
-    color: 'bg-red-600',
-    fees: '~$0.5-2',
-    time: '1-3 min',
-    icon: '▲'
-  }
-];
+import { CryptoService } from '@/services/cryptoService';
 
 interface DepositModalProps {
   isOpen: boolean;
   onClose: () => void;
-  walletAddresses?: Record<string, string>;
+  onDeposit: (network: string, amount: number) => Promise<void>;
 }
 
-export const DepositModal: React.FC<DepositModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  walletAddresses = {} 
-}) => {
-  const [selectedNetwork, setSelectedNetwork] = useState('ethereum');
+const SUPPORTED_NETWORKS = [
+  { id: 'TRC20', name: 'Tron (TRC20)', fees: '1 USDT', confirmations: 19 },
+  { id: 'ERC20', name: 'Ethereum (ERC20)', fees: '15-50 USDT', confirmations: 12 },
+  { id: 'BEP20', name: 'BNB Smart Chain (BEP20)', fees: '0.5 USDT', confirmations: 15 },
+  { id: 'POLYGON', name: 'Polygon', fees: '0.1 USDT', confirmations: 30 },
+  { id: 'ARBITRUM', name: 'Arbitrum', fees: '2-10 USDT', confirmations: 12 },
+  { id: 'AVALANCHE', name: 'Avalanche C-Chain', fees: '2 USDT', confirmations: 12 },
+];
+
+export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) {
+  const [selectedNetwork, setSelectedNetwork] = useState('TRC20');
   const [amount, setAmount] = useState('');
-  const [txHash, setTxHash] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [depositAddress, setDepositAddress] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
   const { toast } = useToast();
-  const { t } = useLanguage();
+
+  useEffect(() => {
+    if (isOpen && selectedNetwork) {
+      loadDepositAddress();
+      loadRecentTransactions();
+    }
+  }, [isOpen, selectedNetwork]);
+
+  const loadDepositAddress = async () => {
+    try {
+      const address = await CryptoService.getDepositAddress(selectedNetwork);
+      setDepositAddress(address);
+    } catch (error) {
+      console.error('Error loading deposit address:', error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de charger l'adresse de dépôt",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const loadRecentTransactions = async () => {
+    try {
+      const transactions = await CryptoService.getRecentDeposits();
+      setRecentTransactions(transactions);
+    } catch (error) {
+      console.error('Error loading transactions:', error);
+    }
+  };
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     toast({
-      title: t('language') === 'fr' ? 'Copié!' : 'Copied!',
-      description: t('language') === 'fr' ? 'Adresse copiée dans le presse-papiers' : 'Address copied to clipboard',
+      title: "Copié",
+      description: "Adresse copiée dans le presse-papier",
     });
   };
 
-  const selectedNetworkData = BLOCKCHAIN_NETWORKS.find(n => n.id === selectedNetwork);
-  const depositAddress = walletAddresses[selectedNetwork] || 'Loading...';
-
-  const simulateDeposit = () => {
-    if (!amount || !txHash) {
+  const handleDeposit = async () => {
+    if (!amount || parseFloat(amount) <= 0) {
       toast({
-        title: t('language') === 'fr' ? 'Erreur' : 'Error',
-        description: t('language') === 'fr' ? 'Veuillez remplir tous les champs' : 'Please fill all fields',
-        variant: 'destructive'
+        title: "Erreur",
+        description: "Veuillez entrer un montant valide",
+        variant: "destructive"
       });
       return;
     }
 
-    setIsProcessing(true);
-    
-    // Simulate processing time
-    setTimeout(() => {
-      setIsProcessing(false);
+    setIsLoading(true);
+    try {
+      await onDeposit(selectedNetwork, parseFloat(amount));
       toast({
-        title: t('language') === 'fr' ? 'Dépôt en cours' : 'Deposit Processing',
-        description: t('language') === 'fr' 
-          ? 'Votre dépôt est en cours de traitement' 
-          : 'Your deposit is being processed',
+        title: "Dépôt initié",
+        description: "Votre dépôt a été enregistré et sera traité dès réception",
       });
       onClose();
-    }, 2000);
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Erreur lors de l'initiation du dépôt",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'confirmed':
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'processing':
+        return <Clock className="h-4 w-4 text-orange-500" />;
+      default:
+        return <AlertCircle className="h-4 w-4 text-yellow-500" />;
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'confirmed':
+        return 'Confirmé';
+      case 'processing':
+        return 'En traitement';
+      default:
+        return 'En attente';
+    }
+  };
+
+  const selectedNetworkInfo = SUPPORTED_NETWORKS.find(n => n.id === selectedNetwork);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-2xl font-heading font-bold">
-            {t('language') === 'fr' ? 'Déposer XAFe' : 'Deposit XAFe'}
-          </DialogTitle>
+          <DialogTitle>Déposer XAFe</DialogTitle>
         </DialogHeader>
 
-        <Tabs value={selectedNetwork} onValueChange={setSelectedNetwork} className="w-full">
-          <div className="mb-6">
-            <Label className="text-base font-semibold mb-3 block">
-              {t('language') === 'fr' ? 'Choisir un réseau blockchain' : 'Choose Blockchain Network'}
-            </Label>
-            <TabsList className="grid grid-cols-3 gap-1 h-auto p-1">
-              {BLOCKCHAIN_NETWORKS.map((network) => (
-                <TabsTrigger
-                  key={network.id}
-                  value={network.id}
-                  className="flex flex-col gap-1 h-20 data-[state=active]:bg-primary/10"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{network.icon}</span>
-                    <span className="font-semibold text-xs">{network.type}</span>
-                  </div>
-                  <span className="text-xs font-medium">{network.name}</span>
-                  <Badge variant="secondary" className="text-xs px-1 py-0">
-                    {network.fees}
-                  </Badge>
-                </TabsTrigger>
-              ))}
-            </TabsList>
+        <div className="space-y-6">
+          {/* Network Selection */}
+          <div className="space-y-2">
+            <Label>Réseau blockchain</Label>
+            <Select value={selectedNetwork} onValueChange={setSelectedNetwork}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SUPPORTED_NETWORKS.map((network) => (
+                  <SelectItem key={network.id} value={network.id}>
+                    <div className="flex items-center justify-between w-full">
+                      <span>{network.name}</span>
+                      <span className="text-xs text-muted-foreground ml-2">
+                        Frais: {network.fees}
+                      </span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedNetworkInfo && (
+              <div className="text-sm text-muted-foreground">
+                Confirmations requises: {selectedNetworkInfo.confirmations} | 
+                Frais réseau: {selectedNetworkInfo.fees}
+              </div>
+            )}
           </div>
 
-          {BLOCKCHAIN_NETWORKS.map((network) => (
-            <TabsContent key={network.id} value={network.id} className="space-y-6">
-              {/* Network Info */}
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 ${network.color} rounded-full flex items-center justify-center text-white font-bold`}>
-                        {network.icon}
-                      </div>
+          {/* Deposit Address */}
+          <div className="space-y-2">
+            <Label>Adresse de dépôt</Label>
+            <div className="flex items-center space-x-2">
+              <Input 
+                value={depositAddress} 
+                readOnly 
+                className="font-mono text-sm"
+                placeholder="Chargement de l'adresse..."
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => copyToClipboard(depositAddress)}
+                disabled={!depositAddress}
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                disabled={!depositAddress}
+              >
+                <QrCode className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Amount Input */}
+          <div className="space-y-2">
+            <Label>Montant à déposer (XAFe)</Label>
+            <Input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="Ex: 10000"
+              min="1"
+              step="0.01"
+            />
+            <div className="text-xs text-muted-foreground">
+              Montant minimum: 1 XAFe
+            </div>
+          </div>
+
+          {/* Important Notice */}
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4">
+            <div className="flex items-start space-x-2">
+              <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
+              <div className="text-sm">
+                <div className="font-medium text-yellow-800 dark:text-yellow-300 mb-1">
+                  Instructions importantes:
+                </div>
+                <ul className="text-yellow-700 dark:text-yellow-400 space-y-1">
+                  <li>• Envoyez uniquement des XAFe sur le réseau {selectedNetworkInfo?.name}</li>
+                  <li>• Les dépôts sur d'autres réseaux seront perdus définitivement</li>
+                  <li>• Attendez {selectedNetworkInfo?.confirmations} confirmations pour la validation</li>
+                  <li>• Les frais de réseau sont à votre charge</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* Recent Transactions */}
+          {recentTransactions.length > 0 && (
+            <div className="space-y-2">
+              <Label>Dépôts récents</Label>
+              <div className="border rounded-lg p-3 max-h-32 overflow-y-auto">
+                {recentTransactions.slice(0, 3).map((tx) => (
+                  <div key={tx.id} className="flex items-center justify-between py-2 border-b last:border-b-0">
+                    <div className="flex items-center space-x-2">
+                      {getStatusIcon(tx.status)}
                       <div>
-                        <h3 className="font-heading font-bold">{network.name}</h3>
-                        <p className="text-sm text-muted-foreground">{network.type} Network</p>
+                        <div className="text-sm font-medium">{tx.amount} XAFe</div>
+                        <div className="text-xs text-muted-foreground">{tx.network}</div>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm text-muted-foreground">
-                        {t('language') === 'fr' ? 'Frais' : 'Fees'}
-                      </p>
-                      <p className="font-semibold">{network.fees}</p>
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">
-                        {t('language') === 'fr' ? 'Temps de confirmation' : 'Confirmation Time'}
-                      </p>
-                      <p className="font-semibold">{network.time}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">
-                        {t('language') === 'fr' ? 'Confirmations requises' : 'Required Confirmations'}
-                      </p>
-                      <p className="font-semibold">
-                        {network.id === 'ethereum' ? '12' : network.id === 'tron' ? '3' : '6'}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Deposit Address */}
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <Label className="font-semibold">
-                      {t('language') === 'fr' ? 'Adresse de dépôt' : 'Deposit Address'}
-                    </Label>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => copyToClipboard(depositAddress)}
-                        className="h-8"
-                      >
-                        <Copy className="h-3 w-3 mr-1" />
-                        {t('language') === 'fr' ? 'Copier' : 'Copy'}
-                      </Button>
-                      <Button variant="outline" size="sm" className="h-8">
-                        <QrCode className="h-3 w-3 mr-1" />
-                        QR
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-secondary/10 p-3 rounded-lg border-2 border-dashed border-secondary">
-                    <p className="font-mono text-sm break-all">{depositAddress}</p>
-                  </div>
-                  
-                  <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
-                      <div className="text-sm text-yellow-700">
-                        <p className="font-semibold">
-                          {t('language') === 'fr' ? 'Important:' : 'Important:'}
-                        </p>
-                        <p>
-                          {t('language') === 'fr' 
-                            ? 'Envoyez uniquement des tokens XAFe sur ce réseau. Tout autre actif sera perdu définitivement.'
-                            : 'Only send XAFe tokens on this network. Any other assets will be permanently lost.'
-                          }
-                        </p>
+                      <Badge variant={tx.status === 'confirmed' ? 'default' : 'secondary'}>
+                        {getStatusText(tx.status)}
+                      </Badge>
+                      <div className="text-xs text-muted-foreground">
+                        {tx.confirmations}/{tx.required_confirmations}
                       </div>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                ))}
+              </div>
+            </div>
+          )}
 
-              {/* Manual Confirmation */}
-              <Card>
-                <CardContent className="p-4">
-                  <h4 className="font-heading font-semibold mb-4">
-                    {t('language') === 'fr' ? 'Confirmer la transaction' : 'Confirm Transaction'}
-                  </h4>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <Label>
-                        {t('language') === 'fr' ? 'Montant envoyé (XAFe)' : 'Amount Sent (XAFe)'}
-                      </Label>
-                      <Input
-                        type="number"
-                        placeholder="0.00"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        className="mt-1"
-                      />
-                    </div>
-                    
-                    <div>
-                      <Label>
-                        {t('language') === 'fr' ? 'Hash de transaction' : 'Transaction Hash'}
-                      </Label>
-                      <Input
-                        placeholder={`${network.type} transaction hash`}
-                        value={txHash}
-                        onChange={(e) => setTxHash(e.target.value)}
-                        className="mt-1 font-mono text-sm"
-                      />
-                    </div>
-                    
-                    <Button 
-                      onClick={simulateDeposit}
-                      disabled={isProcessing || !amount || !txHash}
-                      className="w-full"
-                    >
-                      {isProcessing ? (
-                        <>
-                          <Clock className="h-4 w-4 mr-2 animate-spin" />
-                          {t('language') === 'fr' ? 'Traitement...' : 'Processing...'}
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          {t('language') === 'fr' ? 'Confirmer le dépôt' : 'Confirm Deposit'}
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Explorer Links */}
-              <Card>
-                <CardContent className="p-4">
-                  <h4 className="font-heading font-semibold mb-3">
-                    {t('language') === 'fr' ? 'Liens utiles' : 'Useful Links'}
-                  </h4>
-                  
-                  <div className="space-y-2">
-                    <Button variant="outline" className="w-full justify-start" asChild>
-                      <a 
-                        href={getExplorerUrl(network.id)} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                      >
-                        <ExternalLink className="h-4 w-4 mr-2" />
-                        {t('language') === 'fr' ? 'Explorer blockchain' : 'Blockchain Explorer'}
-                      </a>
-                    </Button>
-                    
-                    <Button variant="outline" className="w-full justify-start" asChild>
-                      <a 
-                        href={getContractUrl(network.id)} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                      >
-                        <ExternalLink className="h-4 w-4 mr-2" />
-                        {t('language') === 'fr' ? 'Contrat XAFe' : 'XAFe Contract'}
-                      </a>
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          ))}
-        </Tabs>
+          {/* Actions */}
+          <div className="flex space-x-2">
+            <Button
+              onClick={handleDeposit}
+              disabled={isLoading || !amount || !depositAddress}
+              className="flex-1"
+            >
+              {isLoading ? "Traitement..." : "Confirmer le dépôt"}
+            </Button>
+            <Button variant="outline" onClick={onClose}>
+              Annuler
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );
-};
-
-// Helper functions for explorer URLs
-const getExplorerUrl = (networkId: string): string => {
-  const explorers: Record<string, string> = {
-    ethereum: 'https://etherscan.io',
-    tron: 'https://tronscan.org',
-    bsc: 'https://bscscan.com',
-    polygon: 'https://polygonscan.com',
-    arbitrum: 'https://arbiscan.io',
-    avalanche: 'https://snowtrace.io'
-  };
-  return explorers[networkId] || '#';
-};
-
-const getContractUrl = (networkId: string): string => {
-  // Mock contract addresses - in production these would be real contract addresses
-  const contracts: Record<string, string> = {
-    ethereum: 'https://etherscan.io/token/0x...',
-    tron: 'https://tronscan.org/#/token20/T...',
-    bsc: 'https://bscscan.com/token/0x...',
-    polygon: 'https://polygonscan.com/token/0x...',
-    arbitrum: 'https://arbiscan.io/token/0x...',
-    avalanche: 'https://snowtrace.io/token/0x...'
-  };
-  return contracts[networkId] || '#';
-};
+}

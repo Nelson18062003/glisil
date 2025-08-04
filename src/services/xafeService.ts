@@ -221,6 +221,50 @@ export class XafeService {
     }
   }
 
+  // Crypto deposit via blockchain
+  static async createCryptoDeposit(network: string, amount: number): Promise<boolean> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+
+    try {
+      // Import CryptoService dynamically to avoid circular imports
+      const { CryptoService } = await import('./cryptoService');
+      
+      // Create crypto transaction record
+      await CryptoService.createDepositTransaction(network, amount);
+      
+      return true;
+    } catch (error) {
+      console.error('Error creating crypto deposit:', error);
+      return false;
+    }
+  }
+
+  // Crypto withdrawal via blockchain  
+  static async createCryptoWithdrawal(network: string, address: string, amount: number): Promise<boolean> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+
+    try {
+      // Check sufficient balance
+      const wallet = await this.getWallet(user.id);
+      if (!wallet || wallet.xafe_balance < amount) {
+        throw new Error('Insufficient balance');
+      }
+
+      // Import CryptoService dynamically to avoid circular imports
+      const { CryptoService } = await import('./cryptoService');
+      
+      // Create crypto transaction record
+      await CryptoService.createWithdrawalTransaction(network, address, amount);
+      
+      return true;
+    } catch (error) {
+      console.error('Error creating crypto withdrawal:', error);
+      return false;
+    }
+  }
+
   static async simulateConversion(
     userId: string, 
     fromCurrency: string, 

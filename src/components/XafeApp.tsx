@@ -32,7 +32,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { PriceChart } from "@/components/PriceChart";
 import { DepositModal } from "@/components/DepositModal";
-import { WithdrawModal } from "@/components/WithdrawModal";
+import { WithdrawalModal } from "@/components/WithdrawalModal";
 
 export const XafeApp = () => {
   const { t } = useLanguage();
@@ -46,7 +46,6 @@ export const XafeApp = () => {
   const [exchangeRates, setExchangeRates] = useState<ExchangeRate[]>([]);
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
-  const [walletAddresses, setWalletAddresses] = useState<Record<string, string>>({});
   const { toast } = useToast();
 
   useEffect(() => {
@@ -73,31 +72,54 @@ export const XafeApp = () => {
       setWallet(walletData);
       setTransactions(transactionsData);
       setExchangeRates(ratesData);
-      
-      // Load wallet addresses if available
-      await loadWalletAddresses();
     } catch (error) {
       console.error('Error loading user data:', error);
     }
   };
 
-  const loadWalletAddresses = async () => {
-    if (!user) return;
-    
+  // Handle crypto deposit
+  const handleCryptoDeposit = async (network: string, amount: number) => {
     try {
-      const { data: walletData, error } = await supabase
-        .from('wallets')
-        .select('deposit_addresses')
-        .eq('user_id', user.id)
-        .single();
-      
-      if (error) throw error;
-      
-      if (walletData?.deposit_addresses && typeof walletData.deposit_addresses === 'object') {
-        setWalletAddresses(walletData.deposit_addresses as Record<string, string>);
+      const success = await XafeService.createCryptoDeposit(network, amount);
+      if (success) {
+        toast({
+          title: t('language') === 'fr' ? "Dépôt crypto initié" : "Crypto deposit initiated",
+          description: t('language') === 'fr' 
+            ? "Votre dépôt crypto a été enregistré" 
+            : "Your crypto deposit has been recorded"
+        });
+        await loadUserData(); // Refresh data
       }
     } catch (error) {
-      console.error('Error loading wallet addresses:', error);
+      console.error('Error creating crypto deposit:', error);
+      toast({
+        title: "Erreur",
+        description: "Erreur lors de la création du dépôt crypto",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Handle crypto withdrawal
+  const handleCryptoWithdrawal = async (network: string, address: string, amount: number) => {
+    try {
+      const success = await XafeService.createCryptoWithdrawal(network, address, amount);
+      if (success) {
+        toast({
+          title: t('language') === 'fr' ? "Retrait crypto initié" : "Crypto withdrawal initiated",
+          description: t('language') === 'fr' 
+            ? "Votre demande de retrait a été soumise" 
+            : "Your withdrawal request has been submitted"
+        });
+        await loadUserData(); // Refresh data
+      }
+    } catch (error) {
+      console.error('Error creating crypto withdrawal:', error);
+      toast({
+        title: "Erreur",
+        description: "Erreur lors de la création du retrait crypto",
+        variant: "destructive"
+      });
     }
   };
 
@@ -961,14 +983,15 @@ export const XafeApp = () => {
       <DepositModal 
         isOpen={isDepositModalOpen}
         onClose={() => setIsDepositModalOpen(false)}
-        walletAddresses={walletAddresses}
+        onDeposit={handleCryptoDeposit}
       />
       
-      {/* Withdraw Modal */}
-      <WithdrawModal 
+      {/* Withdrawal Modal */}
+      <WithdrawalModal 
         isOpen={isWithdrawModalOpen}
         onClose={() => setIsWithdrawModalOpen(false)}
-        balance={wallet?.xafe_balance || 0}
+        onWithdraw={handleCryptoWithdrawal}
+        currentBalance={wallet?.xafe_balance || 0}
       />
     </div>
   );
