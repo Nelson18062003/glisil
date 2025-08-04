@@ -14,7 +14,168 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      exchange_rates: {
+        Row: {
+          change_24h: number | null
+          created_at: string | null
+          from_currency: string
+          high_24h: number | null
+          id: string
+          low_24h: number | null
+          rate: number
+          to_currency: string
+          volume_24h: number | null
+        }
+        Insert: {
+          change_24h?: number | null
+          created_at?: string | null
+          from_currency: string
+          high_24h?: number | null
+          id?: string
+          low_24h?: number | null
+          rate: number
+          to_currency: string
+          volume_24h?: number | null
+        }
+        Update: {
+          change_24h?: number | null
+          created_at?: string | null
+          from_currency?: string
+          high_24h?: number | null
+          id?: string
+          low_24h?: number | null
+          rate?: number
+          to_currency?: string
+          volume_24h?: number | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string | null
+          email: string
+          first_name: string | null
+          id: string
+          kyc_status: string | null
+          last_name: string | null
+          phone: string | null
+          updated_at: string | null
+          user_id: string
+          wallet_address: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          first_name?: string | null
+          id?: string
+          kyc_status?: string | null
+          last_name?: string | null
+          phone?: string | null
+          updated_at?: string | null
+          user_id: string
+          wallet_address?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          first_name?: string | null
+          id?: string
+          kyc_status?: string | null
+          last_name?: string | null
+          phone?: string | null
+          updated_at?: string | null
+          user_id?: string
+          wallet_address?: string | null
+        }
+        Relationships: []
+      }
+      transactions: {
+        Row: {
+          created_at: string | null
+          exchange_rate: number | null
+          external_ref: string | null
+          fee_amount: number | null
+          from_amount: number | null
+          from_currency: string | null
+          id: string
+          notes: string | null
+          payment_method: string | null
+          status: string | null
+          to_amount: number | null
+          to_currency: string | null
+          type: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          exchange_rate?: number | null
+          external_ref?: string | null
+          fee_amount?: number | null
+          from_amount?: number | null
+          from_currency?: string | null
+          id?: string
+          notes?: string | null
+          payment_method?: string | null
+          status?: string | null
+          to_amount?: number | null
+          to_currency?: string | null
+          type: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          exchange_rate?: number | null
+          external_ref?: string | null
+          fee_amount?: number | null
+          from_amount?: number | null
+          from_currency?: string | null
+          id?: string
+          notes?: string | null
+          payment_method?: string | null
+          status?: string | null
+          to_amount?: number | null
+          to_currency?: string | null
+          type?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      wallets: {
+        Row: {
+          created_at: string | null
+          id: string
+          total_deposited: number | null
+          total_withdrawn: number | null
+          updated_at: string | null
+          usdt_balance: number | null
+          user_id: string
+          xafe_balance: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          total_deposited?: number | null
+          total_withdrawn?: number | null
+          updated_at?: string | null
+          usdt_balance?: number | null
+          user_id: string
+          xafe_balance?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          total_deposited?: number | null
+          total_withdrawn?: number | null
+          updated_at?: string | null
+          usdt_balance?: number | null
+          user_id?: string
+          xafe_balance?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
