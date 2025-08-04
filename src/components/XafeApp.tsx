@@ -95,6 +95,30 @@ export const XafeApp = () => {
 
   const rates = getCurrentRate();
 
+  const handleDepositXafe = async () => {
+    if (!user) return;
+    
+    const success = await XafeService.simulateDeposit(user.id, 10000, 'Dépôt direct XAFe');
+    if (success) {
+      toast({ title: "Dépôt réussi", description: "10,000 XAF ajoutés à votre wallet" });
+      loadUserData();
+    } else {
+      toast({ title: "Erreur", description: "Échec du dépôt", variant: "destructive" });
+    }
+  };
+
+  const handleMobileMoneyDeposit = async () => {
+    if (!user) return;
+    
+    const success = await XafeService.simulateDeposit(user.id, 25000, 'MTN Mobile Money');
+    if (success) {
+      toast({ title: "Dépôt MoMo réussi", description: "25,000 XAF ajoutés via Mobile Money" });
+      loadUserData();
+    } else {
+      toast({ title: "Erreur", description: "Échec du dépôt MoMo", variant: "destructive" });
+    }
+  };
+
   const WalletTab = () => (
     <div className="space-y-6 animate-fade-in">
       {/* Price Ticker */}
@@ -198,13 +222,23 @@ export const XafeApp = () => {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-slide-up" style={{ animationDelay: '0.3s' }}>
-        <Button variant="xafe" size="lg" className="h-20 flex-col action-button group">
+        <Button 
+          variant="xafe" 
+          size="lg" 
+          className="h-20 flex-col action-button group"
+          onClick={() => handleDepositXafe()}
+        >
           <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
             <Plus className="h-6 w-6" />
           </div>
           <span className="font-heading font-semibold">Déposer XAFe</span>
         </Button>
-        <Button variant="momo" size="lg" className="h-20 flex-col action-button group">
+        <Button 
+          variant="momo" 
+          size="lg" 
+          className="h-20 flex-col action-button group"
+          onClick={() => handleMobileMoneyDeposit()}
+        >
           <div className="flex items-center justify-center w-12 h-12 bg-white/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
             <Smartphone className="h-6 w-6" />
           </div>
