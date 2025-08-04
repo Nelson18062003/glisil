@@ -198,222 +198,226 @@ export const XafeApp = () => {
     }
   };
 
-  const WalletTab = () => (
-    <div className="space-y-6 animate-fade-in">
-      {/* Price Ticker */}
-      <div className="bg-gradient-card border border-xafe-green/20 rounded-xl p-4 animate-slide-up">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-gradient-primary rounded-full flex items-center justify-center animate-pulse-glow">
-              <Zap className="h-4 w-4 text-white" />
+  const WalletTab = () => {
+    const { t } = useLanguage();
+    
+    return (
+      <div className="space-y-6 animate-fade-in">
+        {/* Price Ticker */}
+        <div className="bg-gradient-card border border-xafe-green/20 rounded-xl p-4 animate-slide-up">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-gradient-primary rounded-full flex items-center justify-center animate-pulse-glow">
+                <Zap className="h-4 w-4 text-white" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">USDT/XAF</p>
+                <p className="font-heading font-bold text-lg text-xafe-green">
+                  {rates.xafToUsdt}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground">USDT/XAF</p>
-              <p className="font-heading font-bold text-lg text-xafe-green">
-                {rates.xafToUsdt}
-              </p>
+            <div className="text-right">
+              <Badge 
+                variant="secondary" 
+                className={`bg-xafe-green/20 text-xafe-green animate-pulse ${
+                  rates.priceChange > 0 ? 'animate-pulse-glow' : ''
+                }`}
+              >
+                +{rates.priceChange}%
+              </Badge>
+              <p className="text-xs text-muted-foreground mt-1">24h</p>
             </div>
-          </div>
-          <div className="text-right">
-            <Badge 
-              variant="secondary" 
-              className={`bg-xafe-green/20 text-xafe-green animate-pulse ${
-                rates.priceChange > 0 ? 'animate-pulse-glow' : ''
-              }`}
-            >
-              +{rates.priceChange}%
-            </Badge>
-            <p className="text-xs text-muted-foreground mt-1">24h</p>
           </div>
         </div>
-      </div>
 
-      {/* Balance Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className={`balance-card border-xafe-green/20 hover-lift ${animateCards ? 'animate-scale-in' : ''}`} 
-              style={{ animationDelay: '0.1s' }}>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-primary rounded-xl flex items-center justify-center shadow-glow-green animate-float">
-                  <img src={xafeLogo} alt="XAFe" className="w-6 h-6 rounded" />
+        {/* Balance Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card className={`balance-card border-xafe-green/20 hover-lift ${animateCards ? 'animate-scale-in' : ''}`} 
+                style={{ animationDelay: '0.1s' }}>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-primary rounded-xl flex items-center justify-center shadow-glow-green animate-float">
+                    <img src={xafeLogo} alt="XAFe" className="w-6 h-6 rounded" />
+                  </div>
+                  <div>
+                    <h3 className="font-heading font-semibold text-foreground">XAFe</h3>
+                    <p className="text-xs text-muted-foreground">Franc CFA numérique</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-heading font-semibold text-foreground">XAFe</h3>
-                  <p className="text-xs text-muted-foreground">Franc CFA numérique</p>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setBalanceVisible(!balanceVisible)}
+                  className="h-8 w-8 action-button"
+                >
+                  {balanceVisible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                </Button>
+              </div>
+              <div className="space-y-2">
+                <p className="text-3xl font-heading font-bold text-xafe-green">
+                  {balanceVisible ? `${wallet?.xafe_balance?.toLocaleString() || 0}` : "***"}
+                  <span className="text-lg text-muted-foreground ml-2">XAF</span>
+                </p>
+                <div className="flex items-center gap-2">
+                  <DollarSign className="h-3 w-3 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
+                    ≈ {balanceVisible ? `${((wallet?.xafe_balance || 0) * rates.xafToUsdt).toFixed(2)} USDT` : "***"}
+                  </p>
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setBalanceVisible(!balanceVisible)}
-                className="h-8 w-8 action-button"
-              >
-                {balanceVisible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            </CardContent>
+          </Card>
+
+          <Card className={`balance-card border-xafe-blue/20 hover-lift ${animateCards ? 'animate-scale-in' : ''}`}
+                style={{ animationDelay: '0.2s' }}>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-blue rounded-xl flex items-center justify-center shadow-glow-blue animate-float" 
+                       style={{ animationDelay: '1s' }}>
+                    <span className="text-white text-sm font-bold">₮</span>
+                  </div>
+                  <div>
+                    <h3 className="font-heading font-semibold text-foreground">USDT</h3>
+                    <p className="text-xs text-muted-foreground">Tether USD</p>
+                  </div>
+                </div>
+                <Badge variant="secondary" className="text-xs bg-xafe-blue/20 text-xafe-blue">BEP20</Badge>
+              </div>
+              <div className="space-y-2">
+                <p className="text-3xl font-heading font-bold text-xafe-blue">
+                  {balanceVisible ? `${wallet?.usdt_balance?.toFixed(2) || 0}` : "***"}
+                  <span className="text-lg text-muted-foreground ml-2">USDT</span>
+                </p>
+                <div className="flex items-center gap-2">
+                  <DollarSign className="h-3 w-3 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
+                    ≈ {balanceVisible ? `${((wallet?.usdt_balance || 0) * rates.usdtToXaf).toLocaleString()} XAF` : "***"}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 animate-slide-up" style={{ animationDelay: '0.3s' }}>
+          <Button 
+            variant="xafe" 
+            size="lg" 
+            className="h-16 sm:h-20 flex-col action-button group p-3 sm:p-4"
+            onClick={() => handleDepositXafe()}
+          >
+            <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
+              <Plus className="h-4 w-4 sm:h-6 sm:w-6" />
+            </div>
+            <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">{t('depositXafe')}</span>
+          </Button>
+          
+          <Button 
+            variant="destructive" 
+            size="lg" 
+            className="h-16 sm:h-20 flex-col action-button group p-3 sm:p-4"
+            onClick={() => {}}
+          >
+            <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
+              <Minus className="h-4 w-4 sm:h-6 sm:w-6" />
+            </div>
+            <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">{t('withdrawXafe')}</span>
+          </Button>
+          
+          <Button 
+            variant="momo" 
+            size="lg" 
+            className="h-16 sm:h-20 flex-col action-button group p-3 sm:p-4"
+            onClick={() => handleMobileMoneyDeposit()}
+          >
+            <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
+              <CreditCard className="h-4 w-4 sm:h-6 sm:w-6" />
+            </div>
+            <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">{t('createXafe')}</span>
+          </Button>
+          
+          <Button 
+            variant="orange" 
+            size="lg" 
+            className="h-16 sm:h-20 flex-col action-button group p-3 sm:p-4"
+            onClick={() => handleConvertToXAF()}
+          >
+            <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
+              <ArrowUpDown className="h-4 w-4 sm:h-6 sm:w-6" />
+            </div>
+            <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">{t('exchangeXafe')}</span>
+          </Button>
+        </div>
+
+        {/* Recent Transactions */}
+        <Card className="balance-card animate-slide-up" style={{ animationDelay: '0.4s' }}>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-heading font-bold text-foreground">Transactions récentes</h3>
+              <Button variant="ghost" size="sm" className="text-xafe-green hover:text-xafe-green">
+                Voir tout
+                <ArrowRight className="h-4 w-4 ml-1" />
               </Button>
             </div>
-            <div className="space-y-2">
-              <p className="text-3xl font-heading font-bold text-xafe-green">
-                {balanceVisible ? `${wallet?.xafe_balance?.toLocaleString() || 0}` : "***"}
-                <span className="text-lg text-muted-foreground ml-2">XAF</span>
-              </p>
-              <div className="flex items-center gap-2">
-                <DollarSign className="h-3 w-3 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">
-                  ≈ {balanceVisible ? `${((wallet?.xafe_balance || 0) * rates.xafToUsdt).toFixed(2)} USDT` : "***"}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className={`balance-card border-xafe-blue/20 hover-lift ${animateCards ? 'animate-scale-in' : ''}`}
-              style={{ animationDelay: '0.2s' }}>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-blue rounded-xl flex items-center justify-center shadow-glow-blue animate-float" 
-                     style={{ animationDelay: '1s' }}>
-                  <span className="text-white text-sm font-bold">₮</span>
-                </div>
-                <div>
-                  <h3 className="font-heading font-semibold text-foreground">USDT</h3>
-                  <p className="text-xs text-muted-foreground">Tether USD</p>
-                </div>
-              </div>
-              <Badge variant="secondary" className="text-xs bg-xafe-blue/20 text-xafe-blue">BEP20</Badge>
-            </div>
-            <div className="space-y-2">
-              <p className="text-3xl font-heading font-bold text-xafe-blue">
-                {balanceVisible ? `${wallet?.usdt_balance?.toFixed(2) || 0}` : "***"}
-                <span className="text-lg text-muted-foreground ml-2">USDT</span>
-              </p>
-              <div className="flex items-center gap-2">
-                <DollarSign className="h-3 w-3 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">
-                  ≈ {balanceVisible ? `${((wallet?.usdt_balance || 0) * rates.usdtToXaf).toLocaleString()} XAF` : "***"}
-                </p>
-              </div>
+            <div className="space-y-4">
+              {[
+                { 
+                  type: "Dépôt", 
+                  amount: "+50,000 XAF", 
+                  time: "Il y a 2h", 
+                  method: "MTN MoMo",
+                  icon: Plus,
+                  color: "text-xafe-green",
+                  bgColor: "bg-xafe-green/20"
+                },
+                { 
+                  type: "Conversion", 
+                  amount: "-10,000 XAF → +16.8 USDT", 
+                  time: "Il y a 5h", 
+                  method: "Spot",
+                  icon: ArrowUpDown,
+                  color: "text-xafe-blue",
+                  bgColor: "bg-xafe-blue/20"
+                },
+                { 
+                  type: "Dépôt", 
+                  amount: "+25,000 XAF", 
+                  time: "Hier", 
+                  method: "Orange Money",
+                  icon: Smartphone,
+                  color: "text-xafe-orange",
+                  bgColor: "bg-xafe-orange/20"
+                }
+              ].map((tx, index) => {
+                const IconComponent = tx.icon;
+                return (
+                  <div key={index} className="flex items-center justify-between p-4 rounded-xl bg-secondary/10 hover:bg-secondary/20 transition-all duration-300 hover-lift group">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-12 h-12 ${tx.bgColor} rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                        <IconComponent className={`h-6 w-6 ${tx.color}`} />
+                      </div>
+                      <div>
+                        <p className="font-heading font-semibold text-foreground">{tx.type}</p>
+                        <p className="text-sm text-muted-foreground">{tx.method}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-heading font-bold ${tx.color}`}>{tx.amount}</p>
+                      <p className="text-xs text-muted-foreground">{tx.time}</p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
       </div>
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 animate-slide-up" style={{ animationDelay: '0.3s' }}>
-        <Button 
-          variant="xafe" 
-          size="lg" 
-          className="h-16 sm:h-20 flex-col action-button group p-3 sm:p-4"
-          onClick={() => handleDepositXafe()}
-        >
-          <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
-            <Plus className="h-4 w-4 sm:h-6 sm:w-6" />
-          </div>
-          <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">{t('depositXafe')}</span>
-        </Button>
-        
-        <Button 
-          variant="destructive" 
-          size="lg" 
-          className="h-16 sm:h-20 flex-col action-button group p-3 sm:p-4"
-          onClick={() => {}}
-        >
-          <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
-            <Minus className="h-4 w-4 sm:h-6 sm:w-6" />
-          </div>
-          <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">{t('withdrawXafe')}</span>
-        </Button>
-        
-        <Button 
-          variant="momo" 
-          size="lg" 
-          className="h-16 sm:h-20 flex-col action-button group p-3 sm:p-4"
-          onClick={() => handleMobileMoneyDeposit()}
-        >
-          <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
-            <CreditCard className="h-4 w-4 sm:h-6 sm:w-6" />
-          </div>
-          <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">{t('createXafe')}</span>
-        </Button>
-        
-        <Button 
-          variant="orange" 
-          size="lg" 
-          className="h-16 sm:h-20 flex-col action-button group p-3 sm:p-4"
-          onClick={() => handleConvertToXAF()}
-        >
-          <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
-            <ArrowUpDown className="h-4 w-4 sm:h-6 sm:w-6" />
-          </div>
-          <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">{t('exchangeXafe')}</span>
-        </Button>
-      </div>
-
-      {/* Recent Transactions */}
-      <Card className="balance-card animate-slide-up" style={{ animationDelay: '0.4s' }}>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-heading font-bold text-foreground">Transactions récentes</h3>
-            <Button variant="ghost" size="sm" className="text-xafe-green hover:text-xafe-green">
-              Voir tout
-              <ArrowRight className="h-4 w-4 ml-1" />
-            </Button>
-          </div>
-          <div className="space-y-4">
-            {[
-              { 
-                type: "Dépôt", 
-                amount: "+50,000 XAF", 
-                time: "Il y a 2h", 
-                method: "MTN MoMo",
-                icon: Plus,
-                color: "text-xafe-green",
-                bgColor: "bg-xafe-green/20"
-              },
-              { 
-                type: "Conversion", 
-                amount: "-10,000 XAF → +16.8 USDT", 
-                time: "Il y a 5h", 
-                method: "Spot",
-                icon: ArrowUpDown,
-                color: "text-xafe-blue",
-                bgColor: "bg-xafe-blue/20"
-              },
-              { 
-                type: "Dépôt", 
-                amount: "+25,000 XAF", 
-                time: "Hier", 
-                method: "Orange Money",
-                icon: Smartphone,
-                color: "text-xafe-orange",
-                bgColor: "bg-xafe-orange/20"
-              }
-            ].map((tx, index) => {
-              const IconComponent = tx.icon;
-              return (
-                <div key={index} className="flex items-center justify-between p-4 rounded-xl bg-secondary/10 hover:bg-secondary/20 transition-all duration-300 hover-lift group">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 ${tx.bgColor} rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
-                      <IconComponent className={`h-6 w-6 ${tx.color}`} />
-                    </div>
-                    <div>
-                      <p className="font-heading font-semibold text-foreground">{tx.type}</p>
-                      <p className="text-sm text-muted-foreground">{tx.method}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className={`font-heading font-bold ${tx.color}`}>{tx.amount}</p>
-                    <p className="text-xs text-muted-foreground">{tx.time}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
+    );
+  };
 
   const ConvertTab = () => {
     const [fromAmount, setFromAmount] = useState("");
