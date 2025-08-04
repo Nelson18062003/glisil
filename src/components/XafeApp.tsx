@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
+import { User, Session } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
 import { 
   Wallet, 
   ArrowUpDown, 
@@ -17,29 +20,80 @@ import {
   CreditCard,
   Zap,
   ArrowRight,
-  DollarSign
+  DollarSign,
+  LogOut
 } from "lucide-react";
 import xafeLogo from "@/assets/xafe-logo.png";
-import { AuthComponent } from "./AuthComponent";
+import { AuthComponent } from "./AuthWithSupabase";
+import { XafeService, Wallet as WalletType, Transaction, ExchangeRate } from "@/services/xafeService";
 
 export const XafeApp = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [activeTab, setActiveTab] = useState("wallet");
   const [animateCards, setAnimateCards] = useState(false);
+  const [wallet, setWallet] = useState<WalletType | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [exchangeRates, setExchangeRates] = useState<ExchangeRate[]>([]);
+  const { toast } = useToast();
 
   useEffect(() => {
     const timer = setTimeout(() => setAnimateCards(true), 100);
     return () => clearTimeout(timer);
   }, []);
 
-  const mockData = {
-    xafeBalance: 125000,
-    usdtBalance: 85.50,
-    xafToUsdt: 0.00168,
-    usdtToXaf: 595.24,
-    priceChange: +2.4
+  useEffect(() => {
+    if (user) {
+      loadUserData();
+    }
+  }, [user]);
+
+  const loadUserData = async () => {
+    if (!user) return;
+    
+    try {
+      const [walletData, transactionsData, ratesData] = await Promise.all([
+        XafeService.getWallet(user.id),
+        XafeService.getTransactions(user.id, 5),
+        XafeService.getExchangeRates()
+      ]);
+      
+      setWallet(walletData);
+      setTransactions(transactionsData);
+      setExchangeRates(ratesData);
+    } catch (error) {
+      console.error('Error loading user data:', error);
+    }
   };
+
+  const handleAuthSuccess = (user: User, session: Session) => {
+    setUser(user);
+    setSession(session);
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setSession(null);
+    setWallet(null);
+    setTransactions([]);
+    setExchangeRates([]);
+  };
+
+  // Get current exchange rate
+  const getCurrentRate = () => {
+    const xafToUsdt = exchangeRates.find(rate => rate.from_currency === 'XAF' && rate.to_currency === 'USDT');
+    const usdtToXaf = exchangeRates.find(rate => rate.from_currency === 'USDT' && rate.to_currency === 'XAF');
+    
+    return {
+      xafToUsdt: xafToUsdt?.rate || 0.00168,
+      usdtToXaf: usdtToXaf?.rate || 595.24,
+      priceChange: xafToUsdt?.change_24h || 2.4
+    };
+  };
+
+  const rates = getCurrentRate();
 
   const WalletTab = () => (
     <div className="space-y-6 animate-fade-in">
@@ -53,7 +107,7 @@ export const XafeApp = () => {
             <div>
               <p className="text-sm text-muted-foreground">XAFe/USDT</p>
               <p className="font-heading font-bold text-lg text-xafe-green">
-                {mockData.xafToUsdt}
+                {rates.xafToUsdt}
               </p>
             </div>
           </div>
@@ -61,10 +115,10 @@ export const XafeApp = () => {
             <Badge 
               variant="secondary" 
               className={`bg-xafe-green/20 text-xafe-green animate-pulse ${
-                mockData.priceChange > 0 ? 'animate-pulse-glow' : ''
+                rates.priceChange > 0 ? 'animate-pulse-glow' : ''
               }`}
             >
-              +{mockData.priceChange}%
+              +{rates.priceChange}%
             </Badge>
             <p className="text-xs text-muted-foreground mt-1">24h</p>
           </div>
@@ -97,13 +151,13 @@ export const XafeApp = () => {
             </div>
             <div className="space-y-2">
               <p className="text-3xl font-heading font-bold text-xafe-green">
-                {balanceVisible ? `${mockData.xafeBalance.toLocaleString()}` : "***"}
+                {balanceVisible ? `${wallet?.xafe_balance?.toLocaleString() || 0}` : "***"}
                 <span className="text-lg text-muted-foreground ml-2">XAF</span>
               </p>
               <div className="flex items-center gap-2">
                 <DollarSign className="h-3 w-3 text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">
-                  ≈ {balanceVisible ? `${(mockData.xafeBalance * mockData.xafToUsdt).toFixed(2)} USDT` : "***"}
+                  ≈ {balanceVisible ? `${((wallet?.xafe_balance || 0) * rates.xafToUsdt).toFixed(2)} USDT` : "***"}
                 </p>
               </div>
             </div>
@@ -128,13 +182,13 @@ export const XafeApp = () => {
             </div>
             <div className="space-y-2">
               <p className="text-3xl font-heading font-bold text-xafe-blue">
-                {balanceVisible ? `${mockData.usdtBalance.toFixed(2)}` : "***"}
+                {balanceVisible ? `${wallet?.usdt_balance?.toFixed(2) || 0}` : "***"}
                 <span className="text-lg text-muted-foreground ml-2">USDT</span>
               </p>
               <div className="flex items-center gap-2">
                 <DollarSign className="h-3 w-3 text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">
-                  ≈ {balanceVisible ? `${(mockData.usdtBalance * mockData.usdtToXaf).toLocaleString()} XAF` : "***"}
+                  ≈ {balanceVisible ? `${((wallet?.usdt_balance || 0) * rates.usdtToXaf).toLocaleString()} XAF` : "***"}
                 </p>
               </div>
             </div>
@@ -245,9 +299,9 @@ export const XafeApp = () => {
       if (isNaN(num)) return "";
       
       if (swapDirection) {
-        return (num * mockData.xafToUsdt).toFixed(6);
+        return (num * rates.xafToUsdt).toFixed(6);
       } else {
-        return (num * mockData.usdtToXaf).toFixed(2);
+        return (num * rates.usdtToXaf).toFixed(2);
       }
     };
 
@@ -269,11 +323,11 @@ export const XafeApp = () => {
               <div className="text-center p-4 bg-gradient-primary/10 rounded-xl border border-xafe-green/20">
                 <p className="text-sm text-muted-foreground mb-2">Taux de change actuel</p>
                 <p className="text-3xl font-heading font-bold text-xafe-green">
-                  1 USDT = {mockData.usdtToXaf.toLocaleString()} XAF
+                  1 USDT = {rates.usdtToXaf.toLocaleString()} XAF
                 </p>
                 <div className="flex items-center justify-center gap-2 mt-2">
                   <Badge variant="secondary" className="bg-xafe-green/20 text-xafe-green animate-pulse-glow">
-                    +{mockData.priceChange}% 24h
+                    +{rates.priceChange}% 24h
                   </Badge>
                 </div>
               </div>
@@ -286,8 +340,8 @@ export const XafeApp = () => {
                   </span>
                   <span className="text-sm text-muted-foreground">
                     Solde: {swapDirection 
-                      ? `${mockData.xafeBalance.toLocaleString()} XAF` 
-                      : `${mockData.usdtBalance} USDT`
+                      ? `${wallet?.xafe_balance?.toLocaleString() || 0} XAF` 
+                      : `${wallet?.usdt_balance?.toFixed(2) || 0} USDT`
                     }
                   </span>
                 </div>
@@ -332,8 +386,8 @@ export const XafeApp = () => {
                   </span>
                   <span className="text-sm text-muted-foreground">
                     Solde: {swapDirection 
-                      ? `${mockData.usdtBalance} USDT`
-                      : `${mockData.xafeBalance.toLocaleString()} XAF`
+                      ? `${wallet?.usdt_balance?.toFixed(2) || 0} USDT`
+                      : `${wallet?.xafe_balance?.toLocaleString() || 0} XAF`
                     }
                   </span>
                 </div>
@@ -396,14 +450,14 @@ export const XafeApp = () => {
               </div>
             </div>
             <Badge variant="secondary" className="bg-xafe-green/20 text-xafe-green animate-pulse-glow text-lg px-3 py-1">
-              +{mockData.priceChange}%
+              +{rates.priceChange}%
             </Badge>
           </div>
           
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <div className="text-center p-4 bg-secondary/10 rounded-xl hover-lift">
               <p className="text-sm text-muted-foreground mb-1">Prix actuel</p>
-              <p className="text-xl font-heading font-bold text-xafe-green">{mockData.xafToUsdt}</p>
+              <p className="text-xl font-heading font-bold text-xafe-green">{rates.xafToUsdt}</p>
             </div>
             <div className="text-center p-4 bg-secondary/10 rounded-xl hover-lift">
               <p className="text-sm text-muted-foreground mb-1">24h High</p>
@@ -654,8 +708,8 @@ export const XafeApp = () => {
   );
 
   // Show authentication screen if not authenticated
-  if (!isAuthenticated) {
-    return <AuthComponent onLogin={() => setIsAuthenticated(true)} />;
+  if (!user) {
+    return <AuthComponent onAuthSuccess={handleAuthSuccess} />;
   }
 
   return (
@@ -678,7 +732,7 @@ export const XafeApp = () => {
               <Button 
                 variant="ghost" 
                 size="icon"
-                onClick={() => setIsAuthenticated(false)}
+                onClick={handleLogout}
                 className="action-button"
               >
                 <Settings className="h-5 w-5" />
