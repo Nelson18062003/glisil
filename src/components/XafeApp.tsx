@@ -26,8 +26,12 @@ import {
 import xafeLogo from "@/assets/xafe-logo.png";
 import { AuthComponent } from "./AuthWithSupabase";
 import { XafeService, Wallet as WalletType, Transaction, ExchangeRate } from "@/services/xafeService";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { LanguageSelector } from "@/components/LanguageSelector";
+import { PriceChart } from "@/components/PriceChart";
 
 export const XafeApp = () => {
+  const { t } = useLanguage();
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [balanceVisible, setBalanceVisible] = useState(true);
@@ -306,7 +310,7 @@ export const XafeApp = () => {
           <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
             <Plus className="h-4 w-4 sm:h-6 sm:w-6" />
           </div>
-          <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">Déposer des XAFe</span>
+          <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">{t('depositXafe')}</span>
         </Button>
         
         <Button 
@@ -318,7 +322,7 @@ export const XafeApp = () => {
           <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
             <Minus className="h-4 w-4 sm:h-6 sm:w-6" />
           </div>
-          <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">Retirer des XAFe</span>
+          <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">{t('withdrawXafe')}</span>
         </Button>
         
         <Button 
@@ -330,7 +334,7 @@ export const XafeApp = () => {
           <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
             <CreditCard className="h-4 w-4 sm:h-6 sm:w-6" />
           </div>
-          <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">Créer des XAFe</span>
+          <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">{t('createXafe')}</span>
         </Button>
         
         <Button 
@@ -342,7 +346,7 @@ export const XafeApp = () => {
           <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
             <ArrowUpDown className="h-4 w-4 sm:h-6 sm:w-6" />
           </div>
-          <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">Échanger XAFe → XAF</span>
+          <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">{t('exchangeXafe')}</span>
         </Button>
       </div>
 
@@ -565,7 +569,9 @@ export const XafeApp = () => {
   const MarketTab = () => (
     <div className="space-y-6 animate-fade-in">
       {/* Market Overview */}
-      <Card className="balance-card animate-scale-in">
+      <PriceChart />
+      
+      <Card className="balance-card animate-scale-in" style={{ animationDelay: '0.4s' }}>
         <CardContent className="p-6">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
@@ -574,7 +580,7 @@ export const XafeApp = () => {
               </div>
               <div>
                 <h3 className="text-2xl font-heading font-bold">XAFe/USDT</h3>
-                <p className="text-sm text-muted-foreground">Marché Spot</p>
+                <p className="text-sm text-muted-foreground">{t('language') === 'fr' ? 'Marché Spot' : 'Spot Market'}</p>
               </div>
             </div>
             <Badge variant="secondary" className="bg-xafe-green/20 text-xafe-green animate-pulse-glow text-lg px-3 py-1">
@@ -850,12 +856,15 @@ export const XafeApp = () => {
               <img src={xafeLogo} alt="XAFe" className="w-10 h-10 rounded-lg animate-float" />
               <div>
                 <h1 className="text-xl font-heading font-bold text-foreground">XAFe App</h1>
-                <p className="text-sm text-muted-foreground">Votre crypto-monnaie XAF</p>
+                <p className="text-sm text-muted-foreground">
+                  {t('language') === 'fr' ? 'Votre crypto-monnaie XAF' : 'Your XAF cryptocurrency'}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <LanguageSelector />
               <Badge variant="secondary" className="bg-xafe-green/20 text-xafe-green animate-pulse-glow">
-                En ligne
+                {t('language') === 'fr' ? 'En ligne' : 'Online'}
               </Badge>
               <Button 
                 variant="ghost" 
