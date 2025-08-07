@@ -85,8 +85,8 @@ export function WithdrawalModal({ isOpen, onClose, onWithdraw, currentBalance }:
   const handleWithdraw = async () => {
     if (!isValidAmount) {
       toast({
-        title: "Erreur",
-        description: `Montant minimum: ${selectedNetworkInfo?.minWithdraw} XAFe`,
+        title: "Error",
+        description: `Minimum amount: ${selectedNetworkInfo?.minWithdraw} XAFe`,
         variant: "destructive"
       });
       return;
@@ -94,8 +94,8 @@ export function WithdrawalModal({ isOpen, onClose, onWithdraw, currentBalance }:
 
     if (!hasSufficientBalance) {
       toast({
-        title: "Erreur",
-        description: "Solde insuffisant",
+        title: "Error",
+        description: "Insufficient balance",
         variant: "destructive"
       });
       return;
@@ -103,8 +103,8 @@ export function WithdrawalModal({ isOpen, onClose, onWithdraw, currentBalance }:
 
     if (!validateAddress(address, selectedNetwork)) {
       toast({
-        title: "Erreur",
-        description: "Adresse de retrait invalide pour ce réseau",
+        title: "Error",
+        description: "Invalid withdrawal address for this network",
         variant: "destructive"
       });
       return;
@@ -114,14 +114,14 @@ export function WithdrawalModal({ isOpen, onClose, onWithdraw, currentBalance }:
     try {
       await onWithdraw(selectedNetwork, address, parseFloat(amount));
       toast({
-        title: "Retrait initié",
-        description: "Votre demande de retrait a été soumise pour traitement",
+        title: "Withdrawal initiated",
+        description: "Your withdrawal request has been submitted for processing",
       });
       onClose();
     } catch (error) {
       toast({
-        title: "Erreur",
-        description: "Erreur lors de l'initiation du retrait",
+        title: "Error",
+        description: "Error initiating withdrawal",
         variant: "destructive"
       });
     } finally {
@@ -143,11 +143,11 @@ export function WithdrawalModal({ isOpen, onClose, onWithdraw, currentBalance }:
   const getStatusText = (status: string) => {
     switch (status) {
       case 'confirmed':
-        return 'Confirmé';
+        return 'Confirmed';
       case 'processing':
-        return 'En traitement';
+        return 'Processing';
       default:
-        return 'En attente';
+        return 'Pending';
     }
   };
 
@@ -155,20 +155,20 @@ export function WithdrawalModal({ isOpen, onClose, onWithdraw, currentBalance }:
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Retirer XAFe</DialogTitle>
+          <DialogTitle>Withdraw XAFe</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6">
           {/* Balance Info */}
           <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
             <div className="text-sm font-medium text-blue-800 dark:text-blue-300">
-              Solde disponible: {currentBalance.toLocaleString()} XAFe
+              Available balance: {currentBalance.toLocaleString()} XAFe
             </div>
           </div>
 
           {/* Network Selection */}
           <div className="space-y-2">
-            <Label>Réseau blockchain</Label>
+            <Label>Blockchain network</Label>
             <Select value={selectedNetwork} onValueChange={setSelectedNetwork}>
               <SelectTrigger>
                 <SelectValue />
@@ -179,7 +179,7 @@ export function WithdrawalModal({ isOpen, onClose, onWithdraw, currentBalance }:
                     <div className="flex items-center justify-between w-full">
                       <span>{network.name}</span>
                       <span className="text-xs text-muted-foreground ml-2">
-                        Min: {network.minWithdraw} | Frais: {network.fees} XAFe
+                        Min: {network.minWithdraw} | Fee: {network.fees} XAFe
                       </span>
                     </div>
                   </SelectItem>
@@ -190,11 +190,11 @@ export function WithdrawalModal({ isOpen, onClose, onWithdraw, currentBalance }:
 
           {/* Withdrawal Address */}
           <div className="space-y-2">
-            <Label>Adresse de destination</Label>
+            <Label>Destination address</Label>
             <Input
               value={address}
               onChange={(e) => setAddress(e.target.value.trim())}
-              placeholder={`Entrez une adresse ${selectedNetwork} valide`}
+              placeholder={`Enter a valid ${selectedNetwork} address`}
               className={`font-mono text-sm ${
                 address && !validateAddress(address, selectedNetwork) 
                   ? 'border-red-500' 
@@ -203,14 +203,14 @@ export function WithdrawalModal({ isOpen, onClose, onWithdraw, currentBalance }:
             />
             {address && !validateAddress(address, selectedNetwork) && (
               <div className="text-sm text-red-500">
-                Adresse invalide pour le réseau {selectedNetwork}
+                Invalid address for {selectedNetwork}
               </div>
             )}
             
             {/* Saved Addresses */}
             {savedAddresses.filter(addr => addr.network === selectedNetwork).length > 0 && (
               <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Adresses sauvegardées:</div>
+                <div className="text-xs text-muted-foreground">Saved addresses:</div>
                 <div className="flex flex-wrap gap-1">
                   {savedAddresses
                     .filter(addr => addr.network === selectedNetwork)
@@ -250,7 +250,7 @@ export function WithdrawalModal({ isOpen, onClose, onWithdraw, currentBalance }:
                 className="h-auto p-0 text-xs"
                 onClick={() => setAmount(currentBalance.toString())}
               >
-                Utiliser le max
+                Use max
               </Button>
             </div>
           </div>
@@ -260,15 +260,15 @@ export function WithdrawalModal({ isOpen, onClose, onWithdraw, currentBalance }:
             <div className="bg-gray-50 dark:bg-gray-900/50 border rounded-lg p-3">
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <span>Montant demandé:</span>
+                  <span>Requested amount:</span>
                   <span>{parseFloat(amount).toLocaleString()} XAFe</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Frais de réseau:</span>
+                  <span>Network fee:</span>
                   <span>-{selectedNetworkInfo.fees} XAFe</span>
                 </div>
                 <div className="flex justify-between font-medium border-t pt-1">
-                  <span>Montant net reçu:</span>
+                  <span>Net amount received:</span>
                   <span>{Math.max(0, netAmount).toLocaleString()} XAFe</span>
                 </div>
               </div>
@@ -281,13 +281,13 @@ export function WithdrawalModal({ isOpen, onClose, onWithdraw, currentBalance }:
               <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5" />
               <div className="text-sm">
                 <div className="font-medium text-red-800 dark:text-red-300 mb-1">
-                  Attention - Vérifications importantes:
+                  Attention - Important checks:
                 </div>
                 <ul className="text-red-700 dark:text-red-400 space-y-1">
-                  <li>• Vérifiez que l'adresse correspond au bon réseau</li>
-                  <li>• Les retraits sont irréversibles</li>
-                  <li>• Double-vérifiez l'adresse de destination</li>
-                  <li>• Les erreurs d'adresse entraînent une perte définitive</li>
+                  <li>• Verify the address matches the correct network</li>
+                  <li>• Withdrawals are irreversible</li>
+                  <li>• Double-check the destination address</li>
+                  <li>• Address errors lead to permanent loss</li>
                 </ul>
               </div>
             </div>
@@ -296,7 +296,7 @@ export function WithdrawalModal({ isOpen, onClose, onWithdraw, currentBalance }:
           {/* Recent Withdrawals */}
           {recentWithdrawals.length > 0 && (
             <div className="space-y-2">
-              <Label>Retraits récents</Label>
+              <Label>Recent withdrawals</Label>
               <div className="border rounded-lg p-3 max-h-32 overflow-y-auto">
                 {recentWithdrawals.slice(0, 3).map((tx) => (
                   <div key={tx.id} className="flex items-center justify-between py-2 border-b last:border-b-0">
@@ -333,10 +333,10 @@ export function WithdrawalModal({ isOpen, onClose, onWithdraw, currentBalance }:
               }
               className="flex-1"
             >
-              {isLoading ? "Traitement..." : `Retirer ${netAmount > 0 ? netAmount.toLocaleString() : 0} XAFe`}
+              {isLoading ? "Processing..." : `Withdraw ${netAmount > 0 ? netAmount.toLocaleString() : 0} XAFe`}
             </Button>
             <Button variant="outline" onClick={onClose}>
-              Annuler
+              Cancel
             </Button>
           </div>
         </div>

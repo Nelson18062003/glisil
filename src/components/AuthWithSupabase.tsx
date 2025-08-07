@@ -72,7 +72,7 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
 
         if (error) {
           toast({
-            title: "Erreur de connexion",
+            title: "Sign-in error",
             description: error.message,
             variant: "destructive",
           });
@@ -81,8 +81,8 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
 
         if (data.user && data.session) {
           toast({
-            title: "Connexion réussie",
-            description: "Bienvenue dans XAFe App !",
+            title: "Signed in",
+            description: "Welcome to XAFe App!",
           });
           onAuthSuccess(data.user, data.session);
         }
@@ -90,8 +90,8 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
         // Sign up
         if (formData.password !== formData.confirmPassword) {
           toast({
-            title: "Erreur",
-            description: "Les mots de passe ne correspondent pas",
+            title: "Error",
+            description: "Passwords do not match",
             variant: "destructive",
           });
           return;
@@ -112,7 +112,7 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
 
         if (error) {
           toast({
-            title: "Erreur d'inscription",
+            title: "Sign-up error",
             description: error.message,
             variant: "destructive",
           });
@@ -121,8 +121,8 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
 
         if (data.user) {
           toast({
-            title: "Inscription réussie",
-            description: "Votre compte a été créé avec succès. Votre portefeuille est prêt !",
+            title: "Account created",
+            description: "Your account has been created. Your wallet is ready!",
           });
           
           // If user is confirmed, sign them in immediately
@@ -133,8 +133,8 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
       }
     } catch (error) {
       toast({
-        title: "Erreur",
-        description: "Une erreur inattendue s'est produite",
+        title: "Error",
+        description: "An unexpected error occurred",
         variant: "destructive",
       });
     } finally {
@@ -271,7 +271,7 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
               {!isLogin && (
                 <div className="space-y-2">
                   <Label htmlFor="phone" className="font-heading font-semibold">
-                    Téléphone <Badge variant="secondary" className="ml-2 text-xs">MoMo + Banque</Badge>
+                    Phone <Badge variant="secondary" className="ml-2 text-xs">MoMo + Bank</Badge>
                   </Label>
                   <div className="relative">
                     <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -289,7 +289,7 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
 
               {/* Password Input */}
               <div className="space-y-2">
-                <Label htmlFor="password" className="font-heading font-semibold">Mot de passe</Label>
+                <Label htmlFor="password" className="font-heading font-semibold">Password</Label>
                 <div className="relative">
                   <Input
                     id="password"
@@ -315,7 +315,7 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
               {/* Confirm Password (for signup) */}
               {!isLogin && (
                 <div className="space-y-2">
-                  <Label htmlFor="confirmPassword" className="font-heading font-semibold">Confirmer le mot de passe</Label>
+                  <Label htmlFor="confirmPassword" className="font-heading font-semibold">Confirm password</Label>
                   <Input
                     id="confirmPassword"
                     type="password"
@@ -339,7 +339,7 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
                 {loading ? (
                   <>
                     <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                    {isLogin ? "Connexion..." : "Création..."}
+                    {isLogin ? "Signing in..." : "Creating..."}
                   </>
                 ) : (
                   <>

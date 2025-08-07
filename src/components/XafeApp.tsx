@@ -767,7 +767,7 @@ export const XafeApp = () => {
           
           <div className="text-center mt-6">
             <Button variant="outline" className="action-button">
-              Charger plus de transactions
+              Load more transactions
             </Button>
           </div>
         </CardContent>
@@ -781,7 +781,7 @@ export const XafeApp = () => {
               <Plus className="h-6 w-6 text-white" />
             </div>
             <p className="text-2xl font-heading font-bold text-xafe-green">150,000 XAF</p>
-            <p className="text-sm text-muted-foreground">Total déposé ce mois</p>
+            <p className="text-sm text-muted-foreground">Total deposited this month</p>
           </CardContent>
         </Card>
         
@@ -791,7 +791,7 @@ export const XafeApp = () => {
               <ArrowUpDown className="h-6 w-6 text-white" />
             </div>
             <p className="text-2xl font-heading font-bold text-xafe-blue">25.2 USDT</p>
-            <p className="text-sm text-muted-foreground">Total converti</p>
+            <p className="text-sm text-muted-foreground">Total converted</p>
           </CardContent>
         </Card>
         
@@ -801,7 +801,7 @@ export const XafeApp = () => {
               <Smartphone className="h-6 w-6 text-white" />
             </div>
             <p className="text-2xl font-heading font-bold text-xafe-orange">12</p>
-            <p className="text-sm text-muted-foreground">Transactions MoMo</p>
+            <p className="text-sm text-muted-foreground">MoMo transactions</p>
           </CardContent>
         </Card>
       </div>
@@ -824,14 +824,14 @@ export const XafeApp = () => {
               <div>
                 <h1 className="text-xl font-heading font-bold text-foreground">XAFe App</h1>
                 <p className="text-sm text-muted-foreground">
-                  {t('language') === 'fr' ? 'Votre stablecoin XAF' : 'Your XAF stablecoin'}
+                  {tr('Your XAF stablecoin', 'Votre stablecoin XAF')}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-3">
               <LanguageSelector />
               <Badge variant="secondary" className="bg-xafe-green/20 text-xafe-green animate-pulse-glow">
-                {t('language') === 'fr' ? 'En ligne' : 'Online'}
+                {tr('Online', 'En ligne')}
               </Badge>
               <Button 
                 variant="ghost" 

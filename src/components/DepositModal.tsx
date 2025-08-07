@@ -51,8 +51,8 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
     } catch (error) {
       console.error('Error loading deposit address:', error);
       toast({
-        title: "Erreur",
-        description: "Impossible de charger l'adresse de dépôt",
+        title: "Error",
+        description: "Unable to load deposit address",
         variant: "destructive"
       });
     }
@@ -86,16 +86,16 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     toast({
-      title: "Copié",
-      description: "Adresse copiée dans le presse-papier",
+      title: "Copied",
+      description: "Address copied to clipboard",
     });
   };
 
   const handleDeposit = async () => {
     if (!amount || parseFloat(amount) <= 0) {
       toast({
-        title: "Erreur",
-        description: "Veuillez entrer un montant valide",
+        title: "Error",
+        description: "Please enter a valid amount",
         variant: "destructive"
       });
       return;
@@ -105,14 +105,14 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
     try {
       await onDeposit(selectedNetwork, parseFloat(amount));
       toast({
-        title: "Dépôt initié",
-        description: "Votre dépôt a été enregistré et sera traité dès réception",
+        title: "Deposit initiated",
+        description: "Your deposit has been recorded and will be processed upon receipt",
       });
       onClose();
     } catch (error) {
       toast({
-        title: "Erreur",
-        description: "Erreur lors de l'initiation du dépôt",
+        title: "Error",
+        description: "Error initiating deposit",
         variant: "destructive"
       });
     } finally {
@@ -134,11 +134,11 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
   const getStatusText = (status: string) => {
     switch (status) {
       case 'confirmed':
-        return 'Confirmé';
+        return 'Confirmed';
       case 'processing':
-        return 'En traitement';
+        return 'Processing';
       default:
-        return 'En attente';
+        return 'Pending';
     }
   };
 
@@ -148,13 +148,13 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Déposer XAFe</DialogTitle>
+          <DialogTitle>Deposit XAFe</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6">
           {/* Network Selection */}
           <div className="space-y-2">
-            <Label>Réseau blockchain</Label>
+            <Label>Blockchain network</Label>
             <Select value={selectedNetwork} onValueChange={setSelectedNetwork}>
               <SelectTrigger>
                 <SelectValue />
@@ -165,7 +165,7 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
                     <div className="flex items-center justify-between w-full">
                       <span>{network.name}</span>
                       <span className="text-xs text-muted-foreground ml-2">
-                        Frais: {network.fees}
+                        Fees: {network.fees}
                       </span>
                     </div>
                   </SelectItem>
@@ -174,21 +174,21 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
             </Select>
             {selectedNetworkInfo && (
               <div className="text-sm text-muted-foreground">
-                Confirmations requises: {selectedNetworkInfo.confirmations} | 
-                Frais réseau: {selectedNetworkInfo.fees}
+                Required confirmations: {selectedNetworkInfo.confirmations} | 
+                Network fees: {selectedNetworkInfo.fees}
               </div>
             )}
           </div>
 
           {/* Deposit Address */}
           <div className="space-y-2">
-            <Label>Adresse de dépôt</Label>
+            <Label>Deposit address</Label>
             <div className="flex items-center space-x-2">
               <Input 
                 value={depositAddress} 
                 readOnly 
                 className="font-mono text-sm"
-                placeholder="Chargement de l'adresse..."
+                placeholder="Loading address..."
               />
               <Button
                 variant="outline"
@@ -203,7 +203,7 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
                 size="icon"
                 onClick={() => setShowQRCode(true)}
                 disabled={!depositAddress}
-                title="Afficher le QR Code"
+                title="Show QR Code"
               >
                 <QrCode className="h-4 w-4" />
               </Button>
@@ -212,17 +212,17 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
 
           {/* Amount Input */}
           <div className="space-y-2">
-            <Label>Montant à déposer (XAFe)</Label>
+            <Label>Amount to deposit (XAFe)</Label>
             <Input
               type="number"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              placeholder="Ex: 10000"
+              placeholder="Eg: 10000"
               min="1"
               step="0.01"
             />
             <div className="text-xs text-muted-foreground">
-              Montant minimum: 1 XAFe
+              Minimum amount: 1 XAFe
             </div>
           </div>
 
@@ -232,13 +232,13 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
               <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
               <div className="text-sm">
                 <div className="font-medium text-yellow-800 dark:text-yellow-300 mb-1">
-                  Instructions importantes:
+                  Important instructions:
                 </div>
                 <ul className="text-yellow-700 dark:text-yellow-400 space-y-1">
-                  <li>• Envoyez uniquement des XAFe sur le réseau {selectedNetworkInfo?.name}</li>
-                  <li>• Les dépôts sur d'autres réseaux seront perdus définitivement</li>
-                  <li>• Attendez {selectedNetworkInfo?.confirmations} confirmations pour la validation</li>
-                  <li>• Les frais de réseau sont à votre charge</li>
+                  <li>• Send XAFe only on the {selectedNetworkInfo?.name} network</li>
+                  <li>• Deposits on other networks will be permanently lost</li>
+                  <li>• Wait for {selectedNetworkInfo?.confirmations} confirmations for validation</li>
+                  <li>• Network fees are your responsibility</li>
                 </ul>
               </div>
             </div>
@@ -247,7 +247,7 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
           {/* Recent Transactions */}
           {recentTransactions.length > 0 && (
             <div className="space-y-2">
-              <Label>Dépôts récents</Label>
+              <Label>Recent deposits</Label>
               <div className="border rounded-lg p-3 max-h-32 overflow-y-auto">
                 {recentTransactions.slice(0, 3).map((tx) => (
                   <div key={tx.id} className="flex items-center justify-between py-2 border-b last:border-b-0">
@@ -279,10 +279,10 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
               disabled={isLoading || !amount || !depositAddress}
               className="flex-1"
             >
-              {isLoading ? "Traitement..." : "Confirmer le dépôt"}
+              {isLoading ? "Processing..." : "Confirm deposit"}
             </Button>
             <Button variant="outline" onClick={onClose}>
-              Annuler
+              Cancel
             </Button>
           </div>
         </div>
@@ -294,47 +294,14 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
           <DialogContent className="max-w-md">
             <DialogHeader>
               <div className="flex items-center justify-between">
-                <DialogTitle>QR Code de dépôt</DialogTitle>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowQRCode(false)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </DialogHeader>
-            
-            <div className="space-y-4">
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground mb-4">
-                  Scannez ce QR code pour déposer des USDT sur le réseau {selectedNetwork}
-                </p>
-                
-                {qrCodeDataUrl && (
-                  <div className="flex justify-center mb-4">
-                    <img 
-                      src={qrCodeDataUrl} 
-                      alt="QR Code" 
-                      className="border rounded-lg"
-                    />
-                  </div>
-                )}
-                
-                <div className="bg-gray-50 dark:bg-gray-900 border rounded-lg p-3">
-                  <p className="text-xs font-mono break-all text-center">
-                    {depositAddress}
+                <DialogTitle>Deposit QR Code</DialogTitle>
+...
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Scan this QR code to deposit USDT on the {selectedNetwork} network
                   </p>
-                </div>
-                
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => copyToClipboard(depositAddress)}
-                  className="mt-2"
-                >
+...
                   <Copy className="h-3 w-3 mr-1" />
-                  Copier l'adresse
+                  Copy address
                 </Button>
               </div>
               
@@ -344,9 +311,9 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
                   <div className="text-xs text-yellow-700 dark:text-yellow-400">
                     <p className="font-medium mb-1">Important:</p>
                     <ul className="space-y-1">
-                      <li>• Envoyez uniquement des USDT sur {selectedNetwork}</li>
-                      <li>• Vérifiez que votre wallet supporte ce réseau</li>
-                      <li>• Les dépôts incorrects sont perdus définitivement</li>
+                      <li>• Send USDT only on {selectedNetwork}</li>
+                      <li>• Make sure your wallet supports this network</li>
+                      <li>• Incorrect deposits are permanently lost</li>
                     </ul>
                   </div>
                 </div>
