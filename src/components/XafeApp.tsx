@@ -38,7 +38,7 @@ import { Link } from "react-router-dom";
 import Trade from "@/pages/Trade";
 
 export const XafeApp = () => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [balanceVisible, setBalanceVisible] = useState(true);
@@ -51,6 +51,7 @@ export const XafeApp = () => {
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
   const [isMintModalOpen, setIsMintModalOpen] = useState(false);
   const { toast } = useToast();
+  const tr = (en: string, fr: string) => (language === 'fr' ? fr : en);
 
   useEffect(() => {
     const timer = setTimeout(() => setAnimateCards(true), 100);
@@ -87,18 +88,16 @@ export const XafeApp = () => {
       const success = await XafeService.createCryptoDeposit(network, amount);
       if (success) {
         toast({
-          title: t('language') === 'fr' ? "Dépôt crypto initié" : "Crypto deposit initiated",
-          description: t('language') === 'fr' 
-            ? "Votre dépôt crypto a été enregistré" 
-            : "Your crypto deposit has been recorded"
+          title: tr("Crypto deposit initiated", "Dépôt crypto initié"),
+          description: tr("Your crypto deposit has been recorded", "Votre dépôt crypto a été enregistré")
         });
         await loadUserData(); // Refresh data
       }
     } catch (error) {
       console.error('Error creating crypto deposit:', error);
       toast({
-        title: "Erreur",
-        description: "Erreur lors de la création du dépôt crypto",
+        title: tr("Error", "Erreur"),
+        description: tr("Error while creating crypto deposit", "Erreur lors de la création du dépôt crypto"),
         variant: "destructive"
       });
     }
@@ -110,18 +109,16 @@ export const XafeApp = () => {
       const success = await XafeService.createCryptoWithdrawal(network, address, amount);
       if (success) {
         toast({
-          title: t('language') === 'fr' ? "Retrait crypto initié" : "Crypto withdrawal initiated",
-          description: t('language') === 'fr' 
-            ? "Votre demande de retrait a été soumise" 
-            : "Your withdrawal request has been submitted"
+          title: tr("Crypto withdrawal initiated", "Retrait crypto initié"),
+          description: tr("Your withdrawal request has been submitted", "Votre demande de retrait a été soumise")
         });
         await loadUserData(); // Refresh data
       }
     } catch (error) {
       console.error('Error creating crypto withdrawal:', error);
       toast({
-        title: "Erreur",
-        description: "Erreur lors de la création du retrait crypto",
+        title: tr("Error", "Erreur"),
+        description: tr("Error while creating crypto withdrawal", "Erreur lors de la création du retrait crypto"),
         variant: "destructive"
       });
     }
