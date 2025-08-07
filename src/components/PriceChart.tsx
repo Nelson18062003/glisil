@@ -38,9 +38,9 @@ export const PriceChart = () => {
         const volume = Math.random() * 100000 + 50000;
 
         data.push({
-          time: timeframe === '1H' ? time.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-               : timeframe === '24H' ? time.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-               : time.toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' }),
+           time: timeframe === '1H' ? time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+               : timeframe === '24H' ? time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+               : time.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
           price: parseFloat(price.toFixed(2)),
           volume: Math.round(volume)
         });
@@ -63,7 +63,7 @@ export const PriceChart = () => {
     <Card className="animate-slide-up" style={{ animationDelay: '0.2s' }}>
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-xl font-heading">{t('priceChart')}</CardTitle>
+          <CardTitle className="text-xl font-heading">{t('priceChart')} — USDT/XAFe</CardTitle>
           <div className="flex gap-1">
             {(['1H', '24H', '7D', '30D'] as const).map((period) => (
               <button
@@ -82,7 +82,7 @@ export const PriceChart = () => {
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="text-2xl font-bold">{currentPrice.toFixed(2)} XAF</span>
+            <span className="text-2xl font-bold">{currentPrice.toFixed(2)} XAFe</span>
             <span className={`text-sm font-medium ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
               {isPositive ? '+' : ''}{priceChange.toFixed(2)}%
             </span>
@@ -115,7 +115,7 @@ export const PriceChart = () => {
                   borderRadius: '8px',
                   boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                 }}
-                formatter={(value: number) => [`${value.toFixed(2)} XAF`, 'Prix']}
+                formatter={(value: number) => [`${value.toFixed(2)} XAFe`, 'Price']}}
                 labelStyle={{ color: 'hsl(var(--foreground))' }}
               />
               <Line 

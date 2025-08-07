@@ -272,10 +272,10 @@ export const XafeApp = () => {
                 <Zap className="h-4 w-4 text-white" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">USDT/XAF</p>
-                <p className="font-heading font-bold text-lg text-xafe-green">
-                  {rates.xafToUsdt}
-                </p>
+                 <p className="text-sm text-muted-foreground">USDT/XAFe</p>
+                 <p className="font-heading font-bold text-lg text-xafe-green">
+                   {rates.usdtToXaf.toLocaleString()}
+                 </p>
               </div>
             </div>
             <div className="text-right">
@@ -304,7 +304,7 @@ export const XafeApp = () => {
                   </div>
                   <div>
                     <h3 className="font-heading font-semibold text-foreground">XAFe</h3>
-                    <p className="text-xs text-muted-foreground">Franc CFA numérique</p>
+                    <p className="text-xs text-muted-foreground">Digital CFA Franc</p>
                   </div>
                 </div>
                 <Button
@@ -319,7 +319,7 @@ export const XafeApp = () => {
               <div className="space-y-2">
                 <p className="text-3xl font-heading font-bold text-xafe-green">
                   {balanceVisible ? `${wallet?.xafe_balance?.toLocaleString() || 0}` : "***"}
-                  <span className="text-lg text-muted-foreground ml-2">XAF</span>
+                  <span className="text-lg text-muted-foreground ml-2">XAFe</span>
                 </p>
                 <div className="flex items-center gap-2">
                   <DollarSign className="h-3 w-3 text-muted-foreground" />
@@ -355,7 +355,7 @@ export const XafeApp = () => {
                 <div className="flex items-center gap-2">
                   <DollarSign className="h-3 w-3 text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">
-                    ≈ {balanceVisible ? `${((wallet?.usdt_balance || 0) * rates.usdtToXaf).toLocaleString()} XAF` : "***"}
+                    ≈ {balanceVisible ? `${((wallet?.usdt_balance || 0) * rates.usdtToXaf).toLocaleString()} XAFe` : "***"}
                   </p>
                 </div>
               </div>
@@ -374,9 +374,9 @@ export const XafeApp = () => {
             <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
               <Download className="h-4 w-4 sm:h-6 sm:w-6" />
             </div>
-            <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">
-              {t('language') === 'fr' ? 'Déposer XAFe' : 'Deposit XAFe'}
-            </span>
+              <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">
+                Deposit XAFe
+              </span>
           </Button>
           
           <Button 
@@ -388,9 +388,9 @@ export const XafeApp = () => {
             <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
               <Upload className="h-4 w-4 sm:h-6 sm:w-6" />
             </div>
-            <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">
-              {t('language') === 'fr' ? 'Retirer XAFe' : 'Withdraw XAFe'}
-            </span>
+              <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">
+                Withdraw XAFe
+              </span>
           </Button>
           
           <Button 
@@ -431,10 +431,10 @@ export const XafeApp = () => {
         <Card className="balance-card animate-slide-up" style={{ animationDelay: '0.4s' }}>
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-heading font-bold text-foreground">Transactions récentes</h3>
+              <h3 className="text-xl font-heading font-bold text-foreground">Recent Transactions</h3>
               <Button variant="ghost" size="sm" className="text-xafe-green hover:text-xafe-green" asChild>
                 <Link to="/trade">
-                  Voir tout
+                  View all
                   <ArrowRight className="h-4 w-4 ml-1" />
                 </Link>
               </Button>
@@ -442,9 +442,9 @@ export const XafeApp = () => {
             <div className="space-y-4">
               {[
                 { 
-                  type: "Dépôt", 
-                  amount: "+50,000 XAF", 
-                  time: "Il y a 2h", 
+                  type: "Deposit", 
+                  amount: "+50,000 XAFe", 
+                  time: "2h ago", 
                   method: "MTN MoMo",
                   icon: Plus,
                   color: "text-xafe-green",
@@ -452,17 +452,17 @@ export const XafeApp = () => {
                 },
                 { 
                   type: "Conversion", 
-                  amount: "-10,000 XAF → +16.8 USDT", 
-                  time: "Il y a 5h", 
+                  amount: "-10,000 XAFe → +16.8 USDT", 
+                  time: "5h ago", 
                   method: "Spot",
                   icon: ArrowUpDown,
                   color: "text-xafe-blue",
                   bgColor: "bg-xafe-blue/20"
                 },
                 { 
-                  type: "Dépôt", 
-                  amount: "+25,000 XAF", 
-                  time: "Hier", 
+                  type: "Deposit", 
+                  amount: "+25,000 XAFe", 
+                  time: "Yesterday", 
                   method: "Orange Money",
                   icon: Smartphone,
                   color: "text-xafe-orange",
@@ -527,15 +527,15 @@ export const XafeApp = () => {
         <Card className="balance-card animate-scale-in">
           <CardContent className="p-8">
             <div className="text-center mb-8">
-              <h3 className="text-2xl font-heading font-bold mb-2">Conversion rapide</h3>
-              <p className="text-muted-foreground">Échangez instantanément vos cryptomonnaies</p>
+              <h3 className="text-2xl font-heading font-bold mb-2">Quick conversion</h3>
+              <p className="text-muted-foreground">Instantly exchange your currencies</p>
             </div>
             
             <div className="space-y-6">
               <div className="text-center p-4 bg-gradient-primary/10 rounded-xl border border-xafe-green/20">
-                <p className="text-sm text-muted-foreground mb-2">Taux de change actuel</p>
+                <p className="text-sm text-muted-foreground mb-2">Current exchange rate</p>
                 <p className="text-3xl font-heading font-bold text-xafe-green">
-                  1 USDT = {rates.usdtToXaf.toLocaleString()} XAF
+                  1 USDT = {rates.usdtToXaf.toLocaleString()} XAFe
                 </p>
                 <div className="flex items-center justify-center gap-2 mt-2">
                   <Badge variant="secondary" className="bg-xafe-green/20 text-xafe-green animate-pulse-glow">
@@ -548,11 +548,11 @@ export const XafeApp = () => {
               <div className="bg-secondary/10 p-6 rounded-xl border border-white/10 hover-lift">
                 <div className="flex items-center justify-between mb-4">
                   <span className="font-heading font-semibold">
-                    De: {swapDirection ? 'XAFe' : 'USDT'}
+                    From: {swapDirection ? 'XAFe' : 'USDT'}
                   </span>
                   <span className="text-sm text-muted-foreground">
-                    Solde: {swapDirection 
-                      ? `${wallet?.xafe_balance?.toLocaleString() || 0} XAF` 
+                    Balance: {swapDirection 
+                      ? `${wallet?.xafe_balance?.toLocaleString() || 0} XAFe` 
                       : `${wallet?.usdt_balance?.toFixed(2) || 0} USDT`
                     }
                   </span>
@@ -573,7 +573,7 @@ export const XafeApp = () => {
                     className="flex-1 bg-transparent text-3xl font-heading font-bold outline-none text-foreground placeholder-muted-foreground"
                   />
                   <span className="text-muted-foreground font-semibold">
-                    {swapDirection ? 'XAF' : 'USDT'}
+                    {swapDirection ? 'XAFe' : 'USDT'}
                   </span>
                 </div>
               </div>
@@ -594,12 +594,12 @@ export const XafeApp = () => {
               <div className="bg-secondary/10 p-6 rounded-xl border border-white/10 hover-lift">
                 <div className="flex items-center justify-between mb-4">
                   <span className="font-heading font-semibold">
-                    Vers: {swapDirection ? 'USDT' : 'XAFe'}
+                    To: {swapDirection ? 'USDT' : 'XAFe'}
                   </span>
                   <span className="text-sm text-muted-foreground">
-                    Solde: {swapDirection 
+                    Balance: {swapDirection 
                       ? `${wallet?.usdt_balance?.toFixed(2) || 0} USDT`
-                      : `${wallet?.xafe_balance?.toLocaleString() || 0} XAF`
+                      : `${wallet?.xafe_balance?.toLocaleString() || 0} XAFe`
                     }
                   </span>
                 </div>
@@ -632,11 +632,11 @@ export const XafeApp = () => {
                   disabled={!fromAmount || parseFloat(fromAmount) <= 0}
                 >
                   <Zap className="h-5 w-5 mr-2" />
-                  Convertir maintenant
+                  Convert now
                 </Button>
                 
                 <div className="text-center text-sm text-muted-foreground">
-                  <p>Frais de conversion: 0.1% • Traitement instantané</p>
+                  <p>Conversion fee: 0.1% • Instant processing</p>
                 </div>
               </div>
             </div>
@@ -657,33 +657,33 @@ export const XafeApp = () => {
       {/* Filter Options */}
       <Card className="balance-card animate-scale-in">
         <CardContent className="p-6">
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-            <h3 className="text-xl font-heading font-bold">Historique des transactions</h3>
-            <div className="flex gap-2">
-              <Badge variant="secondary" className="cursor-pointer hover:bg-xafe-green/20 hover:text-xafe-green">
-                Tout
-              </Badge>
-              <Badge variant="outline" className="cursor-pointer hover:bg-xafe-green/20 hover:text-xafe-green">
-                Dépôts
-              </Badge>
-              <Badge variant="outline" className="cursor-pointer hover:bg-xafe-blue/20 hover:text-xafe-blue">
-                Conversions
-              </Badge>
-              <Badge variant="outline" className="cursor-pointer hover:bg-xafe-orange/20 hover:text-xafe-orange">
-                Mobile Money
-              </Badge>
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+              <h3 className="text-xl font-heading font-bold">Transaction History</h3>
+              <div className="flex gap-2">
+                <Badge variant="secondary" className="cursor-pointer hover:bg-xafe-green/20 hover:text-xafe-green">
+                  All
+                </Badge>
+                <Badge variant="outline" className="cursor-pointer hover:bg-xafe-green/20 hover:text-xafe-green">
+                  Deposits
+                </Badge>
+                <Badge variant="outline" className="cursor-pointer hover:bg-xafe-blue/20 hover:text-xafe-blue">
+                  Conversions
+                </Badge>
+                <Badge variant="outline" className="cursor-pointer hover:bg-xafe-orange/20 hover:text-xafe-orange">
+                  Mobile Money
+                </Badge>
+              </div>
             </div>
-          </div>
           
           <div className="space-y-3">
             {[
               {
                 id: "TXN001",
-                type: "Dépôt",
-                amount: "+50,000 XAF",
+                type: "Deposit",
+                amount: "+50,000 XAFe",
                 time: "2024-01-15 14:30",
                 method: "MTN MoMo",
-                status: "Confirmé",
+                status: "Confirmed",
                 icon: Plus,
                 color: "text-xafe-green",
                 bgColor: "bg-xafe-green/20",
@@ -692,10 +692,10 @@ export const XafeApp = () => {
               {
                 id: "TXN002",
                 type: "Conversion",
-                amount: "-10,000 XAF → +16.8 USDT",
+                amount: "-10,000 XAFe → +16.8 USDT",
                 time: "2024-01-15 09:15",
-                method: "Marché Spot",
-                status: "Terminé",
+                method: "Spot market",
+                status: "Completed",
                 icon: ArrowUpDown,
                 color: "text-xafe-blue",
                 bgColor: "bg-xafe-blue/20",
@@ -703,11 +703,11 @@ export const XafeApp = () => {
               },
               {
                 id: "TXN003",
-                type: "Dépôt",
-                amount: "+25,000 XAF",
+                type: "Deposit",
+                amount: "+25,000 XAFe",
                 time: "2024-01-14 16:45",
                 method: "Orange Money",
-                status: "Confirmé",
+                status: "Confirmed",
                 icon: Smartphone,
                 color: "text-xafe-orange",
                 bgColor: "bg-xafe-orange/20",
@@ -716,10 +716,10 @@ export const XafeApp = () => {
               {
                 id: "TXN004",
                 type: "Conversion",
-                amount: "+5,000 XAF ← -8.4 USDT",
+                amount: "+5,000 XAFe ← -8.4 USDT",
                 time: "2024-01-14 11:20",
-                method: "Conversion rapide",
-                status: "Terminé",
+                method: "Quick conversion",
+                status: "Completed",
                 icon: ArrowUpDown,
                 color: "text-xafe-blue",
                 bgColor: "bg-xafe-blue/20",
@@ -727,11 +727,11 @@ export const XafeApp = () => {
               },
               {
                 id: "TXN005",
-                type: "Dépôt",
-                amount: "+75,000 XAF",
+                type: "Deposit",
+                amount: "+75,000 XAFe",
                 time: "2024-01-13 08:30",
                 method: "MTN MoMo",
-                status: "En attente",
+                status: "Pending",
                 icon: Plus,
                 color: "text-muted-foreground",
                 bgColor: "bg-secondary/20",

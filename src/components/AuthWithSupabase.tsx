@@ -143,9 +143,9 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
   };
 
   const features = [
-    { icon: Shield, text: "Sécurité renforcée avec 2FA" },
-    { icon: Smartphone, text: "Compatible Mobile Money + Banques" },
-    { icon: Star, text: "Frais réduits pour CEMAC" }
+    { icon: Shield, text: "Enhanced security with 2FA" },
+    { icon: Smartphone, text: "Compatible with Mobile Money + Banks" },
+    { icon: Star, text: "Reduced fees for CEMAC" }
   ];
 
   return (
@@ -158,17 +158,17 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
             <img src={xafeLogo} alt="XAFe" className="w-16 h-16 rounded-2xl animate-float" />
             <div>
               <h1 className="text-4xl font-heading font-bold text-foreground">XAFe App</h1>
-              <p className="text-lg text-muted-foreground">L'avenir des paiements en Afrique</p>
+              <p className="text-lg text-muted-foreground">The future of payments in Africa</p>
             </div>
           </div>
           
           <div className="space-y-4">
             <h2 className="text-2xl font-heading font-bold text-foreground">
-              Votre stablecoin XAF sur blockchain
+              Your XAFe stablecoin on blockchain
             </h2>
             <p className="text-lg text-muted-foreground leading-relaxed">
-              Achetez, stockez et échangez des XAFe contre des cryptomonnaies. 
-              Compatible avec MTN MoMo, Orange Money et toutes les banques pour le Cameroun et la CEMAC.
+              Buy, store and exchange XAFe with cryptocurrencies.
+              Compatible with MTN MoMo, Orange Money and all banks in Cameroon and CEMAC.
             </p>
           </div>
 
@@ -192,13 +192,13 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
 
           <div className="flex items-center justify-center lg:justify-start gap-4">
             <Badge variant="secondary" className="bg-xafe-green/20 text-xafe-green">
-              🔐 KYC Simplifié
+              🔐 Simplified KYC
             </Badge>
             <Badge variant="secondary" className="bg-xafe-blue/20 text-xafe-blue">
-              ⚡ Instantané
+              ⚡ Instant
             </Badge>
             <Badge variant="secondary" className="bg-xafe-orange/20 text-xafe-orange">
-              💰 Frais 0.1%
+              💰 Fees 0.1%
             </Badge>
           </div>
         </div>
@@ -207,12 +207,12 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
         <Card className="balance-card border-xafe-green/20 animate-scale-in">
           <CardHeader className="text-center pb-8">
             <CardTitle className="text-2xl font-heading font-bold">
-              {isLogin ? "Connexion" : "Créer un compte"}
+              {isLogin ? "Sign in" : "Create account"}
             </CardTitle>
             <p className="text-muted-foreground">
               {isLogin 
-                ? "Accédez à votre portefeuille XAFe" 
-                : "Rejoignez la révolution crypto africaine"
+                ? "Access your XAFe wallet" 
+                : "Join the African crypto revolution"
               }
             </p>
           </CardHeader>
@@ -224,7 +224,7 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
               {!isLogin && (
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="firstName" className="font-heading font-semibold">Prénom</Label>
+                    <Label htmlFor="firstName" className="font-heading font-semibold">First name</Label>
                     <Input
                       id="firstName"
                       type="text"
@@ -236,7 +236,7 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="lastName" className="font-heading font-semibold">Nom</Label>
+                    <Label htmlFor="lastName" className="font-heading font-semibold">Last name</Label>
                     <Input
                       id="lastName"
                       type="text"
@@ -258,7 +258,7 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
                   <Input
                     id="email"
                     type="email"
-                    placeholder="votre@email.com"
+                    placeholder="your@email.com"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     className="pl-10 h-12 bg-secondary/10 border-white/10 font-heading"

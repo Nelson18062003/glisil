@@ -26,7 +26,7 @@ const translations = {
     'depositXafe': 'Déposer des XAFe',
     'withdrawXafe': 'Retirer des XAFe',
     'createXafe': 'Créer des XAFe',
-    'exchangeXafe': 'Échanger XAFe → XAF',
+    'exchangeXafe': 'Échanger XAFe ↔ USDT',
     'recentActivity': 'Activité récente',
     'viewAll': 'Voir tout',
     
@@ -94,7 +94,7 @@ const translations = {
     'depositXafe': 'Deposit XAFe',
     'withdrawXafe': 'Withdraw XAFe',
     'createXafe': 'Create XAFe',
-    'exchangeXafe': 'Exchange XAFe → XAF',
+    'exchangeXafe': 'Exchange XAFe ↔ USDT',
     'recentActivity': 'Recent Activity',
     'viewAll': 'View All',
     

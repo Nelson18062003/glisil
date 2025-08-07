@@ -253,8 +253,8 @@ export default function Admin() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
             <TableCaption>Use Verify to approve user payments. Minting credit is handled in user flows; we can extend with a dedicated "Mint now" action.</TableCaption>
+            </Table>
           </CardContent></Card>
         </TabsContent>
 
