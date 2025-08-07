@@ -158,6 +158,45 @@ export type Database = {
         }
         Relationships: []
       }
+      orders: {
+        Row: {
+          amount: number
+          created_at: string
+          filled_amount: number
+          id: string
+          price: number | null
+          side: string
+          status: string
+          type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          filled_amount?: number
+          id?: string
+          price?: number | null
+          side: string
+          status?: string
+          type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          filled_amount?: number
+          id?: string
+          price?: number | null
+          side?: string
+          status?: string
+          type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string | null
@@ -194,6 +233,39 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
           wallet_address?: string | null
+        }
+        Relationships: []
+      }
+      trades: {
+        Row: {
+          amount: number
+          created_at: string
+          fee: number
+          id: string
+          order_id: string
+          price: number
+          side: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          fee?: number
+          id?: string
+          order_id: string
+          price: number
+          side: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          fee?: number
+          id?: string
+          order_id?: string
+          price?: number
+          side?: string
+          user_id?: string
         }
         Relationships: []
       }

@@ -34,6 +34,7 @@ import { PriceChart } from "@/components/PriceChart";
 import { DepositModal } from "@/components/DepositModal";
 import { WithdrawalModal } from "@/components/WithdrawalModal";
 import { MintXafeModal } from "@/components/MintXafeModal";
+import { Link } from "react-router-dom";
 
 export const XafeApp = () => {
   const { t } = useLanguage();
@@ -414,6 +415,15 @@ export const XafeApp = () => {
             </div>
             <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">{t('exchangeXafe')}</span>
           </Button>
+
+          <Button asChild variant="outline" size="lg" className="h-16 sm:h-20 flex-col action-button group p-3 sm:p-4">
+            <Link to="/trade">
+              <div className="flex items-center justify-center w-8 h-8 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl mb-1 sm:mb-2 group-hover:scale-110 transition-transform">
+                <ArrowRight className="h-4 w-4 sm:h-6 sm:w-6" />
+              </div>
+              <span className="font-heading font-semibold text-xs sm:text-sm text-center leading-tight">Trade</span>
+            </Link>
+          </Button>
         </div>
 
         {/* Recent Transactions */}
@@ -421,9 +431,11 @@ export const XafeApp = () => {
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-heading font-bold text-foreground">Transactions récentes</h3>
-              <Button variant="ghost" size="sm" className="text-xafe-green hover:text-xafe-green">
-                Voir tout
-                <ArrowRight className="h-4 w-4 ml-1" />
+              <Button variant="ghost" size="sm" className="text-xafe-green hover:text-xafe-green" asChild>
+                <Link to="/trade">
+                  Voir tout
+                  <ArrowRight className="h-4 w-4 ml-1" />
+                </Link>
               </Button>
             </div>
             <div className="space-y-4">
