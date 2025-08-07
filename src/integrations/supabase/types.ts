@@ -424,6 +424,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_exists: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      bootstrap_admin: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       generate_deposit_addresses: {
         Args: Record<PropertyKey, never>
         Returns: Json
@@ -431,6 +439,13 @@ export type Database = {
       generate_mint_reference: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      grant_role: {
+        Args: {
+          target_user: string
+          target_role: Database["public"]["Enums"]["app_role"]
+        }
+        Returns: boolean
       }
       has_role: {
         Args: {

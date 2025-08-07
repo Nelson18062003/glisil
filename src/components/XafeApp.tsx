@@ -35,6 +35,7 @@ import { DepositModal } from "@/components/DepositModal";
 import { WithdrawalModal } from "@/components/WithdrawalModal";
 import { MintXafeModal } from "@/components/MintXafeModal";
 import { Link } from "react-router-dom";
+import Trade from "@/pages/Trade";
 
 export const XafeApp = () => {
   const { t } = useLanguage();
@@ -647,117 +648,7 @@ export const XafeApp = () => {
 
   const MarketTab = () => (
     <div className="space-y-6 animate-fade-in">
-      {/* Market Overview */}
-      <PriceChart />
-      
-      <Card className="balance-card animate-scale-in" style={{ animationDelay: '0.4s' }}>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gradient-primary rounded-xl flex items-center justify-center animate-float">
-                <TrendingUp className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <h3 className="text-2xl font-heading font-bold">XAFe/USDT</h3>
-                <p className="text-sm text-muted-foreground">{t('language') === 'fr' ? 'Marché Spot' : 'Spot Market'}</p>
-              </div>
-            </div>
-            <Badge variant="secondary" className="bg-xafe-green/20 text-xafe-green animate-pulse-glow text-lg px-3 py-1">
-              +{rates.priceChange}%
-            </Badge>
-          </div>
-          
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="text-center p-4 bg-secondary/10 rounded-xl hover-lift">
-              <p className="text-sm text-muted-foreground mb-1">Prix actuel</p>
-              <p className="text-xl font-heading font-bold text-xafe-green">{rates.xafToUsdt}</p>
-            </div>
-            <div className="text-center p-4 bg-secondary/10 rounded-xl hover-lift">
-              <p className="text-sm text-muted-foreground mb-1">24h High</p>
-              <p className="text-xl font-heading font-bold">0.00172</p>
-            </div>
-            <div className="text-center p-4 bg-secondary/10 rounded-xl hover-lift">
-              <p className="text-sm text-muted-foreground mb-1">24h Low</p>
-              <p className="text-xl font-heading font-bold">0.00164</p>
-            </div>
-            <div className="text-center p-4 bg-secondary/10 rounded-xl hover-lift">
-              <p className="text-sm text-muted-foreground mb-1">Volume 24h</p>
-              <p className="text-xl font-heading font-bold">2.4M XAF</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <Button variant="xafe" size="lg" className="action-button font-heading font-bold">
-              <Plus className="h-5 w-5 mr-2" />
-              Acheter XAFe
-            </Button>
-            <Button variant="outline" size="lg" className="action-button font-heading font-bold border-destructive text-destructive hover:bg-destructive hover:text-white">
-              <Minus className="h-5 w-5 mr-2" />
-              Vendre XAFe
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Order Book */}
-      <Card className="balance-card animate-slide-up" style={{ animationDelay: '0.2s' }}>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h4 className="text-xl font-heading font-bold">Carnet d'ordres</h4>
-            <Badge variant="secondary" className="text-xs">DEMO</Badge>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Sell Orders */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-3 h-3 bg-destructive rounded-full"></div>
-                <h5 className="font-heading font-semibold text-destructive">Ordres de vente</h5>
-              </div>
-              <div className="space-y-2">
-                {[
-                  { price: "0.00170", amount: "5,000", total: "8.50" },
-                  { price: "0.00169", amount: "12,000", total: "20.28" },
-                  { price: "0.00168", amount: "8,500", total: "14.28" }
-                ].map((order, index) => (
-                  <div key={index} className="flex justify-between items-center p-3 rounded-lg bg-destructive/5 hover:bg-destructive/10 transition-colors cursor-pointer">
-                    <span className="text-destructive font-semibold">{order.price}</span>
-                    <span className="text-sm">{order.amount}</span>
-                    <span className="text-xs text-muted-foreground">{order.total}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Buy Orders */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-3 h-3 bg-xafe-green rounded-full"></div>
-                <h5 className="font-heading font-semibold text-xafe-green">Ordres d'achat</h5>
-              </div>
-              <div className="space-y-2">
-                {[
-                  { price: "0.00167", amount: "3,200", total: "5.34" },
-                  { price: "0.00166", amount: "15,000", total: "24.90" },
-                  { price: "0.00165", amount: "7,800", total: "12.87" }
-                ].map((order, index) => (
-                  <div key={index} className="flex justify-between items-center p-3 rounded-lg bg-xafe-green/5 hover:bg-xafe-green/10 transition-colors cursor-pointer">
-                    <span className="text-xafe-green font-semibold">{order.price}</span>
-                    <span className="text-sm">{order.amount}</span>
-                    <span className="text-xs text-muted-foreground">{order.total}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          
-          <div className="mt-6 p-4 bg-gradient-primary/10 rounded-xl border border-xafe-green/20">
-            <p className="text-center text-sm text-muted-foreground">
-              💡 Le carnet d'ordres sera connecté à l'infrastructure Hyperliquid dans la version finale
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <Trade />
     </div>
   );
 

@@ -62,6 +62,25 @@ export default function Admin() {
     }
   };
 
+  const bootstrapAdmin = async () => {
+    try {
+      const { data, error } = await supabase.rpc('bootstrap_admin');
+      if (error) throw error;
+      if (data) {
+        toast({ title: 'You are now admin' });
+        // re-check
+        const { data: sessionData } = await supabase.auth.getSession();
+        const uid = sessionData.session?.user?.id;
+        if (uid) await checkAdmin(uid);
+      } else {
+        toast({ title: 'Admin already initialized', description: 'Contact an admin to grant access.' });
+      }
+    } catch (e) {
+      console.error(e);
+      toast({ title: 'Bootstrap failed', variant: 'destructive' });
+    }
+  };
+
   const fetchAll = async () => {
     const [p, w, m, c, o, t, r] = await Promise.all([
       supabase.from('profiles').select('*').order('created_at', { ascending: false }).limit(50),
@@ -132,7 +151,8 @@ export default function Admin() {
     return (
       <main className="container mx-auto max-w-3xl p-4">
         <h1 className="text-2xl font-bold flex items-center gap-2"><ShieldCheck className="h-5 w-5"/> Admin</h1>
-        <p className="text-muted-foreground">Access denied. Admins only.</p>
+        <p className="text-muted-foreground mb-3">Access denied. Admins only.</p>
+        <Button onClick={bootstrapAdmin} variant="outline">Become Admin (first-time setup)</Button>
       </main>
     );
   }
