@@ -852,19 +852,19 @@ export const XafeApp = () => {
           <TabsList className="grid w-full grid-cols-4 mb-6 animate-fade-in">
             <TabsTrigger value="wallet" className="flex items-center gap-2 font-heading">
               <Wallet className="h-4 w-4" />
-              <span className="hidden sm:inline">Portefeuille</span>
+              <span className="hidden sm:inline">{tr('Wallet', 'Portefeuille')}</span>
             </TabsTrigger>
             <TabsTrigger value="convert" className="flex items-center gap-2 font-heading">
               <ArrowUpDown className="h-4 w-4" />
-              <span className="hidden sm:inline">Convertir</span>
+              <span className="hidden sm:inline">{tr('Convert', 'Convertir')}</span>
             </TabsTrigger>
             <TabsTrigger value="market" className="flex items-center gap-2 font-heading">
               <TrendingUp className="h-4 w-4" />
-              <span className="hidden sm:inline">Marché</span>
+              <span className="hidden sm:inline">{tr('Market', 'Marché')}</span>
             </TabsTrigger>
             <TabsTrigger value="history" className="flex items-center gap-2 font-heading">
               <History className="h-4 w-4" />
-              <span className="hidden sm:inline">Historique</span>
+              <span className="hidden sm:inline">{tr('History', 'Historique')}</span>
             </TabsTrigger>
           </TabsList>
 
