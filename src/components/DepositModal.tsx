@@ -295,11 +295,44 @@ export function DepositModal({ isOpen, onClose, onDeposit }: DepositModalProps) 
             <DialogHeader>
               <div className="flex items-center justify-between">
                 <DialogTitle>Deposit QR Code</DialogTitle>
-...
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Scan this QR code to deposit USDT on the {selectedNetwork} network
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowQRCode(false)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground mb-4">
+                  Scan this QR code to deposit USDT on the {selectedNetwork} network
+                </p>
+                
+                {qrCodeDataUrl && (
+                  <div className="flex justify-center mb-4">
+                    <img 
+                      src={qrCodeDataUrl} 
+                      alt="QR Code" 
+                      className="border rounded-lg"
+                    />
+                  </div>
+                )}
+                
+                <div className="bg-gray-50 dark:bg-gray-900 border rounded-lg p-3">
+                  <p className="text-xs font-mono break-all text-center">
+                    {depositAddress}
                   </p>
-...
+                </div>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => copyToClipboard(depositAddress)}
+                  className="mt-2"
+                >
                   <Copy className="h-3 w-3 mr-1" />
                   Copy address
                 </Button>
