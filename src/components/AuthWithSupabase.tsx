@@ -23,9 +23,10 @@ import xafeLogo from "@/assets/xafe-logo.png";
 
 interface AuthProps {
   onAuthSuccess: (user: User, session: Session) => void;
+  onDemoMode?: () => void;
 }
 
-export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
+export const AuthComponent = ({ onAuthSuccess, onDemoMode }: AuthProps) => {
   const [isLogin, setIsLogin] = useState(true);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -392,7 +393,7 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
             </form>
 
             {/* Toggle Login/Signup */}
-            <div className="text-center">
+            <div className="text-center space-y-2">
               {!isForgotPassword ? (
                 <>
                   <p className="text-sm text-muted-foreground">
@@ -405,6 +406,19 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
                   >
                     {isLogin ? "Créer un compte" : "Se connecter"}
                   </Button>
+                  
+                  {onDemoMode && (
+                    <>
+                      <p className="text-xs text-muted-foreground">ou</p>
+                      <Button
+                        variant="outline"
+                        onClick={onDemoMode}
+                        className="font-heading font-semibold border-xafe-blue text-xafe-blue hover:bg-xafe-blue/10"
+                      >
+                        🎮 Essayer en mode démo
+                      </Button>
+                    </>
+                  )}
                 </>
               ) : (
                 <Button

@@ -41,6 +41,7 @@ export const XafeApp = () => {
   const { t, language } = useLanguage();
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [activeTab, setActiveTab] = useState("wallet");
   const [animateCards, setAnimateCards] = useState(false);
@@ -61,8 +62,85 @@ export const XafeApp = () => {
   useEffect(() => {
     if (user) {
       loadUserData();
+    } else if (isDemoMode) {
+      loadDemoData();
     }
-  }, [user]);
+  }, [user, isDemoMode]);
+
+  const loadDemoData = () => {
+    // Demo wallet data
+    setWallet({
+      id: 'demo-wallet',
+      user_id: 'demo-user',
+      xafe_balance: 125000,
+      usdt_balance: 150.50,
+      total_deposited: 200000,
+      total_withdrawn: 25000,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
+
+    // Demo transactions
+    setTransactions([
+      {
+        id: 'demo-1',
+        user_id: 'demo-user',
+        type: 'deposit',
+        from_currency: 'XAF',
+        from_amount: 50000,
+        status: 'completed',
+        payment_method: 'Mobile Money',
+        fee_amount: 500,
+        created_at: new Date(Date.now() - 86400000).toISOString(),
+        updated_at: new Date(Date.now() - 86400000).toISOString()
+      },
+      {
+        id: 'demo-2',
+        user_id: 'demo-user',
+        type: 'conversion',
+        from_currency: 'XAF',
+        to_currency: 'USDT',
+        from_amount: 45000,
+        to_amount: 75.25,
+        exchange_rate: 0.00167,
+        status: 'completed',
+        payment_method: 'Exchange',
+        fee_amount: 45,
+        created_at: new Date(Date.now() - 172800000).toISOString(),
+        updated_at: new Date(Date.now() - 172800000).toISOString()
+      }
+    ]);
+
+    // Demo exchange rates
+    setExchangeRates([
+      {
+        id: 'demo-rate-1',
+        from_currency: 'XAF',
+        to_currency: 'USDT',
+        rate: 0.00168,
+        volume_24h: 125000,
+        change_24h: 2.4,
+        created_at: new Date().toISOString()
+      },
+      {
+        id: 'demo-rate-2',
+        from_currency: 'USDT',
+        to_currency: 'XAF',
+        rate: 595.24,
+        volume_24h: 250,
+        change_24h: -2.4,
+        created_at: new Date().toISOString()
+      }
+    ]);
+  };
+
+  const handleDemoMode = () => {
+    setIsDemoMode(true);
+    toast({
+      title: tr("Demo Mode", "Mode Démo"),
+      description: tr("You are using the app in demo mode", "Vous utilisez l'application en mode démo")
+    });
+  };
 
   const loadUserData = async () => {
     if (!user) return;
@@ -130,9 +208,13 @@ export const XafeApp = () => {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setSession(null);
+    if (isDemoMode) {
+      setIsDemoMode(false);
+    } else {
+      await supabase.auth.signOut();
+      setUser(null);
+      setSession(null);
+    }
     setWallet(null);
     setTransactions([]);
     setExchangeRates([]);
@@ -809,8 +891,8 @@ export const XafeApp = () => {
   );
 
   // Show authentication screen if not authenticated
-  if (!user) {
-    return <AuthComponent onAuthSuccess={handleAuthSuccess} />;
+  if (!user && !isDemoMode) {
+    return <AuthComponent onAuthSuccess={handleAuthSuccess} onDemoMode={handleDemoMode} />;
   }
 
   return (
