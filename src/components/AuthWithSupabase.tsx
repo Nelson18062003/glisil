@@ -27,6 +27,7 @@ interface AuthProps {
 
 export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
   const [isLogin, setIsLogin] = useState(true);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -64,7 +65,28 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
     setLoading(true);
 
     try {
-      if (isLogin) {
+      if (isForgotPassword) {
+        // Password reset flow
+        const { error } = await supabase.auth.resetPasswordForEmail(formData.email, {
+          redirectTo: `${window.location.origin}/`,
+        });
+
+        if (error) {
+          toast({
+            title: "Erreur",
+            description: error.message,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        toast({
+          title: "Email envoyé",
+          description: "Vérifiez votre boîte mail pour réinitialiser votre mot de passe",
+        });
+        setIsForgotPassword(false);
+        setIsLogin(true);
+      } else if (isLogin) {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: formData.email,
           password: formData.password,
@@ -72,7 +94,7 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
 
         if (error) {
           toast({
-            title: "Sign-in error",
+            title: "Erreur de connexion",
             description: error.message,
             variant: "destructive",
           });
@@ -81,8 +103,8 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
 
         if (data.user && data.session) {
           toast({
-            title: "Signed in",
-            description: "Welcome to XAFe App!",
+            title: "Connecté",
+            description: "Bienvenue sur XAFe App!",
           });
           onAuthSuccess(data.user, data.session);
         }
@@ -90,8 +112,8 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
         // Sign up
         if (formData.password !== formData.confirmPassword) {
           toast({
-            title: "Error",
-            description: "Passwords do not match",
+            title: "Erreur",
+            description: "Les mots de passe ne correspondent pas",
             variant: "destructive",
           });
           return;
@@ -112,7 +134,7 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
 
         if (error) {
           toast({
-            title: "Sign-up error",
+            title: "Erreur d'inscription",
             description: error.message,
             variant: "destructive",
           });
@@ -121,8 +143,8 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
 
         if (data.user) {
           toast({
-            title: "Account created",
-            description: "Your account has been created. Your wallet is ready!",
+            title: "Compte créé",
+            description: "Votre compte a été créé. Votre portefeuille est prêt!",
           });
           
           // If user is confirmed, sign them in immediately
@@ -133,8 +155,8 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
       }
     } catch (error) {
       toast({
-        title: "Error",
-        description: "An unexpected error occurred",
+        title: "Erreur",
+        description: "Une erreur inattendue s'est produite",
         variant: "destructive",
       });
     } finally {
@@ -207,12 +229,14 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
         <Card className="balance-card border-xafe-green/20 animate-scale-in">
           <CardHeader className="text-center pb-8">
             <CardTitle className="text-2xl font-heading font-bold">
-              {isLogin ? "Sign in" : "Create account"}
+              {isForgotPassword ? "Réinitialiser le mot de passe" : isLogin ? "Connexion" : "Créer un compte"}
             </CardTitle>
             <p className="text-muted-foreground">
-              {isLogin 
-                ? "Access your XAFe wallet" 
-                : "Join the African crypto revolution"
+              {isForgotPassword 
+                ? "Entrez votre email pour recevoir un lien de réinitialisation"
+                : isLogin 
+                  ? "Accédez à votre portefeuille XAFe" 
+                  : "Rejoignez la révolution crypto africaine"
               }
             </p>
           </CardHeader>
@@ -221,7 +245,7 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
             <form onSubmit={handleSubmit} className="space-y-4">
               
               {/* First Name & Last Name (for signup) */}
-              {!isLogin && (
+              {!isLogin && !isForgotPassword && (
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="firstName" className="font-heading font-semibold">First name</Label>
@@ -268,7 +292,7 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
               </div>
 
               {/* Phone Input (for signup) */}
-              {!isLogin && (
+              {!isLogin && !isForgotPassword && (
                 <div className="space-y-2">
                   <Label htmlFor="phone" className="font-heading font-semibold">
                     Phone <Badge variant="secondary" className="ml-2 text-xs">MoMo + Bank</Badge>
@@ -288,8 +312,9 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
               )}
 
               {/* Password Input */}
-              <div className="space-y-2">
-                <Label htmlFor="password" className="font-heading font-semibold">Password</Label>
+              {!isForgotPassword && (
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="font-heading font-semibold">Mot de passe</Label>
                 <div className="relative">
                   <Input
                     id="password"
@@ -310,10 +335,26 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
                 </div>
+                {isLogin && (
+                  <div className="text-right">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        setIsForgotPassword(true);
+                        setIsLogin(false);
+                      }}
+                      className="text-xs text-muted-foreground hover:text-xafe-green p-0 h-auto font-heading"
+                    >
+                      Mot de passe oublié ?
+                    </Button>
+                  </div>
+                )}
               </div>
+              )}
 
               {/* Confirm Password (for signup) */}
-              {!isLogin && (
+              {!isLogin && !isForgotPassword && (
                 <div className="space-y-2">
                   <Label htmlFor="confirmPassword" className="font-heading font-semibold">Confirm password</Label>
                   <Input
@@ -339,11 +380,11 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
                 {loading ? (
                   <>
                     <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                    {isLogin ? "Signing in..." : "Creating..."}
+                    {isForgotPassword ? "Envoi..." : isLogin ? "Connexion..." : "Création..."}
                   </>
                 ) : (
                   <>
-                    {isLogin ? "Se connecter" : "Créer mon compte"}
+                    {isForgotPassword ? "Envoyer le lien" : isLogin ? "Se connecter" : "Créer mon compte"}
                     <ArrowRight className="h-5 w-5 ml-2" />
                   </>
                 )}
@@ -352,16 +393,31 @@ export const AuthComponent = ({ onAuthSuccess }: AuthProps) => {
 
             {/* Toggle Login/Signup */}
             <div className="text-center">
-              <p className="text-sm text-muted-foreground">
-                {isLogin ? "Pas encore de compte ?" : "Déjà un compte ?"}
-              </p>
-              <Button
-                variant="ghost"
-                onClick={() => setIsLogin(!isLogin)}
-                className="font-heading font-semibold text-xafe-green hover:text-xafe-green"
-              >
-                {isLogin ? "Créer un compte" : "Se connecter"}
-              </Button>
+              {!isForgotPassword ? (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    {isLogin ? "Pas encore de compte ?" : "Déjà un compte ?"}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setIsLogin(!isLogin)}
+                    className="font-heading font-semibold text-xafe-green hover:text-xafe-green"
+                  >
+                    {isLogin ? "Créer un compte" : "Se connecter"}
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setIsForgotPassword(false);
+                    setIsLogin(true);
+                  }}
+                  className="font-heading font-semibold text-xafe-green hover:text-xafe-green"
+                >
+                  Retour à la connexion
+                </Button>
+              )}
             </div>
 
             {/* Security Notice */}
