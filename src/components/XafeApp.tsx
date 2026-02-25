@@ -35,6 +35,7 @@ import { DepositModal } from "@/components/DepositModal";
 import { WithdrawalModal } from "@/components/WithdrawalModal";
 import { MintXafeModal } from "@/components/MintXafeModal";
 import { Link } from "react-router-dom";
+import { FileDown } from "lucide-react";
 import Trade from "@/pages/Trade";
 
 export const XafeApp = () => {
@@ -738,7 +739,13 @@ export const XafeApp = () => {
         <CardContent className="p-6">
             <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
               <h3 className="text-xl font-heading font-bold">Transaction History</h3>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
+                <Link to="/invoice">
+                  <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-black font-semibold gap-1 mr-2">
+                    <FileDown className="w-4 h-4" />
+                    {tr('Invoice PDF', 'Facture PDF')}
+                  </Button>
+                </Link>
                 <Badge variant="secondary" className="cursor-pointer hover:bg-xafe-green/20 hover:text-xafe-green">
                   All
                 </Badge>
