@@ -1,0 +1,65 @@
+/*
+ * Les Paramètres : les frais, le marché, les délais des dépôts, les reprises
+ * des sorties, les paliers, la crypto, le code secret. Chaque bloc se modifie
+ * en JSON, tel qu'il est en base ; le moteur le relit à l'appel suivant.
+ */
+import { Button, Paper, Stack, TextField, Typography } from "@mui/material";
+import { useEffect, useState } from "react";
+import { useGuichet, useParametres, useRafraichir } from "../guichet";
+import { xaf } from "../noyau/format";
+import { useSession } from "../session/session";
+import { Coquille, Erreur, Section, Tableau } from "../ui";
+
+const BLOCS: { cle: string; titre: string; aide: string }[] = [
+  { cle: "frais", titre: "Frais", aide: "placeur et preneur en fraction (0.001 = 0,10 %) ; sortie en fraction du montant" },
+  { cle: "marche", titre: "Marché", aide: "la paire, le pas de prix, la quantité minimale, ouvert ou fermé" },
+  { cle: "depot", titre: "Dépôts", aide: "validité d'un dossier (minutes) et grâce après expiration" },
+  { cle: "sortie", titre: "Sorties", aide: "nombre de reprises d'un transfert avant de le rendre au client" },
+  { cle: "paliers", titre: "Paliers", aide: "plafonds par jour en entrée et en sortie ; null = sans plafond" },
+  { cle: "crypto", titre: "Crypto", aide: "frais fixes par actif et confirmations par réseau" },
+  { cle: "code_secret", titre: "Code secret", aide: "essais avant verrou, minutes de verrou, longueur" },
+];
+
+export function Parametres() {
+  const guichet = useGuichet();
+  const rafraichir = useRafraichir();
+  const { peut } = useSession();
+  const { data } = useParametres();
+  const [brouillons, setBrouillons] = useState<Record<string, string>>({});
+  const [erreur, setErreur] = useState<unknown>(null);
+  const [fait, setFait] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!data) return;
+    setBrouillons(Object.fromEntries(BLOCS.map((b) => [b.cle, JSON.stringify(data[b.cle] ?? null, null, 2)])));
+  }, [data]);
+
+  const enregistrer = async (cle: string) => {
+    setErreur(null);
+    try {
+      const valeur = JSON.parse(brouillons[cle]);
+      await guichet.modifierParametre(cle, valeur);
+      setFait(cle); setTimeout(() => setFait(null), 1500);
+      await rafraichir();
+    } catch (e) { setErreur(e instanceof SyntaxError ? new Error(`${cle} : JSON illisible — ${e.message}`) : e); }
+  };
+
+  return (
+    <Coquille titre="Paramètres">
+      <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
+      <Section titre="Opérateurs">
+        <Tableau colonnes={["Opérateur", { label: "Plafond par transfert", align: "right" }, { label: "Plafond par jour", align: "right" }]} lignes={(data?.operateurs ?? []).map((o) => [o.nom, `${xaf(o.plafond_par_transfert)} XAF`, o.plafond_jour != null ? `${xaf(o.plafond_jour)} XAF` : "—"])} />
+      </Section>
+      <Stack direction="row" gap={2} flexWrap="wrap">
+        {BLOCS.map((b) => (
+          <Paper key={b.cle} sx={{ p: 2.5, borderRadius: 5, flex: "1 1 360px", display: "flex", flexDirection: "column", gap: 1.5 }}>
+            <Typography variant="h6">{b.titre}</Typography>
+            <Typography variant="body2">{b.aide}</Typography>
+            <TextField value={brouillons[b.cle] ?? ""} onChange={(e) => setBrouillons({ ...brouillons, [b.cle]: e.target.value })} multiline minRows={4} fullWidth disabled={!peut("parametres")} inputProps={{ "aria-label": `paramètre ${b.cle}`, style: { fontFamily: "Roboto Mono, monospace", fontSize: 13 } }} />
+            {peut("parametres") && <Button variant="contained" onClick={() => void enregistrer(b.cle)} disabled={!data || brouillons[b.cle] === JSON.stringify(data[b.cle] ?? null, null, 2)}>{fait === b.cle ? "Enregistré" : "Enregistrer"}</Button>}
+          </Paper>
+        ))}
+      </Stack>
+    </Coquille>
+  );
+}

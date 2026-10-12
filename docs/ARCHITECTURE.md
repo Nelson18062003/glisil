@@ -79,9 +79,11 @@ l'application. C'est la leçon de Bonzini et de TOTEM, reprise telle quelle.
   RPC. Mobile d'abord, emballée pour Android dans une coque Expo (WebView,
   comme BONZINI HQ) ; les briques natives (notifications, empreinte,
   caméra) passent par le pont de la coque.
-- **`admin/`** : l'administration, même pile, écrans de `design/` (réserves,
-  entrées, sorties, terminaux, marché, clients). Après validation des écrans
-  clients.
+- **`admin/`** : l'administration, même pile : le tableau des réserves, les
+  entrées (dossiers, SMS retenus à rapprocher ou rembourser), les sorties
+  que TOTEM compose, les terminaux et leurs floats, les clients et leurs
+  paliers, le marché, les paramètres, le journal. Chaque action est gardée
+  en base par `admin_a_droit('<droit>')` (migration 0003).
 - **`supabase/functions/totem-sms`** et **`totem-commandes`** : la porte de
   TOTEM, voir `docs/TOTEM-INTEGRATION.md`.
 - **`contracts/`** : le jeton XAFe sur BNB Smart Chain (puis Tron), frappé à
@@ -95,6 +97,10 @@ cd app && npm test                   # le noyau de l'application : formats, arge
 cd app && npm run build              # l'application cliente, type-check compris
 cd app && node scripts/parcourir.mjs # le parcours entier, joué dans un vrai Chromium
 node --experimental-strip-types supabase/functions/verifier-la-porte.ts  # la porte de TOTEM, attaquée
+cd admin && npm test                 # la parité des droits avec la migration 0003
+cd admin && npm run build            # l'administration
+cd admin && node scripts/parcourir.mjs # l'administration parcourue dans Chromium, super admin puis support
+cd contracts && npm test             # le jeton XAFe : référence unique, rôles, pause, gel
 cd design/maquettes && npm run build # les maquettes
 ```
 

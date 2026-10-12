@@ -1,0 +1,68 @@
+/*
+ * Le Tableau : la première question du matin — ce que la plateforme doit
+ * (les XAFe des clients), ce qui circule, ce qui attend quelqu'un.
+ */
+import { Chip, Paper, Stack, Typography } from "@mui/material";
+import { Link } from "react-router-dom";
+import { useTableau } from "../guichet";
+import { enTranches, heure, jourRelatif, numeroEnTranches, prix, xaf } from "../noyau/format";
+import { Coquille, Etat, Section, Tableau as Table, Tuile } from "../ui";
+
+export function Tableau() {
+  const { data: t } = useTableau();
+  if (!t) return <Coquille titre="Tableau"><Typography variant="body2">Chargement…</Typography></Coquille>;
+  const xafe = t.soldes.XAFe ?? { disponible: 0, bloque: 0 };
+  const usdt = t.soldes.USDT ?? { disponible: 0, bloque: 0 };
+  return (
+    <Coquille titre="Tableau">
+      <Stack direction="row" gap={2} flexWrap="wrap">
+        <Tuile label="XAFe en circulation (ce qu'on doit)" valeur={xaf(t.circulation)} unite="XAFe" tone="green" aide={`${xaf(xafe.disponible)} disponibles · ${xaf(xafe.bloque)} bloqués`} />
+        <Tuile label="USDT des clients" valeur={enTranches(usdt.disponible + usdt.bloque, 2)} unite="USDT" tone="blue" aide={`${enTranches(usdt.bloque, 2)} bloqués au carnet`} />
+        <Tuile label="Maison · frais encaissés" valeur={xaf(t.maison.XAFe ?? 0)} unite="XAFe" tone="amber" aide={`${enTranches(t.maison.USDT ?? 0, 2)} USDT`} />
+        <Tuile label="USDT/XAFe" valeur={t.cotation.dernier != null ? prix(t.cotation.dernier) : "—"} tone="neutral" aide={`${xaf(t.cotation.volume_usdt)} USDT sur 24 h`} />
+      </Stack>
+      <Stack direction="row" gap={2} flexWrap="wrap">
+        <Tuile label="Entré aujourd'hui" valeur={xaf(t.jour.entrees)} unite="XAF" />
+        <Tuile label="Sorti aujourd'hui" valeur={xaf(t.jour.sorties)} unite="XAF" />
+        <Tuile label="Volume du jour" valeur={xaf(Math.round(t.jour.volume_usdt))} unite="USDT" />
+        <Tuile label="Frais du jour" valeur={xaf(t.jour.frais_xafe)} unite="XAFe" />
+      </Stack>
+
+      <Section titre="Ce qui attend quelqu'un">
+        <Stack direction="row" gap={2} flexWrap="wrap">
+          <Paper component={Link} to="/entrees?onglet=retenues" sx={{ p: 2.5, borderRadius: 5, flex: 1, minWidth: 220, textDecoration: "none", color: "inherit", bgcolor: t.retenues.nombre > 0 ? "#FFE3B5" : "background.paper" }}>
+            <Typography variant="body2">SMS retenus, à rapprocher ou rembourser</Typography>
+            <Typography variant="h5">{t.retenues.nombre} · {xaf(t.retenues.montant)} XAF</Typography>
+          </Paper>
+          <Paper component={Link} to="/sorties" sx={{ p: 2.5, borderRadius: 5, flex: 1, minWidth: 220, textDecoration: "none", color: "inherit" }}>
+            <Typography variant="body2">Sorties en cours chez TOTEM</Typography>
+            <Typography variant="h5">{t.sorties_en_cours}</Typography>
+          </Paper>
+          <Paper component={Link} to="/entrees" sx={{ p: 2.5, borderRadius: 5, flex: 1, minWidth: 220, textDecoration: "none", color: "inherit" }}>
+            <Typography variant="body2">Transaction ID qui attendent leur SMS</Typography>
+            <Typography variant="h5">{t.declarations_attendues}</Typography>
+          </Paper>
+          <Paper component={Link} to="/clients?filtre=verifications" sx={{ p: 2.5, borderRadius: 5, flex: 1, minWidth: 220, textDecoration: "none", color: "inherit", bgcolor: t.verifications > 0 ? "#DBEAFF" : "background.paper" }}>
+            <Typography variant="body2">Vérifications de pièces à faire</Typography>
+            <Typography variant="h5">{t.verifications}</Typography>
+          </Paper>
+        </Stack>
+      </Section>
+
+      <Section titre="Les boîtiers et leurs floats">
+        <Table
+          colonnes={["Terminal", "Lieu", "Vu", "État", "Floats"]}
+          lignes={t.terminaux.map((x) => [
+            <Typography fontWeight={600} key="n">{x.nom} <Typography component="span" variant="caption">({x.id})</Typography></Typography>,
+            x.lieu ?? "—",
+            x.vu_le ? `${jourRelatif(x.vu_le)} ${heure(x.vu_le)}` : "jamais",
+            <Etat valeur={x.muet ? "muet" : "actif"} key="e" />,
+            <Stack direction="row" gap={0.5} flexWrap="wrap" key="f">
+              {t.floats.filter((f) => f.terminal === x.id).map((f) => <Chip key={f.id} size="small" label={`${f.operateur.toUpperCase()} ${numeroEnTranches(f.numero)}${f.dossiers_ouverts ? ` · ${f.dossiers_ouverts} ouverts` : ""}`} sx={{ height: 24, opacity: f.actif ? 1 : 0.45 }} />)}
+            </Stack>,
+          ])}
+        />
+      </Section>
+    </Coquille>
+  );
+}

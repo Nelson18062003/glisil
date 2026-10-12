@@ -1,16 +1,25 @@
-# XAFe (nom provisoire)
+# XAFe Exchange
 
-Le XAF sur la blockchain, et un vrai marché XAFe/USDT.
+Le franc CFA sur la blockchain, et un vrai marché spot USDT/XAFe. 1 XAFe = 1 XAF,
+couvert un pour un par les floats MoMo et les comptes en banque de la plateforme.
 
-- **XAFe** : un jeton qui vaut exactement 1 XAF, couvert par des XAF détenus sur
-  des comptes Mobile Money et bancaires. On entre des XAF par MTN MoMo ou
-  Orange Money ; TOTEM lit le SMS de l'opérateur et crédite les XAFe aussitôt.
-  On sort des XAF de la même façon, dans l'autre sens.
-- **Le marché** : un carnet d'ordres XAFe/USDT où tout ce qui est au carnet
-  est déjà déposé, des deux côtés. Prix public, exécutable, historisé.
-- **Deux surfaces** : une application Android pour les clients (traders,
-  fournisseurs de liquidité, importateurs), une application web pour
-  l'administration.
+- Un client **entre des XAF** en payant notre float (MTN MoMo ou Orange Money),
+  puis tape le **transaction ID** de son SMS ; TOTEM, le boîtier qui porte nos
+  cartes, lit le même ID sur le float et les XAFe sont crédités, tout de suite.
+- Il **sort des XAF** vers un numéro vérifié ; TOTEM compose le transfert.
+- Il **achète et vend des USDT** sur un carnet d'ordres, limite ou marché.
+- Il **sort ses XAFe sur la chaîne** (BEP20, puis TRC20) vers son propre wallet.
 
-Le dépôt a été vidé le 12 octobre 2026 pour repartir de zéro. Le code
-précédent (prototype d'août 2025) reste dans l'historique git.
+| Dossier | Ce que c'est | Vérifier |
+|---|---|---|
+| `supabase/migrations/` | LE MOTEUR : soldes, grand livre, dépôts, sorties, carnet, compte, administration — tout en SQL, verrouillé | `sh moteur/verifier-le-moteur.sh` |
+| `supabase/functions/` | la porte de TOTEM (SMS lus, transferts et SMS à composer), signée | `node --experimental-strip-types supabase/functions/verifier-la-porte.ts` |
+| `app/` | l'application des clients (Android, Material Design 3) | `cd app && npm test && npm run build && node scripts/parcourir.mjs` |
+| `admin/` | l'administration (web) | `cd admin && npm test && npm run build && node scripts/parcourir.mjs` |
+| `contracts/` | le jeton XAFe (ERC-20) | `cd contracts && npm test` |
+| `design/` | les maquettes et la carte de navigation | `cd design/maquettes && npm run build` |
+| `docs/` | l'architecture, le contrat TOTEM | — |
+
+Lire d'abord `docs/ARCHITECTURE.md`, puis `design/NAVIGATION.md` et
+`docs/TOTEM-INTEGRATION.md`. Chaque harnais a été écrit pour prendre en défaut,
+et chacun l'a fait au moins une fois (les commits le racontent).
