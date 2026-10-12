@@ -1,73 +1,16 @@
-# Welcome to your Lovable project
+# XAFe (nom provisoire)
 
-## Project info
+Le XAF sur la blockchain, et un vrai marché XAFe/USDT.
 
-**URL**: https://lovable.dev/projects/d6bd50d1-5ad3-40e6-9e90-7e638b763722
+- **XAFe** : un jeton qui vaut exactement 1 XAF, couvert par des XAF détenus sur
+  des comptes Mobile Money et bancaires. On entre des XAF par MTN MoMo ou
+  Orange Money ; TOTEM lit le SMS de l'opérateur et crédite les XAFe aussitôt.
+  On sort des XAF de la même façon, dans l'autre sens.
+- **Le marché** : un carnet d'ordres XAFe/USDT où tout ce qui est au carnet
+  est déjà déposé, des deux côtés. Prix public, exécutable, historisé.
+- **Deux surfaces** : une application Android pour les clients (traders,
+  fournisseurs de liquidité, importateurs), une application web pour
+  l'administration.
 
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/d6bd50d1-5ad3-40e6-9e90-7e638b763722) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/d6bd50d1-5ad3-40e6-9e90-7e638b763722) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+Le dépôt a été vidé le 12 octobre 2026 pour repartir de zéro. Le code
+précédent (prototype d'août 2025) reste dans l'historique git.
