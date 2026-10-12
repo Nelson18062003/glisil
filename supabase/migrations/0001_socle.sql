@@ -1,0 +1,941 @@
+-- ============================================================================
+-- XAFe Exchange · 0001 · le socle
+--
+-- Comptes, soldes, grand livre, émissions ; dépôts payés par MoMo et lus par
+-- TOTEM ; sorties découpées en transferts que TOTEM compose ; carnet d'ordres
+-- USDT/XAFe et appariement prix-temps. Tout mouvement d'argent passe par une
+-- fonction d'ici, qui verrouille la ligne de solde et écrit en relatif.
+-- Lire docs/ARCHITECTURE.md avant de toucher à ce fichier.
+-- ============================================================================
+
+create extension if not exists pgcrypto;
+
+-- Les rôles de Supabase. Sur un PostgreSQL nu (le harnais), on les crée.
+do $$
+begin
+  if not exists (select 1 from pg_roles where rolname = 'authenticated') then create role authenticated nologin; end if;
+  if not exists (select 1 from pg_roles where rolname = 'anon') then create role anon nologin; end if;
+  if not exists (select 1 from pg_roles where rolname = 'service_role') then create role service_role nologin bypassrls; end if;
+end $$;
+
+-- ───────────────────────────── paramètres ──────────────────────────────────
+create table parametres (
+  cle    text primary key,
+  valeur jsonb not null,
+  maj_le timestamptz not null default now()
+);
+insert into parametres (cle, valeur) values
+  ('frais',   '{"placeur": 0.0005, "preneur": 0.0010, "sortie": 0.005}'),
+  ('marche',  '{"paire": "USDT/XAFe", "pas_prix": 0.05, "quantite_min": 10, "ouvert": true}'),
+  ('depot',   '{"validite_minutes": 30, "grace_minutes": 120}'),
+  ('sortie',  '{"reprises_max": 3}'),
+  ('paliers', '{"0": {"entree_jour": 500000, "sortie_jour": 500000},
+                "1": {"entree_jour": 5000000, "sortie_jour": 5000000},
+                "2": null}');
+
+create function parametre(p_cle text) returns jsonb
+language sql stable as $$ select valeur from parametres where cle = p_cle $$;
+
+-- ───────────────────────── opérateurs, terminaux, floats ───────────────────
+create table operateurs (
+  id                    text primary key,          -- 'mtn', 'om'
+  nom                   text not null,
+  plafond_par_transfert numeric(20,2) not null,
+  plafond_jour          numeric(20,2)
+);
+insert into operateurs values
+  ('mtn', 'MTN MoMo',     1000000, 100000000),
+  ('om',  'Orange Money',  500000,   1500000);
+
+create table terminaux (
+  id       text primary key,                        -- 'akwa-1'
+  nom      text not null,
+  lieu     text,
+  cle_hash text,                                    -- empreinte de la clé HMAC du boîtier
+  vu_le    timestamptz
+);
+
+create table floats (
+  id        serial primary key,
+  operateur text not null references operateurs(id),
+  numero    text not null,                          -- le numéro que les clients paient
+  terminal  text references terminaux(id),
+  actif     boolean not null default true,
+  unique (operateur, numero)
+);
+
+create function normaliser_numero(p text) returns text
+language sql immutable as $$
+  select right(regexp_replace(coalesce(p, ''), '\D', '', 'g'), 9)
+$$;
+
+-- ───────────────────────────── comptes ─────────────────────────────────────
+create table comptes (
+  id           uuid primary key default gen_random_uuid(),
+  telephone    text unique,
+  nom          text,
+  palier       smallint not null default 0 check (palier between 0 and 2),
+  maison       boolean not null default false,
+  cree_le      timestamptz not null default now(),
+  desactive_le timestamptz
+);
+insert into comptes (id, telephone, nom, palier, maison)
+values ('00000000-0000-0000-0000-000000000001', 'maison', 'XAFe Exchange', 2, true);
+
+create function compte_maison() returns uuid
+language sql immutable as $$ select '00000000-0000-0000-0000-000000000001'::uuid $$;
+
+create table numeros (
+  id         uuid primary key default gen_random_uuid(),
+  compte_id  uuid not null references comptes(id),
+  operateur  text not null references operateurs(id),
+  numero     text not null,
+  verifie_le timestamptz not null default now(),
+  actif_des  timestamptz not null default now() + interval '24 hours',
+  retire_le  timestamptz
+);
+-- Un numéro n'appartient qu'à un compte à la fois : c'est lui qui décide à qui
+-- va un paiement.
+create unique index numeros_un_proprietaire on numeros (operateur, numero) where retire_le is null;
+
+-- ───────────────────── soldes, grand livre, émissions ──────────────────────
+create table soldes (
+  compte_id  uuid not null references comptes(id),
+  actif      text not null check (actif in ('XAFe', 'USDT')),
+  disponible numeric(20,2) not null default 0 check (disponible >= 0),
+  bloque     numeric(20,2) not null default 0 check (bloque >= 0),
+  maj_le     timestamptz not null default now(),
+  primary key (compte_id, actif)
+);
+
+create table ecritures (
+  id               bigint generated always as identity primary key,
+  compte_id        uuid not null references comptes(id),
+  actif            text not null,
+  disponible_delta numeric(20,2) not null default 0,
+  bloque_delta     numeric(20,2) not null default 0,
+  nature           text not null,
+  source_table     text,
+  source_id        text,
+  cree_le          timestamptz not null default now()
+);
+
+-- Chaque XAFe créé (un XAF reçu) ou détruit (un XAF sorti). La circulation,
+-- c'est la différence des deux.
+create table emissions (
+  id           bigint generated always as identity primary key,
+  sens         text not null check (sens in ('emission', 'destruction')),
+  montant      numeric(20,2) not null check (montant > 0),
+  source_table text,
+  source_id    text,
+  cree_le      timestamptz not null default now()
+);
+
+-- LE seul chemin vers un solde. Verrouille la ligne, écrit en relatif, laisse
+-- une écriture. La contrainte « disponible >= 0 » fait le dernier contrôle.
+create function _mouvement(p_compte uuid, p_actif text, p_dispo numeric, p_bloque numeric,
+                           p_nature text, p_table text, p_id text)
+returns void language plpgsql as $$
+begin
+  insert into soldes (compte_id, actif) values (p_compte, p_actif) on conflict do nothing;
+  perform 1 from soldes where compte_id = p_compte and actif = p_actif for update;
+  begin
+    update soldes
+       set disponible = disponible + p_dispo, bloque = bloque + p_bloque, maj_le = now()
+     where compte_id = p_compte and actif = p_actif;
+  exception when check_violation then
+    raise exception 'solde insuffisant' using errcode = 'P0001',
+      detail = format('%s : %s disponible, %s bloqué', p_actif, p_dispo, p_bloque);
+  end;
+  insert into ecritures (compte_id, actif, disponible_delta, bloque_delta, nature, source_table, source_id)
+  values (p_compte, p_actif, p_dispo, p_bloque, p_nature, p_table, p_id);
+end $$;
+
+create function circulation() returns numeric
+language sql stable as $$
+  select coalesce(sum(case sens when 'emission' then montant else -montant end), 0) from emissions
+$$;
+
+-- ───────────────────────────── dépôts ──────────────────────────────────────
+create sequence depots_numero;
+
+create table depots (
+  id            uuid primary key default gen_random_uuid(),
+  reference     text not null unique,                  -- XAFe-DP-000418
+  compte_id     uuid not null references comptes(id),
+  operateur     text not null references operateurs(id),
+  float_id      int  not null references floats(id),
+  numero_payeur text not null,
+  montant       numeric(20,2) not null check (montant > 0),
+  montant_recu  numeric(20,2) not null default 0,
+  etat          text not null default 'en_attente'
+                check (etat in ('en_attente', 'partiel', 'credite', 'expire', 'annule')),
+  cle           text,
+  cree_le       timestamptz not null default now(),
+  expire_le     timestamptz not null,
+  credite_le    timestamptz
+);
+create unique index depots_cle on depots (compte_id, cle) where cle is not null;
+create index depots_ouverts on depots (float_id, numero_payeur) where etat in ('en_attente', 'partiel', 'expire');
+
+-- Les SMS qui ont payé un dépôt. (terminal, source_id) : un SMS ne crédite
+-- qu'une fois, même relu après une coupure.
+create table depot_paiements (
+  id                  bigint generated always as identity primary key,
+  depot_id            uuid not null references depots(id),
+  terminal            text not null,
+  source_id           bigint not null,
+  montant             numeric(20,2) not null,
+  reference_operateur text,
+  texte               text,
+  emis_le             timestamptz,
+  cree_le             timestamptz not null default now(),
+  unique (terminal, source_id)
+);
+
+-- Un SMS d'argent sans référence : retenu, jamais crédité au hasard.
+create table entrees_retenues (
+  id                  bigint generated always as identity primary key,
+  terminal            text not null,
+  source_id           bigint not null,
+  float_id            int references floats(id),
+  operateur           text,
+  float_numero        text,
+  numero_payeur       text,
+  montant             numeric(20,2),
+  reference_operateur text,
+  texte               text,
+  emis_le             timestamptz,
+  etat                text not null default 'retenue' check (etat in ('retenue', 'rapprochee', 'remboursee')),
+  depot_id            uuid references depots(id),
+  cree_le             timestamptz not null default now(),
+  unique (terminal, source_id)
+);
+
+create function _depot_json(d depots) returns jsonb
+language sql stable as $$
+  select jsonb_build_object(
+    'reference', d.reference, 'etat', d.etat, 'operateur', d.operateur,
+    'montant', d.montant, 'montant_recu', d.montant_recu,
+    'numero_payeur', d.numero_payeur,
+    'float_numero', (select numero from floats where id = d.float_id),
+    'transferts', ceil(d.montant / (select plafond_par_transfert from operateurs where id = d.operateur)),
+    'cree_le', d.cree_le, 'expire_le', d.expire_le, 'credite_le', d.credite_le)
+$$;
+
+create function creer_depot(p_operateur text, p_montant numeric, p_numero_payeur text, p_cle text default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_compte uuid := auth.uid();
+  v_d      depots;
+  v_float  floats;
+  v_palier jsonb;
+  v_jour   numeric;
+  v_num    text;
+begin
+  if v_compte is null then raise exception 'non connecté'; end if;
+  if p_cle is not null then
+    select * into v_d from depots where compte_id = v_compte and cle = p_cle;
+    if found then return _depot_json(v_d) || '{"deja": true}'; end if;
+  end if;
+  if p_montant is null or p_montant <= 0 or p_montant <> trunc(p_montant) then
+    raise exception 'montant invalide';
+  end if;
+  perform 1 from operateurs where id = p_operateur;
+  if not found then raise exception 'opérateur inconnu'; end if;
+
+  v_num := normaliser_numero(p_numero_payeur);
+  perform 1 from numeros where compte_id = v_compte and operateur = p_operateur and numero = v_num and retire_le is null;
+  if not found then raise exception 'numéro inconnu sur ce compte'; end if;
+
+  v_palier := parametre('paliers') -> (select palier::text from comptes where id = v_compte);
+  if v_palier is not null and v_palier <> 'null'::jsonb then
+    select coalesce(sum(montant), 0) into v_jour from depots
+     where compte_id = v_compte and cree_le >= date_trunc('day', now()) and etat not in ('annule', 'expire');
+    if v_jour + p_montant > (v_palier ->> 'entree_jour')::numeric then
+      raise exception 'plafond du palier atteint' using detail = format('%s XAF par jour', v_palier ->> 'entree_jour');
+    end if;
+  end if;
+
+  -- Le float : sur cet opérateur, actif, porté par un terminal vu récemment,
+  -- le moins chargé de dépôts ouverts.
+  select f.* into v_float
+    from floats f left join terminaux t on t.id = f.terminal
+   where f.operateur = p_operateur and f.actif
+   order by (t.vu_le is not null and t.vu_le > now() - interval '10 minutes') desc,
+            (select count(*) from depots d where d.float_id = f.id and d.etat in ('en_attente', 'partiel')) asc,
+            f.id
+   limit 1;
+  if not found then raise exception 'aucun float disponible pour cet opérateur'; end if;
+
+  insert into depots (reference, compte_id, operateur, float_id, numero_payeur, montant, cle, expire_le)
+  values ('XAFe-DP-' || lpad(nextval('depots_numero')::text, 6, '0'), v_compte, p_operateur, v_float.id,
+          v_num, p_montant, p_cle, now() + make_interval(mins => (parametre('depot') ->> 'validite_minutes')::int))
+  returning * into v_d;
+  return _depot_json(v_d);
+end $$;
+
+create function annuler_depot(p_reference text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_d depots;
+begin
+  select * into v_d from depots where reference = p_reference and compte_id = auth.uid() for update;
+  if not found then raise exception 'dépôt inconnu'; end if;
+  if v_d.etat <> 'en_attente' then raise exception 'ce dépôt ne peut plus être annulé' using detail = v_d.etat; end if;
+  update depots set etat = 'annule' where id = v_d.id returning * into v_d;
+  return _depot_json(v_d);
+end $$;
+
+create function expirer_depots() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  update depots set etat = 'expire' where etat = 'en_attente' and expire_le < now();
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+-- Ce que TOTEM a lu : un SMS d'argent sur un float.
+create function totem_sms_recu(p_terminal text, p_source_id bigint, p_operateur text, p_float_numero text,
+                               p_numero_payeur text, p_montant numeric, p_reference text, p_texte text,
+                               p_emis_le timestamptz)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_float floats;
+  v_d     depots;
+  v_p     depot_paiements;
+  v_r     entrees_retenues;
+  v_num   text;
+  v_grace int;
+begin
+  -- Le même SMS, relu après une coupure : la même réponse, rien de plus.
+  select * into v_p from depot_paiements where terminal = p_terminal and source_id = p_source_id;
+  if found then
+    select * into v_d from depots where id = v_p.depot_id;
+    return jsonb_build_object('resultat', 'credite', 'reference', v_d.reference, 'etat', v_d.etat, 'deja', true);
+  end if;
+  select * into v_r from entrees_retenues where terminal = p_terminal and source_id = p_source_id;
+  if found then return jsonb_build_object('resultat', 'retenue', 'id', v_r.id, 'deja', true); end if;
+
+  update terminaux set vu_le = now() where id = p_terminal;
+  v_num := normaliser_numero(p_numero_payeur);
+  v_grace := (parametre('depot') ->> 'grace_minutes')::int;
+  select * into v_float from floats where operateur = p_operateur and numero = normaliser_numero(p_float_numero);
+
+  if found and coalesce(p_montant, 0) > 0 then
+    select * into v_d from depots
+     where float_id = v_float.id and numero_payeur = v_num
+       and (etat in ('en_attente', 'partiel')
+            or (etat = 'expire' and expire_le > now() - make_interval(mins => v_grace)))
+       and montant - montant_recu >= p_montant
+     order by (montant - montant_recu = p_montant) desc, cree_le asc
+     for update skip locked
+     limit 1;
+    if found then
+      insert into depot_paiements (depot_id, terminal, source_id, montant, reference_operateur, texte, emis_le)
+      values (v_d.id, p_terminal, p_source_id, p_montant, p_reference, p_texte, p_emis_le);
+      perform _mouvement(v_d.compte_id, 'XAFe', p_montant, 0, 'depot', 'depots', v_d.reference);
+      insert into emissions (sens, montant, source_table, source_id) values ('emission', p_montant, 'depots', v_d.reference);
+      update depots
+         set montant_recu = montant_recu + p_montant,
+             etat = case when montant_recu + p_montant >= montant then 'credite' else 'partiel' end,
+             credite_le = case when montant_recu + p_montant >= montant then now() else credite_le end
+       where id = v_d.id
+       returning * into v_d;
+      return jsonb_build_object('resultat', 'credite', 'reference', v_d.reference, 'etat', v_d.etat,
+                                'montant_recu', v_d.montant_recu);
+    end if;
+  end if;
+
+  insert into entrees_retenues (terminal, source_id, float_id, operateur, float_numero, numero_payeur, montant,
+                                reference_operateur, texte, emis_le)
+  values (p_terminal, p_source_id, v_float.id, p_operateur, p_float_numero, v_num, p_montant, p_reference, p_texte, p_emis_le)
+  returning * into v_r;
+  return jsonb_build_object('resultat', 'retenue', 'id', v_r.id);
+end $$;
+
+-- ───────────────────────────── sorties ─────────────────────────────────────
+create sequence sorties_numero;
+
+create table sorties (
+  id             uuid primary key default gen_random_uuid(),
+  reference      text not null unique,                 -- XAFe-WD-000207
+  compte_id      uuid not null references comptes(id),
+  numero_id      uuid not null references numeros(id),
+  operateur      text not null,
+  numero         text not null,
+  montant        numeric(20,2) not null check (montant > 0),  -- XAFe débités
+  frais          numeric(20,2) not null default 0,
+  montant_xaf    numeric(20,2) not null,                       -- ce qui part en XAF
+  montant_envoye numeric(20,2) not null default 0,
+  montant_rendu  numeric(20,2) not null default 0,
+  etat           text not null default 'en_attente'
+                 check (etat in ('en_attente', 'en_cours', 'envoyee', 'partielle', 'echouee', 'annulee')),
+  cle            text,
+  cree_le        timestamptz not null default now(),
+  terminee_le    timestamptz
+);
+create unique index sorties_cle on sorties (compte_id, cle) where cle is not null;
+
+-- Un transfert à composer par TOTEM. C'est le seul endroit d'où de l'argent
+-- peut SORTIR : la ligne est réclamée avant d'être composée, et sa clé est
+-- unique : le même transfert ne peut pas être composé deux fois.
+create table commandes (
+  id                  bigint generated always as identity primary key,
+  terminal            text not null references terminaux(id),
+  sortie_id           uuid not null references sorties(id),
+  float_id            int not null references floats(id),
+  type                text not null default 'transfert',
+  parametres          jsonb not null,        -- operateur, float_numero, numero, montant (XAF à envoyer)
+  montant_xafe        numeric(20,2) not null, -- la part des XAFe bloqués que ce transfert couvre (envoi + frais)
+  frais               numeric(20,2) not null default 0,
+  etat                text not null default 'en_attente' check (etat in ('en_attente', 'en_cours', 'faite', 'echouee')),
+  resultat            text,
+  reference_operateur text,
+  reprises            int not null default 0,
+  cle                 text not null unique,
+  demandee_le         timestamptz not null default now(),
+  reclamee_le         timestamptz,
+  traitee_le          timestamptz
+);
+create index commandes_a_faire on commandes (terminal) where etat = 'en_attente';
+
+create function _sortie_json(s sorties) returns jsonb
+language sql stable as $$
+  select jsonb_build_object(
+    'reference', s.reference, 'etat', s.etat, 'operateur', s.operateur, 'numero', s.numero,
+    'montant', s.montant, 'frais', s.frais, 'montant_xaf', s.montant_xaf,
+    'montant_envoye', s.montant_envoye, 'montant_rendu', s.montant_rendu,
+    'transferts', (select count(*) from commandes where sortie_id = s.id),
+    'cree_le', s.cree_le, 'terminee_le', s.terminee_le)
+$$;
+
+create function demander_sortie(p_montant numeric, p_numero_id uuid, p_cle text default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_compte uuid := auth.uid();
+  v_s      sorties;
+  v_n      numeros;
+  v_op     operateurs;
+  v_float  floats;
+  v_taux   numeric := (parametre('frais') ->> 'sortie')::numeric;
+  v_palier jsonb;
+  v_jour   numeric;
+  v_n_tr   int;
+  v_part   numeric;
+  v_reste  numeric;
+  v_chunk  numeric;
+  v_frais  numeric;
+  v_frais_total numeric := 0;
+  v_envoi_total numeric := 0;
+  v_ref    text;
+  i        int;
+begin
+  if v_compte is null then raise exception 'non connecté'; end if;
+  if p_cle is not null then
+    select * into v_s from sorties where compte_id = v_compte and cle = p_cle;
+    if found then return _sortie_json(v_s) || '{"deja": true}'; end if;
+  end if;
+  if p_montant is null or p_montant <= 0 or p_montant <> trunc(p_montant) then raise exception 'montant invalide'; end if;
+
+  select * into v_n from numeros where id = p_numero_id and compte_id = v_compte and retire_le is null;
+  if not found then raise exception 'numéro inconnu sur ce compte'; end if;
+  if v_n.actif_des > now() then
+    raise exception 'numéro pas encore actif' using detail = format('actif à partir du %s', v_n.actif_des);
+  end if;
+  select * into v_op from operateurs where id = v_n.operateur;
+
+  v_palier := parametre('paliers') -> (select palier::text from comptes where id = v_compte);
+  if v_palier is not null and v_palier <> 'null'::jsonb then
+    select coalesce(sum(montant), 0) into v_jour from sorties
+     where compte_id = v_compte and cree_le >= date_trunc('day', now()) and etat not in ('annulee', 'echouee');
+    if v_jour + p_montant > (v_palier ->> 'sortie_jour')::numeric then
+      raise exception 'plafond du palier atteint' using detail = format('%s XAF par jour', v_palier ->> 'sortie_jour');
+    end if;
+  end if;
+
+  -- Le float qui envoie : sur cet opérateur, porté par le terminal vu le plus récemment.
+  select f.* into v_float from floats f join terminaux t on t.id = f.terminal
+   where f.operateur = v_n.operateur and f.actif
+   order by t.vu_le desc nulls last, f.id limit 1;
+  if not found then raise exception 'aucun terminal disponible pour cet opérateur'; end if;
+
+  -- Découpage : autant de transferts qu'il faut pour rester sous le plafond.
+  v_n_tr := greatest(1, ceil(p_montant / v_op.plafond_par_transfert))::int;
+  v_part := trunc(p_montant / v_n_tr);
+  v_reste := p_montant - v_part * v_n_tr;
+  for i in 1 .. v_n_tr loop
+    v_chunk := v_part + (case when i = v_n_tr then v_reste else 0 end);
+    v_frais := ceil(v_chunk * v_taux);
+    v_frais_total := v_frais_total + v_frais;
+    v_envoi_total := v_envoi_total + (v_chunk - v_frais);
+  end loop;
+
+  v_ref := 'XAFe-WD-' || lpad(nextval('sorties_numero')::text, 6, '0');
+  perform _mouvement(v_compte, 'XAFe', -p_montant, p_montant, 'sortie_bloquee', 'sorties', v_ref);
+  insert into sorties (reference, compte_id, numero_id, operateur, numero, montant, frais, montant_xaf, cle)
+  values (v_ref, v_compte, v_n.id, v_n.operateur, v_n.numero, p_montant, v_frais_total, v_envoi_total, p_cle)
+  returning * into v_s;
+
+  for i in 1 .. v_n_tr loop
+    v_chunk := v_part + (case when i = v_n_tr then v_reste else 0 end);
+    v_frais := ceil(v_chunk * v_taux);
+    insert into commandes (terminal, sortie_id, float_id, parametres, montant_xafe, frais, cle)
+    values (v_float.terminal, v_s.id, v_float.id,
+            jsonb_build_object('operateur', v_n.operateur, 'float_numero', v_float.numero,
+                               'numero', v_n.numero, 'montant', v_chunk - v_frais),
+            v_chunk, v_frais, v_ref || '-' || i);
+  end loop;
+  return _sortie_json(v_s);
+end $$;
+
+create function totem_commandes_en_attente(p_terminal text)
+returns setof commandes language plpgsql security definer set search_path = public as $$
+begin
+  update terminaux set vu_le = now() where id = p_terminal;
+  return query select * from commandes where terminal = p_terminal and etat = 'en_attente' order by id;
+end $$;
+
+create function totem_reclamer_commande(p_id bigint, p_terminal text)
+returns commandes language plpgsql security definer set search_path = public as $$
+declare v_c commandes;
+begin
+  update commandes set etat = 'en_cours', reclamee_le = now()
+   where id = p_id and terminal = p_terminal and etat = 'en_attente'
+  returning * into v_c;
+  if not found then raise exception 'commande déjà prise ou inconnue'; end if;
+  update sorties set etat = 'en_cours' where id = v_c.sortie_id and etat = 'en_attente';
+  return v_c;
+end $$;
+
+create function totem_resultat_commande(p_id bigint, p_terminal text, p_ok boolean, p_resultat text,
+                                        p_reference_operateur text default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_c     commandes;
+  v_s     sorties;
+  v_max   int := (parametre('sortie') ->> 'reprises_max')::int;
+  v_envoi numeric;
+  v_faites int;
+  v_echouees int;
+begin
+  select * into v_c from commandes where id = p_id and terminal = p_terminal for update;
+  if not found then raise exception 'commande inconnue'; end if;
+  if v_c.etat in ('faite', 'echouee') then return jsonb_build_object('commande', v_c.etat, 'deja', true); end if;
+  select * into v_s from sorties where id = v_c.sortie_id for update;
+  v_envoi := (v_c.parametres ->> 'montant')::numeric;
+
+  if p_ok then
+    update commandes set etat = 'faite', resultat = p_resultat, reference_operateur = p_reference_operateur, traitee_le = now()
+     where id = p_id;
+    -- Les XAF sont partis : les XAFe qui les couvraient sont détruits, les frais vont à la maison.
+    perform _mouvement(v_s.compte_id, 'XAFe', 0, -v_c.montant_xafe, 'sortie_envoyee', 'commandes', p_id::text);
+    if v_c.frais > 0 then
+      perform _mouvement(compte_maison(), 'XAFe', v_c.frais, 0, 'frais_sortie', 'commandes', p_id::text);
+    end if;
+    insert into emissions (sens, montant, source_table, source_id) values ('destruction', v_envoi, 'commandes', p_id::text);
+    update sorties set montant_envoye = montant_envoye + v_envoi where id = v_s.id;
+  elsif v_c.reprises + 1 < v_max then
+    update commandes set etat = 'en_attente', reprises = reprises + 1, resultat = p_resultat, reclamee_le = null
+     where id = p_id;
+    update sorties set etat = 'en_cours' where id = v_s.id;
+    return jsonb_build_object('commande', 'en_attente', 'reprises', v_c.reprises + 1);
+  else
+    update commandes set etat = 'echouee', reprises = reprises + 1, resultat = p_resultat, traitee_le = now()
+     where id = p_id;
+    -- Rien n'est parti pour ce transfert : ses XAFe reviennent au client.
+    perform _mouvement(v_s.compte_id, 'XAFe', v_c.montant_xafe, -v_c.montant_xafe, 'sortie_rendue', 'commandes', p_id::text);
+    update sorties set montant_rendu = montant_rendu + v_c.montant_xafe where id = v_s.id;
+  end if;
+
+  if exists (select 1 from commandes where sortie_id = v_s.id and etat in ('en_attente', 'en_cours')) then
+    update sorties set etat = 'en_cours' where id = v_s.id returning * into v_s;
+  else
+    select count(*) filter (where etat = 'faite'), count(*) filter (where etat = 'echouee')
+      into v_faites, v_echouees from commandes where sortie_id = v_s.id;
+    update sorties
+       set etat = case when v_echouees = 0 then 'envoyee' when v_faites = 0 then 'echouee' else 'partielle' end,
+           terminee_le = now()
+     where id = v_s.id returning * into v_s;
+  end if;
+  return jsonb_build_object('commande', (select etat from commandes where id = p_id), 'sortie', v_s.etat);
+end $$;
+
+-- ───────────────────────────── crypto ──────────────────────────────────────
+create table adresses_crypto (
+  id        bigint generated always as identity primary key,
+  compte_id uuid not null references comptes(id),
+  actif     text not null check (actif in ('XAFe', 'USDT')),
+  reseau    text not null check (reseau in ('bep20', 'trc20')),
+  adresse   text not null,
+  cree_le   timestamptz not null default now(),
+  unique (compte_id, actif, reseau)
+);
+
+create table transferts_crypto (
+  id        bigint generated always as identity primary key,
+  compte_id uuid not null references comptes(id),
+  actif     text not null check (actif in ('XAFe', 'USDT')),
+  reseau    text not null,
+  sens      text not null check (sens in ('entree', 'sortie')),
+  montant   numeric(20,2) not null check (montant > 0),
+  adresse   text,
+  tx_hash   text,
+  etat      text not null default 'confirme',
+  cree_le   timestamptz not null default now(),
+  unique (reseau, tx_hash, sens)
+);
+
+-- Le veilleur de chaîne a vu arriver de l'USDT (ou des XAFe rendus) sur l'adresse d'un compte.
+create function crediter_crypto(p_compte uuid, p_actif text, p_reseau text, p_montant numeric, p_tx_hash text, p_adresse text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_t transferts_crypto;
+begin
+  insert into transferts_crypto (compte_id, actif, reseau, sens, montant, adresse, tx_hash)
+  values (p_compte, p_actif, p_reseau, 'entree', p_montant, p_adresse, p_tx_hash)
+  on conflict (reseau, tx_hash, sens) do nothing
+  returning * into v_t;
+  if not found then return jsonb_build_object('deja', true); end if;
+  perform _mouvement(p_compte, p_actif, p_montant, 0, 'crypto_entree', 'transferts_crypto', v_t.id::text);
+  return jsonb_build_object('id', v_t.id, 'montant', v_t.montant);
+end $$;
+
+-- ───────────────────────────── carnet ──────────────────────────────────────
+create sequence ordres_numero;
+
+create table ordres (
+  id         uuid primary key default gen_random_uuid(),
+  numero     bigint not null default nextval('ordres_numero'),
+  compte_id  uuid not null references comptes(id),
+  paire      text not null default 'USDT/XAFe',
+  cote       text not null check (cote in ('achat', 'vente')),
+  type       text not null check (type in ('limite', 'marche')),
+  prix       numeric(20,2),                         -- XAFe pour 1 USDT ; nul pour un ordre marché
+  quantite   numeric(20,2) not null check (quantite > 0),   -- en USDT
+  restant    numeric(20,2) not null,
+  executee   numeric(20,2) not null default 0,
+  total_xafe numeric(20,2) not null default 0,
+  bloque     numeric(20,2) not null default 0,     -- XAFe (achat limite) ou USDT (vente limite) encore bloqués
+  etat       text not null default 'ouvert' check (etat in ('ouvert', 'partiel', 'execute', 'annule')),
+  cle        text,
+  cree_le    timestamptz not null default now(),
+  maj_le     timestamptz not null default now()
+);
+create unique index ordres_cle on ordres (compte_id, cle) where cle is not null;
+create index ordres_achats on ordres (paire, prix desc, cree_le, numero) where etat in ('ouvert', 'partiel') and cote = 'achat';
+create index ordres_ventes on ordres (paire, prix asc, cree_le, numero)  where etat in ('ouvert', 'partiel') and cote = 'vente';
+create index ordres_du_compte on ordres (compte_id, cree_le desc);
+
+create table executions (
+  id             bigint generated always as identity primary key,
+  paire          text not null,
+  ordre_achat    uuid not null references ordres(id),
+  ordre_vente    uuid not null references ordres(id),
+  preneur        text not null check (preneur in ('achat', 'vente')),
+  prix           numeric(20,2) not null,
+  quantite       numeric(20,2) not null,
+  montant_xafe   numeric(20,2) not null,
+  frais_acheteur numeric(20,2) not null default 0,  -- en USDT
+  frais_vendeur  numeric(20,2) not null default 0,  -- en XAFe
+  cree_le        timestamptz not null default now()
+);
+create index executions_recentes on executions (paire, cree_le desc);
+
+create function _ordre_json(o ordres) returns jsonb
+language sql stable as $$
+  select jsonb_build_object(
+    'id', o.id, 'numero', 'ORD-' || lpad(o.numero::text, 6, '0'), 'paire', o.paire,
+    'cote', o.cote, 'type', o.type, 'prix', o.prix, 'quantite', o.quantite,
+    'restant', o.restant, 'executee', o.executee, 'total_xafe', o.total_xafe,
+    'prix_moyen', case when o.executee > 0 then round(o.total_xafe / o.executee, 2) end,
+    'bloque', o.bloque, 'etat', o.etat, 'cree_le', o.cree_le, 'maj_le', o.maj_le)
+$$;
+
+create function _execution_json(e executions) returns jsonb
+language sql stable as $$
+  select jsonb_build_object('id', e.id, 'prix', e.prix, 'quantite', e.quantite, 'montant_xafe', e.montant_xafe,
+                            'preneur', e.preneur, 'frais_acheteur', e.frais_acheteur, 'frais_vendeur', e.frais_vendeur,
+                            'cree_le', e.cree_le)
+$$;
+
+create function placer_ordre(p_cote text, p_type text, p_quantite numeric, p_prix numeric default null, p_cle text default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_compte  uuid := auth.uid();
+  v_frais   jsonb := parametre('frais');
+  v_marche  jsonb := parametre('marche');
+  v_paire   text := v_marche ->> 'paire';
+  v_pas     numeric := (v_marche ->> 'pas_prix')::numeric;
+  v_qmin    numeric := (v_marche ->> 'quantite_min')::numeric;
+  v_t_pren  numeric := (v_frais ->> 'preneur')::numeric;
+  v_t_plac  numeric := (v_frais ->> 'placeur')::numeric;
+  v_o       ordres;
+  v_c       ordres;
+  v_e       executions;
+  v_q       numeric;
+  v_px      numeric;
+  v_xafe    numeric;
+  v_fa      numeric;   -- frais de l'acheteur, en USDT
+  v_fv      numeric;   -- frais du vendeur, en XAFe
+  v_diff    numeric;
+  v_dispo   numeric;
+  v_auto    boolean := false;
+  v_execs   jsonb := '[]'::jsonb;
+  v_achet   uuid;
+  v_vend    uuid;
+  v_id      text;
+begin
+  if v_compte is null then raise exception 'non connecté'; end if;
+  if not coalesce((v_marche ->> 'ouvert')::boolean, true) then raise exception 'marché fermé'; end if;
+  if p_cle is not null then
+    select * into v_o from ordres where compte_id = v_compte and cle = p_cle;
+    if found then return jsonb_build_object('ordre', _ordre_json(v_o), 'executions', '[]'::jsonb, 'deja', true); end if;
+  end if;
+  if p_cote not in ('achat', 'vente') then raise exception 'côté invalide'; end if;
+  if p_type not in ('limite', 'marche') then raise exception 'type invalide'; end if;
+  if p_quantite is null or p_quantite < v_qmin or p_quantite <> round(p_quantite, 2) then
+    raise exception 'quantité invalide' using detail = format('au moins %s USDT, deux décimales', v_qmin);
+  end if;
+  if p_type = 'limite' then
+    if p_prix is null or p_prix <= 0 or mod(p_prix, v_pas) <> 0 then
+      raise exception 'prix invalide' using detail = format('un multiple de %s', v_pas);
+    end if;
+  else
+    p_prix := null;
+  end if;
+
+  -- Une paire s'apparie en file : un seul ordre entrant à la fois.
+  perform pg_advisory_xact_lock(hashtext(v_paire));
+
+  insert into ordres (compte_id, paire, cote, type, prix, quantite, restant, cle)
+  values (v_compte, v_paire, p_cote, p_type, p_prix, p_quantite, p_quantite, p_cle)
+  returning * into v_o;
+  v_id := v_o.numero::text;
+
+  -- Tout ce qui est au carnet est déjà déposé : un ordre limite bloque avant d'être inscrit.
+  if p_type = 'limite' then
+    if p_cote = 'achat' then
+      v_o.bloque := round(p_prix * p_quantite, 2);
+      perform _mouvement(v_compte, 'XAFe', -v_o.bloque, v_o.bloque, 'ordre_bloque', 'ordres', v_id);
+    else
+      v_o.bloque := p_quantite;
+      perform _mouvement(v_compte, 'USDT', -p_quantite, p_quantite, 'ordre_bloque', 'ordres', v_id);
+    end if;
+    update ordres set bloque = v_o.bloque where id = v_o.id;
+  end if;
+
+  -- Appariement prix-temps : le meilleur prix d'abord, puis le plus ancien.
+  -- Le prix d'exécution est celui de l'ordre qui attendait.
+  loop
+    exit when v_o.restant <= 0;
+    if p_cote = 'achat' then
+      select * into v_c from ordres
+       where paire = v_paire and cote = 'vente' and etat in ('ouvert', 'partiel') and (p_type = 'marche' or prix <= p_prix)
+       order by prix asc, cree_le asc, numero asc for update skip locked limit 1;
+    else
+      select * into v_c from ordres
+       where paire = v_paire and cote = 'achat' and etat in ('ouvert', 'partiel') and (p_type = 'marche' or prix >= p_prix)
+       order by prix desc, cree_le asc, numero asc for update skip locked limit 1;
+    end if;
+    exit when not found;
+    if v_c.compte_id = v_compte then v_auto := true; exit; end if;
+
+    v_q := least(v_o.restant, v_c.restant);
+    v_px := v_c.prix;
+    -- Un acheteur au marché ne dépense que ce qu'il a.
+    if p_type = 'marche' and p_cote = 'achat' then
+      select disponible into v_dispo from soldes where compte_id = v_compte and actif = 'XAFe' for update;
+      v_dispo := coalesce(v_dispo, 0);
+      if v_dispo < round(v_q * v_px, 2) then v_q := trunc(v_dispo / v_px, 2); end if;
+      exit when v_q <= 0;
+    end if;
+    v_xafe := round(v_q * v_px, 2);
+
+    if p_cote = 'achat' then
+      v_achet := v_compte; v_vend := v_c.compte_id;
+      v_fa := round(v_q * v_t_pren, 2);  v_fv := round(v_xafe * v_t_plac, 0);
+    else
+      v_achet := v_c.compte_id; v_vend := v_compte;
+      v_fa := round(v_q * v_t_plac, 2);  v_fv := round(v_xafe * v_t_pren, 0);
+    end if;
+
+    -- L'acheteur paie v_xafe (de son bloqué s'il est limite, de son disponible au marché) et reçoit v_q moins ses frais.
+    if (p_cote = 'achat' and p_type = 'limite') or p_cote = 'vente' then
+      perform _mouvement(v_achet, 'XAFe', 0, -v_xafe, 'achat_regle', 'ordres', v_id);
+    else
+      perform _mouvement(v_achet, 'XAFe', -v_xafe, 0, 'achat_regle', 'ordres', v_id);
+    end if;
+    perform _mouvement(v_achet, 'USDT', v_q - v_fa, 0, 'achat_recu', 'ordres', v_id);
+    -- Le vendeur donne v_q (de son bloqué s'il est limite) et reçoit v_xafe moins ses frais.
+    if (p_cote = 'vente' and p_type = 'limite') or p_cote = 'achat' then
+      perform _mouvement(v_vend, 'USDT', 0, -v_q, 'vente_reglee', 'ordres', v_id);
+    else
+      perform _mouvement(v_vend, 'USDT', -v_q, 0, 'vente_reglee', 'ordres', v_id);
+    end if;
+    perform _mouvement(v_vend, 'XAFe', v_xafe - v_fv, 0, 'vente_recue', 'ordres', v_id);
+    if v_fa > 0 then perform _mouvement(compte_maison(), 'USDT', v_fa, 0, 'frais_achat', 'ordres', v_id); end if;
+    if v_fv > 0 then perform _mouvement(compte_maison(), 'XAFe', v_fv, 0, 'frais_vente', 'ordres', v_id); end if;
+
+    -- Un acheteur limite qui paie moins que sa limite récupère la différence tout de suite.
+    if p_cote = 'achat' and p_type = 'limite' and p_prix > v_px then
+      v_diff := round(v_q * (p_prix - v_px), 2);
+      perform _mouvement(v_compte, 'XAFe', v_diff, -v_diff, 'ordre_libere', 'ordres', v_id);
+      v_o.bloque := v_o.bloque - v_diff;
+    end if;
+
+    v_o.restant := v_o.restant - v_q;
+    v_o.executee := v_o.executee + v_q;
+    v_o.total_xafe := v_o.total_xafe + v_xafe;
+    if p_type = 'limite' then
+      v_o.bloque := v_o.bloque - (case when p_cote = 'achat' then v_xafe else v_q end);
+    end if;
+    update ordres
+       set restant = v_o.restant, executee = v_o.executee, total_xafe = v_o.total_xafe, bloque = v_o.bloque,
+           etat = case when v_o.restant = 0 then 'execute' else 'partiel' end, maj_le = now()
+     where id = v_o.id;
+    update ordres
+       set restant = restant - v_q, executee = executee + v_q, total_xafe = total_xafe + v_xafe,
+           bloque = bloque - (case when cote = 'achat' then v_xafe else v_q end),
+           etat = case when restant - v_q = 0 then 'execute' else 'partiel' end, maj_le = now()
+     where id = v_c.id;
+
+    insert into executions (paire, ordre_achat, ordre_vente, preneur, prix, quantite, montant_xafe, frais_acheteur, frais_vendeur)
+    values (v_paire,
+            case when p_cote = 'achat' then v_o.id else v_c.id end,
+            case when p_cote = 'achat' then v_c.id else v_o.id end,
+            p_cote, v_px, v_q, v_xafe, v_fa, v_fv)
+    returning * into v_e;
+    v_execs := v_execs || _execution_json(v_e);
+  end loop;
+
+  -- Ce qui reste d'un ordre marché, ou d'un ordre arrêté par l'auto-négociation, est annulé.
+  if v_o.restant > 0 and (p_type = 'marche' or v_auto) then
+    if p_type = 'limite' and v_o.bloque > 0 then
+      if p_cote = 'achat' then
+        perform _mouvement(v_compte, 'XAFe', v_o.bloque, -v_o.bloque, 'ordre_libere', 'ordres', v_id);
+      else
+        perform _mouvement(v_compte, 'USDT', v_o.bloque, -v_o.bloque, 'ordre_libere', 'ordres', v_id);
+      end if;
+    end if;
+    update ordres
+       set etat = case when v_o.executee > 0 then 'execute' else 'annule' end, restant = 0, bloque = 0, maj_le = now()
+     where id = v_o.id;
+  end if;
+
+  select * into v_o from ordres where id = v_o.id;
+  return jsonb_build_object('ordre', _ordre_json(v_o), 'executions', v_execs, 'auto_negociation', v_auto);
+end $$;
+
+create function annuler_ordre(p_id uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_o ordres;
+begin
+  perform pg_advisory_xact_lock(hashtext((parametre('marche') ->> 'paire')));
+  select * into v_o from ordres where id = p_id and compte_id = auth.uid() for update;
+  if not found then raise exception 'ordre inconnu'; end if;
+  if v_o.etat not in ('ouvert', 'partiel') then raise exception 'cet ordre ne peut plus être annulé' using detail = v_o.etat; end if;
+  if v_o.bloque > 0 then
+    if v_o.cote = 'achat' then
+      perform _mouvement(v_o.compte_id, 'XAFe', v_o.bloque, -v_o.bloque, 'ordre_libere', 'ordres', v_o.numero::text);
+    else
+      perform _mouvement(v_o.compte_id, 'USDT', v_o.bloque, -v_o.bloque, 'ordre_libere', 'ordres', v_o.numero::text);
+    end if;
+  end if;
+  update ordres set etat = 'annule', restant = 0, bloque = 0, maj_le = now() where id = v_o.id returning * into v_o;
+  return _ordre_json(v_o);
+end $$;
+
+-- Le carnet, par niveau de prix.
+create function carnet(p_profondeur int default 20) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'achats', (select coalesce(jsonb_agg(jsonb_build_object('prix', prix, 'quantite', q, 'ordres', n) order by prix desc), '[]'::jsonb)
+                 from (select prix, sum(restant) q, count(*) n from ordres
+                        where etat in ('ouvert', 'partiel') and cote = 'achat' group by prix order by prix desc limit p_profondeur) a),
+    'ventes', (select coalesce(jsonb_agg(jsonb_build_object('prix', prix, 'quantite', q, 'ordres', n) order by prix asc), '[]'::jsonb)
+                 from (select prix, sum(restant) q, count(*) n from ordres
+                        where etat in ('ouvert', 'partiel') and cote = 'vente' group by prix order by prix asc limit p_profondeur) v),
+    'dernier', (select prix from executions order by cree_le desc, id desc limit 1))
+$$;
+
+create function transactions_recentes(p_n int default 50) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('prix', prix, 'quantite', quantite, 'preneur', preneur, 'cree_le', cree_le)
+                            order by cree_le desc, id desc), '[]'::jsonb)
+    from (select * from executions order by cree_le desc, id desc limit p_n) e
+$$;
+
+create function cotation() returns jsonb
+language sql stable security definer set search_path = public as $$
+  with e as (select * from executions where cree_le > now() - interval '24 hours'),
+       d as (select prix from executions order by cree_le desc, id desc limit 1),
+       p as (select prix from executions where cree_le <= now() - interval '24 hours' order by cree_le desc, id desc limit 1)
+  select jsonb_build_object(
+    'paire', parametre('marche') ->> 'paire',
+    'dernier', (select prix from d),
+    'il_y_a_24h', (select prix from p),
+    'haut', (select max(prix) from e), 'bas', (select min(prix) from e),
+    'volume_usdt', (select coalesce(sum(quantite), 0) from e),
+    'volume_xafe', (select coalesce(sum(montant_xafe), 0) from e),
+    'meilleur_achat', (select max(prix) from ordres where etat in ('ouvert', 'partiel') and cote = 'achat'),
+    'meilleure_vente', (select min(prix) from ordres where etat in ('ouvert', 'partiel') and cote = 'vente'))
+$$;
+
+-- ───────────────────────── ce que le client lit ────────────────────────────
+create function mes_soldes() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_object_agg(actif, jsonb_build_object('disponible', disponible, 'bloque', bloque)), '{}'::jsonb)
+    from soldes where compte_id = auth.uid()
+$$;
+
+-- ───────────────────────────── droits ──────────────────────────────────────
+alter table parametres        enable row level security;
+alter table operateurs        enable row level security;
+alter table terminaux         enable row level security;
+alter table floats            enable row level security;
+alter table comptes           enable row level security;
+alter table numeros           enable row level security;
+alter table soldes            enable row level security;
+alter table ecritures         enable row level security;
+alter table emissions         enable row level security;
+alter table depots            enable row level security;
+alter table depot_paiements   enable row level security;
+alter table entrees_retenues  enable row level security;
+alter table sorties           enable row level security;
+alter table commandes         enable row level security;
+alter table adresses_crypto   enable row level security;
+alter table transferts_crypto enable row level security;
+alter table ordres            enable row level security;
+alter table executions        enable row level security;
+
+-- Le client lit ses lignes ; il n'écrit jamais directement.
+create policy lire_parametres on parametres for select to authenticated using (true);
+create policy lire_operateurs on operateurs for select to authenticated using (true);
+create policy lire_mon_compte on comptes for select to authenticated using (id = auth.uid());
+create policy lire_mes_numeros on numeros for select to authenticated using (compte_id = auth.uid());
+create policy lire_mes_soldes on soldes for select to authenticated using (compte_id = auth.uid());
+create policy lire_mes_ecritures on ecritures for select to authenticated using (compte_id = auth.uid());
+create policy lire_mes_depots on depots for select to authenticated using (compte_id = auth.uid());
+create policy lire_mes_depot_paiements on depot_paiements for select to authenticated
+  using (depot_id in (select id from depots where compte_id = auth.uid()));
+create policy lire_mes_sorties on sorties for select to authenticated using (compte_id = auth.uid());
+create policy lire_mes_adresses on adresses_crypto for select to authenticated using (compte_id = auth.uid());
+create policy lire_mes_transferts on transferts_crypto for select to authenticated using (compte_id = auth.uid());
+create policy lire_mes_ordres on ordres for select to authenticated using (compte_id = auth.uid());
+create policy lire_mes_executions on executions for select to authenticated
+  using (ordre_achat in (select id from ordres where compte_id = auth.uid())
+      or ordre_vente in (select id from ordres where compte_id = auth.uid()));
+
+grant usage on schema public to authenticated, anon, service_role;
+grant select on parametres, operateurs, comptes, numeros, soldes, ecritures, depots, depot_paiements, sorties,
+                adresses_crypto, transferts_crypto, ordres, executions to authenticated;
+grant all on all tables in schema public to service_role;
+grant all on all sequences in schema public to service_role;
+
+revoke all on all functions in schema public from public;
+grant execute on function creer_depot(text, numeric, text, text), annuler_depot(text),
+                          demander_sortie(numeric, uuid, text),
+                          placer_ordre(text, text, numeric, numeric, text), annuler_ordre(uuid),
+                          carnet(int), transactions_recentes(int), cotation(), mes_soldes()
+  to authenticated;
+grant execute on all functions in schema public to service_role;
