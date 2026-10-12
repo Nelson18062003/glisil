@@ -1,0 +1,276 @@
+/*
+ * Les seuls styles propres aux maquettes : le cadre du téléphone, la coquille
+ * admin et les lignes du carnet. Tout le reste vient des composants et des
+ * jetons du Simple Design System (var(--sds-*)). Aucune valeur en dur.
+ */
+
+/* --- téléphone (client) --- */
+.phone {
+  width: 390px;
+  min-height: 844px;
+  display: flex;
+  flex-direction: column;
+  background: var(--sds-color-background-default-default);
+}
+.phone-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sds-size-space-200);
+  padding: var(--sds-size-space-400);
+}
+.phone-top-title {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.phone-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sds-size-space-400);
+  padding: 0 var(--sds-size-space-400) var(--sds-size-space-600);
+}
+.phone-nav {
+  border-top: 1px solid var(--sds-color-border-default-default);
+  padding: var(--sds-size-space-200) var(--sds-size-space-200)
+    var(--sds-size-space-400);
+  background: var(--sds-color-background-default-default);
+}
+.phone-nav-items {
+  display: flex;
+  justify-content: space-around;
+}
+.phone-nav-items .navigation-button {
+  flex: 1;
+}
+
+/* --- admin (web) --- */
+.admin {
+  display: flex;
+  min-height: 900px;
+  background: var(--sds-color-background-default-default);
+}
+.admin-side {
+  width: 232px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sds-size-space-600);
+  padding: var(--sds-size-space-600) var(--sds-size-space-400);
+  border-right: 1px solid var(--sds-color-border-default-default);
+  background: var(--sds-color-background-default-secondary);
+}
+.admin-side .navigation-button {
+  width: 100%;
+  justify-content: flex-start;
+}
+.admin-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sds-size-space-600);
+  padding: var(--sds-size-space-600) var(--sds-size-space-800)
+    var(--sds-size-space-800);
+}
+
+/* --- blocs partagés --- */
+.sheet {
+  background: var(--sds-color-background-default-secondary);
+  border-radius: var(--sds-size-radius-200);
+  padding: var(--sds-size-space-400);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sds-size-space-200);
+}
+.sheet-stroke {
+  background: var(--sds-color-background-default-default);
+  border: 1px solid var(--sds-color-border-default-default);
+}
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sds-size-space-200);
+}
+.row-start {
+  display: flex;
+  align-items: center;
+  gap: var(--sds-size-space-200);
+}
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sds-size-space-050);
+  min-width: 0;
+}
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+.mono {
+  font-family: var(--sds-typography-code-font-family);
+  font-size: var(--sds-typography-scale-02);
+}
+/* une référence, un montant ou un numéro ne se coupe jamais sur deux lignes */
+td .num,
+td .mono,
+td .row-start {
+  white-space: nowrap;
+}
+.t-pos {
+  color: var(--sds-color-text-positive-default);
+}
+.t-neg {
+  color: var(--sds-color-text-danger-default);
+}
+.t-warn {
+  color: var(--sds-color-text-warning-default);
+}
+.t-sec {
+  color: var(--sds-color-text-default-secondary);
+}
+.sep {
+  height: 1px;
+  background: var(--sds-color-border-default-default);
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--sds-size-radius-full);
+  display: inline-block;
+  flex-shrink: 0;
+}
+.dot-ok {
+  background: var(--sds-color-icon-positive-default);
+}
+.dot-warn {
+  background: var(--sds-color-icon-warning-default);
+}
+.dot-bad {
+  background: var(--sds-color-icon-danger-default);
+}
+
+/* --- carnet d'ordres --- */
+.book {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sds-size-space-050);
+}
+.book-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--sds-size-space-200);
+  padding: var(--sds-size-space-100) var(--sds-size-space-200);
+  border-radius: var(--sds-size-radius-100);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--sds-typography-code-font-family);
+  font-size: var(--sds-typography-scale-02);
+}
+.book-row-2 {
+  grid-template-columns: 1fr 1fr;
+}
+.book-row > * {
+  position: relative;
+}
+.book-row .r {
+  text-align: right;
+}
+.book-depth {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--sds-size-radius-100);
+}
+.book-depth-bid {
+  background: var(--sds-color-background-positive-tertiary);
+}
+.book-depth-ask {
+  background: var(--sds-color-background-danger-tertiary);
+}
+.book-head {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--sds-size-space-200);
+  padding: 0 var(--sds-size-space-200);
+}
+.book-head-2 {
+  grid-template-columns: 1fr 1fr;
+}
+
+/* --- barre de progression simple --- */
+.bar {
+  height: 8px;
+  border-radius: var(--sds-size-radius-full);
+  background: var(--sds-color-background-default-tertiary);
+  overflow: hidden;
+}
+.bar > span {
+  display: block;
+  height: 100%;
+  background: var(--sds-color-background-brand-default);
+}
+.bar-warn > span {
+  background: var(--sds-color-background-warning-default);
+}
+.bar-bad > span {
+  background: var(--sds-color-background-danger-default);
+}
+
+/* --- chronologie --- */
+.timeline {
+  display: flex;
+  flex-direction: column;
+}
+.timeline-step {
+  display: flex;
+  gap: var(--sds-size-space-300);
+}
+.timeline-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 24px;
+}
+.timeline-rail > span {
+  flex: 1;
+  width: 2px;
+  margin: var(--sds-size-space-100) 0;
+  background: var(--sds-color-border-positive-default);
+}
+.timeline-body {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: var(--sds-size-space-400);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sds-size-space-100);
+}
+.sms {
+  background: var(--sds-color-background-default-secondary);
+  border-radius: var(--sds-size-radius-200);
+  padding: var(--sds-size-space-300);
+  font-family: var(--sds-typography-code-font-family);
+  font-size: var(--sds-typography-scale-02);
+  line-height: 1.45;
+}
+
+/* --- page d'index des maquettes --- */
+.index {
+  max-width: var(--global-container-max-width);
+  margin: 0 auto;
+  padding: var(--sds-size-space-800) var(--sds-size-space-600);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sds-size-space-600);
+}
+.index-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--sds-size-space-300);
+}
