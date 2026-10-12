@@ -100,6 +100,11 @@ export class GuichetSupabase implements Guichet {
   private async rpc<T = unknown>(nom: string, args?: Record<string, unknown>): Promise<T> {
     const { data, error } = await this.sb.rpc(nom, args);
     if (error) throw new ErreurMoteur(error.message, error.details || undefined);
+    /* un code secret faux ne LÈVE pas côté moteur (l'échec doit être compté) : il rend {"erreur": …} */
+    if (data && typeof data === "object" && !Array.isArray(data) && typeof (data as J).erreur === "string") {
+      const j = data as J;
+      throw new ErreurMoteur(String(j.erreur), j.essais_restants != null ? `${j.essais_restants} essai(s) restant(s)` : undefined);
+    }
     return data as T;
   }
 

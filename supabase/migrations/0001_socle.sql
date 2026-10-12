@@ -60,6 +60,7 @@ create table floats (
   operateur text not null references operateurs(id),
   numero    text not null,                          -- le numéro que les clients paient
   terminal  text references terminaux(id),
+  code_agent text,                                 -- le code marchand/agent, quand on peut y faire un retrait
   actif     boolean not null default true,
   unique (operateur, numero)
 );
@@ -90,7 +91,7 @@ create table numeros (
   compte_id  uuid not null references comptes(id),
   operateur  text not null references operateurs(id),
   numero     text not null,
-  verifie_le timestamptz not null default now(),
+  verifie_le timestamptz,                         -- null tant que le code SMS n'a pas été confirmé
   actif_des  timestamptz not null default now() + interval '24 hours',
   retire_le  timestamptz
 );
@@ -122,6 +123,23 @@ create table ecritures (
 
 -- Chaque XAFe créé (un XAF reçu) ou détruit (un XAF sorti). La circulation,
 -- c'est la différence des deux.
+-- Ce qu'on dit au client, sur son téléphone : un titre, une phrase, un écran.
+create table notifications (
+  id        uuid primary key default gen_random_uuid(),
+  compte_id uuid not null references comptes(id),
+  titre     text not null,
+  texte     text not null,
+  cible     text not null default '/',
+  cree_le   timestamptz not null default now(),
+  lue_le    timestamptz
+);
+create index notifications_compte on notifications (compte_id, cree_le desc);
+
+create function _notifier(p_compte uuid, p_titre text, p_texte text, p_cible text) returns void
+language sql as $$
+  insert into notifications (compte_id, titre, texte, cible) values (p_compte, p_titre, p_texte, p_cible)
+$$;
+
 create table emissions (
   id           bigint generated always as identity primary key,
   sens         text not null check (sens in ('emission', 'destruction')),
@@ -159,33 +177,55 @@ $$;
 -- ───────────────────────────── dépôts ──────────────────────────────────────
 create sequence depots_numero;
 
+-- Le DOSSIER d'un dépôt : il dit où payer. Le client paie d'abord, comme il
+-- sait le faire (transfert, flotte, retrait chez notre agent), puis tape le
+-- transaction ID du SMS de l'opérateur. Pas de montant tapé d'avance : c'est
+-- le SMS que TOTEM lit sur le float qui le dit.
 create table depots (
   id            uuid primary key default gen_random_uuid(),
   reference     text not null unique,                  -- XAFe-DP-000418
   compte_id     uuid not null references comptes(id),
   operateur     text not null references operateurs(id),
   float_id      int  not null references floats(id),
-  numero_payeur text not null,
-  montant       numeric(20,2) not null check (montant > 0),
   montant_recu  numeric(20,2) not null default 0,
   etat          text not null default 'en_attente'
-                check (etat in ('en_attente', 'partiel', 'credite', 'expire', 'annule')),
+                check (etat in ('en_attente', 'credite', 'expire', 'annule')),
   cle           text,
   cree_le       timestamptz not null default now(),
   expire_le     timestamptz not null,
   credite_le    timestamptz
 );
 create unique index depots_cle on depots (compte_id, cle) where cle is not null;
-create index depots_ouverts on depots (float_id, numero_payeur) where etat in ('en_attente', 'partiel', 'expire');
 
--- Les SMS qui ont payé un dépôt. (terminal, source_id) : un SMS ne crédite
+-- Un transaction ID que le client a tapé. (operateur, transaction_id) : un
+-- paiement ne crédite qu'une fois, quel que soit le compte qui le déclare.
+create table depot_declarations (
+  id             uuid primary key default gen_random_uuid(),
+  depot_id       uuid not null references depots(id),
+  compte_id      uuid not null references comptes(id),
+  operateur      text not null references operateurs(id),
+  transaction_id text not null,
+  etat           text not null default 'attendu' check (etat in ('attendu', 'credite', 'refuse')),
+  montant        numeric(20,2),
+  numero_payeur  text,
+  motif          text,
+  paiement_id    bigint,
+  declare_le     timestamptz not null default now(),
+  credite_le     timestamptz,
+  unique (operateur, transaction_id)
+);
+create index depot_declarations_depot on depot_declarations (depot_id);
+
+-- Les SMS qui ont crédité un dépôt. (terminal, source_id) : un SMS ne crédite
 -- qu'une fois, même relu après une coupure.
 create table depot_paiements (
   id                  bigint generated always as identity primary key,
   depot_id            uuid not null references depots(id),
+  declaration_id      uuid references depot_declarations(id),
   terminal            text not null,
   source_id           bigint not null,
   montant             numeric(20,2) not null,
+  numero_payeur       text,
   reference_operateur text,
   texte               text,
   emis_le             timestamptz,
@@ -193,7 +233,8 @@ create table depot_paiements (
   unique (terminal, source_id)
 );
 
--- Un SMS d'argent sans référence : retenu, jamais crédité au hasard.
+-- Un SMS d'argent que personne n'a encore déclaré : retenu, jamais crédité
+-- au hasard. Il attend son transaction ID, ou un remboursement par l'équipe.
 create table entrees_retenues (
   id                  bigint generated always as identity primary key,
   terminal            text not null,
@@ -204,6 +245,7 @@ create table entrees_retenues (
   numero_payeur       text,
   montant             numeric(20,2),
   reference_operateur text,
+  transaction_id      text,                         -- la référence, normalisée
   texte               text,
   emis_le             timestamptz,
   etat                text not null default 'retenue' check (etat in ('retenue', 'rapprochee', 'remboursee')),
@@ -211,67 +253,179 @@ create table entrees_retenues (
   cree_le             timestamptz not null default now(),
   unique (terminal, source_id)
 );
+create index entrees_retenues_transaction on entrees_retenues (operateur, transaction_id) where etat = 'retenue';
+
+-- Un transaction ID se compare en majuscules, sans espace ni ponctuation :
+-- MTN écrit « 20394817104 », Orange « MP261012.1402.A12345 », le client le
+-- recopie comme il peut.
+create function normaliser_transaction_id(p text) returns text language sql immutable as $$
+  select upper(regexp_replace(coalesce(p, ''), '[^A-Za-z0-9]', '', 'g'))
+$$;
+
+create function _declaration_json(x depot_declarations) returns jsonb
+language sql stable as $$
+  select jsonb_build_object('id', x.id, 'transaction_id', x.transaction_id, 'etat', x.etat, 'montant', x.montant,
+                            'numero_payeur', x.numero_payeur, 'motif', x.motif, 'declare_le', x.declare_le, 'credite_le', x.credite_le)
+$$;
 
 create function _depot_json(d depots) returns jsonb
 language sql stable as $$
   select jsonb_build_object(
     'reference', d.reference, 'etat', d.etat, 'operateur', d.operateur,
-    'montant', d.montant, 'montant_recu', d.montant_recu,
-    'numero_payeur', d.numero_payeur,
+    'montant_recu', d.montant_recu,
     'float_numero', (select numero from floats where id = d.float_id),
-    'transferts', ceil(d.montant / (select plafond_par_transfert from operateurs where id = d.operateur)),
+    'code_agent', (select code_agent from floats where id = d.float_id),
+    'declarations', (select coalesce(jsonb_agg(_declaration_json(x) order by x.declare_le), '[]'::jsonb)
+                       from depot_declarations x where x.depot_id = d.id),
     'cree_le', d.cree_le, 'expire_le', d.expire_le, 'credite_le', d.credite_le)
 $$;
 
-create function creer_depot(p_operateur text, p_montant numeric, p_numero_payeur text, p_cle text default null)
+-- On ouvre le dossier AVANT de payer : il dit à quel float payer.
+create function ouvrir_depot(p_operateur text, p_cle text default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_compte uuid := auth.uid();
   v_d      depots;
   v_float  floats;
-  v_palier jsonb;
-  v_jour   numeric;
-  v_num    text;
 begin
   if v_compte is null then raise exception 'non connecté'; end if;
   if p_cle is not null then
     select * into v_d from depots where compte_id = v_compte and cle = p_cle;
     if found then return _depot_json(v_d) || '{"deja": true}'; end if;
   end if;
-  if p_montant is null or p_montant <= 0 or p_montant <> trunc(p_montant) then
-    raise exception 'montant invalide';
-  end if;
   perform 1 from operateurs where id = p_operateur;
   if not found then raise exception 'opérateur inconnu'; end if;
 
-  v_num := normaliser_numero(p_numero_payeur);
-  perform 1 from numeros where compte_id = v_compte and operateur = p_operateur and numero = v_num and retire_le is null;
-  if not found then raise exception 'numéro inconnu sur ce compte'; end if;
-
-  v_palier := parametre('paliers') -> (select palier::text from comptes where id = v_compte);
-  if v_palier is not null and v_palier <> 'null'::jsonb then
-    select coalesce(sum(montant), 0) into v_jour from depots
-     where compte_id = v_compte and cree_le >= date_trunc('day', now()) and etat not in ('annule', 'expire');
-    if v_jour + p_montant > (v_palier ->> 'entree_jour')::numeric then
-      raise exception 'plafond du palier atteint' using detail = format('%s XAF par jour', v_palier ->> 'entree_jour');
-    end if;
-  end if;
-
   -- Le float : sur cet opérateur, actif, porté par un terminal vu récemment,
-  -- le moins chargé de dépôts ouverts.
+  -- le moins chargé de dossiers ouverts.
   select f.* into v_float
     from floats f left join terminaux t on t.id = f.terminal
    where f.operateur = p_operateur and f.actif
    order by (t.vu_le is not null and t.vu_le > now() - interval '10 minutes') desc,
-            (select count(*) from depots d where d.float_id = f.id and d.etat in ('en_attente', 'partiel')) asc,
+            (select count(*) from depots d where d.float_id = f.id and d.etat = 'en_attente') asc,
             f.id
    limit 1;
   if not found then raise exception 'aucun float disponible pour cet opérateur'; end if;
 
-  insert into depots (reference, compte_id, operateur, float_id, numero_payeur, montant, cle, expire_le)
+  insert into depots (reference, compte_id, operateur, float_id, cle, expire_le)
   values ('XAFe-DP-' || lpad(nextval('depots_numero')::text, 6, '0'), v_compte, p_operateur, v_float.id,
-          v_num, p_montant, p_cle, now() + make_interval(mins => (parametre('depot') ->> 'validite_minutes')::int))
+          p_cle, now() + make_interval(mins => (parametre('depot') ->> 'validite_minutes')::int))
   returning * into v_d;
+  return _depot_json(v_d);
+end $$;
+
+create function mon_depot(p_reference text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select _depot_json(d) from depots d where d.reference = p_reference and d.compte_id = auth.uid()
+$$;
+
+create function mes_depots_en_attente() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(_depot_json(d) order by d.cree_le desc), '[]'::jsonb)
+    from depots d
+   where d.compte_id = auth.uid()
+     and ((d.etat = 'en_attente' and d.expire_le > now())
+          or exists (select 1 from depot_declarations x where x.depot_id = d.id and x.etat = 'attendu'))
+$$;
+
+-- LE CRÉDIT : une déclaration et le SMS qui lui correspond se rencontrent.
+-- Appelé par declarer_transaction (l'ID arrive après le SMS) et par
+-- totem_sms_recu (le SMS arrive après l'ID). Le palier se vérifie ICI, sur le
+-- montant lu dans le SMS : au-delà, la déclaration est refusée, l'argent reste
+-- retenu et l'équipe rembourse — on ne crédite jamais ce qu'on ne peut pas.
+create function _crediter_declaration(p_decl_id uuid, p_terminal text, p_source_id bigint, p_montant numeric,
+                                      p_numero_payeur text, p_reference_operateur text, p_texte text, p_emis_le timestamptz,
+                                      p_retenue_id bigint)
+returns depot_declarations language plpgsql as $$
+declare
+  v_x      depot_declarations;
+  v_d      depots;
+  v_palier jsonb;
+  v_jour   numeric;
+begin
+  select * into v_x from depot_declarations where id = p_decl_id for update;
+  select * into v_d from depots where id = v_x.depot_id for update;
+  if v_x.etat <> 'attendu' then return v_x; end if;
+
+  v_palier := parametre('paliers') -> (select palier::text from comptes where id = v_d.compte_id);
+  if v_palier is not null and v_palier <> 'null'::jsonb then
+    select coalesce(sum(montant), 0) into v_jour from depot_declarations
+     where compte_id = v_d.compte_id and etat = 'credite' and credite_le >= date_trunc('day', now());
+    if v_jour + p_montant > (v_palier ->> 'entree_jour')::numeric then
+      update depot_declarations
+         set etat = 'refuse', montant = p_montant, numero_payeur = p_numero_payeur,
+             motif = format('plafond du palier atteint (%s XAF par jour) : l''argent est retenu, l''équipe vous rembourse', v_palier ->> 'entree_jour')
+       where id = v_x.id returning * into v_x;
+      perform _notifier(v_d.compte_id, 'Paiement retenu', format('%s XAF reçus au-delà de votre palier : ils vous seront remboursés.', to_char(p_montant, 'FM999G999G999G999')), '/historique/' || v_d.reference);
+      return v_x;
+    end if;
+  end if;
+
+  insert into depot_paiements (depot_id, declaration_id, terminal, source_id, montant, numero_payeur, reference_operateur, texte, emis_le)
+  values (v_d.id, v_x.id, p_terminal, p_source_id, p_montant, p_numero_payeur, p_reference_operateur, p_texte, p_emis_le);
+  perform _mouvement(v_d.compte_id, 'XAFe', p_montant, 0, 'depot', 'depots', v_d.reference);
+  insert into emissions (sens, montant, source_table, source_id) values ('emission', p_montant, 'depots', v_d.reference);
+  update depots set montant_recu = montant_recu + p_montant, etat = 'credite', credite_le = now() where id = v_d.id;
+  update depot_declarations
+     set etat = 'credite', montant = p_montant, numero_payeur = p_numero_payeur, credite_le = now(),
+         paiement_id = (select id from depot_paiements where terminal = p_terminal and source_id = p_source_id)
+   where id = v_x.id returning * into v_x;
+  if p_retenue_id is not null then
+    update entrees_retenues set etat = 'rapprochee', depot_id = v_d.id where id = p_retenue_id;
+  end if;
+  perform _notifier(v_d.compte_id, 'XAFe crédités', format('+%s XAFe reçus par %s.', to_char(p_montant, 'FM999G999G999G999'), (select nom from operateurs where id = v_d.operateur)), '/historique/' || v_d.reference);
+  return v_x;
+end $$;
+
+-- Le client tape le transaction ID de son SMS.
+create function declarer_transaction(p_reference text, p_transaction_id text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_compte uuid := auth.uid();
+  v_d      depots;
+  v_x      depot_declarations;
+  v_r      entrees_retenues;
+  v_id     text := normaliser_transaction_id(p_transaction_id);
+begin
+  if v_compte is null then raise exception 'non connecté'; end if;
+  select * into v_d from depots where reference = p_reference and compte_id = v_compte for update;
+  if not found then raise exception 'dépôt inconnu'; end if;
+  if v_d.etat in ('annule') then raise exception 'ce dépôt est annulé'; end if;
+  if length(v_id) < 6 then
+    raise exception 'transaction ID invalide' using detail = 'au moins six caractères, tel qu''il est écrit dans le SMS';
+  end if;
+
+  -- Le même ID, déjà déclaré : sur ce dossier, c'est le même geste rejoué ; ailleurs, c'est un paiement déjà pris.
+  select * into v_x from depot_declarations where operateur = v_d.operateur and transaction_id = v_id;
+  if found then
+    if v_x.depot_id = v_d.id then return _declaration_json(v_x); end if;
+    raise exception 'transaction ID déjà utilisé' using detail = 'ce paiement a déjà été crédité';
+  end if;
+
+  insert into depot_declarations (depot_id, compte_id, operateur, transaction_id)
+  values (v_d.id, v_compte, v_d.operateur, v_id) returning * into v_x;
+
+  -- TOTEM a peut-être déjà lu le SMS : il est alors parmi les entrées retenues.
+  select * into v_r from entrees_retenues
+   where operateur = v_d.operateur and transaction_id = v_id and etat = 'retenue'
+   order by cree_le limit 1 for update skip locked;
+  if found then
+    v_x := _crediter_declaration(v_x.id, v_r.terminal, v_r.source_id, v_r.montant, v_r.numero_payeur,
+                                 v_r.reference_operateur, v_r.texte, v_r.emis_le, v_r.id);
+  end if;
+  return _declaration_json(v_x);
+end $$;
+
+-- « Terminer » : un dossier sans aucune déclaration se ferme comme annulé ; sinon il reste ce qu'il est.
+create function terminer_depot(p_reference text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_d depots;
+begin
+  select * into v_d from depots where reference = p_reference and compte_id = auth.uid() for update;
+  if not found then raise exception 'dépôt inconnu'; end if;
+  if v_d.etat = 'en_attente' and not exists (select 1 from depot_declarations where depot_id = v_d.id) then
+    update depots set etat = 'annule' where id = v_d.id returning * into v_d;
+  end if;
   return _depot_json(v_d);
 end $$;
 
@@ -281,16 +435,22 @@ declare v_d depots;
 begin
   select * into v_d from depots where reference = p_reference and compte_id = auth.uid() for update;
   if not found then raise exception 'dépôt inconnu'; end if;
-  if v_d.etat <> 'en_attente' then raise exception 'ce dépôt ne peut plus être annulé' using detail = v_d.etat; end if;
+  if v_d.etat <> 'en_attente' or exists (select 1 from depot_declarations where depot_id = v_d.id and etat = 'attendu') then
+    raise exception 'ce dépôt ne peut plus être annulé' using detail = v_d.etat;
+  end if;
   update depots set etat = 'annule' where id = v_d.id returning * into v_d;
   return _depot_json(v_d);
 end $$;
 
+-- Un dossier ouvert, sans déclaration, passé sa validité : expiré. Une
+-- déclaration en attente, elle, n'expire jamais : le SMS peut arriver tard.
 create function expirer_depots() returns int
 language plpgsql security definer set search_path = public as $$
 declare n int;
 begin
-  update depots set etat = 'expire' where etat = 'en_attente' and expire_le < now();
+  update depots d set etat = 'expire'
+   where etat = 'en_attente' and expire_le < now()
+     and not exists (select 1 from depot_declarations x where x.depot_id = d.id);
   get diagnostics n = row_count;
   return n;
 end $$;
@@ -305,8 +465,9 @@ declare
   v_d     depots;
   v_p     depot_paiements;
   v_r     entrees_retenues;
+  v_x     depot_declarations;
   v_num   text;
-  v_grace int;
+  v_id    text := normaliser_transaction_id(p_reference);
 begin
   -- Le même SMS, relu après une coupure : la même réponse, rien de plus.
   select * into v_p from depot_paiements where terminal = p_terminal and source_id = p_source_id;
@@ -319,37 +480,31 @@ begin
 
   update terminaux set vu_le = now() where id = p_terminal;
   v_num := normaliser_numero(p_numero_payeur);
-  v_grace := (parametre('depot') ->> 'grace_minutes')::int;
   select * into v_float from floats where operateur = p_operateur and numero = normaliser_numero(p_float_numero);
 
-  if found and coalesce(p_montant, 0) > 0 then
-    select * into v_d from depots
-     where float_id = v_float.id and numero_payeur = v_num
-       and (etat in ('en_attente', 'partiel')
-            or (etat = 'expire' and expire_le > now() - make_interval(mins => v_grace)))
-       and montant - montant_recu >= p_montant
-     order by (montant - montant_recu = p_montant) desc, cree_le asc
-     for update skip locked
-     limit 1;
+  -- Le client a peut-être déjà tapé l'ID de ce paiement.
+  if coalesce(p_montant, 0) > 0 and length(v_id) >= 6 then
+    select * into v_x from depot_declarations
+     where operateur = p_operateur and transaction_id = v_id and etat = 'attendu'
+     for update skip locked;
     if found then
-      insert into depot_paiements (depot_id, terminal, source_id, montant, reference_operateur, texte, emis_le)
-      values (v_d.id, p_terminal, p_source_id, p_montant, p_reference, p_texte, p_emis_le);
-      perform _mouvement(v_d.compte_id, 'XAFe', p_montant, 0, 'depot', 'depots', v_d.reference);
-      insert into emissions (sens, montant, source_table, source_id) values ('emission', p_montant, 'depots', v_d.reference);
-      update depots
-         set montant_recu = montant_recu + p_montant,
-             etat = case when montant_recu + p_montant >= montant then 'credite' else 'partiel' end,
-             credite_le = case when montant_recu + p_montant >= montant then now() else credite_le end
-       where id = v_d.id
-       returning * into v_d;
-      return jsonb_build_object('resultat', 'credite', 'reference', v_d.reference, 'etat', v_d.etat,
-                                'montant_recu', v_d.montant_recu);
+      v_x := _crediter_declaration(v_x.id, p_terminal, p_source_id, p_montant, v_num, p_reference, p_texte, p_emis_le, null);
+      select * into v_d from depots where id = v_x.depot_id;
+      if v_x.etat = 'credite' then
+        return jsonb_build_object('resultat', 'credite', 'reference', v_d.reference, 'etat', v_d.etat, 'montant_recu', v_d.montant_recu);
+      end if;
+      -- refusée (palier) : le SMS est retenu, rattaché au dossier pour l'équipe
+      insert into entrees_retenues (terminal, source_id, float_id, operateur, float_numero, numero_payeur, montant,
+                                    reference_operateur, transaction_id, texte, emis_le, depot_id)
+      values (p_terminal, p_source_id, v_float.id, p_operateur, p_float_numero, v_num, p_montant, p_reference, v_id, p_texte, p_emis_le, v_d.id)
+      returning * into v_r;
+      return jsonb_build_object('resultat', 'retenue', 'id', v_r.id, 'motif', v_x.motif);
     end if;
   end if;
 
   insert into entrees_retenues (terminal, source_id, float_id, operateur, float_numero, numero_payeur, montant,
-                                reference_operateur, texte, emis_le)
-  values (p_terminal, p_source_id, v_float.id, p_operateur, p_float_numero, v_num, p_montant, p_reference, p_texte, p_emis_le)
+                                reference_operateur, transaction_id, texte, emis_le)
+  values (p_terminal, p_source_id, v_float.id, p_operateur, p_float_numero, v_num, p_montant, p_reference, v_id, p_texte, p_emis_le)
   returning * into v_r;
   return jsonb_build_object('resultat', 'retenue', 'id', v_r.id);
 end $$;
@@ -440,6 +595,7 @@ begin
 
   select * into v_n from numeros where id = p_numero_id and compte_id = v_compte and retire_le is null;
   if not found then raise exception 'numéro inconnu sur ce compte'; end if;
+  if v_n.verifie_le is null then raise exception 'numéro pas encore vérifié'; end if;
   if v_n.actif_des > now() then
     raise exception 'numéro pas encore actif' using detail = format('actif à partir du %s', v_n.actif_des);
   end if;
@@ -557,6 +713,11 @@ begin
        set etat = case when v_echouees = 0 then 'envoyee' when v_faites = 0 then 'echouee' else 'partielle' end,
            terminee_le = now()
      where id = v_s.id returning * into v_s;
+    perform _notifier(v_s.compte_id,
+      case v_s.etat when 'envoyee' then 'Sortie envoyée' when 'echouee' then 'Sortie échouée' else 'Sortie partielle' end,
+      case v_s.etat when 'envoyee' then format('%s XAF envoyés au %s.', to_char(v_s.montant_envoye, 'FM999G999G999G999'), v_s.numero)
+                    else format('%s XAFe sont revenus sur votre compte.', to_char(v_s.montant_rendu, 'FM999G999G999G999')) end,
+      '/historique/' || v_s.reference);
   end if;
   return jsonb_build_object('commande', (select etat from commandes where id = p_id), 'sortie', v_s.etat);
 end $$;
@@ -798,6 +959,10 @@ begin
            bloque = bloque - (case when cote = 'achat' then v_xafe else v_q end),
            etat = case when restant - v_q = 0 then 'execute' else 'partiel' end, maj_le = now()
      where id = v_c.id;
+    if v_c.restant - v_q = 0 then
+      perform _notifier(v_c.compte_id, 'Ordre exécuté',
+        format('%s de %s USDT à %s.', case when v_c.cote = 'achat' then 'Achat' else 'Vente' end, v_c.quantite, v_px), '/marche/ordres/' || v_c.id);
+    end if;
 
     insert into executions (paire, ordre_achat, ordre_vente, preneur, prix, quantite, montant_xafe, frais_acheteur, frais_vendeur)
     values (v_paire,
@@ -900,6 +1065,8 @@ alter table ecritures         enable row level security;
 alter table emissions         enable row level security;
 alter table depots            enable row level security;
 alter table depot_paiements   enable row level security;
+alter table depot_declarations enable row level security;
+alter table notifications     enable row level security;
 alter table entrees_retenues  enable row level security;
 alter table sorties           enable row level security;
 alter table commandes         enable row level security;
@@ -918,6 +1085,8 @@ create policy lire_mes_ecritures on ecritures for select to authenticated using 
 create policy lire_mes_depots on depots for select to authenticated using (compte_id = auth.uid());
 create policy lire_mes_depot_paiements on depot_paiements for select to authenticated
   using (depot_id in (select id from depots where compte_id = auth.uid()));
+create policy lire_mes_declarations on depot_declarations for select to authenticated using (compte_id = auth.uid());
+create policy lire_mes_notifications on notifications for select to authenticated using (compte_id = auth.uid());
 create policy lire_mes_sorties on sorties for select to authenticated using (compte_id = auth.uid());
 create policy lire_mes_adresses on adresses_crypto for select to authenticated using (compte_id = auth.uid());
 create policy lire_mes_transferts on transferts_crypto for select to authenticated using (compte_id = auth.uid());
@@ -927,13 +1096,14 @@ create policy lire_mes_executions on executions for select to authenticated
       or ordre_vente in (select id from ordres where compte_id = auth.uid()));
 
 grant usage on schema public to authenticated, anon, service_role;
-grant select on parametres, operateurs, comptes, numeros, soldes, ecritures, depots, depot_paiements, sorties,
+grant select on parametres, operateurs, comptes, numeros, soldes, ecritures, depots, depot_paiements, depot_declarations, notifications, sorties,
                 adresses_crypto, transferts_crypto, ordres, executions to authenticated;
 grant all on all tables in schema public to service_role;
 grant all on all sequences in schema public to service_role;
 
 revoke all on all functions in schema public from public;
-grant execute on function creer_depot(text, numeric, text, text), annuler_depot(text),
+grant execute on function ouvrir_depot(text, text), mon_depot(text), mes_depots_en_attente(),
+                          declarer_transaction(text, text), terminer_depot(text), annuler_depot(text),
                           demander_sortie(numeric, uuid, text),
                           placer_ordre(text, text, numeric, numeric, text), annuler_ordre(uuid),
                           carnet(int), transactions_recentes(int), cotation(), mes_soldes()
