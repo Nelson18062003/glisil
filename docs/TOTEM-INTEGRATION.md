@@ -50,17 +50,19 @@ deux fois rend la même réponse et ne crédite pas deux fois.
 
 Ce que la base en fait (`totem_sms_recu`) :
 
-1. cherche un dépôt **en attente ou partiel** sur ce float, **du même numéro
-   payeur**, dont il reste au moins ce montant à recevoir ; le plus ancien
-   d'abord, et de préférence celui dont il reste exactement ce montant ;
-2. s'il existe : crédite les XAFe **de ce SMS** tout de suite, note le
-   paiement, et marque le dépôt « crédité » quand le total attendu est
-   atteint ;
-3. sinon : range le SMS dans `entrees_retenues`. Personne n'est crédité ;
-   l'admin rapproche ou rembourse.
+1. cherche une **déclaration en attente** portant le même `(opérateur,
+   transaction ID)` : le client a tapé l'ID de son SMS avant que TOTEM ne lise
+   le sien. S'il y en a une : crédite le compte de ce client du montant **du
+   SMS**, tout de suite ;
+2. sinon : range le SMS dans `entrees_retenues`. Personne n'est crédité au
+   hasard. Quand le client déclare ensuite l'ID (`declarer_transaction`), la
+   base retrouve le SMS retenu et crédite.
 
-Un dépôt expiré depuis moins de deux heures est encore accepté : le client a
-pu payer en retard.
+Les deux ordres d'arrivée marchent : le SMS avant l'ID, l'ID avant le SMS. Un
+transaction ID ne crédite qu'une fois (`depot_declarations (operateur,
+transaction_id)` unique). Le client ne tape jamais de montant : c'est le SMS
+qui le dit. Si le montant dépasse le palier du client, la déclaration est
+**refusée**, l'argent reste retenu et l'équipe rembourse.
 
 ## (2) Les transferts à composer
 

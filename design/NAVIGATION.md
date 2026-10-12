@@ -57,32 +57,38 @@ Ce qu'on y voit : le solde, trois tuiles, le prix. Rien d'autre.
 | Avatar | onglet **Compte** | (changement d'onglet) |
 | Cloche | **Notifications** (liste) | Accueil |
 | Œil sur le solde | masque les montants, partout, jusqu'au prochain appui | — |
-| Bandeau « Dépôt en attente » (s'il y en a un) | parcours Entrer, étape **Payer**, reprise | Accueil |
+| Bandeau « Dépôt en attente » (s'il y en a un) | parcours Entrer, étape **Transaction ID**, reprise | Accueil |
 
 ## 4. Parcours « Entrer des XAF »
 
 ```
- 1 Opérateur ─▶ 2 Montant ─▶ 3 Payer ─▶ (attente) ─▶ 4 Crédité ─▶ Accueil ou Marché
+ 1 Opérateur ─▶ 2 Payer ─▶ 3 Transaction ID ─▶ (crédit, ID par ID) ─▶ 4 Crédité ─▶ Accueil ou Marché
 ```
 
+Le client **paie d'abord**, comme il sait le faire : un transfert depuis sa
+puce ou sa flotte vers notre float, ou un retrait chez notre code agent. MTN
+et Orange donnent toujours un **transaction ID** dans le SMS du payeur ; le
+même ID est dans le SMS que TOTEM lit sur notre float. C'est cet ID qui
+rapproche — pas une capture d'écran, pas un montant tapé d'avance.
+
 - **1 Opérateur** : MTN MoMo, Orange Money, banque (bientôt). Flèche : Accueil.
-- **2 Montant** : pavé numérique, raccourcis. Si le montant dépasse le plafond
-  par transfert de l'opérateur, l'écran dit en une ligne « 3 transferts »,
-  sans bloquer. Flèche : étape 1.
-- **3 Payer** : le numéro à payer, la référence, « J'ai payé », « Ouvrir
-  MoMo ». La référence est créée **en entrant** sur cet écran, et vaut 30 min.
-  Flèche : demande « Annuler ce dépôt ? » (Oui → la référence est close,
-  retour à l'étape 2 ; Non → on reste). Croix : quitte le parcours **sans
-  annuler** ; le dépôt reste visible dans Historique et un bandeau sur
-  l'Accueil permet d'y revenir.
-- **Attente** : après « J'ai payé », le même écran montre « On attend le SMS
-  de MTN… » avec une minuterie. Dès que TOTEM a lu le SMS, l'écran passe
-  tout seul à l'étape 4 (temps réel). Après 30 min sans SMS : « Pas encore
-  reçu » avec deux issues, « Je réessaie » (retour à Payer) et « Signaler un
-  problème » (ouvre l'aide avec la référence préremplie).
-- **4 Crédité** : montant, heure, références. Deux sorties : « Aller au
-  marché » (remplace la pile par l'onglet Marché) ou « Retour à l'accueil ».
-  Pas de flèche retour : un dépôt crédité ne se « défait » pas.
+- **2 Payer** : le numéro du float à payer (et le code agent quand il y en a
+  un), les deux façons de payer, le plafond par transfert de l'opérateur et
+  le plafond du palier. Le dossier du dépôt (`XAFe-DP-…`) est ouvert **en
+  entrant** sur cet écran, et vaut 30 min. Flèche : étape 1 (si rien n'a été
+  déclaré, le dossier se ferme). Bouton : « J'ai payé ».
+- **3 Transaction ID** : un champ, « Ajouter ». Chaque ID déclaré apparaît
+  dans une liste avec son état : *on cherche le SMS…*, puis **crédité** avec
+  le montant lu dans le SMS (temps réel), ou *retenu* avec la raison (palier
+  dépassé : l'équipe rembourse). Plusieurs transferts = plusieurs ID. Si TOTEM
+  n'a pas encore lu le SMS, la déclaration attend et se crédite toute seule à
+  son arrivée. Flèche : étape 2. Croix : quitte le parcours **sans rien
+  perdre** ; les ID en attente restent visibles dans Historique et un bandeau
+  sur l'Accueil permet d'y revenir. Bouton « Terminer » : étape 4 dès qu'un
+  ID au moins est crédité.
+- **4 Crédité** : le total crédité, l'heure, les ID. Deux sorties : « Aller au
+  marché » ou « Retour à l'accueil ». Pas de flèche retour : un dépôt crédité
+  ne se « défait » pas.
 
 ## 5. Parcours « Sortir des XAF »
 
@@ -147,8 +153,8 @@ Mêmes règles que « Sortir des XAF » : flèche = étape précédente, écran 
   état.
 - Une ligne → **Détail** : l'opération, ses références, son reçu. Depuis le
   Détail : « Télécharger le reçu » (partage du PDF), « Reprendre » pour un
-  dépôt en attente (ouvre l'étape Payer), « Signaler un problème » (aide avec
-  la référence).
+  dépôt en attente (ouvre l'étape Transaction ID), « Signaler un problème »
+  (aide avec la référence).
 - Un ordre → **Détail de l'ordre** (le même que dans Marché).
 
 ## 9. Compte
@@ -185,7 +191,7 @@ Mêmes règles que « Sortir des XAF » : flèche = étape précédente, écran 
 ```
 /bienvenue  /bienvenue/code  /bienvenue/profil  /verrouillage
 /           (Accueil)        /notifications
-/entrer/operateur  /entrer/montant  /entrer/payer/:ref  /entrer/credite/:ref
+/entrer/operateur  /entrer/payer/:ref  /entrer/transaction/:ref  /entrer/credite/:ref
 /sortir/montant  /sortir/destination  /sortir/verifier  /sortir/code  /sortir/envoye/:ref
 /marche  /marche/graphique  /marche/carnet  /marche/ordres  /marche/ordres/:id  /marche/execute/:id
 /crypto  /crypto/deposer/:actif  /crypto/retirer/:actif/{reseau,adresse,montant,verifier,code}  /crypto/envoye/:ref

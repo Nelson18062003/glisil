@@ -91,7 +91,9 @@ l'application. C'est la leçon de Bonzini et de TOTEM, reprise telle quelle.
 
 ```sh
 sh moteur/verifier-le-moteur.sh      # un PostgreSQL neuf, le schéma, puis les scénarios qui attaquent
-cd app && npm run build              # l'application cliente
+cd app && npm test                   # le noyau de l'application : formats, argent, erreurs
+cd app && npm run build              # l'application cliente, type-check compris
+cd app && node scripts/parcourir.mjs # le parcours entier, joué dans un vrai Chromium
 cd design/maquettes && npm run build # les maquettes
 ```
 
