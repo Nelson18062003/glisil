@@ -1,9 +1,9 @@
 {
-  "name": "xafe-maquettes",
+  "name": "xafe-exchange-maquettes",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.0.2",
   "type": "module",
-  "description": "Maquettes XAFe (client Android et admin web) construites avec le Simple Design System de Figma",
+  "description": "Maquettes de XAFe Exchange (application Android) en Material Design 3",
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.json && vite build",
@@ -11,15 +11,16 @@
     "captures": "node scripts/captures.mjs"
   },
   "dependencies": {
-    "clsx": "^2.1.1",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@mui/icons-material": "^6.4.0",
+    "@mui/material": "^6.4.0",
     "react": "^18.3.1",
-    "react-aria-components": "1.13.0",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@react-types/shared": "^3.32.1",
-    "@types/react": "18.3.26",
-    "@types/react-dom": "18.3.7",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.6.3",
     "vite": "^6.3.5"

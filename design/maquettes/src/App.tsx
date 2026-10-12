@@ -1,74 +1,59 @@
-import { Link, Text, TextHeading, TextSmall, TextTitlePage } from "primitives";
+import { Box, Link, Stack, Typography } from "@mui/material";
 import type { ReactNode } from "react";
-import * as admin from "./admin";
-import * as client from "./client";
+import { Accueil } from "./screens/accueil";
+import { Compte } from "./screens/compte";
+import { Code, Connexion } from "./screens/connexion";
+import { Crypto, CryptoDeposer } from "./screens/crypto";
+import { EntrerConfirme, EntrerMontant, EntrerOperateur, EntrerPayer } from "./screens/entrer";
+import { Historique, HistoriqueDetail } from "./screens/historique";
+import { Marche, MarcheAcheter, MarcheCarnet, MarcheOrdrePlace } from "./screens/marche";
+import { SortirDestination, SortirMontant, SortirRecap } from "./screens/sortir";
 
-/*
- * Un chemin = un écran. Pas de routeur : les maquettes se visitent par
- * adresse (et se capturent une à une par le script de captures).
- */
-const CLIENT: Record<string, { title: string; screen: () => ReactNode }> = {
-  connexion: { title: "Connexion", screen: client.Connexion },
-  portefeuille: { title: "Portefeuille", screen: client.Portefeuille },
-  "entrer-xaf": { title: "Entrer des XAF (MoMo → XAFe)", screen: client.EntrerXAF },
-  "suivi-depot": { title: "TOTEM détecte, XAFe crédités", screen: client.SuiviDepot },
-  "sortir-xaf": { title: "Sortir des XAF (XAFe → MoMo)", screen: client.SortirXAF },
-  marche: { title: "Marché spot XAFe/USDT", screen: client.Marche },
-  crypto: { title: "Dépôt et retrait crypto (BEP20 · TRC20)", screen: client.Crypto },
-  historique: { title: "Historique et références", screen: client.Historique },
-  compte: { title: "Compte, paliers et limites", screen: client.Compte },
-};
-
-const ADMIN: Record<string, { title: string; screen: () => ReactNode }> = {
-  reserves: { title: "Réserves et circulation", screen: admin.Reserves },
-  entrees: { title: "Entrées (dépôts XAF)", screen: admin.Entrees },
-  sorties: { title: "Sorties (retraits XAF)", screen: admin.Sorties },
-  terminaux: { title: "Terminaux TOTEM", screen: admin.Terminaux },
-  marche: { title: "Marché (surveillance et réglages)", screen: admin.Marche },
-  clients: { title: "Clients et paliers", screen: admin.Clients },
-};
+/* Un chemin = un écran. L'ordre est celui du parcours, et celui des captures. */
+export const SCREENS: { path: string; title: string; screen: () => ReactNode }[] = [
+  { path: "connexion", title: "Connexion", screen: Connexion },
+  { path: "code", title: "Code reçu par SMS", screen: Code },
+  { path: "accueil", title: "Accueil", screen: Accueil },
+  { path: "entrer/operateur", title: "Entrer des XAF · d'où vient l'argent", screen: EntrerOperateur },
+  { path: "entrer/montant", title: "Entrer des XAF · montant", screen: EntrerMontant },
+  { path: "entrer/payer", title: "Entrer des XAF · payer", screen: EntrerPayer },
+  { path: "entrer/confirme", title: "Entrer des XAF · crédité par TOTEM", screen: EntrerConfirme },
+  { path: "sortir/montant", title: "Sortir des XAF · montant", screen: SortirMontant },
+  { path: "sortir/destination", title: "Sortir des XAF · vers quel numéro", screen: SortirDestination },
+  { path: "sortir/recap", title: "Sortir des XAF · vérifier et confirmer", screen: SortirRecap },
+  { path: "marche", title: "Marché", screen: Marche },
+  { path: "marche/carnet", title: "Marché · carnet d'ordres", screen: MarcheCarnet },
+  { path: "marche/acheter", title: "Marché · acheter des USDT", screen: MarcheAcheter },
+  { path: "marche/ordre-place", title: "Marché · ordre exécuté", screen: MarcheOrdrePlace },
+  { path: "crypto", title: "Crypto", screen: Crypto },
+  { path: "crypto/deposer", title: "Crypto · déposer des USDT", screen: CryptoDeposer },
+  { path: "historique", title: "Historique", screen: Historique },
+  { path: "historique/detail", title: "Historique · détail d'une opération", screen: HistoriqueDetail },
+  { path: "compte", title: "Compte", screen: Compte },
+];
 
 function Index() {
   return (
-    <div className="index">
-      <div className="col">
-        <TextTitlePage>Maquettes XAFe</TextTitlePage>
-        <Text className="t-sec">
-          Construites avec le Simple Design System de Figma. Client : application
-          Android (390 px). Admin : application web (1440 px).
-        </Text>
-      </div>
-      <div className="col">
-        <TextHeading>Client (téléphone)</TextHeading>
-        <div className="index-list">
-          {Object.entries(CLIENT).map(([k, v], i) => (
-            <Link key={k} href={`/client/${k}`}>
-              {i + 1}. {v.title}
-            </Link>
-          ))}
-        </div>
-      </div>
-      <div className="col">
-        <TextHeading>Admin (web)</TextHeading>
-        <div className="index-list">
-          {Object.entries(ADMIN).map(([k, v], i) => (
-            <Link key={k} href={`/admin/${k}`}>
-              {i + 1}. {v.title}
-            </Link>
-          ))}
-        </div>
-      </div>
-      <TextSmall className="t-sec">
-        Les montants, taux et délais sont des exemples ; les limites de paliers et
-        les adresses de contrats restent à fixer.
-      </TextSmall>
-    </div>
+    <Box sx={{ maxWidth: 720, mx: "auto", p: 4 }}>
+      <Typography variant="h4" gutterBottom>
+        XAFe Exchange · maquettes
+      </Typography>
+      <Typography variant="body2" gutterBottom>
+        Application Android (412 × 915). Un écran, une chose.
+      </Typography>
+      <Stack gap={1} mt={3}>
+        {SCREENS.map((s, i) => (
+          <Link key={s.path} href={`/client/${s.path}`} underline="hover">
+            {i + 1}. {s.title}
+          </Link>
+        ))}
+      </Stack>
+    </Box>
   );
 }
 
 export default function App() {
-  const [, area, name] = window.location.pathname.split("/");
-  if (area === "client" && name && CLIENT[name]) return <>{CLIENT[name].screen()}</>;
-  if (area === "admin" && name && ADMIN[name]) return <>{ADMIN[name].screen()}</>;
-  return <Index />;
+  const path = window.location.pathname.replace(/^\/client\//, "").replace(/\/$/, "");
+  const found = SCREENS.find((s) => s.path === path);
+  return found ? <>{found.screen()}</> : <Index />;
 }
