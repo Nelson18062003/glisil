@@ -610,3 +610,178 @@ begin
   raise notice '✓ 9.4 l''historique, les ordres, les chandelles et les notifications se lisent';
 end $$;
 commit;
+
+
+-- ───────────────────────── 10 · l'administration ──────────────────────────
+insert into administrateurs (id, email, nom, role) values
+  ('dddddddd-0000-0000-0000-000000000001', 'nelson@xafe.exchange', 'Nelson', 'super_admin'),
+  ('dddddddd-0000-0000-0000-000000000002', 'ops@xafe.exchange', 'Opérateur', 'operateur'),
+  ('dddddddd-0000-0000-0000-000000000003', 'support@xafe.exchange', 'Support', 'support');
+
+-- Le support voit, mais ne rapproche pas, ne rembourse pas, ne touche pas aux paliers.
+begin;
+set local xafe.compte = 'dddddddd-0000-0000-0000-000000000003';
+do $$
+declare r jsonb;
+begin
+  assert (mon_profil_admin() ->> 'role') = 'support';
+  r := admin_tableau();
+  assert (r ->> 'circulation')::numeric = circulation(), r;
+  assert jsonb_array_length(r -> 'terminaux') = 1 and jsonb_array_length(r -> 'floats') = 2, r;
+  assert (r -> 'retenues' ->> 'nombre')::int >= 1, 'une entrée retenue au moins (le palier de Bob)';
+  begin
+    perform admin_rapprocher_retenue((select id from entrees_retenues where etat = 'retenue' limit 1), 'XAFe-DP-000001');
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm = 'accès non autorisé', sqlerrm;
+  end;
+  begin
+    perform admin_changer_palier('22222222-2222-2222-2222-222222222222', 2);
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm = 'accès non autorisé', sqlerrm;
+  end;
+  assert jsonb_array_length(admin_clients('bob', 10)) = 1, admin_clients('bob', 10);
+  raise notice '✓ 10.1 un administrateur n''a que les droits de son rôle, et un client lambda n''en a aucun';
+end $$;
+rollback;
+
+-- Un client (Alice) qui appellerait une RPC d'administration : refusé.
+begin;
+set local xafe.compte = '11111111-1111-1111-1111-111111111111';
+do $$
+begin
+  begin
+    perform admin_tableau();
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm = 'accès non autorisé', sqlerrm;
+  end;
+  assert mon_profil_admin() is null;
+end $$;
+rollback;
+
+-- L'opérateur rapproche à la main un SMS retenu : le client avait mal recopié son ID (scénario 1, « mp 20394817103 »).
+begin;
+set local xafe.compte = 'dddddddd-0000-0000-0000-000000000002';
+do $$
+declare r jsonb; v_id bigint; b uuid := '22222222-2222-2222-2222-222222222222'; avant numeric := solde(b, 'XAFe', 'dispo');
+begin
+  -- un SMS que personne n'a déclaré, sur le float MTN, venant du numéro de Bob
+  r := totem_sms_recu('akwa-1', 21, 'mtn', '677000000', '677999999', 75000, '20394817777', '…', now());
+  assert r ->> 'resultat' = 'retenue', r;
+  v_id := (r ->> 'id')::bigint;
+  r := admin_retenues('retenue', 50);
+  assert (select count(*) from jsonb_array_elements(r) x where (x ->> 'id')::bigint = v_id and x -> 'compte_suggere' ->> 'nom' = 'Bob Essomba') = 1, 'le numéro payeur suggère le compte de Bob';
+  r := admin_rapprocher_retenue(v_id, (select reference from depots where cle = 'k-dep-pal'));
+  assert r ->> 'etat' = 'credite' and (r ->> 'montant')::numeric = 75000, r;
+  assert solde(b, 'XAFe', 'dispo') = avant + 75000, 'Bob est crédité par la même voie que l''automatique';
+  assert (select etat from entrees_retenues where id = v_id) = 'rapprochee';
+  begin
+    perform admin_rapprocher_retenue(v_id, (select reference from depots where cle = 'k-dep-pal'));
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm like 'cette entrée n''est plus retenue%', sqlerrm;
+  end;
+  assert (select count(*) from admin_journal(10) j) = 1 and (admin_journal(10) -> 0 ->> 'action') = 'rapprocher_retenue', admin_journal(10);
+  raise notice '✓ 10.2 un SMS retenu se rapproche à la main, une fois, et le journal le dit';
+end $$;
+commit;
+
+-- Le super admin rembourse le SMS que le palier de Bob a refusé : TOTEM composera le transfert.
+begin;
+set local xafe.compte = 'dddddddd-0000-0000-0000-000000000001';
+do $$
+declare r jsonb; v_id bigint; v_rbt bigint;
+begin
+  select id into v_id from entrees_retenues where etat = 'retenue' and transaction_id = '20394817400';
+  r := admin_rembourser_retenue(v_id, 'au-delà du palier 0');
+  assert (r ->> 'montant')::numeric = 400000 and r ->> 'numero' = '677999999', r;
+  assert (select etat from entrees_retenues where id = v_id) = 'remboursee';
+  select id into v_rbt from totem_remboursements_en_attente('akwa-1') limit 1;
+  assert v_rbt is not null, 'le remboursement attend le boîtier';
+  perform totem_reclamer_remboursement(v_rbt, 'akwa-1');
+  r := totem_resultat_remboursement(v_rbt, 'akwa-1', true, 'Transfert reussi', '20394817999');
+  assert r ->> 'remboursement' = 'fait', r;
+  raise notice '✓ 10.3 un paiement au-delà du palier se rembourse par TOTEM, et l''entrée se ferme';
+end $$;
+commit;
+
+-- Terminaux et floats : une clé rendue une fois ; un float qui se désactive ne reçoit plus de dossier.
+begin;
+set local xafe.compte = 'dddddddd-0000-0000-0000-000000000001';
+do $$
+declare r jsonb; r2 jsonb;
+begin
+  r := admin_creer_terminal('bonaberi-2', 'Bonabéri 2', 'Douala');
+  assert length(r ->> 'cle') = 64, r;
+  assert (select cle from terminaux where id = 'bonaberi-2') = r ->> 'cle';
+  r2 := admin_renouveler_cle('bonaberi-2');
+  assert r2 ->> 'cle' <> r ->> 'cle', 'la clé a changé';
+  assert (select count(*) from jsonb_array_elements(admin_terminaux()) t where t ->> 'id' = 'bonaberi-2' and (t ->> 'a_cle')::boolean and (t ->> 'muet')::boolean) = 1, admin_terminaux();
+  r := admin_creer_float('om', '6 99 00 00 01', 'bonaberi-2', null);
+  perform admin_activer_float((r ->> 'id')::int, false);
+  assert (select actif from floats where id = (r ->> 'id')::int) = false;
+  begin
+    perform admin_creer_terminal('Mauvais ID', 'x', 'x');
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm = 'identifiant invalide', sqlerrm;
+  end;
+  raise notice '✓ 10.4 un terminal naît avec une clé rendue une fois, un float se met en pause';
+end $$;
+commit;
+
+-- Clients : les pièces de Chantal sont validées, elle passe au palier 2 et le sait.
+begin;
+set local xafe.compte = '33333333-3333-3333-3333-333333333333';
+select completer_profil('Chantal Mbarga', '9876') \gset ch_
+select demander_verification('entreprise', '["33333333-3333-3333-3333-333333333333/entreprise/rccm.jpg"]'::jsonb) \gset chv_
+commit;
+begin;
+set local xafe.compte = 'dddddddd-0000-0000-0000-000000000001';
+do $$
+declare r jsonb; c uuid := '33333333-3333-3333-3333-333333333333';
+begin
+  assert (admin_tableau() ->> 'verifications')::int = 1;
+  r := admin_client(c);
+  assert r -> 'compte' ->> 'verification_en_cours' = 'entreprise' and jsonb_array_length(r -> 'numeros') = 1, r;
+  r := admin_valider_verification(c, true, 'RCCM conforme');
+  assert (r ->> 'palier')::int = 2, r;
+  assert (select verification_en_cours from comptes where id = c) is null;
+  assert (select count(*) from notifications where compte_id = c and titre = 'Vérification acceptée') = 1;
+  begin
+    perform admin_valider_verification(c, true);
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm = 'aucune vérification en cours', sqlerrm;
+  end;
+  r := admin_modifier_parametre('marche', '{"paire": "USDT/XAFe", "pas_prix": 0.05, "quantite_min": 10, "ouvert": false}'::jsonb);
+  assert (admin_parametres() -> 'marche' ->> 'ouvert')::boolean = false;
+  raise notice '✓ 10.5 une vérification validée monte le palier et prévient ; un paramètre se change et se relit';
+end $$;
+commit;
+
+-- Le marché fermé par l'admin refuse les ordres, puis rouvre.
+begin;
+set local xafe.compte = '11111111-1111-1111-1111-111111111111';
+do $$
+begin
+  begin
+    perform placer_ordre('achat', 'limite', 10, 600.00, 'o-ferme');
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm = 'marché fermé', sqlerrm;
+  end;
+end $$;
+rollback;
+begin;
+set local xafe.compte = 'dddddddd-0000-0000-0000-000000000001';
+select admin_modifier_parametre('marche', '{"paire": "USDT/XAFe", "pas_prix": 0.05, "quantite_min": 10, "ouvert": true}'::jsonb) \gset ouv_
+do $$
+begin
+  assert jsonb_array_length(admin_marche() -> 'chandelles') >= 1;
+  assert (admin_marche() -> 'parametres' ->> 'ouvert')::boolean;
+  raise notice '✓ 10.6 fermer le marché ferme vraiment le carnet ; le rouvrir le rouvre';
+end $$;
+commit;
