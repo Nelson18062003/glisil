@@ -541,6 +541,26 @@ begin
 end $$;
 commit;
 
+-- Le SMS du code, vu du boîtier : relevé, réclamé une seule fois, rendu.
+do $$
+declare v_id bigint; r jsonb;
+begin
+  select id into v_id from totem_messages_en_attente('akwa-1') limit 1;
+  assert v_id is not null, 'le SMS du code attend le boîtier';
+  perform totem_reclamer_message(v_id, 'akwa-1');
+  begin
+    perform totem_reclamer_message(v_id, 'akwa-1');
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm = 'commande déjà prise ou inconnue', sqlerrm;
+  end;
+  r := totem_resultat_message(v_id, 'akwa-1', true);
+  assert r ->> 'message' = 'envoye', r;
+  assert (totem_resultat_message(v_id, 'akwa-1', false, 'x') ->> 'deja')::boolean, 'un résultat rejoué ne change rien';
+  assert (select count(*) from totem_messages_en_attente('akwa-1')) = 0;
+  raise notice '✓ 9.2b le SMS du code passe par le guichet de TOTEM : réclamé une fois, rendu une fois';
+end $$;
+
 insert into adresses_libres (actif, reseau, adresse) values ('USDT', 'bep20', '0x1111111111111111111111111111111111111111'), ('USDT', 'bep20', '0x2222222222222222222222222222222222222222');
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

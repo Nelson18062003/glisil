@@ -237,6 +237,42 @@ begin
   return jsonb_build_object('ok', true);
 end $$;
 
+-- Le guichet de TOTEM pour ces SMS : relever, réclamer, rendre compte — comme les transferts.
+create function totem_messages_en_attente(p_terminal text)
+returns setof messages_sortants language plpgsql security definer set search_path = public as $$
+begin
+  update terminaux set vu_le = now() where id = p_terminal;
+  return query select * from messages_sortants where (terminal = p_terminal or terminal is null) and etat = 'en_attente' order by id;
+end $$;
+
+create function totem_reclamer_message(p_id bigint, p_terminal text)
+returns messages_sortants language plpgsql security definer set search_path = public as $$
+declare v messages_sortants;
+begin
+  update messages_sortants set etat = 'en_cours', terminal = p_terminal
+   where id = p_id and (terminal = p_terminal or terminal is null) and etat = 'en_attente'
+  returning * into v;
+  if not found then raise exception 'commande déjà prise ou inconnue'; end if;
+  return v;
+end $$;
+
+create function totem_resultat_message(p_id bigint, p_terminal text, p_ok boolean, p_resultat text default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v messages_sortants;
+begin
+  select * into v from messages_sortants where id = p_id and terminal = p_terminal for update;
+  if not found then raise exception 'message inconnu'; end if;
+  if v.etat in ('envoye', 'echoue') then return jsonb_build_object('message', v.etat, 'deja', true); end if;
+  update messages_sortants set etat = case when p_ok then 'envoye' else 'echoue' end, traite_le = now() where id = p_id;
+  return jsonb_build_object('message', case when p_ok then 'envoye' else 'echoue' end);
+end $$;
+
+-- Le signe de vie d'un boîtier, avec ce qu'il dit de sa santé.
+create function totem_signe_de_vie(p_terminal text, p_sante jsonb default null) returns void
+language sql security definer set search_path = public as $$
+  update terminaux set vu_le = now() where id = p_terminal
+$$;
+
 -- ─────────────────────────────── sorties ───────────────────────────────────
 -- La sortie demandée par l'application : avec le code secret. La version sans
 -- code reste au moteur (service) et n'est plus exécutable par un client.

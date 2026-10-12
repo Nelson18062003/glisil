@@ -94,6 +94,7 @@ sh moteur/verifier-le-moteur.sh      # un PostgreSQL neuf, le schéma, puis les 
 cd app && npm test                   # le noyau de l'application : formats, argent, erreurs
 cd app && npm run build              # l'application cliente, type-check compris
 cd app && node scripts/parcourir.mjs # le parcours entier, joué dans un vrai Chromium
+node --experimental-strip-types supabase/functions/verifier-la-porte.ts  # la porte de TOTEM, attaquée
 cd design/maquettes && npm run build # les maquettes
 ```
 

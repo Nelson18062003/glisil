@@ -1,0 +1,163 @@
+/*
+ * LA PORTE DE TOTEM, sans rien qui dépende de Deno : la signature, le routage,
+ * les réponses. Les deux fonctions (totem-sms, totem-commandes) ne font que
+ * brancher ceci sur Supabase ; le harnais (verifier-la-porte.ts) le fait
+ * tourner sous Node contre un faux moteur. Ce qui est éprouvé est ce qui
+ * tourne.
+ *
+ * Chaque requête porte trois en-têtes :
+ *   x-totem-terminal    l'identifiant du boîtier ('akwa-1')
+ *   x-totem-horodatage  les secondes Unix au moment de l'envoi
+ *   x-totem-signature   hex( HMAC-SHA256( clé du terminal, horodatage + "." + corps ) )
+ * Une signature vaut cinq minutes : au-delà, une requête rejouée est refusée.
+ * Un boîtier ne voit que SES commandes et n'écrit que pour SES cartes.
+ */
+
+export type Rpc = (nom: string, args: Record<string, unknown>) => Promise<unknown>;
+export type Reponse = { statut: number; corps: unknown };
+
+export const FENETRE_SECONDES = 300;
+
+const encodeur = new TextEncoder();
+
+function hex(octets: ArrayBuffer): string {
+  return Array.from(new Uint8Array(octets), (o) => o.toString(16).padStart(2, "0")).join("");
+}
+
+export async function signer(cle: string, horodatage: number | string, corps: string): Promise<string> {
+  const k = await crypto.subtle.importKey("raw", encodeur.encode(cle), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return hex(await crypto.subtle.sign("HMAC", k, encodeur.encode(`${horodatage}.${corps}`)));
+}
+
+/** Deux chaînes comparées en temps constant : une signature ne se devine pas octet par octet. */
+function memes(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+export type Entetes = { terminal: string | null; horodatage: string | null; signature: string | null };
+
+export function lireEntetes(h: { get(nom: string): string | null }): Entetes {
+  return { terminal: h.get("x-totem-terminal"), horodatage: h.get("x-totem-horodatage"), signature: h.get("x-totem-signature") };
+}
+
+/**
+ * Vérifie la signature d'une requête. `cleDuTerminal` va chercher la clé en
+ * base (null si le terminal est inconnu). Rend null si tout va bien, sinon la
+ * réponse de refus — toujours 401, toujours la même forme : un attaquant
+ * n'apprend pas si c'est le terminal ou la clé qui cloche.
+ */
+export async function verifier(
+  entetes: Entetes,
+  corps: string,
+  cleDuTerminal: (terminal: string) => Promise<string | null>,
+  maintenant: () => number = () => Math.floor(Date.now() / 1000),
+): Promise<Reponse | null> {
+  const refus: Reponse = { statut: 401, corps: { erreur: "signature refusée" } };
+  const { terminal, horodatage, signature } = entetes;
+  if (!terminal || !horodatage || !signature || !/^[0-9]{1,12}$/.test(horodatage) || !/^[0-9a-f]{64}$/.test(signature)) return refus;
+  if (Math.abs(maintenant() - Number(horodatage)) > FENETRE_SECONDES) return refus;
+  const cle = await cleDuTerminal(terminal);
+  if (!cle) return refus;
+  const attendue = await signer(cle, horodatage, corps);
+  return memes(attendue, signature) ? null : refus;
+}
+
+/* ---------------------------------------------------------------- SMS */
+
+type Ligne = Record<string, unknown>;
+
+const nombre = (v: unknown): number | null => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+const texte = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
+
+/**
+ * Un SMS d'argent (ou un lot) lu par TOTEM. Chaque ligne va au moteur
+ * (`totem_sms_recu`), qui crédite, retient, ou reconnaît un SMS déjà vu.
+ * Un lot est traité ligne par ligne : une ligne malformée ne fait pas
+ * tomber les autres, et dit pourquoi elle est refusée.
+ */
+export async function traiterSms(rpc: Rpc, terminal: string, charge: unknown): Promise<Reponse> {
+  const lignes: Ligne[] = Array.isArray(charge) ? (charge as Ligne[]) : charge && typeof charge === "object" && Array.isArray((charge as Ligne).lignes) ? ((charge as Ligne).lignes as Ligne[]) : [charge as Ligne];
+  if (lignes.length === 0 || lignes.length > 200) return { statut: 400, corps: { erreur: "un lot va de 1 à 200 lignes" } };
+  const resultats: unknown[] = [];
+  for (const l of lignes) {
+    if (!l || typeof l !== "object") { resultats.push({ resultat: "refuse", motif: "ligne vide" }); continue; }
+    if (l.terminal !== undefined && l.terminal !== terminal) { resultats.push({ resultat: "refuse", motif: "la ligne n'est pas de ce terminal" }); continue; }
+    const source_id = nombre(l.source_id);
+    if (source_id === null) { resultats.push({ resultat: "refuse", motif: "source_id manquant" }); continue; }
+    if (l.sens !== undefined && l.sens !== "entree") { resultats.push({ source_id, resultat: "ignore", motif: "seules les entrées d'argent comptent" }); continue; }
+    try {
+      const r = await rpc("totem_sms_recu", {
+        p_terminal: terminal,
+        p_source_id: source_id,
+        p_operateur: texte(l.operateur),
+        p_float_numero: texte(l.float_numero),
+        p_numero_payeur: texte(l.numero),
+        p_montant: nombre(l.montant),
+        p_reference: texte(l.reference),
+        p_texte: texte(l.texte),
+        p_emis_le: texte(l.emis_le),
+      });
+      resultats.push({ source_id, ...(r as Record<string, unknown>) });
+    } catch (e) {
+      resultats.push({ source_id, resultat: "erreur", motif: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { statut: 200, corps: Array.isArray(charge) || (charge as Ligne)?.lignes ? resultats : resultats[0] };
+}
+
+/* ----------------------------------------------------------- commandes */
+
+/**
+ * Les transferts à composer et les SMS à envoyer, pour ce terminal :
+ *   GET   ?type=transferts|sms          → ce qui attend
+ *   PATCH /:id  {type, etat: "en_cours"} → réclamer (refusé si déjà pris)
+ *   PATCH /:id  {type, etat: "faite"|"envoye", resultat, reference_operateur}
+ *   PATCH /:id  {type, etat: "echouee"|"echoue", resultat}
+ * `type` vaut "transferts" par défaut. Le même protocole que la table
+ * `commandes` de TOTEM : relever, réclamer, composer, rendre compte.
+ */
+export async function traiterCommandes(rpc: Rpc, terminal: string, methode: string, url: URL, charge: unknown): Promise<Reponse> {
+  const morceaux = url.pathname.split("/").filter(Boolean);
+  const id = morceaux.length > 0 && /^[0-9]+$/.test(morceaux[morceaux.length - 1]) ? Number(morceaux[morceaux.length - 1]) : null;
+  const corps = (charge && typeof charge === "object" ? charge : {}) as Ligne;
+  const type = String(corps.type ?? url.searchParams.get("type") ?? "transferts");
+  if (type !== "transferts" && type !== "sms") return { statut: 400, corps: { erreur: "type inconnu : transferts ou sms" } };
+  const sms = type === "sms";
+
+  try {
+    if (methode === "GET") {
+      const r = await rpc(sms ? "totem_messages_en_attente" : "totem_commandes_en_attente", { p_terminal: terminal });
+      return { statut: 200, corps: r ?? [] };
+    }
+    if (methode === "PATCH" && id !== null) {
+      const etat = String(corps.etat ?? "");
+      if (etat === "en_cours") {
+        const r = await rpc(sms ? "totem_reclamer_message" : "totem_reclamer_commande", { p_id: id, p_terminal: terminal });
+        return { statut: 200, corps: r };
+      }
+      const ok = etat === "faite" || etat === "envoye";
+      const ko = etat === "echouee" || etat === "echoue";
+      if (ok || ko) {
+        const args: Record<string, unknown> = { p_id: id, p_terminal: terminal, p_ok: ok, p_resultat: texte(corps.resultat) };
+        if (!sms) args.p_reference_operateur = texte(corps.reference_operateur);
+        const r = await rpc(sms ? "totem_resultat_message" : "totem_resultat_commande", args);
+        return { statut: 200, corps: r };
+      }
+      return { statut: 400, corps: { erreur: "etat inconnu : en_cours, faite, echouee (transferts) · en_cours, envoye, echoue (sms)" } };
+    }
+    return { statut: 405, corps: { erreur: "GET ?type=… ou PATCH /:id" } };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    /* une commande déjà prise par un autre tour n'est pas une panne : c'est la règle qui tient */
+    return { statut: message.includes("déjà prise") ? 409 : 400, corps: { erreur: message } };
+  }
+}
+
+/* ----------------------------------------------------------- en-tête HTTP */
+
+export function reponseHttp(r: Reponse): globalThis.Response {
+  return new Response(JSON.stringify(r.corps), { status: r.statut, headers: { "content-type": "application/json; charset=utf-8" } });
+}

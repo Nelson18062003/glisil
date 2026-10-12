@@ -13,10 +13,20 @@ TOTEM. Ce document dit exactement ce qui passe, dans les deux sens.
   TOTEM ──(2') résultat du transfert ─────▶  totem-commandes  ─▶ totem_resultat_commande()
 ```
 
-Chaque appel porte l'identifiant du terminal et une signature HMAC-SHA256
-du corps avec la clé du terminal (`terminaux.cle_hash` en garde l'empreinte).
-Un terminal ne voit que **ses** commandes et ne peut écrire que pour **ses**
-cartes.
+Chaque appel porte trois en-têtes :
+
+```
+x-totem-terminal:    akwa-1
+x-totem-horodatage:  1760000000                       (secondes Unix à l'envoi)
+x-totem-signature:   hex( HMAC-SHA256( clé, horodatage + "." + corps ) )
+```
+
+La clé est celle du boîtier (`terminaux.cle`, lisible par la clé de service
+seulement). Une signature vaut cinq minutes : rejouer une vieille requête est
+refusé. Un terminal ne voit que **ses** commandes et ne peut écrire que pour
+**ses** cartes. La porte est `supabase/functions/_shared/porte.ts` ; le
+harnais `supabase/functions/verifier-la-porte.ts` l'attaque (sans signature,
+mauvaise clé, corps retouché, signature d'hier, clé d'un autre boîtier).
 
 ## (1) Un SMS d'argent reçu
 
@@ -46,7 +56,11 @@ POST /functions/v1/totem-sms
 
 Réponse : `{"resultat": "credite", "reference": "XAFe-DP-000418"}` ou
 `{"resultat": "retenue", "id": 17}`. Le même `(terminal, source_id)` renvoyé
-deux fois rend la même réponse et ne crédite pas deux fois.
+deux fois rend la même réponse et ne crédite pas deux fois. Un **lot** se
+pousse d'un coup, `{"lignes": [...]}` (200 au plus) : la réponse est une liste,
+ligne par ligne — une ligne cassée ne fait pas tomber les autres, et dit
+pourquoi elle est refusée. Une ligne dont `sens` n'est pas `entree` est
+ignorée.
 
 Ce que la base en fait (`totem_sms_recu`) :
 
@@ -71,10 +85,19 @@ transfert au plafond de l'opérateur (MTN : 1 000 000 par transfert). TOTEM
 les relève exactement comme il relève sa propre table `commandes` :
 
 ```
-GET  /functions/v1/totem-commandes?terminal=akwa-1          → les commandes en_attente de ce terminal
-PATCH /functions/v1/totem-commandes/:id  {"etat": "en_cours"}   → la réclame (refusée si déjà prise)
+GET   /functions/v1/totem-commandes?type=transferts            → les transferts en_attente de ce terminal
+PATCH /functions/v1/totem-commandes/:id  {"etat": "en_cours"}   → le réclame (409 si déjà pris)
 PATCH /functions/v1/totem-commandes/:id  {"etat": "faite", "resultat": "...", "reference_operateur": "..."}
 PATCH /functions/v1/totem-commandes/:id  {"etat": "echouee", "resultat": "réseau muet"}
+```
+
+Et, par le même guichet, les **SMS à envoyer** (le code qui prouve qu'un
+numéro ajouté est à son propriétaire) :
+
+```
+GET   /functions/v1/totem-commandes?type=sms                   → les SMS en_attente
+PATCH /functions/v1/totem-commandes/:id  {"type": "sms", "etat": "en_cours"}
+PATCH /functions/v1/totem-commandes/:id  {"type": "sms", "etat": "envoye"}   ou  "echoue"
 ```
 
 Chaque commande porte `parametres` : `{"operateur": "mtn", "float_numero":
@@ -97,8 +120,9 @@ Ce que la base en fait (`totem_resultat_commande`) :
 
 - un second destinataire pour les SMS (`nuage.py` : même charge, autre URL,
   signature HMAC) ;
-- un second guichet de commandes (`pilotage.py` : même boucle « relever,
-  réclamer, composer, rendre compte ») ;
+- un second guichet de commandes (même boucle « relever, réclamer, composer,
+  rendre compte »), pour les transferts ET pour les SMS à envoyer ;
+- la signature HMAC des trois en-têtes ci-dessus, avec la clé du boîtier ;
 - le **numéro du float** dans chaque ligne poussée (TOTEM pousse aujourd'hui
   l'ICCID de la carte ; XAFe reconnaît un float par son numéro).
 

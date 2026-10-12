@@ -51,7 +51,7 @@ create table terminaux (
   id       text primary key,                        -- 'akwa-1'
   nom      text not null,
   lieu     text,
-  cle_hash text,                                    -- empreinte de la clé HMAC du boîtier
+  cle      text,                                    -- la clé HMAC du boîtier : lisible par la clé de service seulement
   vu_le    timestamptz
 );
 
