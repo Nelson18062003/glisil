@@ -55,7 +55,7 @@ export function Accueil() {
       <ButtonBase href="/client/marche" sx={{ textAlign: "left", borderRadius: 6 }}>
         <Card sx={{ width: "100%" }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography variant="body2">XAFe / USDT</Typography>
+            <Typography variant="body2">USDT/XAFe</Typography>
             <Chip label="+0,31 %" size="small" sx={{ bgcolor: "#CDEFD9", color: "#06331B", height: 28 }} />
           </Stack>
           <Stack direction="row" alignItems="center" justifyContent="space-between">
