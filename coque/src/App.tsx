@@ -142,7 +142,7 @@ export function App() {
   return (
     <SafeAreaProvider>
       <SafeAreaView style={[styles.tout, { backgroundColor: fond }]} edges={['top', 'bottom']}>
-        <StatusBar style="dark" backgroundColor={fond} />
+        <StatusBar style="dark" />
         <WebView
           ref={web}
           source={{ uri: START_URL }}
@@ -194,7 +194,7 @@ export function App() {
 const styles = StyleSheet.create({
   tout: { flex: 1 },
   web: { flex: 1, backgroundColor: 'transparent' },
-  voile: { ...StyleSheet.absoluteFillObject, backgroundColor: FOND, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
+  voile: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: FOND, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
   marque: { fontSize: 56, fontWeight: '700', color: '#FFFFFF', marginBottom: 8 },
   titre: { fontSize: 22, fontWeight: '600', color: '#191C1A', textAlign: 'center' },
   texte: { fontSize: 16, color: '#5B615E', textAlign: 'center' },
