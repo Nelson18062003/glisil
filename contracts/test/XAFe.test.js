@@ -13,8 +13,11 @@ describe("XAFe", function () {
     const [admin, plateforme, alice, bob, inconnu] = await ethers.getSigners();
     const Jeton = await ethers.getContractFactory("XAFe");
     const jeton = await Jeton.deploy(admin.address, XAF(10_000_000));
+    // l'admin ne naît qu'avec le rôle d'administrer : il donne chaque rôle opérationnel, ici
     await jeton.grantRole(await jeton.FRAPPEUR_ROLE(), plateforme.address);
     await jeton.grantRole(await jeton.DESTRUCTEUR_ROLE(), plateforme.address);
+    await jeton.grantRole(await jeton.GELEUR_ROLE(), admin.address);
+    await jeton.grantRole(await jeton.PAUSEUR_ROLE(), admin.address);
     return { jeton, admin, plateforme, alice, bob, inconnu };
   }
 
@@ -91,6 +94,35 @@ describe("XAFe", function () {
     expect(await jeton.balanceOf(inconnu.address)).to.equal(0n);
     expect(await jeton.totalSupply()).to.equal(0n);
     await expect(jeton.connect(inconnu).transfer(alice.address, 0)).to.be.revertedWithCustomError(jeton, "AdresseGelee");
+  });
+
+  it("l'admin ne naît qu'avec le rôle d'administrer, et ne se transmet qu'en deux temps", async function () {
+    const [admin, alice] = await ethers.getSigners();
+    const jeton = await (await ethers.getContractFactory("XAFe")).deploy(admin.address, XAF(1_000_000));
+    for (const role of ["FRAPPEUR_ROLE", "DESTRUCTEUR_ROLE", "GELEUR_ROLE", "PAUSEUR_ROLE"]) {
+      expect(await jeton.hasRole(await jeton[role](), admin.address)).to.equal(false, `l'admin ne reçoit pas ${role}`);
+    }
+    await expect(jeton.frapper(admin.address, XAF(1), ref("r"))).to.be.revertedWithCustomError(jeton, "AccessControlUnauthorizedAccount");
+    await expect(jeton.grantRole(await jeton.DEFAULT_ADMIN_ROLE(), alice.address)).to.be.revertedWithCustomError(jeton, "AccessControlEnforcedDefaultAdminRules");
+    await jeton.beginDefaultAdminTransfer(alice.address);
+    await expect(jeton.connect(alice).acceptDefaultAdminTransfer()).to.be.revertedWithCustomError(jeton, "AccessControlEnforcedDefaultAdminDelay");
+    await time.increase(2 * 24 * 3600 + 1);
+    await jeton.connect(alice).acceptDefaultAdminTransfer();
+    expect(await jeton.defaultAdmin()).to.equal(alice.address);
+  });
+
+  it("détruit les retours sur l'adresse de dépôt inscrite, jamais sur le wallet d'un client", async function () {
+    const { jeton, admin, plateforme, alice, bob } = await loadFixture(deployer);
+    const depotAlice = bob; // l'adresse de dépôt que le moteur a donnée à Alice
+    await jeton.connect(plateforme).frapper(alice.address, XAF(100_000), ref("r1"));
+    await expect(jeton.connect(plateforme).inscrireAdressesDeDepot([depotAlice.address], true)).to.be.revertedWithCustomError(jeton, "AccessControlUnauthorizedAccount");
+    await expect(jeton.connect(admin).inscrireAdressesDeDepot([depotAlice.address], true)).to.emit(jeton, "AdresseDeDepot").withArgs(depotAlice.address, true);
+    await jeton.connect(alice).transfer(depotAlice.address, XAF(30_000));
+    await expect(jeton.connect(plateforme).detruireDepot(depotAlice.address, XAF(30_000), ref("XAFe-RT-000001")))
+      .to.emit(jeton, "Detruit").withArgs(depotAlice.address, XAF(30_000), ref("XAFe-RT-000001"));
+    await expect(jeton.connect(plateforme).detruireDepot(alice.address, XAF(1), ref("x"))).to.be.revertedWithCustomError(jeton, "PasUneAdresseDeDepot").withArgs(alice.address);
+    await expect(jeton.connect(alice).detruireDepot(depotAlice.address, 0, ref("x"))).to.be.revertedWithCustomError(jeton, "AccessControlUnauthorizedAccount");
+    expect(await jeton.totalSupply()).to.equal(XAF(70_000));
   });
 
   it("n'a pas de voie pour brûler ses XAFe contre une référence que la plateforme ne lit pas", async function () {

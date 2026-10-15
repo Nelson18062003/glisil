@@ -15,7 +15,8 @@ pragma solidity ^0.8.28;
  *   · un porteur gelé ne bouge pas (ni envoi, ni réception) ;
  *   · en pause, rien ne bouge ;
  *   · l'intrus ne réussit rien : ni frapper, ni relever le plafond, ni geler,
- *     ni reprendre des fonds.
+ *     ni reprendre des fonds, ni inscrire une adresse, ni prendre l'admin ;
+ *   · on ne détruit jamais hors d'une adresse de dépôt inscrite.
  */
 import "../contracts/XAFe.sol";
 
@@ -41,9 +42,15 @@ contract EpreuveXAFe {
     bool internal geleABouge;
     bool internal pauseABouge;
     bool internal intrusAReussi;
+    bool internal detruitHorsDepot;
 
     constructor() {
         jeton = new XAFe(address(this), PLAFOND);
+        // l'admin ne naît qu'avec le rôle d'administrer : il se donne ici les rôles qu'il exerce dans l'épreuve
+        jeton.grantRole(jeton.FRAPPEUR_ROLE(), address(this));
+        jeton.grantRole(jeton.DESTRUCTEUR_ROLE(), address(this));
+        jeton.grantRole(jeton.GELEUR_ROLE(), address(this));
+        jeton.grantRole(jeton.PAUSEUR_ROLE(), address(this));
         intrus = new Porteur();
         for (uint256 i = 0; i < 3; i++) porteurs[i] = new Porteur();
     }
@@ -92,15 +99,38 @@ contract EpreuveXAFe {
         } catch {}
     }
 
+    function inscrire(uint8 qui, bool oui) public {
+        address[] memory a = new address[](1);
+        a[0] = _p(qui);
+        jeton.inscrireAdressesDeDepot(a, oui);
+    }
+
+    function detruireDepot(uint8 qui, uint256 montant, bytes32 empreinte) public {
+        address a = _p(qui);
+        uint256 solde = jeton.balanceOf(a);
+        bool inscrite = jeton.estAdresseDeDepot(a);
+        try jeton.detruireDepot(a, montant, empreinte) {
+            if (!inscrite) detruitHorsDepot = true;
+            if (jeton.gele(a) || jeton.paused()) geleABouge = true;
+            detruit += montant;
+            if (jeton.balanceOf(a) != solde - montant) detruitHorsDepot = true;
+        } catch {}
+    }
+
     function intrusEssaie(uint8 quoi, uint256 montant, bytes32 empreinte) public {
         bytes memory d;
-        uint8 q = quoi % 6;
+        uint8 q = quoi % 9;
+        address[] memory a = new address[](1);
+        a[0] = address(intrus);
         if (q == 0) d = abi.encodeCall(XAFe.frapper, (address(intrus), montant, empreinte));
         else if (q == 1) d = abi.encodeCall(XAFe.fixerPlafondJour, (type(uint256).max));
         else if (q == 2) d = abi.encodeCall(XAFe.detruireFondsGeles, (_p(0), empreinte));
         else if (q == 3) d = abi.encodeCall(XAFe.geler, (_p(1), "intrus"));
         else if (q == 4) d = abi.encodeCall(XAFe.pauser, ());
-        else d = abi.encodeCall(AccessControl.grantRole, (jeton.FRAPPEUR_ROLE(), address(intrus)));
+        else if (q == 5) d = abi.encodeCall(AccessControl.grantRole, (jeton.FRAPPEUR_ROLE(), address(intrus)));
+        else if (q == 6) d = abi.encodeCall(XAFe.inscrireAdressesDeDepot, (a, true));
+        else if (q == 7) d = abi.encodeCall(XAFe.detruireDepot, (_p(1), montant, empreinte));
+        else d = abi.encodeWithSignature("beginDefaultAdminTransfer(address)", address(intrus));
         if (intrus.essayer(address(jeton), d)) intrusAReussi = true;
     }
 
@@ -112,4 +142,5 @@ contract EpreuveXAFe {
     function echidna_un_porteur_gele_ne_bouge_pas() public view returns (bool) { return !geleABouge; }
     function echidna_en_pause_rien_ne_bouge() public view returns (bool) { return !pauseABouge; }
     function echidna_l_intrus_ne_reussit_rien() public view returns (bool) { return !intrusAReussi; }
+    function echidna_jamais_detruit_hors_d_une_adresse_de_depot() public view returns (bool) { return !detruitHorsDepot; }
 }

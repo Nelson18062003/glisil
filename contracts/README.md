@@ -21,11 +21,29 @@ PLAFOND_JOUR_XAF=50000000 npm run deployer:testnet   # le plafond de frappe par 
 
 | Rôle | Qui | Pouvoir |
 |---|---|---|
-| `DEFAULT_ADMIN_ROLE` | un wallet matériel du propriétaire | donner et retirer les rôles, `fixerPlafondJour`, `detruireFondsGeles` |
-| `FRAPPEUR_ROLE` | le signataire de la plateforme (veilleur de chaîne) | `frapper(vers, montant, reference)`, jamais au-delà du plafond du jour |
-| `DESTRUCTEUR_ROLE` | idem | `detruire(montant, reference)` sur son propre solde |
+| `DEFAULT_ADMIN_ROLE` | un wallet matériel du propriétaire — et lui seul | donner et retirer les rôles, `fixerPlafondJour`, `inscrireAdressesDeDepot`, `detruireFondsGeles`. Il ne reçoit AUCUN autre rôle à la naissance, et se transmet en deux temps (`beginDefaultAdminTransfer`, deux jours, `acceptDefaultAdminTransfer`) |
+| `FRAPPEUR_ROLE` | le signataire de la plateforme (veilleur de chaîne) | `frapper(vers, montant, empreinte)`, jamais au-delà du plafond du jour |
+| `DESTRUCTEUR_ROLE` | idem | `detruireDepot(adresse, montant, empreinte)` sur une adresse de dépôt inscrite ; `detruire` sur son propre solde |
 | `GELEUR_ROLE` | conformité | `geler(adresse, motif)`, `degeler` |
 | `PAUSEUR_ROLE` | astreinte | `pauser()`, `reprendre()` |
+
+Le déploiement exige `ADMIN` hors réseau local : la clé chaude qui déploie
+n'administre jamais. Chaque rôle opérationnel se donne ensuite DEPUIS le
+wallet admin.
+
+**Le lien avec le moteur** (ce que le veilleur de chaîne doit faire, au
+centime) :
+
+- une **sortie vers la chaîne** (`retraits_crypto`, actif `XAFe`) se frappe
+  avec `montant × 1 000 000` unités et `empreinte = keccak256(utf8(référence))`
+  — par exemple `keccak256("XAFe-CR-000012")` ; une empreinte ne frappe qu'une
+  fois. Le moteur rend compte par `chaine_resultat_retrait(référence, ok,
+  tx_hash)`, et compte ces XAFe en `circulation_chaine()` ;
+- un **retour** arrive sur l'adresse de dépôt du client (`adresses_crypto`,
+  inscrite d'avance par lots avec `inscrireAdressesDeDepot`). Le veilleur
+  appelle `crediter_crypto(compte, 'XAFe', réseau, montant, tx_hash, adresse)`
+  puis `detruireDepot(adresse, montant × 1 000 000, keccak256(tx_hash))` : la
+  même empreinte se rapproche ligne à ligne.
 
 **Une clé de frappe vit sur un serveur : elle peut être volée.** Un
 FRAPPEUR compromis ne frappe donc pas plus que `plafondJour` par jour (toutes

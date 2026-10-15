@@ -14,7 +14,15 @@ pragma solidity ^0.8.28;
  *
  *  - ERC-20, six décimales (1 XAF = 1 000 000 unités), comme l'USDT.
  *  - Rôles : ADMIN, FRAPPEUR (le signataire de la plateforme), DESTRUCTEUR,
- *    GELEUR (conformité), PAUSEUR.
+ *    GELEUR (conformité), PAUSEUR. L'ADMIN (un wallet matériel) ne reçoit
+ *    QUE le rôle d'administrer : il donne les autres, il ne frappe pas lui-même.
+ *    Il se transmet en deux temps, avec un délai (AccessControlDefaultAdminRules) :
+ *    un clic de travers ou une clé volée ne le cède pas d'un coup, et il ne
+ *    s'abandonne pas sans préavis.
+ *  - Les XAFe qui reviennent arrivent sur l'adresse de dépôt PROPRE à chaque
+ *    client. L'ADMIN inscrit ces adresses ; le DESTRUCTEUR brûle ce qui y
+ *    arrive (detruireDepot), et nulle part ailleurs : jamais le wallet d'un
+ *    client.
  *  - Pause : plus rien ne bouge, le temps de comprendre.
  *  - Gel d'une adresse : elle ne peut plus ni envoyer ni recevoir — ce que
  *    la conformité (COBAC, COSUMAF) peut exiger d'un émetteur.
@@ -32,10 +40,12 @@ pragma solidity ^0.8.28;
  *  pas lire détruisait l'argent sans recrédit possible.
  */
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/access/extensions/AccessControlDefaultAdminRules.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 
-contract XAFe is ERC20, AccessControl, Pausable {
+contract XAFe is ERC20, AccessControlDefaultAdminRules, Pausable {
+    /// Le délai d'une transmission du rôle d'ADMIN : de quoi voir passer une transmission non voulue.
+    uint48 public constant DELAI_ADMIN = 2 days;
     bytes32 public constant FRAPPEUR_ROLE = keccak256("FRAPPEUR_ROLE");
     bytes32 public constant DESTRUCTEUR_ROLE = keccak256("DESTRUCTEUR_ROLE");
     bytes32 public constant GELEUR_ROLE = keccak256("GELEUR_ROLE");
@@ -49,6 +59,8 @@ contract XAFe is ERC20, AccessControl, Pausable {
     uint256 public plafondJour;
     /// Ce qui a été frappé, par jour (block.timestamp / 1 jour).
     mapping(uint256 => uint256) public frappeLeJour;
+    /// Les adresses de dépôt de la plateforme (une par client), inscrites par l'ADMIN.
+    mapping(address => bool) public estAdresseDeDepot;
     /// Vrai le temps d'une destruction de fonds gelés : le gel ne bloque pas sa propre reprise.
     bool private _reprise;
 
@@ -56,6 +68,7 @@ contract XAFe is ERC20, AccessControl, Pausable {
     event Detruit(address indexed depuis, uint256 montant, bytes32 indexed empreinte);
     event FondsGelesDetruits(address indexed adresse, uint256 montant, bytes32 indexed empreinte);
     event PlafondJour(uint256 plafond);
+    event AdresseDeDepot(address indexed adresse, bool inscrite);
     event Gele(address indexed adresse, string motif);
     event Degele(address indexed adresse);
 
@@ -65,13 +78,9 @@ contract XAFe is ERC20, AccessControl, Pausable {
     error AdresseGelee(address adresse);
     error AdresseNonGelee(address adresse);
     error PlafondJourAtteint(uint256 dejaFrappe, uint256 montant, uint256 plafond);
+    error PasUneAdresseDeDepot(address adresse);
 
-    constructor(address admin, uint256 plafond) ERC20("XAFe", "XAFe") {
-        _grantRole(DEFAULT_ADMIN_ROLE, admin);
-        _grantRole(FRAPPEUR_ROLE, admin);
-        _grantRole(DESTRUCTEUR_ROLE, admin);
-        _grantRole(GELEUR_ROLE, admin);
-        _grantRole(PAUSEUR_ROLE, admin);
+    constructor(address admin, uint256 plafond) ERC20("XAFe", "XAFe") AccessControlDefaultAdminRules(DELAI_ADMIN, admin) {
         plafondJour = plafond;
         emit PlafondJour(plafond);
     }
@@ -116,6 +125,27 @@ contract XAFe is ERC20, AccessControl, Pausable {
         if (montant == 0) revert MontantNul();
         _burn(_msgSender(), montant);
         emit Detruit(_msgSender(), montant, empreinte);
+    }
+
+    /** L'ADMIN inscrit (ou retire) les adresses de dépôt que le moteur a préparées. */
+    function inscrireAdressesDeDepot(address[] calldata adresses, bool inscrites) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        for (uint256 i = 0; i < adresses.length; i++) {
+            estAdresseDeDepot[adresses[i]] = inscrites;
+            emit AdresseDeDepot(adresses[i], inscrites);
+        }
+    }
+
+    /**
+     * Les XAFe revenus sur l'adresse de dépôt d'un client sont détruits LÀ,
+     * sans balayage (une transaction et du gaz par retour) ni clé privilégiée
+     * par adresse. Le compte du client est recrédité par le moteur
+     * (crediter_crypto), avec la même empreinte.
+     */
+    function detruireDepot(address adresse, uint256 montant, bytes32 empreinte) external onlyRole(DESTRUCTEUR_ROLE) whenNotPaused {
+        if (!estAdresseDeDepot[adresse]) revert PasUneAdresseDeDepot(adresse);
+        if (montant == 0) revert MontantNul();
+        _burn(adresse, montant);
+        emit Detruit(adresse, montant, empreinte);
     }
 
     /* ---------------------------------------------------- conformité */
