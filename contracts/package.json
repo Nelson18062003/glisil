@@ -1,0 +1,20 @@
+{
+  "name": "xafe-contrats",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Le jeton XAFe sur BNB Smart Chain : frappé à la sortie vers un wallet, détruit au retour",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deployer:testnet": "hardhat run scripts/deployer.js --network bsctestnet",
+    "deployer:bsc": "hardhat run scripts/deployer.js --network bsc"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
+    "dotenv": "^17.2.1",
+    "hardhat": "^2.26.3"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.4.0"
+  }
+}

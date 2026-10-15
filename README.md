@@ -1,73 +1,36 @@
-# Welcome to your Lovable project
+# XAFe Exchange
 
-## Project info
+Le franc CFA sur la blockchain, et un vrai marché spot USDT/XAFe. 1 XAFe = 1 XAF,
+couvert un pour un par les floats MoMo et les comptes en banque de la plateforme.
 
-**URL**: https://lovable.dev/projects/d6bd50d1-5ad3-40e6-9e90-7e638b763722
+- Un client **entre des XAF** en payant notre float (MTN MoMo ou Orange Money),
+  puis tape le **transaction ID** de son SMS ; TOTEM, le boîtier qui porte nos
+  cartes, lit le même ID sur le float et les XAFe sont crédités, tout de suite.
+- Il **sort des XAF** vers un numéro vérifié ; TOTEM compose le transfert.
+- Il **achète et vend des USDT** sur un carnet d'ordres, limite ou marché — ou en un geste (achat rapide, prix ferme, marge de la plateforme).
+- Il **dépose et retire des USDT** : son adresse de dépôt vient de nos propres wallets (`chaine/`).
+- Il **sort ses XAFe sur la chaîne** (BEP20 ou TRC20) vers son propre wallet.
 
-## How can I edit this code?
+| Dossier | Ce que c'est | Vérifier |
+|---|---|---|
+| `supabase/migrations/` | LE MOTEUR : soldes, grand livre, dépôts, sorties, carnet, compte, administration — tout en SQL, verrouillé | `sh moteur/verifier-le-moteur.sh` |
+| `supabase/functions/` | la porte de TOTEM (SMS lus, transferts et SMS à composer), signée | `node --experimental-strip-types supabase/functions/verifier-la-porte.ts` |
+| `app/` | l'application des clients (Android, Material Design 3) | `cd app && npm test && npm run build && node scripts/parcourir.mjs` |
+| `admin/` | l'administration (web) | `cd admin && npm test && npm run build && node scripts/parcourir.mjs` |
+| `contracts/` | le jeton XAFe (ERC-20) | `cd contracts && npm test` |
+| `chaine/` | nos wallets, BEP20 et TRC20 : adresses de dépôt dérivées d'une graine, dépôts crédités, balayage, retraits signés par le wallet chaud, surplus au froid ; l'outil de mise en service | `cd chaine && npm test`, puis `sh supabase/epreuve/eprouver.sh` |
+| `design/` | les maquettes et la carte de navigation | `cd design/maquettes && npm run build` |
+| `docs/` | l'architecture, le contrat TOTEM | — |
 
-There are several ways of editing your application.
+Lire d'abord `docs/ARCHITECTURE.md`, puis `design/NAVIGATION.md` et
+`docs/TOTEM-INTEGRATION.md`. Chaque harnais a été écrit pour prendre en défaut,
+et chacun l'a fait au moins une fois (les commits le racontent).
 
-**Use Lovable**
+### Installer la base d'un coup
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/d6bd50d1-5ad3-40e6-9e90-7e638b763722) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/d6bd50d1-5ad3-40e6-9e90-7e638b763722) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+`migrations/20261015_consolidated.sql` contient toutes les migrations de
+`supabase/migrations`, dans l'ordre, en un seul fichier : Supabase → SQL Editor
+→ coller → Run. Chaque partie vérifie d'abord si elle est déjà en place : le
+fichier se rejoue sans danger, sur une base neuve comme sur une base à
+mi-chemin. Il se refait avec `python3 supabase/consolider.py` (ne pas le
+modifier à la main).

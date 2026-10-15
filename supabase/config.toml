@@ -1,1 +1,21 @@
-project_id = "oykwoyqoewrfovklpiyy"
+# La configuration du projet Supabase de XAFe Exchange (CLI et déploiement).
+#
+# Les deux portes de TOTEM n'ont PAS de jeton Supabase : le boîtier signe
+# chacun de ses appels avec sa propre clé (HMAC, trois en-têtes x-totem-*),
+# et c'est la porte (supabase/functions/_shared/porte.ts) qui vérifie. Sans
+# ces deux lignes, la passerelle refuserait la requête AVANT la porte, faute
+# d'en-tête Authorization — et le robot ne verrait qu'un « 401 » muet.
+
+project_id = "erngzpklfslbfznioxxr"
+
+[functions.totem-sms]
+verify_jwt = false
+
+[functions.totem-commandes]
+verify_jwt = false
+
+# Le veilleur de chaîne : réveillé chaque minute par pg_cron (0006), il se
+# garde lui-même par un jeton (x-veilleur-jeton, rangé dans le coffre et dans
+# les secrets de la fonction) — pas par un jeton de session Supabase.
+[functions.veilleur]
+verify_jwt = false
