@@ -120,7 +120,7 @@ export function SortirCode() {
   const [etat] = useParcours("sortir");
   const [code, setCode] = useState("");
   const [faux, setFaux] = useState<string | null>(null);
-  const { lancer, enCours, erreur, effacerErreur } = useGesteUnique("wd");
+  const { lancer, enCours, erreur, effacerErreur } = useGesteUnique("wd", { montant: etat.montant, numeroId: etat.numeroId });
 
   if (!etat.montant || !etat.numeroId) return <Navigate to="/sortir/montant" replace />;
 

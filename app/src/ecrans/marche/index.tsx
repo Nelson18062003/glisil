@@ -162,7 +162,28 @@ const lireNombre = (s: string): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean }) => void }) {
+/**
+ * Ce que l'écran dit d'un ordre qui n'est pas entièrement exécuté. Le moteur
+ * annule un ordre pour DEUX raisons : il aurait croisé l'un de vos ordres, ou
+ * c'est un ordre au marché qui n'a rien (ou plus rien) trouvé en face — le
+ * cas courant quand le carnet est mince. L'écran disait toujours la première.
+ */
+export function messageDOrdre(o: { etat: string; executee: number; restant: number; type: string; autoNegociation?: boolean; deja?: boolean }): string {
+  const m =
+    o.etat === "annule" || (o.type === "marche" && o.restant > 0 && o.executee === 0)
+      ? o.autoNegociation
+        ? "Ordre arrêté : il aurait croisé l'un de vos propres ordres."
+        : "Ordre au marché annulé : il n'y avait personne en face. Placez un ordre limite pour attendre au carnet."
+      : o.executee > 0
+        ? o.type === "marche"
+          ? "Ordre au marché exécuté en partie : le carnet n'avait pas assez en face, le reste est annulé."
+          : "Ordre partiellement exécuté, le reste attend au carnet."
+        : "Ordre placé au carnet.";
+  /* une réponse perdue puis rejouée : le moteur rend l'ordre déjà parti, on le dit */
+  return o.deja ? `Cet ordre était déjà parti. ${m}` : m;
+}
+
+function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean; autoNegociation: boolean; deja: boolean }) => void }) {
   const guichet = useGuichet();
   const rafraichir = useRafraichir();
   const [f, poser] = useParcours("marche");
@@ -171,7 +192,8 @@ function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean }) => v
   const { data: carnet } = useCarnet(30);
   const [typeOuvert, setTypeOuvert] = useState(false);
   const [confirme, setConfirme] = useState(false);
-  const { lancer, enCours, erreur, effacerErreur } = useGesteUnique("ord");
+  /* l'intention de l'ordre : un prix ou une quantité changés font un autre ordre, avec sa propre clé */
+  const { lancer, enCours, erreur, effacerErreur } = useGesteUnique("ord", { cote: f.cote, type: f.type, quantite: f.quantite, prix: f.type === "limite" ? f.prix : null });
 
   /* un prix par défaut : le meilleur en face, tant que rien n'a été tapé */
   useEffect(() => {
@@ -203,7 +225,7 @@ function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean }) => v
       setConfirme(false);
       poser({ quantite: "" });
       await rafraichir();
-      onPlace({ ...r.ordre, rempli: r.ordre.executee > 0 && r.ordre.restant === 0 });
+      onPlace({ ...r.ordre, rempli: r.ordre.executee > 0 && r.ordre.restant === 0, autoNegociation: r.autoNegociation, deja: Boolean(r.deja) });
     });
 
   return (
@@ -336,7 +358,7 @@ export function Marche() {
       <Box sx={{ mx: -2 }}><PairHeader /></Box>
       <Paper sx={{ p: 1.5, borderRadius: 4 }}>
         <Stack direction="row" gap={1.5}>
-          <OrderForm onPlace={(o) => (o.rempli ? navigate(`/marche/execute/${o.id}`) : setPlace(o.etat === "annule" ? "Ordre annulé : il aurait croisé l'un de vos propres ordres." : o.executee > 0 ? "Ordre partiellement exécuté, le reste attend au carnet." : "Ordre placé au carnet."))} />
+          <OrderForm onPlace={(o) => (o.rempli ? navigate(`/marche/execute/${o.id}`) : setPlace(messageDOrdre(o)))} />
           <CompactBook onPick={(p) => poser({ prix: fPrix(p), type: "limite" })} />
         </Stack>
       </Paper>

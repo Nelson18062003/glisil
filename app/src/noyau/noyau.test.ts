@@ -126,3 +126,15 @@ test("les paramètres de l'équipe remplacent ceux de la migration, et une valeu
   Object.assign(a.FRAIS, avant);
 });
 
+
+test("une intention garde sa clé jusqu'à réussir ; une autre intention a la sienne", async () => {
+  const i = await import("./intention.ts");
+  i.oublierToutesLesIntentions();
+  const sortie = { montant: 50_000, numeroId: "n1" };
+  const k1 = i.cleDeLIntention("wd", sortie);
+  assert.equal(i.cleDeLIntention("wd", { numeroId: "n1", montant: 50_000 }), k1, "la même intention, champs dans un autre ordre : la même clé (revenir à l'écran du code n'en fabrique pas une neuve)");
+  assert.notEqual(i.cleDeLIntention("wd", { montant: 60_000, numeroId: "n1" }), k1, "un autre montant est un autre geste");
+  assert.notEqual(i.cleDeLIntention("ord", sortie), k1, "un ordre n'emprunte pas la clé d'une sortie");
+  i.intentionAccomplie("wd", sortie);
+  assert.notEqual(i.cleDeLIntention("wd", sortie), k1, "réussie, l'intention est oubliée : une seconde sortie identique voulue est un geste neuf");
+});

@@ -244,6 +244,30 @@ try {
   await taper(["1", "2", "3", "4", "5", "6"]);
   await voir("Numéro ajouté");
 
+  /* -------------------------------------- une réponse perdue en route */
+  etape("Une sortie partie dont la réponse se perd : revenir, recommencer — elle ne part pas deux fois");
+  await page.goto(`${BASE}/sortir/montant`);
+  await taper(["1", "0", "000"]);
+  await page.getByRole("button", { name: "Continuer" }).click();
+  await page.getByText("6 77 12 34 56").click();
+  await page.getByRole("button", { name: "Continuer" }).click();
+  await page.getByRole("button", { name: "Confirmer avec mon code" }).click();
+  await page.waitForURL(/\/sortir\/code$/);
+  await page.evaluate(() => { globalThis.__xafeEpreuve = { perdreLaProchaineReponse: true }; });
+  await taper(["1", "2", "3", "4"]);
+  await voir("Pas de réseau");
+  const avant = await page.evaluate(() => globalThis.__xafeEpreuve.sorties);
+  await page.getByRole("button", { name: "Compris" }).click();
+  // la personne revient en arrière, puis reconfirme : l'écran du code est remonté à neuf
+  await page.goBack();
+  await page.waitForURL(/\/sortir\/verifier$/);
+  await page.getByRole("button", { name: "Confirmer avec mon code" }).click();
+  await page.waitForURL(/\/sortir\/code$/);
+  await taper(["1", "2", "3", "4"]);
+  await page.waitForURL(/\/sortir\/envoye\/XAFe-WD-\d+$/);
+  const apres = await page.evaluate(() => globalThis.__xafeEpreuve.sorties);
+  exiger(apres === avant, `la sortie rejouée est la même : ${avant} sortie(s) avant le second essai, ${apres} après`);
+
   exiger(erreurs.length === 0, `des erreurs ont été vues dans le navigateur :\n  ${erreurs.join("\n  ")}`);
   console.log(`✓ le parcours tient (${numero} captures dans app/captures/)`);
 } catch (e) {

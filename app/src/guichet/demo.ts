@@ -635,6 +635,13 @@ export class GuichetDemo implements Guichet {
       this.planifier(d, { type: "transfert", reference: s.reference, index: i, etape: echoue ? "echouee" : "faite", quand: maintenant() + (echoue ? 12000 : 7000) + i * 5000 });
     });
     this.emettre();
+    /* Couture d'épreuve (démonstration seulement, jamais le vrai guichet) : la sortie est partie, mais sa
+       réponse « se perd en route ». C'est la panne que la clé d'intention doit rendre inoffensive. */
+    const epreuve = (globalThis as { __xafeEpreuve?: { perdreLaProchaineReponse?: boolean; sorties?: number } }).__xafeEpreuve;
+    if (epreuve) {
+      epreuve.sorties = d.sorties.length;
+      if (epreuve.perdreLaProchaineReponse) { epreuve.perdreLaProchaineReponse = false; throw new Error("Failed to fetch"); }
+    }
     return copie(s);
   }
 
