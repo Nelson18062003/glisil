@@ -282,6 +282,31 @@ try {
   const apres = await page.evaluate(() => globalThis.__xafeEpreuve.sorties);
   exiger(apres === avant, `la sortie rejouée est la même : ${avant} sortie(s) avant le second essai, ${apres} après`);
 
+  /* ------------------------------ un numéro qui ne reçoit plus le dit */
+  etape("Le boîtier se tait, puis l'équipe retire le float : le dossier le dit, et ouvre un autre numéro");
+  await page.goto(`${BASE}/entrer/operateur`);
+  await page.evaluate(() => { globalThis.__xafeEpreuve = { reception: "retardee" }; });
+  await page.getByText("MTN MoMo", { exact: true }).click();
+  await page.waitForURL(/\/entrer\/payer\/XAFe-DP-\d+$/);
+  const refMuet = chemin().split("/").pop();
+  await voir("Notre boîtier est hors ligne pour l'instant");
+  exiger(await page.getByRole("button", { name: "J'ai payé" }).count() === 1, "on peut encore payer quand le boîtier se tait : le SMS sera lu à son retour");
+  await capturer("entrer-payer-boitier-muet");
+  await page.evaluate(() => { globalThis.__xafeEpreuve.reception = "fermee"; });
+  await page.getByRole("button", { name: "J'ai payé" }).click();
+  await page.waitForURL(new RegExp(`/entrer/transaction/${refMuet}$`));
+  await page.goBack();
+  await voir("Ce numéro ne reçoit plus : ne payez pas ici");
+  exiger(await page.getByRole("button", { name: /^Ouvrir MTN/ }).count() === 0, "on ne propose plus d'ouvrir MoMo pour payer un float retiré");
+  await capturer("entrer-payer-float-retire");
+  await page.evaluate(() => { globalThis.__xafeEpreuve = {}; });
+  await page.getByRole("button", { name: "Payer à un autre numéro" }).click();
+  await page.waitForURL(/\/entrer\/operateur$/);
+  await page.getByText("MTN MoMo", { exact: true }).click();
+  await page.waitForURL(/\/entrer\/payer\/XAFe-DP-\d+$/);
+  exiger(chemin().split("/").pop() !== refMuet, "un nouveau dossier est ouvert");
+  exiger(await page.getByRole("alert").count() === 0, "le nouveau numéro reçoit : aucun avertissement");
+
   exiger(erreurs.length === 0, `des erreurs ont été vues dans le navigateur :\n  ${erreurs.join("\n  ")}`);
   console.log(`✓ le parcours tient (${numero} captures dans app/captures/)`);
 } catch (e) {

@@ -352,16 +352,30 @@ language sql stable as $$
                             'numero_payeur', x.numero_payeur, 'motif', x.motif, 'declare_le', x.declare_le, 'credite_le', x.credite_le)
 $$;
 
+-- « reception » dit au client si le numéro qu'on lui a donné reçoit ENCORE :
+--   ouverte   le float est actif et son boîtier a parlé il y a moins de 10 min ;
+--   retardee  le boîtier se tait : on peut payer, le SMS sera lu à son retour
+--             (le boîtier garde ses SMS), le crédit attendra ;
+--   fermee    l'équipe a retiré ce float (puce perdue, saisie, changée) : ne
+--             plus payer à ce numéro. Un paiement déjà fait reste traité —
+--             totem_sms_recu ne regarde pas « actif » —, mais un client qui
+--             paie APRÈS pourrait ne jamais être lu.
+-- Le dossier gardait le numéro choisi à l'ouverture sans jamais redire s'il
+-- valait encore : le client payait un float retiré une heure plus tôt.
 create function _depot_json(d depots) returns jsonb
 language sql stable as $$
   select jsonb_build_object(
     'reference', d.reference, 'etat', d.etat, 'operateur', d.operateur,
     'montant_recu', d.montant_recu,
-    'float_numero', (select numero from floats where id = d.float_id),
-    'code_agent', (select code_agent from floats where id = d.float_id),
+    'float_numero', f.numero,
+    'code_agent', f.code_agent,
+    'reception', case when not coalesce(f.actif, false) then 'fermee'
+                      when t.vu_le is null or t.vu_le < now() - interval '10 minutes' then 'retardee'
+                      else 'ouverte' end,
     'declarations', (select coalesce(jsonb_agg(_declaration_json(x) order by x.declare_le), '[]'::jsonb)
                        from depot_declarations x where x.depot_id = d.id),
     'cree_le', d.cree_le, 'expire_le', d.expire_le, 'credite_le', d.credite_le)
+    from (select 1) _ left join floats f on f.id = d.float_id left join terminaux t on t.id = f.terminal
 $$;
 
 -- On ouvre le dossier AVANT de payer : il dit à quel float payer.

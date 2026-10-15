@@ -394,7 +394,10 @@ begin
   perform _exiger_droit('voir');
   select coalesce(jsonb_agg(jsonb_build_object('id', t.id, 'nom', t.nom, 'lieu', t.lieu, 'vu_le', t.vu_le, 'a_cle', t.cle is not null,
                             'muet', t.vu_le is null or t.vu_le < now() - interval '10 minutes',
-                            'floats', (select coalesce(jsonb_agg(jsonb_build_object('id', f.id, 'operateur', f.operateur, 'numero', f.numero, 'code_agent', f.code_agent, 'actif', f.actif) order by f.id), '[]'::jsonb) from floats f where f.terminal = t.id),
+                            'floats', (select coalesce(jsonb_agg(jsonb_build_object('id', f.id, 'operateur', f.operateur, 'numero', f.numero, 'code_agent', f.code_agent, 'actif', f.actif,
+                                                                         -- retirer un float que des dossiers ouverts donnent à payer se confirme
+                                                                         'dossiers_ouverts', (select count(*) from depots d where d.float_id = f.id and d.etat = 'en_attente'))
+                                                      order by f.id), '[]'::jsonb) from floats f where f.terminal = t.id),
                             'commandes_en_attente', (select count(*) from commandes k where k.terminal = t.id and k.etat = 'en_attente')) order by t.id), '[]'::jsonb)
     into r from terminaux t;
   return r;

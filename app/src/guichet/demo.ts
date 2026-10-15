@@ -126,7 +126,7 @@ function dossierVitrine(): Dossier {
   d.soldes = { XAFe: { disponible: 3_250_000, bloque: 0 }, USDT: { disponible: 2_608.05, bloque: 0 } };
   d.numeros.push({ id: uuid(), operateur: "om", numero: "699876543", verifieLe: iso(hier - 86400_000), actifDes: iso(hier), retireLe: null });
   d.depots.push({
-    reference: "XAFe-DP-000401", operateur: "mtn", floatNumero: "677000000", codeAgent: "480213", montantRecu: 3_000_000,
+    reference: "XAFe-DP-000401", operateur: "mtn", floatNumero: "677000000", codeAgent: "480213", reception: "ouverte", montantRecu: 3_000_000,
     etat: "credite", creeLe: iso(hier), expireLe: iso(hier + 1800_000), crediteLe: iso(hier + 240_000),
     declarations: [1, 2, 3].map((i) => ({ id: uuid(), transactionId: `2039481${i}04`, etat: "credite" as const, montant: 1_000_000, numeroPayeur: NUMERO_VITRINE, motif: null, declareLe: iso(hier + i * 80_000 - 20_000), crediteLe: iso(hier + i * 80_000) })),
   });
@@ -494,7 +494,7 @@ export class GuichetDemo implements Guichet {
     const deja = d.depots.find((x) => (x as unknown as { cle?: string }).cle === cle);
     if (deja) return deja;
     const dep: Depot & { cle: string } = {
-      reference: this.reference(d, "XAFe-DP-"), operateur, floatNumero: operateur === "mtn" ? "677000000" : "699000000", codeAgent: operateur === "mtn" ? "480213" : null,
+      reference: this.reference(d, "XAFe-DP-"), operateur, floatNumero: operateur === "mtn" ? "677000000" : "699000000", codeAgent: operateur === "mtn" ? "480213" : null, reception: "ouverte",
       montantRecu: 0, etat: "en_attente", creeLe: iso(), expireLe: iso(maintenant() + 30 * 60_000), crediteLe: null, declarations: [], cle,
     };
     d.depots.unshift(dep);
@@ -506,7 +506,9 @@ export class GuichetDemo implements Guichet {
   async depot(reference: string) {
     const dep = this.dossier().depots.find((x) => x.reference === reference);
     if (!dep) throw new ErreurMoteur("dépôt inconnu");
-    return copie(dep);
+    /* Couture d'épreuve (démonstration seulement) : le boîtier se tait, ou l'équipe retire le float. */
+    const epreuve = (globalThis as { __xafeEpreuve?: { reception?: Depot["reception"] } }).__xafeEpreuve;
+    return copie(epreuve?.reception && dep.etat === "en_attente" ? { ...dep, reception: epreuve.reception } : dep);
   }
 
   /** Le client tape le transaction ID de son SMS ; le faux TOTEM « trouve » le SMS trois secondes plus tard. */

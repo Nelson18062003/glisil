@@ -50,6 +50,10 @@ export type Depot = {
   operateur: IdOperateur;
   floatNumero: string;
   codeAgent: string | null;
+  /** Le numéro reçoit-il ENCORE ? « retardee » : son boîtier se tait, le
+   *  crédit attendra son retour ; « fermee » : l'équipe a retiré ce float,
+   *  on ne paie plus à ce numéro (un paiement déjà fait reste traité). */
+  reception: "ouverte" | "retardee" | "fermee";
   montantRecu: number;
   etat: EtatDepot;
   creeLe: string;

@@ -246,7 +246,7 @@ export class GuichetDemo implements GuichetAdmin {
 
   async terminaux() {
     this.exiger("voir");
-    return copie(this.e.terminaux.map((t) => ({ ...t, floats: this.e.floats.filter((f) => f.terminal === t.id), commandes_en_attente: this.e.sorties.flatMap((s) => s.transferts).filter((x) => x.terminal === t.id && x.etat === "en_attente").length })));
+    return copie(this.e.terminaux.map((t) => ({ ...t, floats: this.e.floats.filter((f) => f.terminal === t.id).map((f) => ({ ...f, dossiers_ouverts: this.e.entrees.filter((x) => x.etat === "en_attente" && x.float_numero === f.numero).length })), commandes_en_attente: this.e.sorties.flatMap((s) => s.transferts).filter((x) => x.terminal === t.id && x.etat === "en_attente").length })));
   }
   async creerTerminal({ id, nom, lieu }: { id: string; nom: string; lieu: string }) {
     this.exiger("terminaux");

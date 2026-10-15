@@ -113,6 +113,28 @@ try {
   await page.getByRole("dialog").getByRole("button", { name: "Renouveler la clé" }).click();
   await page.locator("[data-cle]").waitFor();
   await page.getByRole("button", { name: "Fermer" }).click();
+  await page.getByRole("dialog").waitFor({ state: "detached" });
+
+  /* retirer un float que des dossiers ouverts donnent à payer : on dit combien, et « Annuler » ne touche à rien */
+  const interrupteur = page.getByRole("checkbox", { name: "float 677000000 actif" });
+  await interrupteur.click();
+  await voir("1 dossier ouvert");
+  await page.waitForFunction(() => { const c = document.querySelector(".MuiDialog-container"); return c && getComputedStyle(c).opacity === "1"; });
+  await capturer("terminaux-retirer-float");
+  await page.getByRole("dialog").getByRole("button", { name: "Annuler" }).click();
+  await page.getByRole("dialog").waitFor({ state: "detached" });
+  exiger(await interrupteur.isChecked(), "annuler laisse le float actif");
+  await interrupteur.click();
+  await page.getByRole("dialog").getByRole("button", { name: "Retirer le float" }).click();
+  await page.getByRole("dialog").waitFor({ state: "detached" });
+  exiger(!(await interrupteur.isChecked()), "le float est retiré");
+  await interrupteur.click();
+  exiger(await page.getByRole("dialog").count() === 0 && (await interrupteur.isChecked()), "le remettre ne demande rien");
+  /* un float qu'aucun dossier ne vise se retire sans question */
+  const libre = page.getByRole("checkbox", { name: "float 699000000 actif" });
+  await libre.click();
+  exiger(await page.getByRole("dialog").count() === 0 && !(await libre.isChecked()), "un float sans dossier ouvert se retire d'un geste");
+  await libre.click();
 
   etape("Clients : valider des pièces, le palier monte");
   await page.goto(`${BASE}/clients?filtre=verifications`);

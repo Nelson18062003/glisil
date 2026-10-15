@@ -24,6 +24,7 @@ export function Terminaux() {
   const [enCours, setEnCours] = useState(false);
   const [copie, setCopie] = useState(false);
   const [aRenouveler, setARenouveler] = useState<string | null>(null);
+  const [aRetirer, setARetirer] = useState<{ id: number; numero: string; dossiers: number } | null>(null);
 
   const creer = async () => {
     setEnCours(true); setErreur(null);
@@ -38,7 +39,10 @@ export function Terminaux() {
     setEnCours(true); setErreur(null);
     try { await guichet.creerFloat({ operateur: g.operateur, numero: g.numero, terminal: float, codeAgent: g.code_agent || null }); setFloat(null); setG({ operateur: "mtn", numero: "", code_agent: "" }); await rafraichir(); } catch (e) { setErreur(e); } finally { setEnCours(false); }
   };
-  const basculer = async (id: number, actif: boolean) => { try { await guichet.activerFloat(id, actif); await rafraichir(); } catch (e) { setErreur(e); } };
+  const basculer = async (id: number, actif: boolean) => {
+    setEnCours(true);
+    try { await guichet.activerFloat(id, actif); setARetirer(null); await rafraichir(); } catch (e) { setErreur(e); } finally { setEnCours(false); }
+  };
 
   return (
     <Coquille titre="Terminaux et floats" actions={peut("terminaux") ? <Button variant="contained" onClick={() => setNouveau(true)}>Nouveau terminal</Button> : undefined}>
@@ -54,7 +58,7 @@ export function Terminaux() {
             {(t.floats ?? []).map((x) => (
               <Stack key={x.id} direction="row" alignItems="center" gap={1}>
                 <Chip size="small" label={`${x.operateur.toUpperCase()} ${numeroEnTranches(x.numero)}${x.code_agent ? ` · agent ${x.code_agent}` : ""}`} sx={{ height: 24, opacity: x.actif ? 1 : 0.5 }} />
-                {peut("terminaux") && <Switch size="small" checked={x.actif} onChange={(e) => void basculer(x.id, e.target.checked)} inputProps={{ "aria-label": `float ${x.numero} actif` }} />}
+                {peut("terminaux") && <Switch size="small" checked={x.actif} onChange={(e) => (e.target.checked || !x.dossiers_ouverts ? void basculer(x.id, e.target.checked) : setARetirer({ id: x.id, numero: x.numero, dossiers: x.dossiers_ouverts }))} inputProps={{ "aria-label": `float ${x.numero} actif` }} />}
               </Stack>
             ))}
           </Stack>,
@@ -73,6 +77,13 @@ export function Terminaux() {
       <Dialogue ouvert={Boolean(aRenouveler)} titre={`Renouveler la clé de ${aRenouveler ?? ""} ?`} onFermer={() => setARenouveler(null)} onValider={() => aRenouveler && void renouveler(aRenouveler)} libelle="Renouveler la clé" couleur="error" enCours={enCours}>
         <Typography variant="body2">L'ancienne clé cesse de marcher <b>tout de suite</b> : ce boîtier ne pourra plus pousser un SMS ni relever un transfert tant que la nouvelle n'est pas posée dans sa configuration. Les dépôts payés pendant ce temps restent sur la carte et arriveront quand il reparlera.</Typography>
         <Typography variant="body2">À faire si la clé a fuité (carte SD perdue, boîtier retiré du service), ou quand vous êtes devant le boîtier.</Typography>
+        <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
+      </Dialogue>
+
+      {/* Des clients ont ce numéro sous les yeux : leur écran dira « ne payez pas ici », et ce qu'ils ont déjà payé reste crédité. */}
+      <Dialogue ouvert={Boolean(aRetirer)} titre={`Retirer le float ${aRetirer ? numeroEnTranches(aRetirer.numero) : ""} ?`} onFermer={() => setARetirer(null)} onValider={() => aRetirer && void basculer(aRetirer.id, false)} libelle="Retirer le float" couleur="error" enCours={enCours}>
+        <Typography variant="body2"><b>{aRetirer?.dossiers} dossier{(aRetirer?.dossiers ?? 0) > 1 ? "s" : ""} ouvert{(aRetirer?.dossiers ?? 0) > 1 ? "s" : ""}</b> donne{(aRetirer?.dossiers ?? 0) > 1 ? "nt" : ""} ce numéro à payer. Leurs clients verront « ce numéro ne reçoit plus : ne payez pas ici » et pourront payer à un autre float.</Typography>
+        <Typography variant="body2">Un paiement déjà fait à ce numéro reste crédité quand son SMS arrive : retirer un float ne perd l'argent de personne, tant que la puce reste dans son boîtier.</Typography>
         <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
       </Dialogue>
 

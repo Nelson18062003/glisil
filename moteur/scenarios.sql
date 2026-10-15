@@ -1349,6 +1349,42 @@ begin
 end $$;
 rollback;
 
+-- 11.22 · le dossier redit si son numéro reçoit encore : boîtier muet, float retiré.
+begin;
+set local xafe.compte = '22222222-2222-2222-2222-222222222222';
+select ouvrir_depot('mtn', 'k-22') ->> 'reference' as d22 \gset
+create temp table s22 on commit drop as select d.reference, f.id as float_id, f.numero, f.terminal
+  from depots d join floats f on f.id = d.float_id where d.reference = :'d22';
+do $$
+declare v s22 := (select s from s22 s);
+begin
+  assert mon_depot(v.reference) ->> 'reception' = 'ouverte', 'un boîtier qui parle : on paie';
+  update terminaux set vu_le = now() - interval '1 hour' where id = v.terminal;
+  assert mon_depot(v.reference) ->> 'reception' = 'retardee', 'le boîtier se tait : le dossier le dit';
+end $$;
+set local xafe.compte = 'dddddddd-0000-0000-0000-000000000001';
+do $$
+declare v s22 := (select s from s22 s);
+begin
+  assert (select (x ->> 'dossiers_ouverts')::int from jsonb_array_elements(admin_terminaux()) t, jsonb_array_elements(t -> 'floats') x
+           where (x ->> 'id')::int = v.float_id) >= 1, 'l''équipe voit que des dossiers ouverts donnent ce numéro à payer';
+  perform admin_activer_float(v.float_id, false);
+end $$;
+set local xafe.compte = '22222222-2222-2222-2222-222222222222';
+do $$
+declare v s22 := (select s from s22 s); r jsonb;
+begin
+  assert mon_depot(v.reference) ->> 'reception' = 'fermee', 'le float est retiré : le dossier dit de ne plus payer';
+  assert (select x ->> 'reception' from jsonb_array_elements(mes_depots_en_attente()) x where x ->> 'reference' = v.reference) = 'fermee',
+         'la liste des dépôts en cours le dit aussi';
+  -- un paiement fait AVANT le retrait reste traité : retirer un float ne perd l'argent de personne
+  perform declarer_transaction(v.reference, '20390000222');
+  r := totem_sms_recu(v.terminal, 222, 'mtn', v.numero, '670999222', 5000, '20390000222', 'Vous avez recu 5000 FCFA (22)', now());
+  assert r ->> 'resultat' = 'credite', 'le SMS d''un float retiré crédite encore : ' || r;
+  raise notice '✓ 11.22 un dossier redit si son numéro reçoit : boîtier muet « retardée », float retiré « fermée » (l''équipe voit les dossiers touchés) — un paiement déjà fait reste crédité';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

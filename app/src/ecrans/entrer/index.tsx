@@ -86,8 +86,32 @@ export function EntrerPayer() {
 
   if (!depot || !op) return <Screen title="Payez" onBack={() => navigate("/entrer/operateur")}><Squelette hauteur={260} /></Screen>;
 
+  /* Le numéro ne reçoit plus : sans rien de déclaré, on referme ce dossier et on en ouvre un autre — un autre float. */
+  const ailleurs = () => void lancer(async () => {
+    await guichet.annulerDepot(depot.reference);
+    navigate("/entrer/operateur", { replace: true });
+  });
+  const ferme = depot.reception === "fermee";
+
   return (
     <Screen title={`Payez par ${op.nom}`} onBack={retour} fermer="/">
+      {depot.reception !== "ouverte" && (
+        <Stack direction="row" gap={1.5} role="alert" sx={{ p: 1.75, borderRadius: 3, bgcolor: tones[ferme ? "red" : "amber"].bg, color: tones[ferme ? "red" : "amber"].fg }}>
+          {ferme ? <ErrorOutlineRounded /> : <HourglassTopRounded />}
+          <Stack gap={0.5}>
+            <Typography variant="body1" sx={{ fontWeight: 600, color: "inherit" }}>
+              {ferme ? "Ce numéro ne reçoit plus : ne payez pas ici" : "Notre boîtier est hors ligne pour l'instant"}
+            </Typography>
+            <Typography variant="body2" sx={{ color: "inherit" }}>
+              {ferme
+                ? depot.declarations.length === 0
+                  ? "Si vous avez déjà payé, tapez votre transaction ID : il sera traité. Sinon, payez à un autre numéro."
+                  : "Votre paiement déjà fait sera traité. Pour un nouveau paiement, ouvrez un autre dépôt."
+                : "Vous pouvez payer : le SMS sera lu à son retour, et votre crédit arrivera à ce moment-là."}
+            </Typography>
+          </Stack>
+        </Stack>
+      )}
       <Card>
         <Typography variant="body2">Transférez ce que vous voulez entrer</Typography>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ bgcolor: "background.default", borderRadius: 3, px: 2, py: 1 }}>
@@ -109,10 +133,13 @@ export function EntrerPayer() {
       </Typography>
       <Box sx={{ flex: 1 }} />
       <Stack gap={1}>
-        <Button variant="contained" onClick={() => navigate(`/entrer/transaction/${depot.reference}`)}>J'ai payé</Button>
-        <Button variant="outlined" href={depot.operateur === "mtn" ? "tel:*126%23" : "tel:%23150%23"}>
-          Ouvrir {op.nom} ({depot.operateur === "mtn" ? "*126#" : "#150#"})
-        </Button>
+        {ferme && depot.declarations.length === 0 && <Button variant="contained" onClick={ailleurs}>Payer à un autre numéro</Button>}
+        <Button variant={ferme ? "outlined" : "contained"} onClick={() => navigate(`/entrer/transaction/${depot.reference}`)}>J'ai payé</Button>
+        {!ferme && (
+          <Button variant="outlined" href={depot.operateur === "mtn" ? "tel:*126%23" : "tel:%23150%23"}>
+            Ouvrir {op.nom} ({depot.operateur === "mtn" ? "*126#" : "#150#"})
+          </Button>
+        )}
         <Button variant="text" size="small" onClick={() => setDemande(true)}>Comment payer ?</Button>
       </Stack>
       <Feuille ouverte={demande} onFermer={() => setDemande(false)} titre="Trois façons de payer">

@@ -26,7 +26,8 @@ function declaration(j: J): Declaration {
 }
 function depot(j: J): Depot {
   return {
-    reference: s(j.reference), operateur: j.operateur as IdOperateur, floatNumero: s(j.float_numero), codeAgent: sn(j.code_agent), montantRecu: n(j.montant_recu),
+    reference: s(j.reference), operateur: j.operateur as IdOperateur, floatNumero: s(j.float_numero), codeAgent: sn(j.code_agent),
+    reception: j.reception === "retardee" || j.reception === "fermee" ? j.reception : "ouverte", montantRecu: n(j.montant_recu),
     etat: j.etat as Depot["etat"], creeLe: s(j.cree_le), expireLe: s(j.expire_le), crediteLe: sn(j.credite_le),
     declarations: ((j.declarations as J[]) ?? []).map(declaration),
   };
