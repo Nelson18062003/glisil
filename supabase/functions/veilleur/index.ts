@@ -2,8 +2,10 @@
 //   POST /functions/v1/veilleur?reseau=bep20|trc20     en-tête x-veilleur-jeton
 // pg_cron le réveille chaque minute (migration 0006). La logique est celle de
 // chaine/src/veilleur.ts, la même que le service Node et que l'épreuve.
-// Secrets de la fonction : VEILLEUR_JETON, XAFE_GRAINE, BEP20_*, TRC20_* (chaine/README.md).
-import { veilleursDepuis } from "../../../chaine/src/service.ts";
+// Les réglages viennent de la base (chaine_configuration, migration 0007) ;
+// un secret de la fonction du même nom passe avant — en production, XAFE_GRAINE
+// est un secret que le propriétaire saisit lui-même (chaine/README.md).
+import { envDepuisConfiguration, veilleursDepuis, type ConfigurationMoteur } from "../../../chaine/src/service.ts";
 import type { Reseau } from "../../../chaine/src/cles.ts";
 
 const env = Deno.env.toObject();
@@ -30,11 +32,13 @@ function memes(a: string, b: string) {
   return d === 0;
 }
 
-async function unTour(reseau: Reseau) {
+async function unTour(reseau: Reseau, reglages: Record<string, string | undefined>) {
+  // un réseau pas encore configuré : rien à faire, et rien à crier chaque minute
+  if (!reglages[reseau === "bep20" ? "BEP20_RPC" : "TRC20_NOEUD"]) return { reseau, saute: "réseau pas encore configuré" };
   // un tour à la fois : si le précédent tourne encore, celui-ci s'efface
   if (!(await rpc("chaine_prendre_tour", { p_reseau: reseau, p_secondes: 300 }))) return { reseau, saute: "un tour est déjà en cours" };
   try {
-    const [v] = await veilleursDepuis(env, [reseau], (l) => console.log(`[${reseau}] ${l}`));
+    const [v] = await veilleursDepuis(reglages, [reseau], (l) => console.log(`[${reseau}] ${l}`));
     return { reseau, ...(await v.tour(rpc)) };
   } finally {
     await rpc("chaine_rendre_tour", { p_reseau: reseau }).catch(() => null);
@@ -42,13 +46,16 @@ async function unTour(reseau: Reseau) {
 }
 
 Deno.serve(async (req) => {
-  const jeton = env.VEILLEUR_JETON ?? "";
+  let reglages: Record<string, string | undefined>;
+  try { reglages = envDepuisConfiguration(await rpc("chaine_configuration", {}) as ConfigurationMoteur, env); }
+  catch (e) { return new Response(JSON.stringify({ erreur: `configuration illisible : ${(e as Error).message}` }), { status: 503 }); }
+  const jeton = reglages.VEILLEUR_JETON ?? "";
   if (jeton.length < 32 || !memes(req.headers.get("x-veilleur-jeton") ?? "", jeton)) {
     return new Response(JSON.stringify({ erreur: "jeton refusé" }), { status: 401, headers: { "content-type": "application/json" } });
   }
   const reseau = new URL(req.url).searchParams.get("reseau");
   if (reseau !== "bep20" && reseau !== "trc20") return new Response(JSON.stringify({ erreur: "reseau=bep20 ou trc20" }), { status: 400 });
-  const tour = unTour(reseau).then(
+  const tour = unTour(reseau, reglages).then(
     (b) => { console.log(JSON.stringify(b)); return b; },
     (e) => { console.error(`✗ ${reseau} : ${(e as Error).message}`); return { reseau, erreur: (e as Error).message }; },
   );

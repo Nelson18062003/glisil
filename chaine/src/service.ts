@@ -14,6 +14,46 @@ import { Veilleur, type ConfigVeilleur } from "./veilleur.ts";
 
 export type Env = Record<string, string | undefined>;
 
+/** Les réglages d'un réseau tels que les paramètres « chaine » les portent (migration 0007). */
+export type ConfigReseau = {
+  // pas de clé d'API ici : les paramètres se lisent par les comptes connectés. TRC20_CLE_API est un secret de la fonction.
+  noeud: string; usdt: string; xafe: string; confirmations?: number;
+  froid?: string; plafond_chaud_usdt?: number; garder_chaud_usdt?: number; natif_minimum?: number;
+};
+export type ConfigurationMoteur = {
+  essai: boolean; bep20: ConfigReseau | null; trc20: ConfigReseau | null;
+  jeton: string | null; graine: string | null; admin_cle_essai: string | null;
+};
+
+/**
+ * Ce que la base donne (chaine_configuration) → les variables du veilleur.
+ * Les variables déjà posées (secrets de la fonction, environnement du service)
+ * passent AVANT : en production, la graine vient d'un secret, jamais de la base.
+ */
+export function envDepuisConfiguration(c: ConfigurationMoteur, env: Env): Env {
+  const e: Env = {};
+  const reseau = (p: "BEP20" | "TRC20", r: ConfigReseau | null) => {
+    if (!r) return;
+    e[p === "BEP20" ? "BEP20_RPC" : "TRC20_NOEUD"] = r.noeud;
+    e[`${p}_USDT`] = r.usdt;
+    e[`${p}_XAFE`] = r.xafe;
+    if (r.confirmations != null) e[`${p}_CONFIRMATIONS`] = String(r.confirmations);
+    if (r.froid) e[`${p}_FROID`] = r.froid;
+    if (r.plafond_chaud_usdt != null) e[`${p}_PLAFOND_CHAUD_USDT`] = String(r.plafond_chaud_usdt);
+    if (r.garder_chaud_usdt != null) e[`${p}_GARDER_CHAUD_USDT`] = String(r.garder_chaud_usdt);
+    if (r.natif_minimum != null) e[`${p}_NATIF_MINIMUM`] = String(r.natif_minimum);
+    // réseau d'essai seulement : la clé admin d'essai inscrit les adresses XAFe
+    if (c.essai && c.admin_cle_essai) e[`${p}_ADMIN_CLE_ESSAI`] = c.admin_cle_essai;
+  };
+  reseau("BEP20", c.bep20);
+  reseau("TRC20", c.trc20);
+  if (c.essai && c.graine) e.XAFE_GRAINE = c.graine;
+  if (c.jeton) e.VEILLEUR_JETON = c.jeton;
+  const resultat: Env = { ...e };
+  for (const [k, v] of Object.entries(env)) if (v !== undefined && v !== "") resultat[k] = v;
+  return resultat;
+}
+
 export function moteurDepuis(env: Env): Rpc {
   if (!env.MOTEUR_URL || !env.MOTEUR_CLE) throw new Error("MOTEUR_URL et MOTEUR_CLE sont nécessaires");
   return moteur(env.MOTEUR_URL, env.MOTEUR_CLE);

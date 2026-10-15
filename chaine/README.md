@@ -49,9 +49,14 @@ Le veilleur est aussi une **fonction Supabase** (`supabase/functions/veilleur`),
 réveillée **chaque minute** par pg_cron (migration 0006), un réseau par appel.
 Rien à héberger, rien à garder allumé : le projet Supabase suffit.
 
-- Ses réglages sont les **secrets de la fonction** (Supabase → Edge Functions →
-  Secrets) : `XAFE_GRAINE`, `VEILLEUR_JETON`, `BEP20_*`, `TRC20_*` (tableau
-  plus bas). L'API du moteur et la clé de service sont fournies d'office.
+- Ses réglages viennent de **la base** (`chaine_configuration`, migration
+  0007) : les nœuds, les contrats, le froid, les confirmations dans le
+  paramètre `chaine` ; le jeton du réveil dans le **coffre** de Supabase.
+  Sur un réseau d'essai (`"essai": true`), la graine d'essai et la clé admin
+  d'essai y sont aussi. **En production (`"essai": false`), la base ne donne
+  jamais la graine** : c'est un secret de la fonction, `XAFE_GRAINE`, que le
+  propriétaire saisit lui-même (Supabase → Edge Functions → Secrets). Un
+  secret de la fonction passe toujours avant la base.
 - Le réveil lit l'adresse de la fonction et son jeton dans le **coffre** de
   Supabase (`veilleur_url`, `veilleur_jeton`) : tant qu'ils n'y sont pas, rien
   ne part.
