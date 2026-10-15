@@ -32,6 +32,57 @@ export const RESEAUX: Record<"bep20" | "trc20", { nom: string; chaine: string; c
   trc20: { nom: "TRC20", chaine: "Tron", confirmations: 20, valide: (a) => /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(a) },
 };
 
+/** L'achat rapide : un prix ferme pris au carnet, plus cette marge (posée par l'équipe). */
+export const RAPIDE = { marge: 0.01, ouvert: true, validiteSecondes: 20 };
+
+/**
+ * Le devis de l'achat (ou de la vente) rapide, sur un carnet donné — la même
+ * arithmétique que devis_rapide() dans le moteur : on parcourt le meilleur prix
+ * d'abord ; l'achat dépense un budget en XAFe (marge mise de côté), la vente
+ * place une quantité d'USDT. Rend null si le carnet ne suffit pas.
+ */
+export function devisSurLeCarnet(sens: "achat" | "vente", montant: number, enFace: { prix: number; quantite: number }[], marge = RAPIDE.marge, quantiteMin = MARCHE.quantiteMin):
+  { quantite: number; cout: number; total: number; prix: number; frais: number } | null {
+  if (!(montant > 0)) return null;
+  let quantite = 0;
+  let cout = 0;
+  if (sens === "achat") {
+    const budget = Math.trunc((montant / (1 + marge)) * 100 + 1e-9) / 100;
+    for (const n of enFace) {
+      const q = Math.min(n.quantite, Math.trunc(((budget - cout) / n.prix) * 100 + 1e-9) / 100);
+      if (q <= 0) break;
+      quantite = arrondi2(quantite + q);
+      cout = arrondi2(cout + arrondi2(q * n.prix));
+    }
+    if (quantite < quantiteMin) return null;
+    const total = Math.ceil(arrondi2(cout * (1 + marge) * 100)) / 100;
+    return { quantite, cout, total, prix: arrondi2(total / quantite), frais: arrondi2(total - cout) };
+  }
+  if (montant < quantiteMin) return null;
+  for (const n of enFace) {
+    const q = Math.min(n.quantite, arrondi2(montant - quantite));
+    if (q <= 0) break;
+    quantite = arrondi2(quantite + q);
+    cout = arrondi2(cout + arrondi2(q * n.prix));
+  }
+  if (quantite < montant) return null;
+  const total = Math.floor(arrondi2(cout * (1 - marge) * 100)) / 100;
+  return { quantite, cout, total, prix: arrondi2(total / quantite), frais: arrondi2(cout - total) };
+}
+
+/** Ce que coûte (ou rend) une quantité prise au carnet, meilleur prix d'abord ; null si le carnet ne suffit pas. */
+export function coutAuCarnet(enFace: { prix: number; quantite: number }[], quantite: number): number | null {
+  let reste = quantite;
+  let cout = 0;
+  for (const n of enFace) {
+    if (reste <= 0) break;
+    const q = Math.min(n.quantite, reste);
+    cout = arrondi2(cout + arrondi2(q * n.prix));
+    reste = arrondi2(reste - q);
+  }
+  return reste > 0 ? null : cout;
+}
+
 export const MARCHE: { paire: string; pasPrix: number; quantiteMin: number } = {
   paire: "USDT/XAFe",
   pasPrix: 0.05,
@@ -197,6 +248,9 @@ export function appliquerParametres(p: unknown): boolean {
   poser(FRAIS_CRYPTO, "USDT", nombre(r.crypto?.frais?.USDT, 0, 1000));
   poser(FRAIS_CRYPTO, "XAFe", nombre(r.crypto?.frais?.XAFe, 0, 1_000_000));
   if (typeof r.crypto?.retraits_ouverts === "boolean") CRYPTO.retraitsOuverts = r.crypto.retraits_ouverts;
+  poser(RAPIDE, "marge", nombre(r.rapide?.marge, 0, 0.2));
+  poser(RAPIDE, "validiteSecondes", nombre(r.rapide?.validite_secondes, 5, 120));
+  if (typeof r.rapide?.ouvert === "boolean") RAPIDE.ouvert = r.rapide.ouvert;
   for (const o of Array.isArray(r.operateurs) ? r.operateurs : []) {
     const cible = OPERATEURS.find((x) => x.id === o?.id);
     if (!cible) continue;

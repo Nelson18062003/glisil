@@ -98,6 +98,8 @@ export type Ordre = {
   etat: EtatOrdre;
   creeLe: string;
   majLe: string;
+  /** passé par l'achat rapide : ce que le client a payé (ou reçu), marge comprise */
+  rapide?: { total: number; frais: number } | null;
 };
 
 export type Execution = {
@@ -178,3 +180,21 @@ export type Notification = {
 };
 
 export type ResultatCode = { ok: boolean; essaisRestants?: number; verrouJusqua?: string | null };
+
+/** L'achat (ou la vente) rapide : un prix ferme pris au carnet, marge comprise. */
+export type SensRapide = "achat" | "vente";
+export type DevisRapide = {
+  /** null pour une estimation (rien n'est écrit) */
+  id: string | null;
+  sens: SensRapide;
+  /** USDT reçus (achat) ou donnés (vente) */
+  quantite: number;
+  /** XAFe payés (achat) ou reçus (vente), marge comprise */
+  total: number;
+  prix: number;
+  frais: number;
+  marge: number;
+  etat: "estimation" | "propose" | "execute";
+  expireLe: string | null;
+  ordre: string | null;
+};

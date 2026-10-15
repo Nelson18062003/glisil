@@ -63,6 +63,14 @@ const exiger = (condition, message) => { if (!condition) throw new Error(`✗ ${
 const voir = (texte, delai = 15_000) => page.getByText(texte, { exact: false }).first().waitFor({ timeout: delai });
 const taper = async (touches) => { for (const t of touches) await page.getByRole("button", { name: t, exact: true }).click(); };
 const chemin = () => new URL(page.url()).pathname;
+/* l'opérateur, puis le montant (une indication), puis le dossier */
+const ouvrirUnDepot = async () => {
+  await page.getByText("MTN MoMo", { exact: true }).click();
+  await page.waitForURL(/\/entrer\/montant$/);
+  await taper(["1", "0", "000"]);
+  await page.getByRole("button", { name: "Continuer" }).click();
+  await page.waitForURL(/\/entrer\/payer\/XAFe-DP-\d+$/);
+};
 
 try {
   /* ---------------------------------------------------------- entrer */
@@ -86,7 +94,13 @@ try {
   await page.waitForURL(/\/entrer\/operateur$/);
   await capturer("entrer-operateur");
   await page.getByText("MTN MoMo", { exact: true }).click();
+  await page.waitForURL(/\/entrer\/montant$/);
+  await taper(["2", "5", "0", "000"]);
+  await voir("Vous recevez 250 000 XAFe");
+  await capturer("entrer-montant");
+  await page.getByRole("button", { name: "Continuer" }).click();
   await page.waitForURL(/\/entrer\/payer\/XAFe-DP-\d+$/);
+  await voir("250 000 XAF");
   const refDepot = chemin().split("/").pop();
   await voir("6 77 00 00 00");
   await capturer("entrer-payer");
@@ -247,8 +261,7 @@ try {
   /* ---------------------------------------- un ID mal recopié se retire */
   etape("Un transaction ID mal recopié se retire : le dépôt n'attend plus un SMS qui ne viendra jamais");
   await page.goto(`${BASE}/entrer/operateur`);
-  await page.getByText("MTN MoMo", { exact: true }).click();
-  await page.waitForURL(/\/entrer\/payer\/XAFe-DP-\d+$/);
+  await ouvrirUnDepot();
   await page.getByRole("button", { name: "J'ai payé" }).click();
   await page.getByLabel("Transaction ID").waitFor();
   await page.getByLabel("Transaction ID").fill("2039X817999");
@@ -286,8 +299,7 @@ try {
   etape("Le boîtier se tait, puis l'équipe retire le float : le dossier le dit, et ouvre un autre numéro");
   await page.goto(`${BASE}/entrer/operateur`);
   await page.evaluate(() => { globalThis.__xafeEpreuve = { reception: "retardee" }; });
-  await page.getByText("MTN MoMo", { exact: true }).click();
-  await page.waitForURL(/\/entrer\/payer\/XAFe-DP-\d+$/);
+  await ouvrirUnDepot();
   const refMuet = chemin().split("/").pop();
   await voir("Notre boîtier est hors ligne pour l'instant");
   exiger(await page.getByRole("button", { name: "J'ai payé" }).count() === 1, "on peut encore payer quand le boîtier se tait : le SMS sera lu à son retour");
@@ -302,10 +314,52 @@ try {
   await page.evaluate(() => { globalThis.__xafeEpreuve = {}; });
   await page.getByRole("button", { name: "Payer à un autre numéro" }).click();
   await page.waitForURL(/\/entrer\/operateur$/);
-  await page.getByText("MTN MoMo", { exact: true }).click();
-  await page.waitForURL(/\/entrer\/payer\/XAFe-DP-\d+$/);
+  await ouvrirUnDepot();
   exiger(chemin().split("/").pop() !== refMuet, "un nouveau dossier est ouvert");
   exiger(await page.getByRole("alert").count() === 0, "le nouveau numéro reçoit : aucun avertissement");
+
+  /* ----------------------------------------------------- l'achat rapide */
+  etape("Achat rapide : un montant, un prix ferme, confirmé ; puis une vente dont le prix expire et se renouvelle");
+  await page.goto(`${BASE}/`);
+  await page.getByRole("link", { name: "Acheter des USDT" }).click();
+  await page.waitForURL(/\/rapide\?sens=achat$/);
+  await taper(["5", "0", "000"]);
+  await voir("Vous recevez");
+  await capturer("rapide-montant");
+  await page.getByRole("button", { name: "Voir le prix" }).click();
+  await page.waitForURL(/\/rapide\/prix$/);
+  await voir("Prix garanti encore");
+  const recus = (await page.locator("text=Vous recevez").locator("xpath=..").innerText()).match(/([\d\s\u202f,]+) USDT/)?.[1]?.trim();
+  exiger(Boolean(recus), "le prix ferme dit combien d'USDT on reçoit");
+  await capturer("rapide-prix");
+  for (let essai = 0; essai < 3; essai++) {
+    await page.getByRole("button", { name: "Confirmer l'achat" }).click();
+    const fini = await page.getByText("USDT achetés").waitFor({ timeout: 6_000 }).then(() => true).catch(() => false);
+    if (fini) break;
+    // le carnet de démonstration bouge : un prix refusé se renouvelle, et l'on reconfirme
+    await page.getByRole("button", { name: /Compris|Fermer|OK/ }).first().click().catch(() => {});
+    await voir("Prix garanti encore");
+  }
+  await voir("USDT achetés");
+  await capturer("rapide-fait");
+  await page.goto(`${BASE}/rapide?sens=vente`);
+  await taper(["2", "0"]);
+  await voir("Vous recevez");
+  await page.getByRole("button", { name: "Voir le prix" }).click();
+  await voir("Prix garanti encore");
+  await voir("Ce prix a expiré", 30_000);
+  exiger(await page.getByRole("button", { name: "Confirmer la vente" }).count() === 0, "un prix expiré ne se confirme pas");
+  await capturer("rapide-expire");
+  await page.getByRole("button", { name: "Nouveau prix" }).click();
+  await voir("Prix garanti encore");
+  for (let essai = 0; essai < 3; essai++) {
+    await page.getByRole("button", { name: "Confirmer la vente" }).click();
+    const fini = await page.getByText("USDT vendus").waitFor({ timeout: 6_000 }).then(() => true).catch(() => false);
+    if (fini) break;
+    await page.getByRole("button", { name: /Compris|Fermer|OK/ }).first().click().catch(() => {});
+    await voir("Prix garanti encore");
+  }
+  await voir("USDT vendus");
 
   /* ------------------------- une référence qui n'est pas sur ce compte */
   etape("Une référence inconnue dit « Introuvable » au lieu de rester grise pour toujours");

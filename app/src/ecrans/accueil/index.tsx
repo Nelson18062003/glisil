@@ -10,7 +10,7 @@ import NotificationsNoneRounded from "@mui/icons-material/NotificationsNoneRound
 import VerifiedUserOutlined from "@mui/icons-material/VerifiedUserOutlined";
 import VisibilityOffOutlined from "@mui/icons-material/VisibilityOffOutlined";
 import VisibilityOutlined from "@mui/icons-material/VisibilityOutlined";
-import { Avatar, Badge as Pastille, Box, ButtonBase, Chip, IconButton, Stack, Typography } from "@mui/material";
+import { Avatar, Badge as Pastille, Box, Button, ButtonBase, Chip, IconButton, Stack, Typography } from "@mui/material";
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useChandelles, useCompte, useCotation, useDepotsEnAttente, useGuichet, useNotifications, useSoldes } from "../../guichet";
@@ -112,6 +112,11 @@ export function Accueil() {
           <Sparkline points={(chandelles ?? []).map((c) => c.c)} color={couleur} />
         </Card>
       </ButtonBase>
+      {/* l'achat rapide : pour qui ne veut pas poser un ordre au carnet */}
+      <Stack direction="row" gap={1.5}>
+        <Button component={Link} to="/rapide?sens=achat" variant="contained" disableElevation sx={{ flex: 1, bgcolor: BUY, "&:hover": { bgcolor: BUY } }}>Acheter des USDT</Button>
+        <Button component={Link} to="/rapide?sens=vente" variant="outlined" sx={{ flex: 1, color: SELL, borderColor: SELL }}>Vendre</Button>
+      </Stack>
     </Screen>
   );
 }

@@ -13,6 +13,32 @@ export type ErreurLisible = {
 };
 
 const DICTIONNAIRE: Record<string, Omit<ErreurLisible, "recommencer"> & { recommencer?: boolean }> = {
+  "devis expiré": {
+    titre: "Le prix a expiré",
+    argent: "Rien n'a bougé.",
+    suite: "Demandez un nouveau prix : il tient quelques secondes.",
+  },
+  "le prix a changé": {
+    titre: "Le prix a changé",
+    argent: "Rien n'a bougé : rien n'a été acheté ni vendu.",
+    suite: "Le carnet a bougé pendant que vous confirmiez. Demandez un nouveau prix.",
+  },
+  "pas assez de vendeurs au carnet": {
+    titre: "Pas assez de vendeurs",
+    argent: "Rien n'a bougé.",
+    suite: "Le carnet n'a pas assez d'USDT à vendre pour ce montant (10 USDT au moins). Essayez un autre montant.",
+  },
+  "pas assez d'acheteurs au carnet": {
+    titre: "Pas assez d'acheteurs",
+    argent: "Rien n'a bougé.",
+    suite: "Le carnet ne prend pas autant d'USDT en ce moment. Essayez un montant plus petit.",
+  },
+  "achat rapide fermé": {
+    titre: "L'achat rapide est fermé",
+    argent: "Rien n'a bougé.",
+    suite: "Le marché reste ouvert : vous pouvez y passer un ordre.",
+    recommencer: false,
+  },
   "solde insuffisant": {
     titre: "Le solde ne suffit pas",
     argent: "Rien n'a bougé : aucun XAFe ni USDT n'a été bloqué.",

@@ -1,5 +1,7 @@
 /*
- * Entrer des XAF : 1 Opérateur → 2 Payer → 3 Transaction ID → 4 Crédité.
+ * Entrer des XAF : 1 Opérateur → 2 Montant → 3 Payer → 4 Transaction ID → 5 Crédité.
+ * Le montant tapé n'est qu'une indication pour l'écran : c'est le SMS du float
+ * qui fait foi, et le client est crédité de ce qu'il a VRAIMENT envoyé.
  * Le client paie d'abord, comme il sait le faire ; puis il tape le transaction
  * ID de son SMS. TOTEM a le même ID dans le SMS du float : c'est lui qui
  * rapproche et crédite, ID par ID, en temps réel.
@@ -13,36 +15,32 @@ import CloseRounded from "@mui/icons-material/CloseRounded";
 import HourglassTopRounded from "@mui/icons-material/HourglassTopRounded";
 import { Box, Button, Chip, CircularProgress, IconButton, Paper, Stack, TextField, Typography } from "@mui/material";
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { useCompte, useDepot, useGuichet, useRafraichir } from "../../guichet";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { useCompte, useDepot, useGuichet, useNumeros, useRafraichir } from "../../guichet";
 import type { Declaration, IdOperateur } from "../../guichet/types";
-import { OPERATEURS, PALIERS, operateur as opDe } from "../../noyau/argent";
-import { heure, numeroEnTranches, quand, xaf } from "../../noyau/format";
+import { montantValide, OPERATEURS, PALIERS, operateur as opDe } from "../../noyau/argent";
+import { apresFrappe, heure, montantDepuisSaisie, numeroEnTranches, quand, xaf } from "../../noyau/format";
+import { useParcours } from "../../navigation/parcours";
 import { tones } from "../../theme";
-import { Attente, Card, Feuille, FeuilleErreur, Line, List, Row, Screen, Success } from "../../ui";
+import { Amount, Attente, Card, Chips, Feuille, FeuilleErreur, Keypad, Line, List, Row, Screen, Success } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
 
 /* ------------------------------------------------------- 1 · opérateur */
 
 export function EntrerOperateur() {
-  const guichet = useGuichet();
   const navigate = useNavigate();
   const { data: compte } = useCompte();
-  const { lancer, enCours, erreur, effacerErreur } = useGesteUnique("dp");
+  const [, poser] = useParcours("entrer");
   const palier = compte ? PALIERS[compte.palier] : null;
 
-  const choisir = (operateur: IdOperateur) =>
-    lancer(async (cle) => {
-      const d = await guichet.ouvrirDepot({ operateur, cle });
-      navigate(`/entrer/payer/${d.reference}`);
-    });
+  const choisir = (operateur: IdOperateur) => { poser({ operateur, montant: 0 }); navigate("/entrer/montant"); };
 
   return (
     <Screen title="Entrer des XAF" back="/">
       <Typography variant="body2">Par où payez-vous ?</Typography>
       <List>
         {OPERATEURS.map((o) => (
-          <Row key={o.id} badge={o.id} primary={o.nom} secondary={`${xaf(o.plafondParTransfert)} XAF max par transfert`} onClick={() => void choisir(o.id)} disabled={enCours} />
+          <Row key={o.id} badge={o.id} primary={o.nom} secondary={`${xaf(o.plafondParTransfert)} XAF max par transfert`} onClick={() => choisir(o.id)} />
         ))}
         <Row icon={<AccountBalanceRounded />} tone="neutral" primary="Virement bancaire" secondary="Bientôt" disabled />
       </List>
@@ -51,26 +49,67 @@ export function EntrerOperateur() {
           {palier.nom.split(" · ")[0]} : au plus {xaf(palier.entreeJour)} XAF par jour. Au-delà, l'argent est retenu et remboursé.
         </Typography>
       )}
-      {enCours && <Stack alignItems="center" sx={{ mt: 2 }}><CircularProgress size={28} /></Stack>}
+    </Screen>
+  );
+}
+
+/* --------------------------------------------------------- 2 · montant */
+
+export function EntrerMontant() {
+  const guichet = useGuichet();
+  const navigate = useNavigate();
+  const { data: compte } = useCompte();
+  const [etat, poser] = useParcours("entrer");
+  const [saisie, setSaisie] = useState(etat.montant ? String(etat.montant) : "");
+  const { lancer, enCours, erreur, effacerErreur } = useGesteUnique("dp");
+  if (!etat.operateur) return <Navigate to="/entrer/operateur" replace />;
+  const op = opDe(etat.operateur);
+  const montant = montantDepuisSaisie(saisie);
+  const palier = compte ? PALIERS[compte.palier] : null;
+  const reste = palier?.entreeJour != null && compte ? Math.max(0, palier.entreeJour - compte.entreDuJour) : null;
+  const transferts = Math.max(1, Math.ceil(montant / op.plafondParTransfert));
+  const auDela = reste !== null && montant > reste;
+
+  const aide = montant <= 0 ? (reste !== null ? `Reste à entrer aujourd'hui : ${xaf(reste)} XAF` : "Vous recevez autant de XAFe · sans frais")
+    : auDela ? `Votre palier : ${xaf(reste!)} XAF encore aujourd'hui. Au-delà, l'argent est retenu et remboursé.`
+    : transferts > 1 ? `Vous recevez ${xaf(montant)} XAFe · en ${transferts} transferts de ${xaf(op.plafondParTransfert)} au plus`
+    : `Vous recevez ${xaf(montant)} XAFe · sans frais`;
+
+  const continuer = () => lancer(async (cle) => {
+    poser({ montant });
+    const d = await guichet.ouvrirDepot({ operateur: op.id, cle });
+    navigate(`/entrer/payer/${d.reference}`);
+  });
+
+  return (
+    <Screen title="Montant" back="/entrer/operateur" gap={1.5}>
+      <Amount value={saisie ? xaf(montant) : "0"} unit="XAF" hint={aide} hintColor={auDela ? "error.main" : undefined} />
+      <Chips items={["500 000", "1 000 000", "5 000 000"]} selected={xaf(montant)} onSelect={(c) => setSaisie(c.replace(/\D/g, ""))} />
+      <Box sx={{ flex: 1 }} />
+      <Keypad onKey={(k) => setSaisie(apresFrappe(saisie, k))} />
+      <Button variant="contained" disabled={!montantValide(montant, 100) || enCours} onClick={() => void continuer()}>Continuer</Button>
       <FeuilleErreur erreur={erreur} onFermer={effacerErreur} />
     </Screen>
   );
 }
 
-/* ----------------------------------------------------------- 2 · payer */
+/* ----------------------------------------------------------- 3 · payer */
 
 export function EntrerPayer() {
   const { ref } = useParams();
   const guichet = useGuichet();
   const navigate = useNavigate();
   const { data: depot, error: erreurDepot } = useDepot(ref);
-  const { data: compte } = useCompte();
+  const { data: numeros } = useNumeros();
+  const [etat] = useParcours("entrer");
   const [copie, setCopie] = useState(false);
   const [demande, setDemande] = useState(false);
   const { lancer, erreur, effacerErreur } = useGesteUnique();
 
   const op = depot ? opDe(depot.operateur) : null;
-  const palier = compte ? PALIERS[compte.palier] : null;
+  /* le montant tapé à l'étape d'avant, s'il vise bien cet opérateur ; sinon on ne prétend rien */
+  const prevu = depot && etat.operateur === depot.operateur && etat.montant > 0 ? etat.montant : null;
+  const depuis = depot ? numeros?.find((n) => n.operateur === depot.operateur && n.verifieLe && !n.retireLe) ?? null : null;
 
   const copier = async () => {
     if (!depot) return;
@@ -113,25 +152,23 @@ export function EntrerPayer() {
         </Stack>
       )}
       <Card>
-        <Typography variant="body2">Transférez ce que vous voulez entrer</Typography>
+        <Typography variant="body2">Envoyez</Typography>
+        <Typography variant="h4">{prevu ? `${xaf(prevu)} XAF` : "Le montant de votre choix"}</Typography>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ bgcolor: "background.default", borderRadius: 3, px: 2, py: 1 }}>
           <Stack>
-            <Typography variant="caption">au numéro {op.nom}</Typography>
-            <Typography variant="h5" sx={{ fontVariantNumeric: "tabular-nums" }}>{numeroEnTranches(depot.floatNumero)}</Typography>
+            <Typography variant="caption">au numéro</Typography>
+            <Typography variant="h6" sx={{ fontVariantNumeric: "tabular-nums" }}>{numeroEnTranches(depot.floatNumero)}</Typography>
           </Stack>
           <IconButton aria-label="Copier le numéro" onClick={() => void copier()} color={copie ? "primary" : "default"}>
             {copie ? <CheckCircleRounded /> : <ContentCopyRounded />}
           </IconButton>
         </Stack>
-        {depot.codeAgent && <Line label="Ou retrait chez notre agent, code" value={depot.codeAgent} strong />}
-        <Line label="Plafond par transfert" value={`${xaf(op.plafondParTransfert)} XAF`} />
-        {palier?.entreeJour != null && compte && (
-          <Line label="Reste à entrer aujourd'hui" value={`${xaf(Math.max(0, palier.entreeJour - compte.entreDuJour))} sur ${xaf(palier.entreeJour)} XAF`} />
-        )}
-        <Line label="Dossier" value={depot.reference} mono />
+        {depuis && <Line label="Depuis votre numéro" value={numeroEnTranches(depuis.numero)} />}
+        {depot.codeAgent && <Line label="Ou retrait chez notre agent, code" value={depot.codeAgent} />}
+        <Line label="Référence" value={depot.reference} />
       </Card>
       <Typography variant="body2" textAlign="center">
-        Depuis votre puce, votre flotte ou chez un agent : vous recevrez un SMS avec un <b>transaction ID</b>. C'est lui qu'on vous demandera, rien d'autre.
+        Vos XAFe arrivent dès que le SMS de {op.nom.split(" ")[0]} est lu, en général en moins de 10 s. Gardez le <b>transaction ID</b> de votre SMS.
       </Typography>
       <Box sx={{ flex: 1 }} />
       <Stack gap={1}>

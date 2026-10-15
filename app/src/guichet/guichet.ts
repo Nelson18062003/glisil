@@ -1,4 +1,6 @@
 import type {
+  DevisRapide,
+  SensRapide,
   Actif,
   Carnet,
   Chandelle,
@@ -82,6 +84,9 @@ export interface Guichet {
   ordre(id: string): Promise<{ ordre: Ordre; executions: Execution[] }>;
   placerOrdre(p: { cote: Cote; type: TypeOrdre; quantite: number; prix?: number; cle: string }): Promise<ResultatOrdre>;
   annulerOrdre(id: string): Promise<Ordre>;
+  /** ferme = false : une estimation, rien n'est écrit ; true : un prix tenu quelques secondes */
+  devisRapide(p: { sens: SensRapide; montant: number; ferme: boolean }): Promise<DevisRapide>;
+  executerDevis(id: string): Promise<DevisRapide>;
 
   /* ---- crypto */
   adresseDepot(actif: Actif, reseau: Reseau): Promise<string | null>;

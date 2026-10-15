@@ -4,6 +4,7 @@
  * Vérifier → Code → Envoyé. Mêmes règles que « Sortir des XAF ».
  */
 import ArrowDownwardRounded from "@mui/icons-material/ArrowDownwardRounded";
+import BoltRounded from "@mui/icons-material/BoltRounded";
 import ArrowOutwardRounded from "@mui/icons-material/ArrowOutwardRounded";
 import ArrowUpwardRounded from "@mui/icons-material/ArrowUpwardRounded";
 import CheckCircleRounded from "@mui/icons-material/CheckCircleRounded";
@@ -29,6 +30,7 @@ export function Crypto() {
   return (
     <Screen title="Crypto" back="/">
       <List>
+        <Row icon={<BoltRounded />} tone="green" primary="Acheter ou vendre des USDT" secondary="En un geste, au prix du moment" to="/rapide" />
         <Row icon={<ArrowDownwardRounded />} tone="blue" primary="Déposer des USDT" secondary="BEP20 ou TRC20" to="/crypto/deposer/USDT" />
         <Row icon={<ArrowUpwardRounded />} tone="blue" primary="Retirer des USDT" secondary="Vers un wallet externe" to="/crypto/retirer/USDT/reseau" />
         <Row icon={<ArrowOutwardRounded />} tone="green" primary="Retirer des XAFe" secondary="Vers mon propre wallet, BEP20 ou TRC20" to="/crypto/retirer/XAFe/reseau" />

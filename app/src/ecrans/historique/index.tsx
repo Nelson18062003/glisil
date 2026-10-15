@@ -36,7 +36,7 @@ function apparence(o: Operation): { icone: JSX.Element; tone: Tone; titre: strin
       return { icone: <ArrowUpwardRounded />, tone: o.etat === "echouee" ? "red" : "amber", titre: `Sortie ${opDe(o.detail.operateur).nom}`, sousTitre: heureOuEtat, droite: signe(-o.detail.montant) };
     case "ordre": {
       const d = o.detail;
-      return { icone: <SwapHorizRounded />, tone: "blue", titre: `${d.cote === "achat" ? "Achat" : "Vente"} ${fUsdt(d.executee || d.quantite)} USDT`, sousTitre: d.prixMoyen != null ? `${heureOuEtat} · à ${fPrix(d.prixMoyen)}` : d.prix != null ? `${heureOuEtat} · limite ${fPrix(d.prix)}` : heureOuEtat, droite: d.totalXafe > 0 ? signe(o.montant) : "—", couleur: o.montant > 0 && d.totalXafe > 0 ? tones.green.fg : undefined };
+      return { icone: <SwapHorizRounded />, tone: "blue", titre: `${d.cote === "achat" ? "Achat" : "Vente"}${d.rapide ? " rapide" : ""} ${fUsdt(d.executee || d.quantite)} USDT`, sousTitre: d.rapide ? `${heureOuEtat} · frais compris` : d.prixMoyen != null ? `${heureOuEtat} · à ${fPrix(d.prixMoyen)}` : d.prix != null ? `${heureOuEtat} · limite ${fPrix(d.prix)}` : heureOuEtat, droite: d.totalXafe > 0 ? signe(o.montant) : "—", couleur: o.montant > 0 && d.totalXafe > 0 ? tones.green.fg : undefined };
     }
     case "crypto":
       return { icone: <CurrencyBitcoinRounded />, tone: "neutral", titre: `${o.montant > 0 ? "Dépôt" : "Retrait"} ${o.actif} · ${RESEAUX[o.detail.reseau].nom}`, sousTitre: heureOuEtat, droite: `${signe(o.montant, o.actif === "USDT" ? 2 : 0)} ${o.actif}`, couleur: o.montant > 0 ? tones.green.fg : undefined };

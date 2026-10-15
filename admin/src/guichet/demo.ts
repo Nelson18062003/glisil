@@ -97,7 +97,7 @@ function graine(): Etat {
     journal: [{ id: 1, admin: "Nelson Soh", action: "creer_terminal", cible: "yaounde-1", detail: null, quand: iso(t - 5 * 24 * H) }],
     parametres: {
       frais: { placeur: 0.0005, preneur: 0.001, sortie: 0.005 }, marche: { paire: "USDT/XAFe", pas_prix: 0.05, quantite_min: 10, ouvert: true },
-      depot: { validite_minutes: 30, grace_minutes: 120 }, sortie: { reprises_max: 3 }, crypto: { frais: { USDT: 1, XAFe: 500 }, confirmations: { bep20: 15, trc20: 20 } },
+      depot: { validite_minutes: 30, grace_minutes: 120 }, sortie: { reprises_max: 3 }, rapide: { marge: 0.01, validite_secondes: 20, ouvert: true }, crypto: { frais: { USDT: 1, XAFe: 500 }, confirmations: { bep20: 15, trc20: 20 } },
       code_secret: { essais: 3, verrou_minutes: 15, longueur_min: 4, longueur_max: 6 },
       paliers: { "0": { entree_jour: 500000, sortie_jour: 500000 }, "1": { entree_jour: 5000000, sortie_jour: 5000000 }, "2": null },
       operateurs: [{ id: "mtn", nom: "MTN MoMo", plafond_par_transfert: 1_000_000, plafond_jour: 100_000_000 }, { id: "om", nom: "Orange Money", plafond_par_transfert: 500_000, plafond_jour: 1_500_000 }],
@@ -342,7 +342,7 @@ export class GuichetDemo implements GuichetAdmin {
   async parametres() { this.exiger("voir"); return copie(this.e.parametres); }
   async modifierParametre(cle: string, valeur: unknown) {
     this.exiger("parametres");
-    if (!["frais", "marche", "depot", "sortie", "paliers", "crypto", "code_secret"].includes(cle)) throw new ErreurMoteur("paramètre inconnu");
+    if (!["frais", "marche", "depot", "sortie", "paliers", "crypto", "code_secret", "rapide"].includes(cle)) throw new ErreurMoteur("paramètre inconnu");
     this.e.parametres[cle] = valeur;
     this.noter("modifier_parametre", cle, valeur); this.emettre();
   }

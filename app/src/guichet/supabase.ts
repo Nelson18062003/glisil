@@ -9,7 +9,7 @@ import { ErreurMoteur } from "../noyau/erreurs";
 import { numeroSaisi, transactionIdNormalise } from "../noyau/format";
 import type { Guichet } from "./guichet";
 import type {
-  Actif, Carnet, Chandelle, Compte, Cote, Cotation, Declaration, Depot, Execution, IdOperateur, Notification, Numero, Operation, Ordre,
+  Actif, Carnet, Chandelle, Compte, Cote, Cotation, Declaration, Depot, DevisRapide, Execution, IdOperateur, Notification, Numero, Operation, Ordre, SensRapide,
   Reseau, ResultatCode, ResultatOrdre, RetraitCrypto, Soldes, Sortie, Transaction, TransfertCrypto, TypeOrdre,
 } from "./types";
 
@@ -38,6 +38,12 @@ function depot(j: J): Depot {
     declarations: ((j.declarations as J[]) ?? []).map(declaration),
   };
 }
+function devis(j: J): DevisRapide {
+  return {
+    id: sn(j.id), sens: j.sens as SensRapide, quantite: n(j.quantite), total: n(j.total), prix: n(j.prix), frais: n(j.frais), marge: n(j.marge),
+    etat: j.id ? ((j.etat as DevisRapide["etat"]) ?? "propose") : "estimation", expireLe: sn(j.expire_le), ordre: sn(j.ordre),
+  };
+}
 function sortie(j: J): Sortie {
   return {
     reference: s(j.reference), operateur: j.operateur as IdOperateur, numero: s(j.numero), montant: n(j.montant), frais: n(j.frais), montantXaf: n(j.montant_xaf),
@@ -49,6 +55,7 @@ function ordre(j: J): Ordre {
   return {
     id: s(j.id), numero: s(j.numero), cote: j.cote as Cote, type: j.type as TypeOrdre, prix: nn(j.prix), quantite: n(j.quantite), restant: n(j.restant), executee: n(j.executee),
     totalXafe: n(j.total_xafe), bloque: n(j.bloque), prixMoyen: nn(j.prix_moyen), etat: j.etat as Ordre["etat"], creeLe: s(j.cree_le), majLe: s(j.maj_le),
+    rapide: j.rapide && typeof j.rapide === "object" ? { total: n((j.rapide as J).total), frais: n((j.rapide as J).frais) } : null,
   };
 }
 function execution(j: J, cote: Cote): Execution {
@@ -80,7 +87,7 @@ function operation(j: J): Operation | null {
   switch (j.nature) {
     case "depot": { const x = depot(d); return { nature: "depot", reference: x.reference, quand: x.crediteLe ?? x.creeLe, etat: x.etat, montant: x.montantRecu, detail: x }; }
     case "sortie": { const x = sortie(d); return { nature: "sortie", reference: x.reference, quand: x.creeLe, etat: x.etat, montant: -x.montant, detail: x }; }
-    case "ordre": { const x = ordre(d); return { nature: "ordre", reference: x.id, quand: x.creeLe, etat: x.etat, montant: x.cote === "achat" ? -x.totalXafe : x.totalXafe, detail: x }; }
+    case "ordre": { const x = ordre(d); return { nature: "ordre", reference: x.id, quand: x.creeLe, etat: x.etat, montant: (x.cote === "achat" ? -1 : 1) * (x.rapide?.total ?? x.totalXafe), detail: x }; }
     case "retrait": { const x = retrait(d); return { nature: "crypto", reference: x.reference, quand: x.creeLe, etat: x.etat === "envoye" ? "confirme" : x.etat === "echoue" ? "echoue" : "en_attente", montant: -x.montant, actif: x.actif, detail: x }; }
     case "transfert": { const x = transfert(d); return { nature: "crypto", reference: x.id, quand: x.quand, etat: "confirme", montant: x.sens === "entree" ? x.montant : -x.montant, actif: x.actif, detail: x }; }
     default: return null;
@@ -277,6 +284,11 @@ export class GuichetSupabase implements Guichet {
     return { ordre: o, executions: ((r.executions as J[]) ?? []).map((e) => execution(e, o.cote)), autoNegociation: Boolean(r.auto_negociation), deja: Boolean(r.deja) };
   }
   async annulerOrdre(id: string) { return ordre(await this.rpc<J>("annuler_ordre", { p_id: id })); }
+
+  async devisRapide({ sens, montant, ferme }: { sens: SensRapide; montant: number; ferme: boolean }) {
+    return devis(await this.rpc<J>("devis_rapide", { p_sens: sens, p_montant: montant, p_ferme: ferme }));
+  }
+  async executerDevis(id: string) { return devis(await this.rpc<J>("executer_devis", { p_id: id })); }
 
   /* ============================================================= crypto */
 

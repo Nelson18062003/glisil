@@ -7,7 +7,8 @@ import { useSyncExternalStore } from "react";
 import type { Actif, Cote, IdOperateur, Reseau, TypeOrdre } from "../guichet/types";
 
 export type Parcours = {
-  entrer: { operateur: IdOperateur | null };
+  /** montant : ce que le client compte envoyer — une indication, le SMS fait foi */
+  entrer: { operateur: IdOperateur | null; montant: number };
   sortir: { montant: number; numeroId: string | null };
   crypto: { actif: Actif; reseau: Reseau; adresse: string; montant: number };
   marche: { cote: Cote; type: TypeOrdre; prix: string; quantite: string };
@@ -16,7 +17,7 @@ export type Parcours = {
 };
 
 const INITIAL: Parcours = {
-  entrer: { operateur: null },
+  entrer: { operateur: null, montant: 0 },
   sortir: { montant: 0, numeroId: null },
   crypto: { actif: "USDT", reseau: "bep20", adresse: "", montant: 0 },
   marche: { cote: "achat", type: "limite", prix: "", quantite: "" },

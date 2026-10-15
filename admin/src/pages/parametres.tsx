@@ -15,6 +15,7 @@ const BLOCS: { cle: string; titre: string; aide: string }[] = [
   { cle: "marche", titre: "Marché", aide: "la paire, le pas de prix, la quantité minimale, ouvert ou fermé" },
   { cle: "depot", titre: "Dépôts", aide: "validité d'un dossier (minutes) et grâce après expiration" },
   { cle: "sortie", titre: "Sorties", aide: "nombre de reprises d'un transfert avant de le rendre au client" },
+  { cle: "rapide", titre: "Achat rapide", aide: "la marge de la plateforme (0.01 = 1 %), la validité du prix en secondes, ouvert ou fermé" },
   { cle: "paliers", titre: "Paliers", aide: "plafonds par jour en entrée et en sortie ; null = sans plafond" },
   { cle: "crypto", titre: "Crypto", aide: "frais fixes par actif et confirmations par réseau" },
   { cle: "code_secret", titre: "Code secret", aide: "essais avant verrou, minutes de verrou, longueur" },

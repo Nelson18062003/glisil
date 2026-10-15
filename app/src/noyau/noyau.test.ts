@@ -149,3 +149,17 @@ test("quantités et prix se jugent au centime, comme le moteur, malgré le flott
   for (const p of [618.4, 618.05, 600.1, 599.95]) assert.equal(a.prixValide(p), true, `${p}`);
   for (const p of [618.004, 618.01, 618.06, 0, -5]) assert.equal(a.prixValide(p), false, `${p}`);
 });
+
+test("le devis rapide est celui du moteur, au centime (mêmes chiffres que le scénario 11.24)", async () => {
+  const { devisSurLeCarnet } = await import("./argent.ts");
+  const ventes = [{ prix: 600, quantite: 100 }, { prix: 610, quantite: 50 }];
+  // 70 000 XAFe, marge 1 % : 69 306,93 au carnet → 100 à 600 puis 15,25 à 610 = 69 302,50 ; payés 69 995,53
+  const a = devisSurLeCarnet("achat", 70_000, ventes, 0.01, 10);
+  assert.deepEqual(a && { q: a.quantite, c: a.cout, t: a.total }, { q: 115.25, c: 69_302.5, t: 69_995.53 });
+  assert.ok(a!.total <= 70_000, "on ne paie jamais plus que ce qu'on a donné");
+  // la vente : 50 USDT à 590 = 29 500 ; reçus 29 205
+  const v = devisSurLeCarnet("vente", 50, [{ prix: 590, quantite: 80 }], 0.01, 10);
+  assert.equal(v?.total, 29_205);
+  assert.equal(devisSurLeCarnet("vente", 1_000, [{ prix: 590, quantite: 80 }], 0.01, 10), null, "pas assez d'acheteurs : pas de devis");
+  assert.equal(devisSurLeCarnet("achat", 5_000, ventes, 0.01, 10), null, "moins que la quantité minimale : pas de devis");
+});

@@ -7,12 +7,12 @@
  * vit. Il tourne quand l'application n'a pas de projet Supabase configuré.
  * Il n'a aucune valeur comptable : c'est une maquette qui répond.
  */
-import { achatMax, arrondi2, decouperSortie, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide } from "../noyau/argent";
+import { achatMax, arrondi2, coutAuCarnet, decouperSortie, devisSurLeCarnet, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide, RAPIDE } from "../noyau/argent";
 import { ErreurMoteur } from "../noyau/erreurs";
 import { numeroSaisi, operateurDuNumero, transactionIdNormalise } from "../noyau/format";
 import type { Guichet } from "./guichet";
 import type {
-  Actif, Carnet, Chandelle, Compte, Cote, Cotation, Declaration, Depot, Execution, IdOperateur, Niveau, Notification, Numero, Operation, Ordre,
+  Actif, Carnet, Chandelle, Compte, Cote, Cotation, Declaration, Depot, DevisRapide, Execution, IdOperateur, Niveau, Notification, Numero, Operation, Ordre, SensRapide,
   Reseau, ResultatCode, ResultatOrdre, RetraitCrypto, Soldes, Sortie, Transaction, TransfertCrypto, TypeOrdre,
 } from "./types";
 
@@ -42,6 +42,7 @@ type Dossier = {
   taches: Tache[];
   compteur: number;
   numerosEnAttente: Record<string, string>;
+  devis?: (DevisRapide & { cout: number })[];
 };
 
 type Marche = { mid: number; transactions: Transaction[]; chandelles: Chandelle[]; alea: number };
@@ -781,6 +782,52 @@ export class GuichetDemo implements Guichet {
     return copie({ ordre: o, executions: d.executions.slice(0, d.executions.length - avantIndex), autoNegociation: auto });
   }
 
+  /** L'achat rapide de la démonstration : le même devis que le moteur, sur le carnet synthétique. */
+  async devisRapide({ sens, montant, ferme }: { sens: SensRapide; montant: number; ferme: boolean }) {
+    const d = this.dossier();
+    if (!RAPIDE.ouvert) throw new ErreurMoteur("achat rapide fermé");
+    if (!(montant > 0) || Math.round(montant * 100) !== Math.round(montant * 100 * 1e6) / 1e6) throw new ErreurMoteur("montant invalide");
+    if (sens === "vente" && montant < MARCHE.quantiteMin) throw new ErreurMoteur("quantité invalide", `au moins ${MARCHE.quantiteMin} USDT`);
+    const livre = livreSynthetique(this.etat.marche.mid, 30);
+    const r = devisSurLeCarnet(sens, montant, sens === "achat" ? livre.ventes : livre.achats);
+    if (!r) throw new ErreurMoteur(sens === "achat" ? "pas assez de vendeurs au carnet" : "pas assez d'acheteurs au carnet");
+    const v: DevisRapide = {
+      id: ferme ? uuid() : null, sens, quantite: r.quantite, total: r.total, prix: r.prix, frais: r.frais, marge: RAPIDE.marge,
+      etat: ferme ? "propose" : "estimation", expireLe: ferme ? iso(maintenant() + RAPIDE.validiteSecondes * 1000) : null, ordre: null,
+    };
+    if (ferme) { (d.devis ??= []).unshift({ ...v, cout: r.cout }); this.sauver(); }
+    return copie(v);
+  }
+
+  async executerDevis(id: string) {
+    const d = this.dossier();
+    const v = (d.devis ?? []).find((x) => x.id === id);
+    if (!v) throw new ErreurMoteur("devis inconnu");
+    const { cout: _c, ...rendu } = v;
+    if (v.etat === "execute") return copie(rendu);
+    if (new Date(v.expireLe!).getTime() < maintenant()) throw new ErreurMoteur("devis expiré", "demandez un nouveau prix");
+    const livre = livreSynthetique(this.etat.marche.mid, 30);
+    const cout = coutAuCarnet(v.sens === "achat" ? livre.ventes : livre.achats, v.quantite);
+    if (cout === null || (v.sens === "achat" ? cout > v.cout : cout < v.cout)) throw new ErreurMoteur("le prix a changé", "le carnet a bougé : demandez un nouveau prix");
+    if (v.sens === "achat") {
+      if (d.soldes.XAFe.disponible < v.total) throw new ErreurMoteur("solde insuffisant");
+      this.mouvement(d, "XAFe", -v.total, 0); this.mouvement(d, "USDT", v.quantite, 0);
+    } else {
+      if (d.soldes.USDT.disponible < v.quantite) throw new ErreurMoteur("solde insuffisant");
+      this.mouvement(d, "USDT", -v.quantite, 0); this.mouvement(d, "XAFe", v.total, 0);
+    }
+    const o: Ordre = {
+      id: uuid(), numero: this.reference(d, "ORD-"), cote: v.sens, type: "marche", prix: null, quantite: v.quantite, restant: 0, executee: v.quantite,
+      totalXafe: v.cout, bloque: 0, prixMoyen: arrondi2(v.cout / v.quantite), etat: "execute", creeLe: iso(), majLe: iso(),
+      rapide: { total: v.total, frais: v.frais },
+    };
+    d.ordres.unshift(o);
+    v.etat = "execute"; v.ordre = o.numero;
+    this.emettre();
+    const { cout: _c2, ...fini } = v;
+    return copie(fini);
+  }
+
   async annulerOrdre(id: string) {
     const d = this.dossier();
     const o = d.ordres.find((x) => x.id === id);
@@ -832,7 +879,7 @@ export class GuichetDemo implements Guichet {
     const ops: Operation[] = [
       ...d.depots.filter((x) => x.etat !== "annule" && x.etat !== "expire").map((x): Operation => ({ nature: "depot", reference: x.reference, quand: x.crediteLe ?? x.creeLe, etat: x.etat, montant: x.montantRecu, detail: x })),
       ...d.sorties.map((x): Operation => ({ nature: "sortie", reference: x.reference, quand: x.creeLe, etat: x.etat, montant: -x.montant, detail: x })),
-      ...d.ordres.filter((x) => x.executee > 0 || x.etat !== "annule").map((x): Operation => ({ nature: "ordre", reference: x.id, quand: x.creeLe, etat: x.etat, montant: x.cote === "achat" ? -x.totalXafe : x.totalXafe, detail: x })),
+      ...d.ordres.filter((x) => x.executee > 0 || x.etat !== "annule").map((x): Operation => ({ nature: "ordre", reference: x.id, quand: x.creeLe, etat: x.etat, montant: (x.cote === "achat" ? -1 : 1) * (x.rapide?.total ?? x.totalXafe), detail: x })),
       ...d.retraits.map((x): Operation => ({ nature: "crypto", reference: x.reference, quand: x.creeLe, etat: x.etat === "envoye" ? "confirme" : x.etat === "echoue" ? "echoue" : "en_attente", montant: -x.montant, actif: x.actif, detail: x })),
       ...d.transferts.filter((x) => x.sens === "entree").map((x): Operation => ({ nature: "crypto", reference: x.id, quand: x.quand, etat: "confirme", montant: x.montant, actif: x.actif, detail: x })),
     ];

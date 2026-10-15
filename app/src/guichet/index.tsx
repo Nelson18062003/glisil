@@ -9,7 +9,7 @@ import { appliquerParametres } from "../noyau/argent";
 import { GuichetDemo } from "./demo";
 import type { Guichet } from "./guichet";
 import { GuichetSupabase } from "./supabase";
-import type { Actif, Reseau } from "./types";
+import type { Actif, Reseau, SensRapide } from "./types";
 
 const Contexte = createContext<Guichet | null>(null);
 
@@ -110,6 +110,19 @@ export function useOperation(ref: string | undefined) {
 export function useNotifications() { const g = useGuichet(); return useQuery({ queryKey: cles.notifications, queryFn: () => g.notifications(), refetchInterval: 20_000 }); }
 export function useAdresseDepot(actif: Actif, reseau: Reseau) { const g = useGuichet(); return useQuery({ queryKey: cles.adresse(actif, reseau), queryFn: () => g.adresseDepot(actif, reseau) }); }
 export function useRetraitCrypto(ref: string | undefined) { const g = useGuichet(); return useQuery({ queryKey: cles.retrait(ref ?? ""), queryFn: () => g.retraitCrypto(ref!), enabled: Boolean(ref), refetchInterval: 3_000 }); }
+
+/** L'estimation de l'achat rapide pendant qu'on tape : rien n'est écrit ; elle se relit, le carnet bouge. */
+export function useEstimationRapide(sens: SensRapide, montant: number) {
+  const g = useGuichet();
+  return useQuery({
+    queryKey: ["rapide", sens, montant],
+    queryFn: () => g.devisRapide({ sens, montant, ferme: false }),
+    enabled: montant > 0,
+    retry: false,
+    refetchInterval: 5_000,
+    placeholderData: (avant) => avant,
+  });
+}
 
 /** Après une écriture : tout se relit. Le moteur a le dernier mot. */
 export function useRafraichir() {

@@ -10,9 +10,10 @@ import { Accueil, Notifications } from "../ecrans/accueil";
 import { Bienvenue, BienvenueCode, BienvenueProfil, Verrouillage } from "../ecrans/bienvenue";
 import { Compte, CompteAide, CompteApi, CompteNumeros, CompteNumerosAjouter, ComptePaliers, ComptePaliersEntreprise, ComptePaliersIdentite, CompteSecurite } from "../ecrans/compte";
 import { Crypto, CryptoDeposer, CryptoEnvoye, CryptoRetirerAdresse, CryptoRetirerCode, CryptoRetirerMontant, CryptoRetirerReseau, CryptoRetirerVerifier } from "../ecrans/crypto";
-import { EntrerCredite, EntrerOperateur, EntrerPayer, EntrerTransaction } from "../ecrans/entrer";
+import { EntrerCredite, EntrerMontant, EntrerOperateur, EntrerPayer, EntrerTransaction } from "../ecrans/entrer";
 import { Historique, HistoriqueDetail } from "../ecrans/historique";
 import { Marche, MarcheCarnet, MarcheExecute, MarcheGraphique, MarcheOrdreDetail, MarcheOrdres } from "../ecrans/marche";
+import { Rapide, RapideFait, RapidePrix } from "../ecrans/rapide";
 import { SortirCode, SortirDestination, SortirEnvoye, SortirMontant, SortirVerifier } from "../ecrans/sortir";
 import { useSession } from "../session/session";
 
@@ -66,6 +67,7 @@ export const routeur = createBrowserRouter([
       { path: "/verrouillage", element: <Navigate to="/" replace /> },
 
       { path: "/entrer/operateur", element: <EntrerOperateur /> },
+      { path: "/entrer/montant", element: <EntrerMontant /> },
       { path: "/entrer/payer/:ref", element: <EntrerPayer /> },
       { path: "/entrer/transaction/:ref", element: <EntrerTransaction /> },
       { path: "/entrer/credite/:ref", element: <EntrerCredite /> },
@@ -82,6 +84,10 @@ export const routeur = createBrowserRouter([
       { path: "/marche/ordres", element: <MarcheOrdres /> },
       { path: "/marche/ordres/:id", element: <MarcheOrdreDetail /> },
       { path: "/marche/execute/:id", element: <MarcheExecute /> },
+
+      { path: "/rapide", element: <Rapide /> },
+      { path: "/rapide/prix", element: <RapidePrix /> },
+      { path: "/rapide/fait", element: <RapideFait /> },
 
       { path: "/crypto", element: <Crypto /> },
       { path: "/crypto/deposer/:actif", element: <CryptoDeposer /> },
