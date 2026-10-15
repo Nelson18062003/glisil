@@ -117,7 +117,7 @@ SQL
   ensemble c3-a.sql c3-b.sql
   valeur "select count(*) from sorties where cle like '$1-%'"
 }
-sans 'demander_sortie(numeric,uuid,text)' "perform 1 from comptes where id = v_compte for update;"
+sans 'demander_sortie(numeric,uuid,text)' "perform 1 from comptes where id = v_compte for no key update;"
 r=$(course_sorties k-c3t)
 rendre 'demander_sortie(numeric,uuid,text)'
 # le témoin a laissé deux sorties : on les rend, pour que la vraie course parte du même plafond

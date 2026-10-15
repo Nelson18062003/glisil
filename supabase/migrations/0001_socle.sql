@@ -191,6 +191,16 @@ create table emissions (
   cree_le      timestamptz not null default now()
 );
 
+-- L'ORDRE DES VERROUS, pour qu'aucune transaction n'attende une transaction
+-- qui l'attend (une « étreinte mortelle », que PostgreSQL tranche en tuant
+-- l'une des deux : le geste d'un client tombe). La charge de seize clients
+-- (moteur/charge) en a trouvé deux ; la règle qui les empêche :
+--   · le compte MAISON se touche en DERNIER, dans toute transaction : un
+--     ordre encaisse ses frais une fois, à la fin, pas à chaque tranche ;
+--   · un compte se sérialise par « for no key update », jamais « for
+--     update » : ce dernier bloque aussi les clés étrangères, et chaque
+--     écriture au grand livre en porte une vers « comptes ».
+--
 -- LE seul chemin vers un solde. Verrouille la ligne, écrit en relatif, laisse
 -- une écriture. La contrainte « disponible >= 0 » fait le dernier contrôle.
 create function _mouvement(p_compte uuid, p_actif text, p_dispo numeric, p_bloque numeric,
@@ -459,7 +469,7 @@ begin
   select * into v_x from depot_declarations where id = p_decl_id for update;
   select * into v_d from depots where id = v_x.depot_id for update;
   if v_x.etat <> 'attendu' then return v_x; end if;
-  perform 1 from comptes where id = v_d.compte_id for update;
+  perform 1 from comptes where id = v_d.compte_id for no key update;
 
   v_palier := parametre('paliers') -> (select palier::text from comptes where id = v_d.compte_id);
   if v_palier is not null and v_palier <> 'null'::jsonb then
@@ -772,7 +782,7 @@ begin
 
   -- Le compte est verrouillé AVANT de compter : deux demandes lancées ensemble
   -- liraient sinon le même total, et passeraient toutes deux le plafond.
-  perform 1 from comptes where id = v_compte for update;
+  perform 1 from comptes where id = v_compte for no key update;
   v_palier := parametre('paliers') -> (select palier::text from comptes where id = v_compte);
   if v_palier is not null and v_palier <> 'null'::jsonb then
     v_jour := _sorties_du_jour(v_compte);
@@ -1028,6 +1038,8 @@ declare
   v_fv      numeric;   -- frais du vendeur, en XAFe
   v_diff    numeric;
   v_cible   numeric;   -- ce que l'achat limite doit garder bloqué après la tranche
+  v_frais_usdt numeric := 0;   -- les frais de toutes les tranches, encaissés par la maison À LA FIN
+  v_frais_xafe numeric := 0;
   v_dispo   numeric;
   v_auto    boolean := false;
   v_execs   jsonb := '[]'::jsonb;
@@ -1143,8 +1155,8 @@ begin
       perform _mouvement(v_vend, 'USDT', -v_q, 0, 'vente_reglee', 'ordres', v_id);
     end if;
     perform _mouvement(v_vend, 'XAFe', v_xafe - v_fv, 0, 'vente_recue', 'ordres', v_id);
-    if v_fa > 0 then perform _mouvement(compte_maison(), 'USDT', v_fa, 0, 'frais_achat', 'ordres', v_id); end if;
-    if v_fv > 0 then perform _mouvement(compte_maison(), 'XAFe', v_fv, 0, 'frais_vente', 'ordres', v_id); end if;
+    v_frais_usdt := v_frais_usdt + v_fa;
+    v_frais_xafe := v_frais_xafe + v_fv;
 
     -- L'acheteur limite qui prend : ce que son bloqué gardait au-delà de la cible et du prix payé lui revient.
     if p_cote = 'achat' and p_type = 'limite' then
@@ -1182,6 +1194,10 @@ begin
     returning * into v_e;
     v_execs := v_execs || _execution_json(v_e);
   end loop;
+
+  -- La maison en dernier : voir « l'ordre des verrous », au-dessus de _mouvement.
+  if v_frais_usdt > 0 then perform _mouvement(compte_maison(), 'USDT', v_frais_usdt, 0, 'frais_achat', 'ordres', v_id); end if;
+  if v_frais_xafe > 0 then perform _mouvement(compte_maison(), 'XAFe', v_frais_xafe, 0, 'frais_vente', 'ordres', v_id); end if;
 
   -- Ce qui reste d'un ordre marché, ou d'un ordre arrêté par l'auto-négociation, est annulé.
   if v_o.restant > 0 and (p_type = 'marche' or v_auto) then

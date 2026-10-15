@@ -452,7 +452,7 @@ language plpgsql security definer set search_path = public as $$
 declare v_c comptes; v_palier int;
 begin
   perform _exiger_droit('paliers');
-  select * into v_c from comptes where id = p_id for update;
+  select * into v_c from comptes where id = p_id for no key update;
   if not found or v_c.verification_en_cours is null then raise exception 'aucune vérification en cours'; end if;
   if p_ok then
     v_palier := case v_c.verification_en_cours when 'identite' then greatest(v_c.palier, 1) else 2 end;

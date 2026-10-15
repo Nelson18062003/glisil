@@ -132,3 +132,20 @@ connexions en même temps (le même SMS poussé deux fois ; l'ID tapé à
 l'instant où le SMS arrive ; deux sorties contre le même plafond). Chaque
 course a son témoin : la fonction privée de son verrou doit reproduire la
 faute, sinon la course ne prouve rien.
+
+**Le hasard et la charge voient ce qu'aucun scénario n'imagine.**
+`moteur/hasard.sql` tire au sort 4 500 gestes et vérifie sept règles après
+chacun (soldes = circulation, grand livre, bloqués justifiés au centime, un
+SMS crédité OU retenu…) ; six défauts glissés exprès sont tous pris.
+`moteur/charge/` lance seize clients en même temps avec pgbench : elle a
+trouvé deux étreintes mortelles (un geste de client qui tombe), que la règle
+de l'ordre des verrous, écrite au-dessus de `_mouvement`, empêche : le
+compte maison se touche en dernier, un compte se sérialise par « for no key
+update ».
+
+**Et sur une vraie pile Supabase.** `sh supabase/epreuve/eprouver.sh` monte
+les images de production (la base où `postgres` n'est pas superutilisateur,
+GoTrue, PostgREST), y rejoue tout ce qui précède, puis attaque l'API comme
+un client, inscription par OTP comprise. `TEMOIN=1` rejoue l'attaque contre
+le code d'avant les corrections : elle doit y échouer.
+

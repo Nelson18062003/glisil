@@ -88,7 +88,7 @@ declare
   v_essais  int := (parametre('code_secret') ->> 'essais')::int;
   v_minutes int := (parametre('code_secret') ->> 'verrou_minutes')::int;
 begin
-  select * into v_c from comptes where id = p_compte for update;
+  select * into v_c from comptes where id = p_compte for no key update;
   if not found then return jsonb_build_object('ok', false, 'erreur', 'non connecté'); end if;
   if v_c.code_verrou_jusqua is not null and v_c.code_verrou_jusqua > now() then
     return jsonb_build_object('ok', false, 'erreur', 'compte verrouillé', 'essais_restants', 0, 'verrou_jusqua', v_c.code_verrou_jusqua);
@@ -120,7 +120,7 @@ language plpgsql security definer set search_path = public as $$
 declare v_c comptes; v_min int := (parametre('code_secret') ->> 'longueur_min')::int; v_max int := (parametre('code_secret') ->> 'longueur_max')::int;
 begin
   if auth.uid() is null then raise exception 'non connecté'; end if;
-  perform 1 from comptes where id = auth.uid() for update;
+  perform 1 from comptes where id = auth.uid() for no key update;
   if not found then raise exception 'non connecté'; end if;
   if exists (select 1 from codes_secrets where compte_id = auth.uid()) then
     raise exception 'code secret déjà choisi' using detail = 'il se change depuis le compte, avec l''ancien';
@@ -258,7 +258,7 @@ declare
   v_n      numeros;
 begin
   perform _exiger_compte_actif(v_compte);
-  perform 1 from comptes where id = v_compte for update;
+  perform 1 from comptes where id = v_compte for no key update;
   perform 1 from operateurs where id = p_operateur;
   if not found then raise exception 'opérateur inconnu'; end if;
   if v_num !~ '^6[0-9]{8}$' then raise exception 'numéro invalide'; end if;
@@ -559,7 +559,7 @@ begin
   if not (v ->> 'ok')::boolean then return v; end if;
   v_frais := (parametre('crypto') -> 'frais' ->> p_actif)::numeric;
 
-  perform 1 from comptes where id = v_compte for update;
+  perform 1 from comptes where id = v_compte for no key update;
   v_palier := parametre('paliers') -> (select palier::text from comptes where id = v_compte);
   if v_palier is not null and v_palier <> 'null'::jsonb then
     if p_actif = 'USDT' then

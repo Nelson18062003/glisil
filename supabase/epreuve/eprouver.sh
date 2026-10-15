@@ -44,6 +44,11 @@ psql_postgres -v ON_ERROR_STOP=1 -q -f "$TMP/hasard.sql" >"$TMP/hasard.log" 2>&1
 sed 's/^psql:.*NOTICE:  //; s/^NOTICE:  //' "$TMP/hasard.log" | grep -v '^$'
 [ "$STATUT" = "0" ] || { echo "✗ le hasard a cassé une règle sur la vraie pile"; exit 1; }
 
+echo "· la charge : seize clients en même temps"
+mkdir -p "$TMP/charge" && for f in "$ICI"/moteur/charge/*.sql; do sed 's/xafe\.compte/request.jwt.claim.sub/g' "$f" >"$TMP/charge/$(basename "$f")"; done
+CHARGE="$TMP/charge"; HOTE=127.0.0.1; PORT=$PORT_DB
+. "$ICI/moteur/charge/charger.sh"
+
 echo "· l'API, attaquée"
 node "$ICI/supabase/epreuve/attaquer-par-l-api.mjs"
 

@@ -105,4 +105,7 @@ STATUT=0
 $COMME "PATH=$PATH $PSQL -d xafe -f $ICI/moteur/hasard.sql" >"$GRAPPE/hasard.log" 2>&1 || STATUT=$?
 sed 's/^psql:.*NOTICE:  //; s/^NOTICE:  //' "$GRAPPE/hasard.log"
 [ "$STATUT" = "0" ] || { echo "✗ le hasard a cassé une règle (voir ci-dessus)"; exit 1; }
+
+echo "· la charge : seize clients en même temps"
+. "$ICI/moteur/charge/charger.sh"
 echo "✓ le moteur tient"
