@@ -35,7 +35,8 @@ La situation : une monnaie qui était fixée, et qui glisse.
   la traînée est blanche sur le carré vert ; seul, le symbole a la traînée
   verte. Dessiné une fois, avec la même géométrie, dans
   `coque/scripts/icones.py` (les icônes de l'application) et dans le
-  composant `Marque` (`app/`, `admin/`, `design/maquettes/`).
+  composant `Marque` (`app/`, `admin/`, `design/maquettes/`). Les fichiers
+  du logo (SVG et PNG) sont dans `design/marque/`.
 - **Le nom** : toujours en minuscules, « glisil », en Sora 700, serré
   (−0,04 em). Composant `NomGlisil`. Dans une phrase, on écrit Glisil.
 - **Les couleurs** : le vert `#0B6B3A` (la sécurité, le franc CFA) et l'or
