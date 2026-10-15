@@ -133,13 +133,58 @@ describe("XAFe", function () {
   it("en pause, plus rien ne bouge — ni frappe, ni transfert, ni destruction", async function () {
     const { jeton, admin, plateforme, alice, bob } = await loadFixture(deployer);
     await jeton.connect(plateforme).frapper(alice.address, XAF(100_000), ref("r1"));
+    await jeton.connect(alice).transfer(plateforme.address, XAF(10));
+    await jeton.connect(admin).inscrireAdressesDeDepot([bob.address], true);
+    await jeton.connect(alice).transfer(bob.address, XAF(10));
+    await jeton.connect(alice).approve(bob.address, XAF(5));
     await jeton.connect(admin).pauser();
     await expect(jeton.connect(plateforme).frapper(bob.address, XAF(1), ref("r2"))).to.be.revertedWithCustomError(jeton, "EnforcedPause");
     await expect(jeton.connect(alice).transfer(bob.address, XAF(1))).to.be.revertedWithCustomError(jeton, "EnforcedPause");
+    await expect(jeton.connect(bob).transferFrom(alice.address, bob.address, XAF(1))).to.be.revertedWithCustomError(jeton, "EnforcedPause");
+    await expect(jeton.connect(plateforme).detruire(XAF(1), ref("d1"))).to.be.revertedWithCustomError(jeton, "EnforcedPause");
+    await expect(jeton.connect(plateforme).detruireDepot(bob.address, XAF(1), ref("d2"))).to.be.revertedWithCustomError(jeton, "EnforcedPause");
     await expect(jeton.connect(alice).pauser()).to.be.revertedWithCustomError(jeton, "AccessControlUnauthorizedAccount");
     await jeton.connect(admin).reprendre();
     await jeton.connect(alice).transfer(bob.address, XAF(1));
-    expect(await jeton.balanceOf(bob.address)).to.equal(XAF(1));
+    expect(await jeton.balanceOf(bob.address)).to.equal(XAF(11));
+  });
+
+  it("une destruction porte sa référence, une seule fois", async function () {
+    const { jeton, admin, plateforme, alice, bob } = await loadFixture(deployer);
+    await jeton.connect(plateforme).frapper(alice.address, XAF(100_000), ref("r1"));
+    await jeton.connect(alice).transfer(plateforme.address, XAF(20));
+    await jeton.connect(admin).inscrireAdressesDeDepot([bob.address], true);
+    await jeton.connect(alice).transfer(bob.address, XAF(20));
+    await expect(jeton.connect(plateforme).detruire(XAF(1), ethers.ZeroHash)).to.be.revertedWithCustomError(jeton, "ReferenceVide");
+    await expect(jeton.connect(plateforme).detruireDepot(bob.address, XAF(1), ethers.ZeroHash)).to.be.revertedWithCustomError(jeton, "ReferenceVide");
+    await jeton.connect(plateforme).detruire(XAF(1), ref("XAFe-RT-000007"));
+    await expect(jeton.connect(plateforme).detruire(XAF(1), ref("XAFe-RT-000007")))
+      .to.be.revertedWithCustomError(jeton, "ReferenceDejaUtilisee").withArgs(ref("XAFe-RT-000007"));
+    await expect(jeton.connect(plateforme).detruireDepot(bob.address, XAF(1), ref("XAFe-RT-000007")))
+      .to.be.revertedWithCustomError(jeton, "ReferenceDejaUtilisee").withArgs(ref("XAFe-RT-000007"));
+    expect(await jeton.destructionReferencee(ref("XAFe-RT-000007"))).to.equal(true);
+    expect(await jeton.totalSupply()).to.equal(XAF(100_000) - XAF(1), "une seule destruction a eu lieu");
+  });
+
+  it("on ne gèle pas l'adresse zéro : ce serait une pause sans le rôle de pause", async function () {
+    const { jeton, admin, plateforme, alice } = await loadFixture(deployer);
+    await expect(jeton.connect(admin).geler(ethers.ZeroAddress, "erreur")).to.be.revertedWithCustomError(jeton, "AdresseNulle");
+    await jeton.connect(plateforme).frapper(alice.address, XAF(1), ref("r1"));
+    expect(await jeton.balanceOf(alice.address)).to.equal(XAF(1));
+  });
+
+  it("une adresse gelée ne dépense pas les autorisations qu'on lui a données, et ce qu'on a autorisé depuis elle ne sort pas", async function () {
+    const { jeton, admin, plateforme, alice, bob, inconnu } = await loadFixture(deployer);
+    await jeton.connect(plateforme).frapper(alice.address, XAF(100), ref("r1"));
+    await jeton.connect(plateforme).frapper(bob.address, XAF(100), ref("r2"));
+    await jeton.connect(alice).approve(inconnu.address, XAF(50));
+    await jeton.connect(bob).approve(alice.address, XAF(50));
+    await jeton.connect(admin).geler(alice.address, "enquête");
+    await expect(jeton.connect(inconnu).transferFrom(alice.address, inconnu.address, XAF(1))).to.be.revertedWithCustomError(jeton, "AdresseGelee").withArgs(alice.address);
+    await expect(jeton.connect(alice).transferFrom(bob.address, inconnu.address, XAF(1))).to.be.revertedWithCustomError(jeton, "AdresseGelee").withArgs(alice.address);
+    await jeton.connect(admin).degeler(alice.address);
+    await jeton.connect(alice).transferFrom(bob.address, inconnu.address, XAF(1));
+    expect(await jeton.balanceOf(inconnu.address)).to.equal(XAF(1));
   });
 
   it("une adresse gelée ne peut ni envoyer ni recevoir, jusqu'au dégel", async function () {

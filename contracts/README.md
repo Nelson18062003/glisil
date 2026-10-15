@@ -23,8 +23,8 @@ PLAFOND_JOUR_XAF=50000000 npm run deployer:testnet   # le plafond de frappe par 
 |---|---|---|
 | `DEFAULT_ADMIN_ROLE` | un wallet matériel du propriétaire — et lui seul | donner et retirer les rôles, `fixerPlafondJour`, `inscrireAdressesDeDepot`, `detruireFondsGeles`. Il ne reçoit AUCUN autre rôle à la naissance, et se transmet en deux temps (`beginDefaultAdminTransfer`, deux jours, `acceptDefaultAdminTransfer`) |
 | `FRAPPEUR_ROLE` | le signataire de la plateforme (veilleur de chaîne) | `frapper(vers, montant, empreinte)`, jamais au-delà du plafond du jour |
-| `DESTRUCTEUR_ROLE` | idem | `detruireDepot(adresse, montant, empreinte)` sur une adresse de dépôt inscrite ; `detruire` sur son propre solde |
-| `GELEUR_ROLE` | conformité | `geler(adresse, motif)`, `degeler` |
+| `DESTRUCTEUR_ROLE` | idem | `detruireDepot(adresse, montant, empreinte)` sur une adresse de dépôt inscrite ; `detruire` sur son propre solde. Chaque destruction porte une empreinte non vide, utilisée une seule fois (`destructionReferencee`) |
+| `GELEUR_ROLE` | conformité | `geler(adresse, motif)`, `degeler`. Une adresse gelée n'envoie, ne reçoit, ni ne dépense les autorisations qu'on lui a données ; l'adresse zéro ne se gèle pas |
 | `PAUSEUR_ROLE` | astreinte | `pauser()`, `reprendre()` |
 
 Le déploiement exige `ADMIN` hors réseau local : la clé chaude qui déploie

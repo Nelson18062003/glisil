@@ -61,6 +61,8 @@ contract XAFe is ERC20, AccessControlDefaultAdminRules, Pausable {
     mapping(uint256 => uint256) public frappeLeJour;
     /// Les adresses de dépôt de la plateforme (une par client), inscrites par l'ADMIN.
     mapping(address => bool) public estAdresseDeDepot;
+    /** une destruction se rapproche du grand livre par SA référence : une seule fois, comme une frappe */
+    mapping(bytes32 => bool) public destructionReferencee;
     /// Vrai le temps d'une destruction de fonds gelés : le gel ne bloque pas sa propre reprise.
     bool private _reprise;
 
@@ -79,6 +81,7 @@ contract XAFe is ERC20, AccessControlDefaultAdminRules, Pausable {
     error AdresseNonGelee(address adresse);
     error PlafondJourAtteint(uint256 dejaFrappe, uint256 montant, uint256 plafond);
     error PasUneAdresseDeDepot(address adresse);
+    error AdresseNulle();
 
     constructor(address admin, uint256 plafond) ERC20("XAFe", "XAFe") AccessControlDefaultAdminRules(DELAI_ADMIN, admin) {
         plafondJour = plafond;
@@ -123,8 +126,16 @@ contract XAFe is ERC20, AccessControlDefaultAdminRules, Pausable {
      */
     function detruire(uint256 montant, bytes32 empreinte) external onlyRole(DESTRUCTEUR_ROLE) whenNotPaused {
         if (montant == 0) revert MontantNul();
+        _referencer(empreinte);
         _burn(_msgSender(), montant);
         emit Detruit(_msgSender(), montant, empreinte);
+    }
+
+    /** Une destruction sans référence, ou deux sous la même, ne se rapprocheraient de rien. */
+    function _referencer(bytes32 empreinte) private {
+        if (empreinte == bytes32(0)) revert ReferenceVide();
+        if (destructionReferencee[empreinte]) revert ReferenceDejaUtilisee(empreinte);
+        destructionReferencee[empreinte] = true;
     }
 
     /** L'ADMIN inscrit (ou retire) les adresses de dépôt que le moteur a préparées. */
@@ -144,6 +155,7 @@ contract XAFe is ERC20, AccessControlDefaultAdminRules, Pausable {
     function detruireDepot(address adresse, uint256 montant, bytes32 empreinte) external onlyRole(DESTRUCTEUR_ROLE) whenNotPaused {
         if (!estAdresseDeDepot[adresse]) revert PasUneAdresseDeDepot(adresse);
         if (montant == 0) revert MontantNul();
+        _referencer(empreinte);
         _burn(adresse, montant);
         emit Detruit(adresse, montant, empreinte);
     }
@@ -151,6 +163,8 @@ contract XAFe is ERC20, AccessControlDefaultAdminRules, Pausable {
     /* ---------------------------------------------------- conformité */
 
     function geler(address adresse, string calldata motif) external onlyRole(GELEUR_ROLE) {
+        // geler l'adresse zéro arrêtait toute frappe et toute destruction : une pause, hors du rôle PAUSEUR
+        if (adresse == address(0)) revert AdresseNulle();
         gele[adresse] = true;
         emit Gele(adresse, motif);
     }
@@ -193,6 +207,8 @@ contract XAFe is ERC20, AccessControlDefaultAdminRules, Pausable {
         if (!_reprise) {
             if (gele[depuis]) revert AdresseGelee(depuis);
             if (gele[vers]) revert AdresseGelee(vers);
+            // une adresse gelée ne dépense pas non plus les autorisations qu'on lui a données
+            if (gele[_msgSender()]) revert AdresseGelee(_msgSender());
         }
         super._update(depuis, vers, montant);
     }
