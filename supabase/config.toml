@@ -1,4 +1,4 @@
-# La configuration du projet Supabase de XAFe Exchange (CLI et déploiement).
+# La configuration du projet Supabase de Glisil (CLI et déploiement).
 #
 # Les deux portes de TOTEM n'ont PAS de jeton Supabase : le boîtier signe
 # chacun de ses appels avec sa propre clé (HMAC, trois en-têtes x-totem-*),

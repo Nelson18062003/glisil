@@ -37,7 +37,7 @@ function Index() {
   return (
     <Box sx={{ maxWidth: 720, mx: "auto", p: 4 }}>
       <Typography variant="h4" gutterBottom>
-        XAFe Exchange · maquettes
+        Glisil · maquettes
       </Typography>
       <Typography variant="body2" gutterBottom>
         Application Android (412 × 915). Un écran, une chose.

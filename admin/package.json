@@ -1,9 +1,9 @@
 {
-  "name": "xafe-exchange-admin",
+  "name": "glisil-admin",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "XAFe Exchange · l'administration (web) : réserves, entrées, sorties, terminaux, clients, marché",
+  "description": "Glisil · l'administration (web) : réserves, entrées, sorties, terminaux, clients, marché",
   "scripts": {
     "dev": "vite --host --port 5190",
     "build": "tsc -p tsconfig.json && vite build",

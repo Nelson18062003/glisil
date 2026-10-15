@@ -1,4 +1,4 @@
-# XAFe Exchange · l'application des clients
+# Glisil · l'application des clients
 
 React + MUI (Material Design 3) + react-router + TanStack Query + supabase-js.
 Mobile d'abord ; emballée pour Android dans une coque Expo (WebView).

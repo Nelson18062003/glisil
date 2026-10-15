@@ -1,4 +1,4 @@
-# XAFe Exchange · la coque Android
+# Glisil · la coque Android
 
 L'application des clients est un site (`app/`). Cette coque Expo (SDK 57) le
 montre dans UNE WebView et ajoute ce qu'un site ne sait pas faire sur un

@@ -1,4 +1,4 @@
-# Maquettes · XAFe Exchange
+# Maquettes · Glisil
 
 Les écrans de l'application Android des clients, en **Material Design 3**
 (le langage d'Android), avec la bibliothèque MUI et les icônes Material.

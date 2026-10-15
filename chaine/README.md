@@ -1,6 +1,6 @@
 # Nos wallets — le veilleur de chaîne
 
-XAFe Exchange garde les cryptos de ses clients comme une plateforme d'échange :
+Glisil garde les cryptos de ses clients comme une plateforme d'échange :
 chaque client a **son adresse de dépôt**, la plateforme voit arriver les dépôts,
 les crédite, et envoie les retraits depuis **son wallet chaud**. Ce dossier est
 le service qui fait tout cela, sans prestataire : les clés sont les nôtres.

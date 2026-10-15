@@ -90,7 +90,7 @@ export function Historique() {
 /* ------------------------------------------------------------- détail */
 
 function recu(o: Operation, nom: string | null | undefined): string {
-  const lignes = [`XAFe Exchange · reçu`, `Client : ${nom ?? ""}`, `Référence : ${o.reference}`, `Date : ${quand(o.quand)}`];
+  const lignes = [`Glisil · reçu`, `Client : ${nom ?? ""}`, `Référence : ${o.reference}`, `Date : ${quand(o.quand)}`];
   if (o.nature === "depot") {
     lignes.push(`Entrée ${opDe(o.detail.operateur).nom} : +${xaf(o.detail.montantRecu)} XAFe`);
     for (const d of o.detail.declarations.filter((x) => x.etat === "credite")) lignes.push(`Transaction ID ${d.transactionId} : ${xaf(d.montant ?? 0)} XAF`);

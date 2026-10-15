@@ -1,13 +1,13 @@
-import { Avatar, Box, Button, Paper, Stack, TextField, Typography } from "@mui/material";
-import { Screen } from "../ui";
+import { Box, Button, Paper, Stack, TextField, Typography } from "@mui/material";
+import { Marque, NomGlisil, Screen } from "../ui";
 
 export function Connexion() {
   return (
     <Screen>
       <Box sx={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 4 }}>
         <Stack alignItems="center" gap={2}>
-          <Avatar sx={{ width: 80, height: 80, bgcolor: "primary.main", fontSize: 36, fontWeight: 700 }}>X</Avatar>
-          <Typography variant="h5">XAFe Exchange</Typography>
+          <Marque size={80} />
+          <NomGlisil size={36} />
           <Typography variant="body2" textAlign="center">
             Vos XAF, sur la blockchain.
           </Typography>

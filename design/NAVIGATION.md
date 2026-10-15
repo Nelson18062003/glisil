@@ -1,4 +1,4 @@
-# XAFe Exchange · la navigation
+# Glisil · la navigation
 
 *Comment on entre dans chaque écran, comment on en sort, et ce qui relie les
 écrans entre eux. C'est la règle que le code suit ; un écran qui n'est pas ici

@@ -1,9 +1,9 @@
 {
-  "name": "xafe-exchange-maquettes",
+  "name": "glisil-maquettes",
   "private": true,
   "version": "0.0.2",
   "type": "module",
-  "description": "Maquettes de XAFe Exchange (application Android) en Material Design 3",
+  "description": "Maquettes de Glisil (application Android) en Material Design 3",
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.json && vite build",

@@ -12,7 +12,7 @@ import { CODE_SMS_DEMO } from "../../guichet/demo";
 import { lisible } from "../../noyau/erreurs";
 import { numeroEnTranches, numeroSaisi, numeroValide } from "../../noyau/format";
 import { useSession } from "../../session/session";
-import { Cases, FeuilleErreur, Keypad, Points, Screen } from "../../ui";
+import { Cases, FeuilleErreur, Keypad, Marque, NomGlisil, Points, Screen } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
 
 const CLE_TEL = "xafe.bienvenue.telephone";
@@ -38,8 +38,8 @@ export function Bienvenue() {
     <Screen>
       <Box sx={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 4 }}>
         <Stack alignItems="center" gap={2}>
-          <Avatar sx={{ width: 80, height: 80, bgcolor: "primary.main", fontSize: 36, fontWeight: 700 }}>X</Avatar>
-          <Typography variant="h5">XAFe Exchange</Typography>
+          <Marque size={80} />
+          <NomGlisil size={36} />
           <Typography variant="body2" textAlign="center">Vos XAF, sur la blockchain.</Typography>
         </Stack>
         <form onSubmit={(e) => { e.preventDefault(); if (numeroValide(tel)) void continuer(); }}>

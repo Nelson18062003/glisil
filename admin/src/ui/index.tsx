@@ -44,9 +44,9 @@ export function Coquille({ titre, actions, children }: { titre: string; actions?
     <Box sx={{ display: "flex", minHeight: "100dvh", bgcolor: "background.default" }}>
       <Drawer variant="permanent" sx={{ width: LARGEUR, flexShrink: 0, "& .MuiDrawer-paper": { width: LARGEUR, boxSizing: "border-box", borderRight: 1, borderColor: "divider", bgcolor: "background.paper" } }}>
         <Stack direction="row" alignItems="center" gap={1.5} sx={{ px: 2.5, py: 2.5 }}>
-          <Avatar sx={{ bgcolor: "primary.main", fontWeight: 700 }}>X</Avatar>
+          <Marque size={40} />
           <Box>
-            <Typography fontWeight={700} lineHeight={1.1}>XAFe Exchange</Typography>
+            <NomGlisil size={22} />
             <Typography variant="caption">Administration</Typography>
           </Box>
         </Stack>
@@ -188,6 +188,36 @@ export function Section({ titre, action, children }: { titre: string; action?: R
         {action}
       </Stack>
       {children}
+    </Box>
+  );
+}
+
+const VERT_MARQUE = "#0B6B3A";
+const OR_MARQUE = "#E8A33D";
+
+/**
+ * La marque Glisil : la comète — une pièce d'or lancée, sa traînée derrière elle.
+ * `tuile` : sur le carré vert de l'icône (traînée blanche) ; sinon le symbole seul (traînée verte).
+ * Même géométrie que coque/scripts/icones.py.
+ */
+export function Marque({ size = 44, tuile = true }: { size?: number; tuile?: boolean }) {
+  const queue = tuile ? "#FFFFFF" : VERT_MARQUE;
+  return (
+    <Box component="svg" viewBox="0 0 100 100" role="img" aria-label="Glisil" sx={{ width: size, height: size, flexShrink: 0, display: "block" }}>
+      {tuile && <rect width={100} height={100} rx={22} fill={VERT_MARQUE} />}
+      <g transform={`translate(50 50) scale(${tuile ? 0.86 : 1}) translate(-50 -50) translate(3 -1) rotate(-35 50 50)`}>
+        <path d="M6 50 C 28 46 44 36 60 34 A16 16 0 0 1 60 66 C 44 64 28 54 6 50 Z" fill={queue} />
+        <circle cx={62} cy={50} r={12.5} fill={OR_MARQUE} />
+      </g>
+    </Box>
+  );
+}
+
+/** Le nom, tel que la marque l'écrit : « glisil », en minuscules, en Sora. */
+export function NomGlisil({ size = 28 }: { size?: number }) {
+  return (
+    <Box component="span" sx={{ fontFamily: '"Sora", "Roboto", system-ui, sans-serif', fontWeight: 700, fontSize: size, letterSpacing: "-0.04em", lineHeight: 1, color: "text.primary" }}>
+      glisil
     </Box>
   );
 }
