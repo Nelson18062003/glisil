@@ -74,14 +74,15 @@ variables (`src/service.ts`).
 
 | | Tron Nile (essai) | BNB Smart Chain testnet |
 |---|---|---|
-| Contrat XAFe | `TFtfFFmagGUjxGrG3cM4MX4kTv8YvBgLnk` | pas encore (le robinet exige 0,002 BNB réel sur l'adresse) |
-| USDT d'essai | `TVf3Zt1YBobZqFRj98PqDfr3RStNJ1N9pE` | — |
+| Contrat XAFe | `TFtfFFmagGUjxGrG3cM4MX4kTv8YvBgLnk` | `0x750E774368240063BD5CF52b30b91183Efa4dAf3` |
+| USDT d'essai | `TVf3Zt1YBobZqFRj98PqDfr3RStNJ1N9pE` | `0xfDd6c413E596aE064f4d1344fBc5Af50c4078516` |
 | Wallet chaud | `TEW4N3ZiF23GxHTYu8pen6r8uhHeZpALYZ` | `0x771C971497E4409d0225350C49609691E955465C` |
 | Admin d'essai | `TFYWRHPe6YdfK3UUvHSy2euHS2dqgAh8Du` | `0x3d24e52b2Ea0A0cAb50163e494384a7f6027582E` |
 
-Premier aller-retour sur Nile, joué par la fonction Supabase seule : 80 USDT
-déposés, crédités au compte d'essai et balayés vers le chaud ; un retrait de
-20 USDT signé, envoyé (bloc 71855181) et confirmé ; vérifié sur la chaîne.
+Premier aller-retour sur chaque réseau, joué par la fonction Supabase seule :
+80 USDT déposés, crédités au compte d'essai et balayés vers le chaud ; un
+retrait de 20 USDT signé, envoyé et confirmé (Nile : bloc 71855181 ; BSC
+testnet : bloc 137003151) ; vérifié sur chaque chaîne.
 La graine et la clé admin d'essai sont dans le coffre de Supabase : elles ne
 servent qu'à la monnaie d'essai, **jamais** à de l'argent réel.
 
