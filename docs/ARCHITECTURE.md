@@ -100,7 +100,9 @@ l'application. C'est la leçon de Bonzini et de TOTEM, reprise telle quelle.
 ## Vérifier avant d'annoncer
 
 ```sh
-sh moteur/verifier-le-moteur.sh      # un PostgreSQL neuf façon Supabase, le schéma, les scénarios qui attaquent, les courses
+sh moteur/verifier-le-moteur.sh      # un PostgreSQL neuf façon Supabase : scénarios, courses, hasard, charge
+sh moteur/rouge-puis-vert/rouge-puis-vert.sh   # chaque défaut de la revue : présent avant (6d453d3), absent aujourd'hui
+sh supabase/epreuve/eprouver.sh      # tout cela sur les VRAIES images Supabase, plus l'API attaquée (Docker)
 cd app && npm test                   # le noyau de l'application : formats, argent, erreurs
 cd app && npm run build              # l'application cliente, type-check compris
 cd app && node scripts/parcourir.mjs # le parcours entier, joué dans un vrai Chromium

@@ -79,10 +79,16 @@ create table auth.users (id uuid primary key, phone text, email text);
 SQL
 $COMME "PATH=$PATH $PSQL -d xafe -f $GRAPPE/auth.sql" >/dev/null
 
-for m in "$ICI"/supabase/migrations/*.sql; do
+for m in "${MIGRATIONS:-$ICI/supabase/migrations}"/*.sql; do
   echo "· migration $(basename "$m")"
   $COMME "PATH=$PATH $PSQL -d xafe -f $m" >"$GRAPPE/migration.log" 2>&1 || { cat "$GRAPPE/migration.log"; echo "✗ la migration $(basename "$m") ne passe pas"; exit 1; }
 done
+
+# ATTAQUES=1 : les migrations, puis les attaques de la revue seules (moteur/rouge-puis-vert).
+if [ "${ATTAQUES:-0}" = "1" ]; then
+  $COMME "PATH=$PATH $PSQL -d xafe -f $ICI/moteur/rouge-puis-vert/attaques.sql" 2>&1 | grep -E '^#|ERROR|CONTEXT'
+  exit 0
+fi
 
 # HASARD_SEUL=1 : les migrations, puis le hasard seul (pour éprouver le hasard lui-même).
 if [ "${HASARD_SEUL:-0}" != "1" ]; then
