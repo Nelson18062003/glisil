@@ -110,7 +110,7 @@ declare
   -- les remboursements ne réussissent que sur une retenue remboursable : on les tire plus souvent
   gestes text[] := array['depot', 'declarer', 'sms', 'sms', 'ordre', 'ordre', 'ordre', 'annuler', 'sortie', 'totem', 'totem',
                          'usdt', 'retrait', 'chaine', 'rapprocher', 'rembourser', 'rembourser', 'rembourser', 'remboursement', 'remboursement', 'remboursement',
-                         'retirer', 'reaffecter', 'annuler_sortie'];
+                         'retirer', 'reaffecter', 'annuler_sortie', 'rapide', 'rapide'];
   payeurs text[] := array['678900001', '678900002', '678900003', '678900004', '678900005', '678900006', '670111222', '670333444', null];
 begin
   perform setseed(p_graine);
@@ -145,6 +145,13 @@ begin
                              round((10 + random() * 90)::numeric, 2),
                              round((595 + floor(random() * 200) * 0.05)::numeric, 2),
                              case when random() < 0.1 then 'k-o-' || floor(random() * 5) end);
+      when 'rapide' then
+        -- un devis, parfois signé tout de suite, parfois trop tard, parfois deux fois
+        r := devis_rapide((array['achat', 'vente'])[1 + floor(random() * 2)::int],
+                          (array[8000, 30000, 250000, 15, 60])[1 + floor(random() * 5)::int]);
+        if random() < 0.15 then update devis_rapides set expire_le = now() - interval '1 second' where id = (r ->> 'id')::uuid; end if;
+        perform executer_devis((r ->> 'id')::uuid);
+        if random() < 0.2 then perform executer_devis((r ->> 'id')::uuid); end if;
       when 'annuler' then
         perform annuler_ordre((select id from ordres where compte_id = c and etat in ('ouvert', 'partiel') order by random() limit 1));
       when 'sortie' then

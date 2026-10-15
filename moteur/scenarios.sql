@@ -1418,6 +1418,67 @@ begin
 end $$;
 rollback;
 
+-- 11.24 · l'achat rapide : un prix ferme pris au carnet, plus la marge ; rejoué, expiré, carnet qui bouge, vente.
+begin;
+-- le carnet vidé le temps du scénario (tout est annulé au rollback)
+update ordres set etat = 'annule' where etat in ('ouvert', 'partiel');
+select _mouvement('22222222-2222-2222-2222-222222222222', 'USDT', 500, 0, 'essai', 'essai', '11.24'),
+       _mouvement('33333333-3333-3333-3333-333333333333', 'XAFe', 100000, 0, 'essai', 'essai', '11.24'),
+       _mouvement('11111111-1111-1111-1111-111111111111', 'XAFe', 200000, 0, 'essai', 'essai', '11.24'),
+       _mouvement('11111111-1111-1111-1111-111111111111', 'USDT', 100, 0, 'essai', 'essai', '11.24');
+set local xafe.compte = '22222222-2222-2222-2222-222222222222';
+select placer_ordre('vente', 'limite', 100, 600), placer_ordre('vente', 'limite', 50, 610);
+set local xafe.compte = '33333333-3333-3333-3333-333333333333';
+select placer_ordre('achat', 'limite', 80, 590);
+set local xafe.compte = '11111111-1111-1111-1111-111111111111';
+do $$
+declare a uuid := '11111111-1111-1111-1111-111111111111'; e jsonb; d jsonb; r jsonb;
+        x0 numeric := solde(a, 'XAFe', 'dispo'); u0 numeric := solde(a, 'USDT', 'dispo'); m0 numeric := solde(compte_maison(), 'XAFe', 'dispo');
+        tx numeric := total('XAFe'); tu numeric := total('USDT');
+begin
+  -- 70 000 XAFe, marge 1 % : 69 306,93 au carnet → 100 à 600 puis 15,25 à 610 = 69 302,50 ; payés 69 995,53
+  e := devis_rapide('achat', 70000, false);
+  assert (e ->> 'quantite')::numeric = 115.25 and (e ->> 'total')::numeric = 69995.53, e;
+  assert not exists (select 1 from devis_rapides where compte_id = a), 'une estimation n''écrit rien';
+  d := devis_rapide('achat', 70000);
+  r := executer_devis((d ->> 'id')::uuid);
+  assert r ->> 'etat' = 'execute', r;
+  assert solde(a, 'USDT', 'dispo') = u0 + 115.25, 'le client reçoit exactement les USDT promis, sans frais du carnet';
+  assert solde(a, 'XAFe', 'dispo') = x0 - 69995.53, 'il paie exactement le prix promis';
+  assert solde(compte_maison(), 'XAFe', 'dispo') >= m0 + 693.03, 'la marge va à la plateforme';
+  assert (mon_ordre((select ordre_id from devis_rapides where id = (d ->> 'id')::uuid)) -> 'ordre' -> 'rapide' ->> 'total')::numeric = 69995.53,
+         'l''historique montre ce que le client a payé, marge comprise, pas le seul coût du carnet';
+  assert (executer_devis((d ->> 'id')::uuid) ->> 'deja')::boolean, 'rejoué : la même réponse, rien de plus';
+  assert solde(a, 'USDT', 'dispo') = u0 + 115.25, 'et rien n''a bougé une seconde fois';
+
+  -- expiré
+  d := devis_rapide('achat', 8000);
+  update devis_rapides set expire_le = now() - interval '1 second' where id = (d ->> 'id')::uuid;
+  begin perform executer_devis((d ->> 'id')::uuid); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'devis expiré', sqlerrm; end;
+
+  -- le carnet monte entre le devis et la signature : refusé, rien n'a bougé
+  d := devis_rapide('achat', 8000);
+  update ordres set prix = prix + 50 where cote = 'vente' and etat in ('ouvert', 'partiel');
+  x0 := solde(a, 'XAFe', 'dispo');
+  begin perform executer_devis((d ->> 'id')::uuid); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'le prix a changé', sqlerrm; end;
+  assert solde(a, 'XAFe', 'dispo') = x0, 'un devis refusé ne coûte rien';
+
+  -- la vente : 50 USDT à l'acheteur à 590 = 29 500 ; reçus 29 205 (marge 1 %)
+  x0 := solde(a, 'XAFe', 'dispo'); u0 := solde(a, 'USDT', 'dispo');
+  d := devis_rapide('vente', 50);
+  assert (d ->> 'total')::numeric = 29205, d;
+  perform executer_devis((d ->> 'id')::uuid);
+  assert solde(a, 'XAFe', 'dispo') = x0 + 29205 and solde(a, 'USDT', 'dispo') = u0 - 50, 'la vente rapide rend exactement le prix promis';
+
+  begin perform devis_rapide('vente', 1000); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'pas assez d''acheteurs au carnet', sqlerrm; end;
+  assert total('XAFe') = tx and total('USDT') = tu, 'l''achat rapide déplace, il ne crée ni ne perd rien';
+  raise notice '✓ 11.24 l''achat rapide : un prix ferme pris au carnet, marge comprise, exact au centime ; rejoué il ne rejoue rien ; expiré ou dépassé par le carnet, il ne coûte rien ; la vente rapide aussi';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

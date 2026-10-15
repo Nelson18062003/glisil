@@ -444,6 +444,8 @@ language sql stable security definer set search_path = public as $$
     'frais', parametre('frais'),
     'marche', parametre('marche'),
     'paliers', parametre('paliers'),
+    'rapide', jsonb_build_object('marge', parametre('rapide') -> 'marge', 'ouvert', coalesce((parametre('rapide') ->> 'ouvert')::boolean, false),
+                                 'validite_secondes', parametre('rapide') -> 'validite_secondes'),
     'crypto', jsonb_build_object('frais', parametre('crypto') -> 'frais',
                                  'retraits_ouverts', coalesce((parametre('crypto') ->> 'retraits_ouverts')::boolean, false)),
     'operateurs', (select jsonb_agg(jsonb_build_object('id', id, 'nom', nom, 'plafond_par_transfert', plafond_par_transfert,

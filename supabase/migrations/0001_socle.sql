@@ -43,6 +43,8 @@ insert into parametres (cle, valeur) values
   ('marche',  '{"paire": "USDT/XAFe", "pas_prix": 0.05, "quantite_min": 10, "ouvert": true}'),
   ('depot',   '{"validite_minutes": 30, "grace_minutes": 120}'),
   ('sortie',  '{"reprises_max": 3}'),
+  -- l'achat (et la vente) rapide : un prix ferme, pris au carnet, plus la marge de la plateforme
+  ('rapide',  '{"marge": 0.01, "validite_secondes": 20, "ouvert": true}'),
   ('paliers', '{"0": {"entree_jour": 500000, "sortie_jour": 500000},
                 "1": {"entree_jour": 5000000, "sortie_jour": 5000000},
                 "2": null}');
@@ -1095,16 +1097,19 @@ language sql stable as $$
                             'cree_le', e.cree_le)
 $$;
 
-create function placer_ordre(p_cote text, p_type text, p_quantite numeric, p_prix numeric default null, p_cle text default null)
-returns jsonb language plpgsql security definer set search_path = public as $$
+-- Le cœur de l'appariement, pour un compte donné. placer_ordre (le client) et
+-- l'achat rapide (executer_devis) l'appellent ; p_t_preneur remplace le taux
+-- du preneur — l'achat rapide ne paie pas les frais du carnet, il paie la marge.
+create function _placer_ordre(p_compte uuid, p_cote text, p_type text, p_quantite numeric, p_prix numeric, p_cle text, p_t_preneur numeric)
+returns jsonb language plpgsql set search_path = public as $$
 declare
-  v_compte  uuid := auth.uid();
+  v_compte  uuid := p_compte;
   v_frais   jsonb := parametre('frais');
   v_marche  jsonb := parametre('marche');
   v_paire   text := v_marche ->> 'paire';
   v_pas     numeric := (v_marche ->> 'pas_prix')::numeric;
   v_qmin    numeric := (v_marche ->> 'quantite_min')::numeric;
-  v_t_pren  numeric := (v_frais ->> 'preneur')::numeric;
+  v_t_pren  numeric := coalesce(p_t_preneur, (v_frais ->> 'preneur')::numeric);
   v_t_plac  numeric := (v_frais ->> 'placeur')::numeric;
   v_o       ordres;
   v_c       ordres;
@@ -1144,7 +1149,10 @@ begin
     p_prix := null;
   end if;
 
-  -- Une paire s'apparie en file : un seul ordre entrant à la fois.
+  -- Une paire s'apparie en file : un seul ordre entrant à la fois. Toute écriture
+  -- au carnet (placer, annuler, l'achat rapide) prend ce même verrou ; la ligne en
+  -- face se lit donc « for update » SANS « skip locked » : un chemin qui oublierait
+  -- le verrou ferait ATTENDRE l'ordre, jamais sauter un meilleur prix.
   perform pg_advisory_xact_lock(hashtext(v_paire));
 
   insert into ordres (compte_id, paire, cote, type, prix, quantite, restant, cle)
@@ -1171,11 +1179,11 @@ begin
     if p_cote = 'achat' then
       select * into v_c from ordres
        where paire = v_paire and cote = 'vente' and etat in ('ouvert', 'partiel') and (p_type = 'marche' or prix <= p_prix)
-       order by prix asc, cree_le asc, numero asc for update skip locked limit 1;
+       order by prix asc, cree_le asc, numero asc for update limit 1;
     else
       select * into v_c from ordres
        where paire = v_paire and cote = 'achat' and etat in ('ouvert', 'partiel') and (p_type = 'marche' or prix >= p_prix)
-       order by prix desc, cree_le asc, numero asc for update skip locked limit 1;
+       order by prix desc, cree_le asc, numero asc for update limit 1;
     end if;
     exit when not found;
     if v_c.compte_id = v_compte then v_auto := true; exit; end if;
@@ -1295,6 +1303,11 @@ begin
   return jsonb_build_object('ordre', _ordre_json(v_o), 'executions', v_execs, 'auto_negociation', v_auto);
 end $$;
 
+create function placer_ordre(p_cote text, p_type text, p_quantite numeric, p_prix numeric default null, p_cle text default null)
+returns jsonb language sql security definer set search_path = public as $$
+  select _placer_ordre(auth.uid(), p_cote, p_type, p_quantite, p_prix, p_cle, null)
+$$;
+
 create function annuler_ordre(p_id uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_o ordres;
@@ -1312,6 +1325,188 @@ begin
   end if;
   update ordres set etat = 'annule', restant = 0, bloque = 0, maj_le = now() where id = v_o.id returning * into v_o;
   return _ordre_json(v_o);
+end $$;
+
+-- ─────────────────────────────── l'achat rapide ──────────────────────────────
+-- « Acheter des USDT » en un geste : le client donne un montant, voit un prix
+-- FERME pendant quelques secondes, confirme. La plateforme n'a pas de stock :
+-- elle prend au carnet, pour lui, les USDT que d'autres clients vendent (ou y
+-- vend les siens), et gagne sa marge, plus forte que les frais du carnet.
+--   · le devis parcourt le carnet avec LES MÊMES arrondis que l'appariement ;
+--   · l'exécution le rejoue sous le verrou de la paire : si le carnet a bougé
+--     contre le client, elle refuse (« le prix a changé ») ; s'il a bougé pour
+--     lui, le prix promis tient et l'écart revient à la plateforme ;
+--   · tout ou rien : un devis à moitié servi ne se signe pas.
+create table devis_rapides (
+  id          uuid primary key default gen_random_uuid(),
+  compte_id   uuid not null references comptes(id),
+  sens        text not null check (sens in ('achat', 'vente')),
+  quantite    numeric(20,2) not null check (quantite > 0),      -- USDT reçus (achat) ou donnés (vente)
+  cout        numeric(20,2) not null check (cout > 0),          -- ce que le carnet coûte (achat) ou rend (vente)
+  total       numeric(20,2) not null check (total > 0),         -- ce que le client paie (achat) ou reçoit (vente)
+  marge       numeric not null,
+  etat        text not null default 'propose' check (etat in ('propose', 'execute')),
+  ordre_id    uuid references ordres(id),
+  cree_le     timestamptz not null default now(),
+  expire_le   timestamptz not null,
+  execute_le  timestamptz
+);
+create index devis_rapides_du_compte on devis_rapides (compte_id, cree_le desc);
+create unique index devis_rapides_ordre on devis_rapides (ordre_id) where ordre_id is not null;
+alter table devis_rapides enable row level security;
+
+-- Un ordre passé par l'achat rapide porte ce que le client a VRAIMENT payé (ou
+-- reçu), marge comprise : l'historique ne montre pas le seul coût du carnet.
+create or replace function _ordre_json(o ordres) returns jsonb
+language sql stable as $$
+  select jsonb_build_object(
+    'id', o.id, 'numero', 'ORD-' || lpad(o.numero::text, 6, '0'), 'paire', o.paire,
+    'cote', o.cote, 'type', o.type, 'prix', o.prix, 'quantite', o.quantite,
+    'restant', o.restant, 'executee', o.executee, 'total_xafe', o.total_xafe,
+    'prix_moyen', case when o.executee > 0 then round(o.total_xafe / o.executee, 2) end,
+    'bloque', o.bloque, 'etat', o.etat, 'cree_le', o.cree_le, 'maj_le', o.maj_le,
+    'rapide', (select jsonb_build_object('total', d.total, 'frais', abs(d.total - d.cout)) from devis_rapides d where d.ordre_id = o.id))
+$$;
+
+-- Le carnet, parcouru sans rien écrire, comme l'appariement le prendrait pour
+-- ce compte (il s'arrête sur un ordre du compte lui-même, comme l'appariement).
+-- Achat : par budget en XAFe (p_budget) ou par quantité ; vente : par quantité.
+create function _parcourir_carnet(p_compte uuid, p_sens text, p_quantite numeric, p_budget numeric,
+                                  out quantite numeric, out montant numeric)
+language plpgsql stable set search_path = public as $$
+declare
+  v_paire text := parametre('marche') ->> 'paire';
+  v_c ordres; v_q numeric; v_x numeric; v_cible numeric;
+begin
+  quantite := 0; montant := 0;
+  for v_c in
+    select * from ordres
+     where paire = v_paire and etat in ('ouvert', 'partiel')
+       and cote = case when p_sens = 'achat' then 'vente' else 'achat' end
+     order by case when p_sens = 'achat' then prix else -prix end, cree_le, numero
+  loop
+    exit when v_c.compte_id = p_compte;
+    if p_budget is not null then
+      v_q := least(v_c.restant, trunc((p_budget - montant) / v_c.prix, 2));
+    else
+      v_q := least(v_c.restant, p_quantite - quantite);
+    end if;
+    exit when v_q <= 0;
+    if p_sens = 'achat' then
+      v_x := round(v_q * v_c.prix, 2);
+    else
+      v_cible := case when v_c.restant - v_q = 0 then 0 else round((v_c.restant - v_q) * v_c.prix, 2) end;
+      v_x := v_c.bloque - v_cible;
+    end if;
+    quantite := quantite + v_q;
+    montant := montant + v_x;
+  end loop;
+end $$;
+
+-- Le devis. Achat : p_montant est ce que le client veut payer, en XAFe ; vente :
+-- ce qu'il vend, en USDT. p_ferme = false : une estimation, rien n'est écrit
+-- (l'écran la montre pendant qu'on tape) ; true : un devis ferme, à confirmer.
+create function devis_rapide(p_sens text, p_montant numeric, p_ferme boolean default true)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_compte uuid := auth.uid();
+  v_r      jsonb := parametre('rapide');
+  v_m      numeric := (v_r ->> 'marge')::numeric;
+  v_qmin   numeric := (parametre('marche') ->> 'quantite_min')::numeric;
+  v_q      numeric; v_cout numeric; v_total numeric;
+  v_d      devis_rapides;
+begin
+  perform _exiger_compte_actif(v_compte);
+  if not coalesce((parametre('marche') ->> 'ouvert')::boolean, true) then raise exception 'marché fermé'; end if;
+  if not coalesce((v_r ->> 'ouvert')::boolean, false) then raise exception 'achat rapide fermé'; end if;
+  if p_sens not in ('achat', 'vente') then raise exception 'côté invalide'; end if;
+  if p_montant is null or p_montant <= 0 or p_montant <> round(p_montant, 2) then raise exception 'montant invalide'; end if;
+
+  if p_sens = 'achat' then
+    select quantite, montant into v_q, v_cout
+      from _parcourir_carnet(v_compte, 'achat', null, trunc(p_montant / (1 + v_m), 2));
+    if v_q < v_qmin then
+      raise exception 'pas assez de vendeurs au carnet' using detail = format('au moins %s USDT, et des offres pour les servir', v_qmin);
+    end if;
+    v_total := ceil(v_cout * (1 + v_m) * 100) / 100;           -- ce que le client paie, marge comprise
+  else
+    if p_montant < v_qmin then raise exception 'quantité invalide' using detail = format('au moins %s USDT', v_qmin); end if;
+    select quantite, montant into v_q, v_cout from _parcourir_carnet(v_compte, 'vente', p_montant, null);
+    if v_q < p_montant then
+      raise exception 'pas assez d''acheteurs au carnet' using detail = format('le carnet n''en prend que %s USDT', v_q);
+    end if;
+    v_total := floor(v_cout * (1 - v_m) * 100) / 100;          -- ce que le client reçoit, marge déduite
+  end if;
+
+  if not p_ferme then
+    return jsonb_build_object('sens', p_sens, 'quantite', v_q, 'total', v_total, 'prix', round(v_total / v_q, 2),
+                              'frais', abs(v_total - v_cout), 'marge', v_m);
+  end if;
+  insert into devis_rapides (compte_id, sens, quantite, cout, total, marge, expire_le)
+  values (v_compte, p_sens, v_q, v_cout, v_total, v_m,
+          now() + make_interval(secs => coalesce((v_r ->> 'validite_secondes')::int, 20)))
+  returning * into v_d;
+  return _devis_json(v_d);
+end $$;
+
+create function _devis_json(d devis_rapides) returns jsonb language sql stable as $$
+  select jsonb_build_object('id', d.id, 'sens', d.sens, 'quantite', d.quantite, 'total', d.total,
+                            'prix', round(d.total / d.quantite, 2), 'frais', abs(d.total - d.cout), 'marge', d.marge,
+                            'etat', d.etat, 'expire_le', d.expire_le, 'execute_le', d.execute_le,
+                            'ordre', (select numero from ordres where id = d.ordre_id))
+$$;
+
+-- Signer le devis. Rejoué : la même réponse (deja). Expiré, ou le carnet a
+-- bougé contre le client : refusé, rien n'a bougé.
+create function executer_devis(p_id uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_compte uuid := auth.uid();
+  v_d      devis_rapides;
+  v_q      numeric; v_cout numeric; v_dispo numeric; v_frais numeric;
+  v_r      jsonb; v_o jsonb;
+begin
+  perform _exiger_compte_actif(v_compte);
+  -- le même verrou que placer et annuler : personne ne touche au carnet pendant qu'on rejoue
+  perform pg_advisory_xact_lock(hashtext(parametre('marche') ->> 'paire'));
+  select * into v_d from devis_rapides where id = p_id and compte_id = v_compte for update;
+  if not found then raise exception 'devis inconnu'; end if;
+  if v_d.etat = 'execute' then return _devis_json(v_d) || '{"deja": true}'; end if;
+  if v_d.expire_le < now() then raise exception 'devis expiré' using detail = 'demandez un nouveau prix'; end if;
+
+  select quantite, montant into v_q, v_cout from _parcourir_carnet(v_compte, v_d.sens, v_d.quantite, null);
+  if v_q < v_d.quantite
+     or (v_d.sens = 'achat' and v_cout > v_d.cout)
+     or (v_d.sens = 'vente' and v_cout < v_d.cout) then
+    raise exception 'le prix a changé' using detail = 'le carnet a bougé : demandez un nouveau prix';
+  end if;
+
+  if v_d.sens = 'achat' then
+    select disponible into v_dispo from soldes where compte_id = v_compte and actif = 'XAFe';
+    if coalesce(v_dispo, 0) < v_d.total then raise exception 'solde insuffisant' using detail = format('%s XAFe disponibles', coalesce(v_dispo, 0)); end if;
+  else
+    select disponible into v_dispo from soldes where compte_id = v_compte and actif = 'USDT';
+    if coalesce(v_dispo, 0) < v_d.quantite then raise exception 'solde insuffisant' using detail = format('%s USDT disponibles', coalesce(v_dispo, 0)); end if;
+  end if;
+
+  -- Au carnet, comme un ordre au marché, sans les frais du preneur.
+  v_r := _placer_ordre(v_compte, v_d.sens, 'marche', v_d.quantite, null, 'rapide-' || v_d.id::text, 0);
+  v_o := v_r -> 'ordre';
+  if (v_o ->> 'executee')::numeric <> v_d.quantite then
+    raise exception 'le prix a changé' using detail = 'le carnet n''a pas tout servi : rien n''a bougé';
+  end if;
+  -- La marge : la différence entre le prix promis et ce que le carnet a coûté
+  -- (ou rendu). Le compte du client est déjà verrouillé par l'appariement ; la
+  -- maison vient en dernier (voir « l'ordre des verrous »).
+  v_frais := case when v_d.sens = 'achat' then v_d.total - (v_o ->> 'total_xafe')::numeric
+                  else (v_o ->> 'total_xafe')::numeric - v_d.total end;
+  if v_frais > 0 then
+    perform _mouvement(v_compte, 'XAFe', -v_frais, 0, 'frais_rapide', 'devis_rapides', v_d.id::text);
+    perform _mouvement(compte_maison(), 'XAFe', v_frais, 0, 'frais_rapide', 'devis_rapides', v_d.id::text);
+  end if;
+  update devis_rapides set etat = 'execute', ordre_id = (v_o ->> 'id')::uuid, execute_le = now()
+   where id = v_d.id returning * into v_d;
+  return _devis_json(v_d);
 end $$;
 
 -- Le carnet, par niveau de prix.

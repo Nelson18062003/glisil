@@ -15,7 +15,7 @@ $COMME "PATH=$PATH $PSQL -d ${BASE:-xafe} -f $CHARGE/preparer.sql" >"$GRAPPE/cha
   || { cat "$GRAPPE/charge-preparer.log"; echo "✗ la charge ne se prépare pas"; exit 1; }
 STATUT=0
 $COMME "PATH=$PATH pgbench -h ${HOTE:-/tmp} -p $PORT -U postgres -n -c 16 -j 4 -T $DUREE --max-tries=1 --failures-detailed \
-  -f $CHARGE/sms.sql@3 -f $CHARGE/declarer.sql@2 -f $CHARGE/ordre.sql@4 -f $CHARGE/annuler.sql@1 \
+  -f $CHARGE/sms.sql@3 -f $CHARGE/declarer.sql@2 -f $CHARGE/ordre.sql@4 -f $CHARGE/annuler.sql@1 -f $CHARGE/rapide.sql@2 \
   -f $CHARGE/sortie.sql@2 -f $CHARGE/totem.sql@2 ${BASE:-xafe}" >"$GRAPPE/charge.log" 2>&1 || STATUT=$?
 FAITES=$(sed -n 's/^number of transactions actually processed: \([0-9]*\).*/\1/p' "$GRAPPE/charge.log")
 RATEES=$(sed -n 's/^number of failed transactions: \([0-9]*\).*/\1/p' "$GRAPPE/charge.log")

@@ -586,6 +586,8 @@ begin
                        and jsonb_typeof(v -> 'ouvert') = 'boolean'
     when 'depot' then _nombre_entre(v -> 'validite_minutes', 5, 1440, true) and _nombre_entre(v -> 'grace_minutes', 0, 10080, true)
     when 'sortie' then _nombre_entre(v -> 'reprises_max', 1, 10, true)
+    when 'rapide' then _nombre_entre(v -> 'marge', 0, 0.2) and _nombre_entre(v -> 'validite_secondes', 5, 120, true)
+                       and jsonb_typeof(v -> 'ouvert') = 'boolean'
     when 'code_secret' then _nombre_entre(v -> 'essais', 1, 10, true) and _nombre_entre(v -> 'verrou_minutes', 1, 1440, true)
                        and _nombre_entre(v -> 'longueur_min', 4, 6, true) and _nombre_entre(v -> 'longueur_max', 4, 8, true)
                        and (v ->> 'longueur_min')::int <= (v ->> 'longueur_max')::int
@@ -612,7 +614,7 @@ create function admin_modifier_parametre(p_cle text, p_valeur jsonb) returns jso
 language plpgsql security definer set search_path = public as $$
 begin
   perform _exiger_droit('parametres');
-  if p_cle not in ('frais', 'marche', 'depot', 'sortie', 'paliers', 'crypto', 'code_secret') then raise exception 'paramètre inconnu'; end if;
+  if p_cle not in ('frais', 'marche', 'depot', 'sortie', 'paliers', 'crypto', 'code_secret', 'rapide') then raise exception 'paramètre inconnu'; end if;
   perform _verifier_parametre(p_cle, p_valeur);
   update parametres set valeur = p_valeur where cle = p_cle;
   if not found then raise exception 'paramètre inconnu'; end if;
