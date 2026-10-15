@@ -162,6 +162,18 @@ try {
   await page.getByRole("dialog").getByRole("button", { name: "Annuler et rendre les XAFe" }).click();
   await voir("XAFe revenus au client");
 
+  etape("Une lecture qui échoue se dit : pas d'état vide rassurant, pas de « Chargement… » sans fin");
+  await page.goto(`${BASE}/entrees`);
+  await page.evaluate(() => { globalThis.__xafeEpreuve = { desactive: true }; });
+  await page.getByRole("tab", { name: "SMS retenus" }).click().catch(() => {});
+  await voir("Une lecture a échoué");
+  await voir("Rien à montrer : la lecture a échoué");
+  exiger(await page.getByText("tout ce qui est arrivé a trouvé son dossier").count() === 0, "une lecture ratée ne se fait pas passer pour une liste vide");
+  await capturer("lecture-en-panne");
+  await page.evaluate(() => { globalThis.__xafeEpreuve = {}; });
+  await page.getByRole("button", { name: "Réessayer" }).click();
+  await page.locator("[data-lecture-en-panne]").waitFor({ state: "detached" });
+
   etape("Le support ne voit que ce qui est à lui");
   await page.getByRole("button", { name: "Se déconnecter" }).click();
   await page.waitForURL(/\/connexion$/);

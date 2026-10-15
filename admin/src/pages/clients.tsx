@@ -15,9 +15,9 @@ const PALIERS = ["Palier 0 · numéro vérifié", "Palier 1 · identité vérifi
 export function Clients() {
   const [params] = useSearchParams();
   const [recherche, setRecherche] = useState("");
-  const { data } = useClients(recherche);
   const filtre = params.get("filtre");
-  const lignes = (data ?? []).filter((c) => filtre !== "verifications" || c.verification_en_cours);
+  const { data } = useClients(recherche, filtre);
+  const lignes = data ?? [];
   return (
     <Coquille titre="Clients">
       <Stack direction="row" gap={2} alignItems="center">

@@ -122,6 +122,8 @@ export class GuichetDemo implements GuichetAdmin {
     for (const cb of this.auditeurs) cb();
   }
   private exiger(droit: string) {
+    /* couture d'épreuve (démonstration seulement) : l'administrateur a été désactivé pendant sa session */
+    if ((globalThis as { __xafeEpreuve?: { desactive?: boolean } }).__xafeEpreuve?.desactive) throw new ErreurMoteur("accès non autorisé", droit);
     if (!this.e.profil || !this.e.profil.droits.includes(droit as never)) throw new ErreurMoteur("accès non autorisé", droit);
   }
   private noter(action: string, cible: string | null, detail: unknown = null) {
@@ -197,7 +199,7 @@ export class GuichetDemo implements GuichetAdmin {
     if (r.etat !== "retenue") throw new ErreurMoteur("cette entrée n'est plus retenue", r.etat);
     if (!r.numero_payeur || !r.montant) throw new ErreurMoteur("payeur ou montant inconnu : remboursement manuel");
     r.etat = "remboursee";
-    this.noter("rembourser_retenue", String(id), { montant: r.montant, numero: r.numero_payeur, note });
+    this.noter("rembourser_retenue", String(id), { montant: r.montant, note });
     this.emettre();
     return { montant: r.montant, numero: r.numero_payeur };
   }
@@ -275,11 +277,11 @@ export class GuichetDemo implements GuichetAdmin {
     f.actif = actif; this.noter(actif ? "activer_float" : "desactiver_float", String(id)); this.emettre();
   }
 
-  async clients(recherche?: string) {
+  async clients(recherche?: string, filtre?: string | null) {
     this.exiger("clients");
     const q = (recherche ?? "").trim().toLowerCase();
     const chiffres = q.replace(/\D/g, "");
-    return copie(this.e.clients.filter((c) => !q || (chiffres.length >= 3 && c.telephone.includes(chiffres)) || (c.nom ?? "").toLowerCase().includes(q) || (c.entreprise ?? "").toLowerCase().includes(q)).map(({ soldes: _s, numeros: _n, a_code: _a, ...c }) => c));
+    return copie(this.e.clients.filter((c) => filtre !== "verifications" || c.verification_en_cours).filter((c) => !q || (chiffres.length >= 3 && c.telephone.includes(chiffres)) || (c.nom ?? "").toLowerCase().includes(q) || (c.entreprise ?? "").toLowerCase().includes(q)).map(({ soldes: _s, numeros: _n, a_code: _a, ...c }) => c));
   }
   async client(id: string): Promise<ClientDetail> {
     this.exiger("clients");

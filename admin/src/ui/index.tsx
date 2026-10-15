@@ -15,7 +15,8 @@ import TuneRounded from "@mui/icons-material/TuneRounded";
 import {
   Alert, Avatar, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Drawer, List, ListItemButton, ListItemIcon, ListItemText, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography,
 } from "@mui/material";
-import type { ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useSyncExternalStore, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { NOMS_DES_ROLES, type Droit } from "../noyau/droits";
 import { initiales } from "../noyau/format";
@@ -72,9 +73,42 @@ export function Coquille({ titre, actions, children }: { titre: string; actions?
           <Typography variant="h5">{titre}</Typography>
           {actions}
         </Stack>
-        <Stack gap={3}>{children}</Stack>
+        <Stack gap={3}><LecturesEnPanne />{children}</Stack>
       </Box>
     </Box>
+  );
+}
+
+/**
+ * Une lecture qui échoue se DIT. Sans cela, une liste rendait son message vide
+ * rassurant (« Aucun SMS retenu : tout a trouvé son dossier ») et une page à
+ * objet restait sur « Chargement… » — pour un administrateur désactivé pendant
+ * sa session, ou un réseau coupé. Branché sur le cache des requêtes : chaque
+ * écran en hérite, aucun ne peut l'oublier.
+ */
+function useLecturesEnPanne(): string {
+  const cache = useQueryClient().getQueryCache();
+  const instantane = () =>
+    cache.getAll().filter((q) => q.state.status === "error" && q.getObserversCount() > 0)
+      .map((q) => `${q.queryHash}\u0000${q.state.error instanceof Error ? q.state.error.message : String(q.state.error)}`).join("\u0001");
+  return useSyncExternalStore((cb) => cache.subscribe(cb), instantane, instantane);
+}
+
+function LecturesEnPanne() {
+  const cache = useQueryClient().getQueryCache();
+  const pannes = useLecturesEnPanne();
+  if (!pannes) return null;
+  const messages = [...new Set(pannes.split("\u0001").map((l) => l.split("\u0000")[1]))];
+  return (
+    <Paper role="alert" data-lecture-en-panne sx={{ p: 2, borderRadius: 4, bgcolor: tones.red.bg, color: tones.red.fg }}>
+      <Stack direction="row" alignItems="center" gap={2}>
+        <Box sx={{ flex: 1 }}>
+          <Typography fontWeight={600} sx={{ color: "inherit" }}>Une lecture a échoué : ce qui s'affiche dessous peut être vide ou ancien.</Typography>
+          <Typography variant="body2" sx={{ color: "inherit" }}>{messages.join(" · ")}</Typography>
+        </Box>
+        <Button variant="outlined" color="inherit" onClick={() => void cache.findAll({ predicate: (q) => q.state.status === "error" }).forEach((q) => void q.fetch())}>Réessayer</Button>
+      </Stack>
+    </Paper>
   );
 }
 
@@ -91,6 +125,8 @@ export function Tuile({ label, valeur, unite, tone = "neutral", aide }: { label:
 }
 
 export function Tableau({ colonnes, lignes, vide = "Rien ici." }: { colonnes: (string | { label: string; align?: "right" })[]; lignes: ReactNode[][]; vide?: string }) {
+  /* une liste vide parce que la lecture a échoué n'est pas une liste vide : elle ne dit pas « tout va bien » */
+  if (useLecturesEnPanne() && lignes.length === 0) vide = "Rien à montrer : la lecture a échoué (voir ci-dessus).";
   return (
     <TableContainer component={Paper} sx={{ borderRadius: 5 }}>
       <Table size="small" sx={{ "& td, & th": { py: 1.25, whiteSpace: "nowrap" }, "& th": { fontWeight: 600, color: "text.secondary", fontSize: 12, letterSpacing: 0.3 } }}>

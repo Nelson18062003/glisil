@@ -30,7 +30,7 @@ export function useEntrees(etat?: string | null) { const g = useGuichet(); retur
 export function useRetenues(etat: "retenue" | "rapprochee" | "remboursee") { const g = useGuichet(); return useQuery({ queryKey: ["retenues", etat], queryFn: () => g.retenues(etat), refetchInterval: 10_000 }); }
 export function useSorties(etat?: string | null) { const g = useGuichet(); return useQuery({ queryKey: ["sorties", etat ?? "tout"], queryFn: () => g.sorties(etat), refetchInterval: 10_000 }); }
 export function useTerminaux() { const g = useGuichet(); return useQuery({ queryKey: ["terminaux"], queryFn: () => g.terminaux(), refetchInterval: 15_000 }); }
-export function useClients(recherche: string) { const g = useGuichet(); return useQuery({ queryKey: ["clients", recherche], queryFn: () => g.clients(recherche) }); }
+export function useClients(recherche: string, filtre?: string | null) { const g = useGuichet(); return useQuery({ queryKey: ["clients", recherche, filtre ?? ""], queryFn: () => g.clients(recherche, filtre) }); }
 export function useClient(id: string | undefined) { const g = useGuichet(); return useQuery({ queryKey: ["client", id], queryFn: () => g.client(id!), enabled: Boolean(id) }); }
 export function useMarche() { const g = useGuichet(); return useQuery({ queryKey: ["marche"], queryFn: () => g.marche(), refetchInterval: 5_000 }); }
 export function useParametres() { const g = useGuichet(); return useQuery({ queryKey: ["parametres"], queryFn: () => g.parametres() }); }

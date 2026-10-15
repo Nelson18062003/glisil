@@ -618,28 +618,42 @@ begin
 end $$;
 
 -- ───────────────────────────── historique ──────────────────────────────────
+-- Les lignes de l'historique d'un compte, une fois pour toutes : la liste
+-- (mon_historique) et le détail d'une seule (mon_operation) lisent la même.
+-- « cle » est ce que l'écran donne pour retrouver une ligne : la référence,
+-- ou l'identifiant d'un ordre ou d'un transfert de chaîne.
+create function _lignes_historique(p_compte uuid) returns table (quand timestamptz, cle text, ligne jsonb)
+language sql stable as $$
+    select coalesce(d.credite_le, d.cree_le), d.reference, jsonb_build_object('nature', 'depot', 'detail', _depot_json(d))
+      from depots d where d.compte_id = p_compte and d.etat not in ('annule', 'expire')
+    union all
+    select s.cree_le, s.reference, jsonb_build_object('nature', 'sortie', 'detail', _sortie_json(s) || jsonb_build_object('transferts',
+             (select coalesce(jsonb_agg(jsonb_build_object('etat', c.etat, 'montant_xafe', c.montant_xafe, 'montant_envoye', (c.parametres ->> 'montant')::numeric, 'reference_operateur', c.reference_operateur) order by c.id), '[]'::jsonb)
+                from commandes c where c.sortie_id = s.id)))
+      from sorties s where s.compte_id = p_compte
+    union all
+    select o.cree_le, o.id::text, jsonb_build_object('nature', 'ordre', 'detail', _ordre_json(o))
+      from ordres o where o.compte_id = p_compte and (o.executee > 0 or o.etat <> 'annule')
+    union all
+    select r.cree_le, r.reference, jsonb_build_object('nature', 'retrait', 'detail', _retrait_json(r))
+      from retraits_crypto r where r.compte_id = p_compte
+    union all
+    select t.cree_le, t.id::text, jsonb_build_object('nature', 'transfert', 'detail', jsonb_build_object('id', t.id, 'actif', t.actif, 'reseau', t.reseau, 'sens', t.sens, 'montant', t.montant, 'adresse', t.adresse, 'tx_hash', t.tx_hash, 'cree_le', t.cree_le))
+      from transferts_crypto t where t.compte_id = p_compte and t.sens = 'entree'
+$$;
+
 create function mon_historique(p_n int default 200) returns jsonb
 language sql stable security definer set search_path = public as $$
-  select coalesce(jsonb_agg(ligne order by quand desc), '[]'::jsonb) from (
-    select * from (
-      select coalesce(d.credite_le, d.cree_le) quand, jsonb_build_object('nature', 'depot', 'detail', _depot_json(d)) ligne
-        from depots d where d.compte_id = auth.uid() and d.etat not in ('annule', 'expire')
-      union all
-      select s.cree_le, jsonb_build_object('nature', 'sortie', 'detail', _sortie_json(s) || jsonb_build_object('transferts',
-               (select coalesce(jsonb_agg(jsonb_build_object('etat', c.etat, 'montant_xafe', c.montant_xafe, 'montant_envoye', (c.parametres ->> 'montant')::numeric, 'reference_operateur', c.reference_operateur) order by c.id), '[]'::jsonb)
-                  from commandes c where c.sortie_id = s.id)))
-        from sorties s where s.compte_id = auth.uid()
-      union all
-      select o.cree_le, jsonb_build_object('nature', 'ordre', 'detail', _ordre_json(o))
-        from ordres o where o.compte_id = auth.uid() and (o.executee > 0 or o.etat <> 'annule')
-      union all
-      select r.cree_le, jsonb_build_object('nature', 'retrait', 'detail', _retrait_json(r))
-        from retraits_crypto r where r.compte_id = auth.uid()
-      union all
-      select t.cree_le, jsonb_build_object('nature', 'transfert', 'detail', jsonb_build_object('id', t.id, 'actif', t.actif, 'reseau', t.reseau, 'sens', t.sens, 'montant', t.montant, 'adresse', t.adresse, 'tx_hash', t.tx_hash, 'cree_le', t.cree_le))
-        from transferts_crypto t where t.compte_id = auth.uid() and t.sens = 'entree'
-    ) tout order by quand desc limit least(greatest(coalesce(p_n, 200), 1), 500)
-  ) page
+  select coalesce(jsonb_agg(ligne order by quand desc), '[]'::jsonb)
+    from (select ligne, quand from _lignes_historique(auth.uid()) order by quand desc limit least(greatest(coalesce(p_n, 200), 1), 500)) page
+$$;
+
+-- Le détail d'UNE opération, quel que soit son âge. L'écran la cherchait dans
+-- les 200 dernières lignes, et au-delà affirmait « Cette opération n'est pas
+-- sur votre compte » — alors que les notifications y renvoient.
+create function mon_operation(p_reference text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select ligne from _lignes_historique(auth.uid()) where cle = p_reference limit 1
 $$;
 
 -- ─────────────────────────── temps réel ────────────────────────────────────

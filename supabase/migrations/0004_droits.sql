@@ -43,7 +43,7 @@ grant execute on function
   -- la crypto
   adresse_depot(text, text), demander_retrait_crypto(text, text, text, numeric, text, text), mon_retrait_crypto(text),
   -- l'historique
-  mon_historique(int)
+  mon_historique(int), mon_operation(text)
   to authenticated;
 
 -- ─────────────────────────── ce qu'appelle l'équipe ────────────────────────
@@ -57,7 +57,7 @@ grant execute on function
   admin_sorties(text, int), admin_liberer_commande(bigint), admin_reaffecter_commande(bigint, text), admin_annuler_sortie(text, text),
   admin_terminaux(), admin_creer_terminal(text, text, text), admin_renouveler_cle(text),
   admin_creer_float(text, text, text, text), admin_activer_float(int, boolean),
-  admin_clients(text, int), admin_client(uuid), admin_changer_palier(uuid, int, text),
+  admin_clients(text, int, text), admin_client(uuid), admin_changer_palier(uuid, int, text),
   admin_valider_verification(uuid, boolean, text), admin_desactiver_compte(uuid, boolean, text),
   admin_marche(), admin_parametres(), admin_modifier_parametre(text, jsonb), admin_journal(int)
   to authenticated;

@@ -1320,6 +1320,35 @@ begin
 end $$;
 commit;
 
+-- 11.20 · le détail d'une opération ancienne se lit encore (au-delà des 200 dernières lignes).
+begin;
+set local xafe.compte = '22222222-2222-2222-2222-222222222222';
+do $$
+declare plus_vieille text := (select reference from depots where compte_id = '22222222-2222-2222-2222-222222222222' and etat = 'credite' order by cree_le limit 1);
+begin
+  assert (mon_operation(plus_vieille) -> 'detail' ->> 'reference') = plus_vieille, mon_operation(plus_vieille);
+  assert jsonb_array_length(mon_historique(1)) = 1, 'la liste se borne';
+  assert mon_operation((select reference from depots where compte_id = '11111111-1111-1111-1111-111111111111' limit 1)) is null, 'jamais l''opération d''un autre';
+  raise notice '✓ 11.20 le détail d''une opération se lit par sa référence, quel que soit son âge, et jamais celle d''un autre';
+end $$;
+rollback;
+
+-- 11.21 · les pièces d'un compte ancien attendent l'équipe : elle les trouve ; le journal ne garde pas le numéro du payeur.
+begin;
+set local xafe.compte = '22222222-2222-2222-2222-222222222222';
+select demander_verification('identite', '["22222222-2222-2222-2222-222222222222/identite/cni.jpg"]'::jsonb) \gset v21_
+set local xafe.compte = 'dddddddd-0000-0000-0000-000000000001';
+do $$
+declare r jsonb;
+begin
+  insert into comptes (telephone, nom) select '6779' || lpad(g::text, 5, '0'), 'Récent ' || g from generate_series(1, 30) g;
+  r := admin_clients(null, 5, 'verifications');
+  assert exists (select 1 from jsonb_array_elements(r) c where c ->> 'id' = '22222222-2222-2222-2222-222222222222'), 'le compte ancien qui attend est trouvé : ' || r;
+  assert not exists (select 1 from journal_admin where action = 'rembourser_retenue' and detail ? 'numero'), 'aucun numéro de payeur au journal';
+  raise notice '✓ 11.21 les vérifications se cherchent dans tous les comptes ; le journal ne garde que des références';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

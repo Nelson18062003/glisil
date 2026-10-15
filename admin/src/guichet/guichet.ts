@@ -28,7 +28,8 @@ export interface GuichetAdmin {
   creerFloat(p: { operateur: string; numero: string; terminal: string; codeAgent?: string | null }): Promise<void>;
   activerFloat(id: number, actif: boolean): Promise<void>;
 
-  clients(recherche?: string): Promise<Client[]>;
+  /** filtre = "verifications" : les pièces qui attendent l'équipe, cherchées dans TOUS les comptes. */
+  clients(recherche?: string, filtre?: string | null): Promise<Client[]>;
   client(id: string): Promise<ClientDetail>;
   changerPalier(id: string, palier: number, note?: string): Promise<void>;
   validerVerification(id: string, ok: boolean, note?: string): Promise<{ palier: number }>;

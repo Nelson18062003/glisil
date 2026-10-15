@@ -60,7 +60,7 @@ export class GuichetSupabase implements GuichetAdmin {
     await this.rpc("admin_creer_float", { p_operateur: operateur, p_numero: numero, p_terminal: terminal, p_code_agent: codeAgent ?? null });
   }
   async activerFloat(id: number, actif: boolean) { await this.rpc("admin_activer_float", { p_id: id, p_actif: actif }); }
-  clients(recherche?: string) { return this.rpc<Client[]>("admin_clients", { p_recherche: recherche ?? null, p_n: 200 }); }
+  clients(recherche?: string, filtre?: string | null) { return this.rpc<Client[]>("admin_clients", { p_recherche: recherche ?? null, p_n: 200, p_filtre: filtre ?? null }); }
   client(id: string) { return this.rpc<ClientDetail>("admin_client", { p_id: id }); }
   async changerPalier(id: string, palier: number, note?: string) { await this.rpc("admin_changer_palier", { p_id: id, p_palier: palier, p_note: note ?? null }); }
   validerVerification(id: string, ok: boolean, note?: string) { return this.rpc<{ palier: number }>("admin_valider_verification", { p_id: id, p_ok: ok, p_note: note ?? null }); }

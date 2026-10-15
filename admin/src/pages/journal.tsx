@@ -15,7 +15,7 @@ export function Journal() {
   const { data } = useJournal();
   return (
     <Coquille titre="Journal de l'administration">
-      <Typography variant="body2">Chaque action d'un administrateur, en ajout seul. Il se garde longtemps et se lit à plusieurs : aucune donnée personnelle n'y entre, seulement des références.</Typography>
+      <Typography variant="body2">Chaque action d'un administrateur, en ajout seul. Il se garde longtemps et se lit à plusieurs : aucun numéro ni nom de client n'y est écrit par le moteur, seulement des références. Vos notes y sont gardées telles quelles : n'y écrivez ni numéro ni nom.</Typography>
       <Tableau
         colonnes={["Quand", "Qui", "Action", "Sur", "Détail"]}
         lignes={(data ?? []).map((l) => [`${jourRelatif(l.quand)} ${heureSecondes(l.quand)}`, l.admin ?? "—", ACTIONS[l.action] ?? l.action, l.cible ?? "—", <Typography key="d" variant="caption" fontFamily="Roboto Mono, monospace">{l.detail ? JSON.stringify(l.detail) : ""}</Typography>])}

@@ -230,7 +230,8 @@ begin
   insert into remboursements (retenue_id, terminal, float_id, operateur, numero, montant, note, cle)
   values (p_id, v_float.terminal, v_float.id, v_r.operateur, v_r.numero_payeur, v_r.montant, p_note, 'rbt-' || p_id::text || '-' || v_n::text);
   update entrees_retenues set etat = 'remboursee' where id = p_id;
-  perform _journaliser('rembourser_retenue', p_id::text, jsonb_build_object('montant', v_r.montant, 'numero', v_r.numero_payeur, 'note', p_note, 'essai', v_n));
+  -- le journal se garde longtemps et se lit à plusieurs : la référence de l'entrée, jamais le numéro du payeur
+  perform _journaliser('rembourser_retenue', p_id::text, jsonb_build_object('montant', v_r.montant, 'note', p_note, 'essai', v_n));
   return jsonb_build_object('ok', true, 'montant', v_r.montant, 'numero', v_r.numero_payeur);
 end $$;
 
@@ -448,7 +449,9 @@ begin
 end $$;
 
 -- ───────────────────────────── les clients ─────────────────────────────────
-create function admin_clients(p_recherche text default null, p_n int default 100) returns jsonb
+-- p_filtre = 'verifications' : les comptes dont les pièces attendent l'équipe, quel que soit leur âge. L'écran
+-- filtrait les 200 comptes les plus récents : un dossier plus ancien n'était jamais examiné.
+create function admin_clients(p_recherche text default null, p_n int default 100, p_filtre text default null) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 declare r jsonb; v_q text := nullif(trim(coalesce(p_recherche, '')), '');
 begin
@@ -459,6 +462,7 @@ begin
                             'usdt', (select coalesce(disponible + bloque, 0) from soldes where compte_id = c.id and actif = 'USDT')) order by c.cree_le desc), '[]'::jsonb)
     into r
     from (select * from comptes where not maison
+             and (p_filtre is distinct from 'verifications' or verification_en_cours is not null)
              and (v_q is null
                   or (length(normaliser_numero(v_q)) >= 3 and telephone like '%' || normaliser_numero(v_q) || '%')
                   or nom ilike '%' || v_q || '%' or entreprise ilike '%' || v_q || '%')

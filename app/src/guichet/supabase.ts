@@ -284,7 +284,9 @@ export class GuichetSupabase implements Guichet {
     const r = await this.rpc<J[]>("mon_historique", { p_n: 200 });
     return (r ?? []).map(operation).filter((o): o is Operation => o !== null);
   }
+  /** UNE opération, quel que soit son âge : chercher dans les 200 dernières disait « pas sur votre compte » au-delà. */
   async operation(reference: string) {
-    return (await this.historique()).find((o) => o.reference === reference) ?? null;
+    const r = await this.rpc<J | null>("mon_operation", { p_reference: reference });
+    return r ? operation(r) : null;
   }
 }

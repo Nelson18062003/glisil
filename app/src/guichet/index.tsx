@@ -86,10 +86,26 @@ export function useChandelles(minutes: number, n: number) { const g = useGuichet
 export function useMesOrdres() { const g = useGuichet(); return useQuery({ queryKey: cles.mesOrdres, queryFn: () => g.mesOrdres(), refetchInterval: 6_000 }); }
 export function useOrdre(id: string | undefined) { const g = useGuichet(); return useQuery({ queryKey: cles.ordre(id ?? ""), queryFn: () => g.ordre(id!), enabled: Boolean(id) }); }
 export function useHistorique() { const g = useGuichet(); return useQuery({ queryKey: cles.historique, queryFn: () => g.historique(), refetchInterval: 10_000 }); }
+/**
+ * Une opération : d'abord dans la liste déjà chargée ; sinon (au-delà des 200
+ * dernières), demandée seule au moteur. « Introuvable » ne se dit qu'après
+ * cette seconde question.
+ */
 export function useOperation(ref: string | undefined) {
-  const { data, ...reste } = useHistorique();
-  const op = useMemo(() => data?.find((o) => o.reference === ref) ?? null, [data, ref]);
-  return { data: op, ...reste };
+  const g = useGuichet();
+  const liste = useHistorique();
+  const dansLaListe = useMemo(() => liste.data?.find((o) => o.reference === ref) ?? null, [liste.data, ref]);
+  const seule = useQuery({
+    queryKey: ["operation", ref ?? ""],
+    queryFn: () => g.operation(ref!),
+    enabled: Boolean(ref) && liste.isSuccess && !dansLaListe,
+    refetchInterval: 10_000,
+  });
+  return {
+    ...liste,
+    data: dansLaListe ?? seule.data ?? null,
+    isLoading: liste.isLoading || (!dansLaListe && !liste.isError && seule.data === undefined && !seule.isError),
+  };
 }
 export function useNotifications() { const g = useGuichet(); return useQuery({ queryKey: cles.notifications, queryFn: () => g.notifications(), refetchInterval: 20_000 }); }
 export function useAdresseDepot(actif: Actif, reseau: Reseau) { const g = useGuichet(); return useQuery({ queryKey: cles.adresse(actif, reseau), queryFn: () => g.adresseDepot(actif, reseau) }); }
