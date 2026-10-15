@@ -10,7 +10,7 @@
 import { Contract, ContractFactory, Interface, JsonRpcProvider, Wallet } from "ethers";
 import type { Reseau } from "./cles.ts";
 import { adresseTron } from "./cles.ts";
-import { ABI, NoeudTron, vingtOctets, type TxTron } from "./tron.ts";
+import { ABI, NoeudTron, texteDeHex, vingtOctets, type TxTron } from "./tron.ts";
 
 export type Artefact = { abi: unknown[]; bytecode: string; contractName?: string };
 
@@ -82,7 +82,7 @@ export function signataireTron(noeudUrl: string, cle: string, cleApi?: string, a
     while (Date.now() < fin) {
       const r = await noeud.recu(hash);
       if (r) {
-        if (!r.ok) throw new Error(`transaction ${hash} refusée par la chaîne (${r.info?.receipt?.result ?? r.info?.result ?? "?"} ${r.info?.resMessage ? Buffer.from(r.info.resMessage, "hex").toString("utf8") : ""})`.trim());
+        if (!r.ok) throw new Error(`transaction ${hash} refusée par la chaîne (${r.info?.receipt?.result ?? r.info?.result ?? "?"} ${r.info?.resMessage ? texteDeHex(r.info.resMessage) : ""})`.trim());
         return r.info;
       }
       await new Promise((ok) => setTimeout(ok, 500));

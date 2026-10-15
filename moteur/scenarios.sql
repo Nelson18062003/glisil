@@ -1513,6 +1513,11 @@ begin
   perform chaine_publier_etat('trc20', '{"chaud": "Tchaud", "alertes": ["a"]}');
   perform chaine_publier_etat('trc20', '{"chaud": "Tchaud", "alertes": []}');
   assert chaine_etat('trc20') ->> 'chaud' = 'Tchaud' and jsonb_array_length(chaine_etat('trc20') -> 'alertes') = 0, 'le dernier état remplace le précédent';
+  -- un tour à la fois : le second réveil, pendant que le premier tourne, ne prend pas la main
+  assert chaine_prendre_tour('trc20', 60) and not chaine_prendre_tour('trc20', 60), 'deux tours en même temps';
+  perform chaine_rendre_tour('trc20');
+  assert chaine_prendre_tour('trc20', 60), 'rendu, le bail se reprend';
+  perform chaine_rendre_tour('trc20');
   begin perform admin_wallets(); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'accès non autorisé', 'un client ne lit pas les wallets : ' || sqlerrm; end;
 end $$;
@@ -1523,7 +1528,7 @@ begin
   select x into t from jsonb_array_elements(w -> 'reseaux') x where x ->> 'reseau' = 'trc20';
   assert t -> 'etat' ->> 'chaud' = 'Tchaud' and not (t ->> 'muet')::boolean and (t ->> 'retraits_remplaces')::int >= 1, t;
   assert w -> 'orphelins' @> '[{"preuve": "bb:0"}]' and (w ->> 'du_usdt')::numeric > 0, w;
-  raise notice '✓ 11.25 le veilleur ne remplace qu''une transaction qu''il nomme, la base garde l''ancienne ; ce que le chaud doit, les dépôts orphelins et l''état publié se lisent par l''équipe, pas par un client';
+  raise notice '✓ 11.25 le veilleur ne remplace qu''une transaction qu''il nomme, la base garde l''ancienne ; un seul tour à la fois par réseau ; ce que le chaud doit, les dépôts orphelins et l''état publié se lisent par l''équipe, pas par un client';
 end $$;
 rollback;
 

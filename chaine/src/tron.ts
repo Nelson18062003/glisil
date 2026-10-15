@@ -18,6 +18,11 @@ import { adresseTron, CHAUD, deriver } from "./cles.ts";
 export const ABI = AbiCoder.defaultAbiCoder();
 const TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 
+/** Des octets en hexadécimal → le texte UTF-8 (sans Buffer : le même code tourne sous Node et sous Deno). */
+export function texteDeHex(hex: string): string {
+  return new TextDecoder().decode(getBytes(`0x${hex.replace(/^0x/, "")}`));
+}
+
 /** « T… » → les 20 octets (0x…), si la somme de contrôle est juste ; sinon null. */
 export function vingtOctets(base58: string): string | null {
   if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(base58)) return null;
@@ -131,7 +136,7 @@ export class NoeudTron {
     if (r.result) return;
     if (r.code === "DUP_TRANSACTION_ERROR") return;  // déjà reçue : ce n'est pas une seconde
     // le message vient en hexadécimal chez TronGrid, en clair ailleurs
-    const message = !r.message ? "" : /^([0-9a-f]{2})+$/i.test(r.message) ? Buffer.from(r.message, "hex").toString("utf8") : String(r.message);
+    const message = !r.message ? "" : /^([0-9a-f]{2})+$/i.test(r.message) ? texteDeHex(r.message) : String(r.message);
     throw new Error(`tron : diffusion refusée (${r.code ?? "?"} ${message})`);
   }
   async recu(hash: string): Promise<{ bloc: number; ok: boolean; info: any } | null> {

@@ -43,6 +43,28 @@ chaque réseau ne fait que parler sa langue (`src/evm.ts`, `src/tron.ts`).
 Un dépôt sur une adresse jamais montrée à un client ne crédite personne : il est
 gardé dans la base (`chaine_orphelins`) et affiché à l'équipe.
 
+## Où il tourne : dans Supabase, sans serveur
+
+Le veilleur est aussi une **fonction Supabase** (`supabase/functions/veilleur`),
+réveillée **chaque minute** par pg_cron (migration 0006), un réseau par appel.
+Rien à héberger, rien à garder allumé : le projet Supabase suffit.
+
+- Ses réglages sont les **secrets de la fonction** (Supabase → Edge Functions →
+  Secrets) : `XAFE_GRAINE`, `VEILLEUR_JETON`, `BEP20_*`, `TRC20_*` (tableau
+  plus bas). L'API du moteur et la clé de service sont fournies d'office.
+- Le réveil lit l'adresse de la fonction et son jeton dans le **coffre** de
+  Supabase (`veilleur_url`, `veilleur_jeton`) : tant qu'ils n'y sont pas, rien
+  ne part.
+- Un **bail** (`chaine_prendre_tour`) garantit un seul tour à la fois par
+  réseau, même si un tour dure plus d'une minute.
+- Sur un **réseau d'essai seulement**, `BEP20_ADMIN_CLE_ESSAI` /
+  `TRC20_ADMIN_CLE_ESSAI` laissent le veilleur inscrire lui-même les adresses
+  XAFe au contrat. En production, jamais : l'admin du contrat est votre wallet
+  matériel, et la page « Wallets » liste ce qu'il reste à inscrire.
+
+Le service Node (`npm run veilleur`) reste possible ailleurs : même code, mêmes
+variables (`src/service.ts`).
+
 ## Les clés
 
 | Clé | Où elle vit | Ce qu'elle peut faire |
@@ -121,7 +143,9 @@ que `verifier` est vert et qu'un dépôt et un retrait d'essai sont passés.
 | `BEP20_FROID`, `TRC20_FROID` | — | sans elles, rien ne part au froid |
 | `*_PLAFOND_CHAUD_USDT`, `*_GARDER_CHAUD_USDT` | 20 000, 10 000 | au-delà du plafond, on redescend à « garder » |
 | `*_NATIF_MINIMUM` | 0,01 BNB · 50 TRX | en dessous, l'alerte « manque de BNB / TRX » |
-| `RESERVE_ADRESSES`, `SEUIL_BALAYAGE_USDT`, `PAUSE_SECONDES` | 20, 50, 15 | |
+| `RESERVE_ADRESSES`, `ADRESSES_PAR_TOUR`, `SEUIL_BALAYAGE_USDT`, `PAUSE_SECONDES` | 20, 10, 50, 15 | `PAUSE_SECONDES` : le service Node seulement |
+| `VEILLEUR_JETON` | — | la fonction Supabase : le jeton qu'apporte le réveil (32 caractères au moins) |
+| `BEP20_ADMIN_CLE_ESSAI`, `TRC20_ADMIN_CLE_ESSAI` | — | **réseau d'essai seulement** : inscrire soi-même les adresses XAFe |
 
 En **production**, l'admin du contrat est un wallet matériel : le déploiement
 et les rôles s'y signent (BscScan / TronScan, « Write contract »). `ADMIN_CLE`

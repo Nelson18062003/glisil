@@ -14,8 +14,8 @@
 import { formatUnits, keccak256, parseUnits, toUtf8Bytes } from "ethers";
 import type { Actif, Appel, Chaine } from "./chaine.ts";
 import { versMoteur } from "./chaine.ts";
-import { CHAUD, deriver, graineValide } from "./cles.ts";
-import { moteur, type Rpc } from "./moteur.ts";
+import { CHAUD, deriver } from "./cles.ts";
+import type { Rpc } from "./moteur.ts";
 
 export type ConfigVeilleur = {
   graine: string;
@@ -32,6 +32,14 @@ export type ConfigVeilleur = {
   apresSignature?: (reference: string) => void;
   /** pour l'épreuve : combien de temps attendre qu'une transaction à nous entre dans un bloc */
   attenteMs?: number;
+  /** combien d'adresses dériver au plus par tour et par actif (dans Supabase, le calcul d'un appel est compté) */
+  parTour?: number;
+  /**
+   * RÉSEAU D'ESSAI SEULEMENT : inscrire soi-même au contrat les adresses XAFe
+   * préparées, avec une clé admin d'essai. En production, l'admin du contrat
+   * est un wallet matériel : l'inscription est un geste de l'équipe.
+   */
+  inscrire?: (adresses: string[]) => Promise<void>;
 };
 type Attribuee = { adresse: string; actif: Actif; indice: number | null; compte_id: string };
 type Retrait = { reference: string; actif: Actif; adresse: string; montant: number; tx_hash: string | null; tx_brut: string | null };
@@ -73,21 +81,28 @@ export class Veilleur {
     const reserve = this.c.reserve ?? 20;
     let indice = Number(etat.indice_max ?? 0);
     let ajoutees = 0;
-    const aInscrire: string[] = [];
+    let aInscrire: { adresse: string; indice: number }[] = [];
     for (const actif of ["USDT", "XAFe"] as Actif[]) {
-      const manque = reserve - Number(etat.libres?.[actif] ?? 0);
+      const manque = Math.min(reserve - Number(etat.libres?.[actif] ?? 0), this.c.parTour ?? 20);
       if (manque <= 0) continue;
       const lot: { adresse: string; indice: number }[] = [];
       for (let i = 0; i < manque; i++) {
         indice += 1;
         const { adresse } = deriver(this.c.graine, r, indice);
-        if (actif === "XAFe" && !(await this.chaine.estAdresseDeDepot(adresse))) { aInscrire.push(adresse); continue; }
+        if (actif === "XAFe" && !(await this.chaine.estAdresseDeDepot(adresse))) { aInscrire.push({ adresse, indice }); continue; }
         lot.push({ adresse, indice });
       }
       if (lot.length) ajoutees += Number(await rpc("chaine_ajouter_adresses", { p_actif: actif, p_reseau: r, p_adresses: lot }));
     }
+    if (aInscrire.length && this.c.inscrire) {
+      // réseau d'essai : la clé admin d'essai les inscrit, et elles entrent dans la réserve au même tour
+      await this.c.inscrire(aInscrire.map((a) => a.adresse));
+      ajoutees += Number(await rpc("chaine_ajouter_adresses", { p_actif: "XAFe", p_reseau: r, p_adresses: aInscrire }));
+      this.journal(`${aInscrire.length} adresse(s) XAFe inscrites au contrat (clé admin d'essai)`);
+      aInscrire = [];
+    }
     if (aInscrire.length) this.journal(`${aInscrire.length} adresse(s) XAFe attendent leur inscription au contrat par l'admin`);
-    return { ajoutees, aInscrire };
+    return { ajoutees, aInscrire: aInscrire.map((a) => a.adresse) };
   }
 
   /* ----------------------------------------------------------- les dépôts */
@@ -293,33 +308,11 @@ export class Veilleur {
 /* ------------------------------------------------------------ le service */
 
 async function principal() {
+  const { moteurDepuis, veilleursDepuis } = await import("./service.ts");
   const env = process.env;
-  const graine = env.XAFE_GRAINE ?? "";
-  if (!graineValide(graine)) { console.error("✗ XAFE_GRAINE manque ou n'est pas une graine valide (12 ou 24 mots)"); process.exit(1); }
-  if (!env.MOTEUR_URL || !env.MOTEUR_CLE) { console.error("✗ MOTEUR_URL et MOTEUR_CLE sont nécessaires"); process.exit(1); }
-  const rpc = moteur(env.MOTEUR_URL, env.MOTEUR_CLE);
-  const veilleurs: Veilleur[] = [];
-  const commun = (prefixe: string): ConfigVeilleur => ({
-    graine,
-    reserve: Number(env.RESERVE_ADRESSES ?? 20),
-    seuilBalayage: Number(env.SEUIL_BALAYAGE_USDT ?? 50),
-    // les mêmes seuils que « mise-en-service verifier » : sous 0,01 BNB ou 50 TRX, quelques retraits seulement passent encore
-    natifMinimum: Number(env[`${prefixe}_NATIF_MINIMUM`] ?? (prefixe === "BEP20" ? 0.01 : 50)),
-    froid: env[`${prefixe}_FROID`] ? { adresse: env[`${prefixe}_FROID`]!, plafondChaud: Number(env[`${prefixe}_PLAFOND_CHAUD_USDT`] ?? 20000), garderChaud: Number(env[`${prefixe}_GARDER_CHAUD_USDT`] ?? 10000) } : undefined,
-  });
-  if (env.BEP20_RPC) {
-    const { ChaineEvm } = await import("./evm.ts");
-    const ch = new ChaineEvm({ rpcUrl: env.BEP20_RPC, usdt: env.BEP20_USDT!, xafe: env.BEP20_XAFE!, graine, confirmations: Number(env.BEP20_CONFIRMATIONS ?? 15) });
-    await ch.demarrer();
-    veilleurs.push(new Veilleur(ch, commun("BEP20")));
-  }
-  if (env.TRC20_NOEUD) {
-    const { ChaineTron } = await import("./tron.ts");
-    const ch = new ChaineTron({ noeud: env.TRC20_NOEUD, usdt: env.TRC20_USDT!, xafe: env.TRC20_XAFE!, graine, confirmations: Number(env.TRC20_CONFIRMATIONS ?? 20), cleApi: env.TRC20_CLE_API });
-    await ch.demarrer();
-    veilleurs.push(new Veilleur(ch, commun("TRC20")));
-  }
-  if (!veilleurs.length) { console.error("✗ aucun réseau : BEP20_RPC et/ou TRC20_NOEUD"); process.exit(1); }
+  let veilleurs: Veilleur[];
+  let rpc: Rpc;
+  try { rpc = moteurDepuis(env); veilleurs = await veilleursDepuis(env); } catch (e) { console.error(`✗ ${(e as Error).message}`); process.exit(1); }
   for (const v of veilleurs) console.log(`· veilleur ${v.chaine.reseau}, wallet chaud ${v.chaine.chaud}`);
   const pause = Number(env.PAUSE_SECONDES ?? 15) * 1000;
   for (;;) {
@@ -335,4 +328,5 @@ async function principal() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) void principal();
+// lancé par Node (`npm run veilleur`) ; importé ailleurs (la fonction Supabase), il ne démarre rien
+if (typeof process !== "undefined" && process.argv?.[1] && import.meta.url === `file://${process.argv[1]}`) void principal();

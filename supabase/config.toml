@@ -13,3 +13,9 @@ verify_jwt = false
 
 [functions.totem-commandes]
 verify_jwt = false
+
+# Le veilleur de chaîne : réveillé chaque minute par pg_cron (0006), il se
+# garde lui-même par un jeton (x-veilleur-jeton, rangé dans le coffre et dans
+# les secrets de la fonction) — pas par un jeton de session Supabase.
+[functions.veilleur]
+verify_jwt = false

@@ -32,6 +32,18 @@ export function adresseTron(evm: string): string {
 /** La dérivée n° indice : son adresse (celle qu'on montre au client) et son portefeuille (pour signer). */
 export function deriver(graine: string, reseau: Reseau, indice: number): { adresse: string; portefeuille: HDNodeWallet } {
   if (!Number.isInteger(indice) || indice < 0) throw new Error("indice invalide");
-  const portefeuille = HDNodeWallet.fromPhrase(graine.trim(), undefined, `${CHEMINS[reseau]}/${indice}`);
+  const portefeuille = racine(graine, reseau).deriveChild(indice);
   return { adresse: reseau === "bep20" ? portefeuille.address : adresseTron(portefeuille.address), portefeuille };
+}
+
+/* Les 24 mots → la graine binaire coûte 2 048 tours de PBKDF2 : on le fait une
+ * fois par graine et par réseau, pas une fois par adresse. Dans Supabase, où le
+ * temps de calcul d'un appel est compté, c'est la différence entre un tour qui
+ * passe et un tour coupé. */
+const racines = new Map<string, HDNodeWallet>();
+function racine(graine: string, reseau: Reseau): HDNodeWallet {
+  const cle = `${reseau}\u0000${graine.trim()}`;
+  let r = racines.get(cle);
+  if (!r) { r = HDNodeWallet.fromPhrase(graine.trim(), undefined, CHEMINS[reseau]); racines.set(cle, r); }
+  return r;
 }
