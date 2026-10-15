@@ -1385,6 +1385,39 @@ begin
 end $$;
 rollback;
 
+-- 11.23 · les petits défauts : sortie à zéro, journée de Douala, plafond restant, administrateur inconnu, pièces gardées.
+begin;
+set local xafe.compte = '11111111-1111-1111-1111-111111111111';
+do $$
+declare c jsonb := mon_compte();
+begin
+  begin
+    perform demander_sortie(1, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-s-23', '1234');
+    raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'montant trop petit', sqlerrm; end;
+  assert extract(hour from debut_du_jour() at time zone 'Africa/Douala') = 0 and debut_du_jour() <= now()
+         and now() - debut_du_jour() < interval '24 hours', 'la journée commence à minuit à Douala : ' || debut_du_jour();
+  assert (c ->> 'entre_du_jour')::numeric = (select coalesce(sum(montant), 0) from depot_declarations
+          where compte_id = '11111111-1111-1111-1111-111111111111' and etat = 'credite' and credite_le >= debut_du_jour()), c;
+end $$;
+set local xafe.compte = '22222222-2222-2222-2222-222222222222';
+select demander_verification('entreprise', '["22222222-2222-2222-2222-222222222222/entreprise/rccm.pdf"]'::jsonb) \gset v23_
+set local xafe.compte = 'dddddddd-0000-0000-0000-000000000001';
+do $$
+begin
+  begin
+    perform admin_desactiver_administrateur('00000000-0000-0000-0000-00000000abcd', false);
+    raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'administrateur inconnu', sqlerrm; end;
+  perform admin_changer_palier('22222222-2222-2222-2222-222222222222', 1, 'à la main');
+  assert (select verification_en_cours from comptes where id = '22222222-2222-2222-2222-222222222222') = 'entreprise',
+         'le palier 1 posé à la main ne jette pas les pièces de l''entreprise';
+  perform admin_changer_palier('22222222-2222-2222-2222-222222222222', 2, 'à la main');
+  assert (select verification_en_cours from comptes where id = '22222222-2222-2222-2222-222222222222') is null, 'le palier 2 la satisfait';
+  raise notice '✓ 11.23 une sortie qui n''enverrait rien est refusée ; la journée est celle de Douala ; le compte dit ce qui est entré aujourd''hui ; un administrateur inconnu ne s''« active » pas ; changer le palier ne jette pas des pièces qui attendent';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

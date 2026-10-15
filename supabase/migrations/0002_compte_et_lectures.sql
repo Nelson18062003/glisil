@@ -12,6 +12,7 @@ alter table comptes
   add column code_verrou_jusqua    timestamptz,
   add column verification_en_cours text check (verification_en_cours in ('identite', 'entreprise')),
   add column verification_pieces   jsonb;
+create index comptes_verifications on comptes (verification_en_cours) where verification_en_cours is not null;
 
 -- L'empreinte du code secret vit À PART, dans une table qu'aucun client ne lit
 -- (RLS sans politique, aucun GRANT) : dans « comptes », le titulaire la lisait
@@ -73,7 +74,10 @@ end $$;
 create function _compte_json(c comptes) returns jsonb language sql stable as $$
   select jsonb_build_object('id', c.id, 'telephone', c.telephone, 'nom', c.nom, 'entreprise', c.entreprise, 'palier', c.palier,
                             'a_code', exists (select 1 from codes_secrets k where k.compte_id = c.id), 'verrou_jusqua', c.code_verrou_jusqua,
-                            'verification_en_cours', c.verification_en_cours)
+                            'verification_en_cours', c.verification_en_cours,
+                            -- ce qui est déjà entré aujourd'hui : l'écran montre ce qui RESTE du plafond, pas le plafond
+                            'entre_du_jour', (select coalesce(sum(montant), 0) from depot_declarations
+                                               where compte_id = c.id and etat = 'credite' and credite_le >= debut_du_jour()))
 $$;
 
 create function mon_compte() returns jsonb
@@ -480,6 +484,8 @@ language plpgsql security definer set search_path = public as $$
 declare v_compte uuid := auth.uid(); v_adresse text; v_libre adresses_libres;
 begin
   perform _exiger_compte_actif(v_compte);
+  -- deux premières demandes ensemble prenaient chacune une adresse libre, et la seconde était perdue
+  perform 1 from comptes where id = v_compte for no key update;
   select adresse into v_adresse from adresses_crypto where compte_id = v_compte and actif = p_actif and reseau = p_reseau;
   if found then return v_adresse; end if;
   select * into v_libre from adresses_libres where actif = p_actif and reseau = p_reseau order by id for update skip locked limit 1;
@@ -520,10 +526,10 @@ language plpgsql stable as $$
 declare v_cours numeric := (select prix from executions order by cree_le desc, id desc limit 1);
 begin
   return (select coalesce(sum(montant), 0) from sorties
-           where compte_id = p_compte and cree_le >= date_trunc('day', now()) and etat not in ('annulee', 'echouee'))
+           where compte_id = p_compte and cree_le >= debut_du_jour() and etat not in ('annulee', 'echouee'))
        + (select coalesce(sum(case actif when 'XAFe' then montant + frais else (montant + frais) * coalesce(v_cours, 0) end), 0)
             from retraits_crypto
-           where compte_id = p_compte and cree_le >= date_trunc('day', now()) and etat not in ('echoue', 'annule'));
+           where compte_id = p_compte and cree_le >= debut_du_jour() and etat not in ('echoue', 'annule'));
 end $$;
 alter table retraits_crypto enable row level security;
 create policy lire_mes_retraits on retraits_crypto for select to authenticated using (compte_id = auth.uid());

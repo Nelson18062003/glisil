@@ -80,6 +80,7 @@ begin
   perform _exiger_droit('administrateurs');
   if p_id = auth.uid() then raise exception 'on ne se désactive pas soi-même'; end if;
   update administrateurs set actif = p_actif where id = p_id;
+  if not found then raise exception 'administrateur inconnu'; end if;
   perform _journaliser(case when p_actif then 'activer_administrateur' else 'desactiver_administrateur' end, p_id::text);
   return jsonb_build_object('ok', true);
 end $$;
@@ -100,10 +101,10 @@ begin
     'maison', (select coalesce(jsonb_object_agg(actif, disponible), '{}'::jsonb) from soldes where compte_id = compte_maison()),
     'comptes', (select count(*) from comptes where not maison),
     'jour', jsonb_build_object(
-      'entrees', (select coalesce(sum(montant), 0) from depot_declarations where etat = 'credite' and credite_le >= date_trunc('day', now())),
-      'sorties', (select coalesce(sum(montant_envoye), 0) from sorties where cree_le >= date_trunc('day', now())),
-      'volume_usdt', (select coalesce(sum(quantite), 0) from executions where cree_le >= date_trunc('day', now())),
-      'frais_xafe', (select coalesce(sum(disponible_delta), 0) from ecritures where compte_id = compte_maison() and actif = 'XAFe' and cree_le >= date_trunc('day', now()))),
+      'entrees', (select coalesce(sum(montant), 0) from depot_declarations where etat = 'credite' and credite_le >= debut_du_jour()),
+      'sorties', (select coalesce(sum(montant_envoye), 0) from sorties where cree_le >= debut_du_jour()),
+      'volume_usdt', (select coalesce(sum(quantite), 0) from executions where cree_le >= debut_du_jour()),
+      'frais_xafe', (select coalesce(sum(disponible_delta), 0) from ecritures where compte_id = compte_maison() and actif = 'XAFe' and cree_le >= debut_du_jour())),
     'retenues', (select jsonb_build_object('nombre', count(*), 'montant', coalesce(sum(montant), 0)) from entrees_retenues where etat = 'retenue'),
     'sorties_en_cours', (select count(*) from sorties where etat in ('en_attente', 'en_cours')),
     'declarations_attendues', (select count(*) from depot_declarations where etat = 'attendu'),
@@ -496,7 +497,12 @@ language plpgsql security definer set search_path = public as $$
 begin
   perform _exiger_droit('paliers');
   if p_palier not between 0 and 2 then raise exception 'palier invalide'; end if;
-  update comptes set palier = p_palier, verification_en_cours = null where id = p_id and not maison;
+  -- une vérification en cours ne disparaît que si le palier posé la satisfait : sinon ses pièces attendent encore l'équipe
+  update comptes set palier = p_palier,
+         verification_en_cours = case when (verification_en_cours = 'identite' and p_palier >= 1)
+                                        or (verification_en_cours = 'entreprise' and p_palier >= 2) then null
+                                      else verification_en_cours end
+   where id = p_id and not maison;
   if not found then raise exception 'compte inconnu'; end if;
   perform _journaliser('changer_palier', p_id::text, jsonb_build_object('palier', p_palier, 'note', p_note));
   perform _notifier(p_id, 'Palier ' || p_palier, case p_palier when 0 then 'Votre compte est au palier 0.' when 1 then 'Votre identité est vérifiée : palier 1.' else 'Votre entreprise est vérifiée : palier 2, sans plafond plateforme.' end, '/compte/paliers');

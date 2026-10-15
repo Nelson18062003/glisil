@@ -97,6 +97,13 @@ create table comptes (
 insert into comptes (id, telephone, nom, palier, maison)
 values ('00000000-0000-0000-0000-000000000001', 'maison', 'XAFe Exchange', 2, true);
 
+-- « Aujourd'hui » commence à minuit À DOUALA, pas à minuit UTC (la base est
+-- en UTC chez Supabase) : un dépôt de 00:30 comptait pour la veille, et les
+-- plafonds du jour se rouvraient à 01:00. Un seul endroit pour le dire.
+create function debut_du_jour() returns timestamptz language sql stable as $$
+  select date_trunc('day', now() at time zone 'Africa/Douala') at time zone 'Africa/Douala'
+$$;
+
 create function compte_maison() returns uuid
 language sql immutable as $$ select '00000000-0000-0000-0000-000000000001'::uuid $$;
 
@@ -281,6 +288,7 @@ create unique index depot_declarations_un_credit on depot_declarations (operateu
 create index depot_declarations_depot on depot_declarations (depot_id);
 create index depot_declarations_attendues on depot_declarations (operateur, transaction_id) where etat = 'attendu';
 create index depot_declarations_du_jour on depot_declarations (compte_id, credite_le) where etat = 'credite';
+create index depot_declarations_creditees on depot_declarations (credite_le) where etat = 'credite';
 
 -- L'identité d'un SMS. Le numéro de ligne du robot (source_id) ne suffit
 -- pas : il vit sur la carte SD du boîtier, et un boîtier réinstallé repart à
@@ -501,7 +509,7 @@ begin
   v_palier := parametre('paliers') -> (select palier::text from comptes where id = v_d.compte_id);
   if v_palier is not null and v_palier <> 'null'::jsonb then
     select coalesce(sum(montant), 0) into v_jour from depot_declarations
-     where compte_id = v_d.compte_id and etat = 'credite' and credite_le >= date_trunc('day', now());
+     where compte_id = v_d.compte_id and etat = 'credite' and credite_le >= debut_du_jour();
     if v_jour + p_montant > (v_palier ->> 'entree_jour')::numeric then
       update depot_declarations
          set etat = 'refuse', montant = p_montant, numero_payeur = p_numero_payeur,
@@ -762,6 +770,7 @@ create table sorties (
 );
 create unique index sorties_cle on sorties (compte_id, cle) where cle is not null;
 create index sorties_du_compte on sorties (compte_id, cree_le desc);
+create index sorties_par_date on sorties (cree_le);                 -- « aujourd'hui » du tableau
 
 -- Un transfert à composer par TOTEM. C'est le seul endroit d'où de l'argent
 -- peut SORTIR : la ligne est réclamée avant d'être composée, et sa clé est
@@ -804,7 +813,7 @@ create function _sorties_du_jour(p_compte uuid) returns numeric
 language plpgsql stable as $$
 begin
   return (select coalesce(sum(montant), 0) from sorties
-           where compte_id = p_compte and cree_le >= date_trunc('day', now()) and etat not in ('annulee', 'echouee'));
+           where compte_id = p_compte and cree_le >= debut_du_jour() and etat not in ('annulee', 'echouee'));
 end $$;
 
 create function demander_sortie(p_montant numeric, p_numero_id uuid, p_cle text default null)
@@ -871,6 +880,10 @@ begin
   for i in 1 .. v_n_tr loop
     v_chunk := v_part + (case when i = v_n_tr then v_reste else 0 end);
     v_frais := ceil(v_chunk * v_taux);
+    -- un transfert à 0 XAF ne part jamais, et sa commande ne se clôt pas : on refuse avant
+    if v_chunk - v_frais <= 0 then
+      raise exception 'montant trop petit' using detail = 'après les frais, rien ne partirait';
+    end if;
     v_frais_total := v_frais_total + v_frais;
     v_envoi_total := v_envoi_total + (v_chunk - v_frais);
   end loop;
@@ -944,7 +957,9 @@ begin
     if v_c.frais > 0 then
       perform _mouvement(compte_maison(), 'XAFe', v_c.frais, 0, 'frais_sortie', 'commandes', p_id::text);
     end if;
-    insert into emissions (sens, montant, source_table, source_id) values ('destruction', v_envoi, 'commandes', p_id::text);
+    if v_envoi > 0 then
+      insert into emissions (sens, montant, source_table, source_id) values ('destruction', v_envoi, 'commandes', p_id::text);
+    end if;
     update sorties set montant_envoye = montant_envoye + v_envoi where id = v_s.id;
   elsif v_c.reprises + 1 < v_max then
     update commandes set etat = 'en_attente', reprises = reprises + 1, resultat = p_resultat, reclamee_le = null

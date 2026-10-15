@@ -58,23 +58,29 @@ second destinataire dans `nuage.py`, même forme, même reprise hors ligne.
 POST /functions/v1/totem-sms
 {
   "terminal": "akwa-1",
-  "source_id": 48213,              // n° de ligne du journal du Pi : la clé d'unicité
+  "source_id": 48213,              // n° de ligne du journal du Pi (avec le texte, l'identité du SMS)
   "operateur": "mtn",
   "float_numero": "677000000",     // la carte qui a reçu
   "sens": "entree",
   "montant": 1000000,
   "numero": "677123456",           // l'expéditeur, tel que le SMS le donne
-  "tiers": "JEAN KAMDEM",
+  "tiers": "JEAN KAMDEM",          // accepté, non gardé : le nom reste lisible dans « texte »
   "reference": "1234567890",       // référence de l'opérateur
   "texte": "Vous avez recu 1,000,000 FCFA de JEAN KAMDEM (677123456). Ref: 1234567890. ...",
   "emis_le": "2026-10-12T13:02:11Z",
-  "recu_le": "2026-10-12T13:02:12Z"
+  "recu_le": "2026-10-12T13:02:12Z" // accepté, non gardé : l'heure qui compte est « emis_le »
 }
 ```
 
+`tiers` et `recu_le` partent du robot et ne sont pas gardés : le moteur n'en a
+pas l'usage (le nom ne décide de rien, seul le numéro qui paie décide) et le
+texte entier du SMS, gardé, les porte déjà pour l'équipe.
+
 Réponse : `{"resultat": "credite", "reference": "XAFe-DP-000418"}` ou
-`{"resultat": "retenue", "id": 17}`. Le même `(terminal, source_id)` renvoyé
-deux fois rend la même réponse et ne crédite pas deux fois. Un **lot** se
+`{"resultat": "retenue", "id": 17}`. Le même SMS renvoyé deux fois — même
+`(terminal, source_id)` et même texte, référence, montant — rend la même
+réponse et ne crédite pas deux fois ; un boîtier réinstallé qui réutilise un
+`source_id` pour un SMS neuf est traité, avec `source_id_reutilise`. Un **lot** se
 pousse d'un coup, `{"lignes": [...]}` (200 au plus) : la réponse est une liste,
 ligne par ligne — une ligne cassée ne fait pas tomber les autres, et dit
 pourquoi elle est refusée. Une ligne dont `sens` n'est pas `entree` est
