@@ -1414,6 +1414,8 @@ begin
          'le palier 1 posé à la main ne jette pas les pièces de l''entreprise';
   perform admin_changer_palier('22222222-2222-2222-2222-222222222222', 2, 'à la main');
   assert (select verification_en_cours from comptes where id = '22222222-2222-2222-2222-222222222222') is null, 'le palier 2 la satisfait';
+  assert exists (select 1 from depot_declarations x where x.etat = 'credite' and (_declaration_json(x) ->> 'lu_le') is not null),
+         'une déclaration créditée dit quand TOTEM a lu son SMS';
   raise notice '✓ 11.23 une sortie qui n''enverrait rien est refusée ; la journée est celle de Douala ; le compte dit ce qui est entré aujourd''hui ; un administrateur inconnu ne s''« active » pas ; changer le palier ne jette pas des pièces qui attendent';
 end $$;
 rollback;
