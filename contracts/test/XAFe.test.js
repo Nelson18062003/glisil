@@ -1,8 +1,9 @@
 // Le jeton XAFe, éprouvé : une référence ne frappe qu'une fois, seule la
-// plateforme frappe, la pause arrête tout, une adresse gelée ne bouge pas.
+// plateforme frappe, et pas au-delà du plafond du jour ; la pause arrête tout,
+// une adresse gelée ne bouge pas, et ses fonds se reprennent.
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { loadFixture } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
+const { loadFixture, time } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 
 const XAF = (n) => BigInt(n) * 1_000_000n;
 const ref = (texte) => ethers.keccak256(ethers.toUtf8Bytes(texte));
@@ -11,7 +12,7 @@ describe("XAFe", function () {
   async function deployer() {
     const [admin, plateforme, alice, bob, inconnu] = await ethers.getSigners();
     const Jeton = await ethers.getContractFactory("XAFe");
-    const jeton = await Jeton.deploy(admin.address);
+    const jeton = await Jeton.deploy(admin.address, XAF(10_000_000));
     await jeton.grantRole(await jeton.FRAPPEUR_ROLE(), plateforme.address);
     await jeton.grantRole(await jeton.DESTRUCTEUR_ROLE(), plateforme.address);
     return { jeton, admin, plateforme, alice, bob, inconnu };
@@ -63,13 +64,38 @@ describe("XAFe", function () {
     await expect(jeton.connect(alice).detruire(XAF(1), ref("x"))).to.be.revertedWithCustomError(jeton, "AccessControlUnauthorizedAccount");
   });
 
-  it("laisse un client rendre lui-même ses XAFe, avec l'empreinte de son compte", async function () {
-    const { jeton, plateforme, alice } = await loadFixture(deployer);
-    await jeton.connect(plateforme).frapper(alice.address, XAF(100_000), ref("r1"));
-    await expect(jeton.connect(alice).rendre(XAF(25_000), ref("compte-alice")))
-      .to.emit(jeton, "Rendu").withArgs(alice.address, XAF(25_000), ref("compte-alice"));
-    expect(await jeton.balanceOf(alice.address)).to.equal(XAF(75_000));
-    await expect(jeton.connect(alice).rendre(XAF(1), ethers.ZeroHash)).to.be.revertedWithCustomError(jeton, "ReferenceVide");
+  it("ne frappe pas au-delà du plafond du jour : une clé de frappe volée ne frappe pas sans limite", async function () {
+    const { jeton, admin, plateforme, alice } = await loadFixture(deployer);
+    await jeton.connect(plateforme).frapper(alice.address, XAF(9_000_000), ref("r1"));
+    await expect(jeton.connect(plateforme).frapper(alice.address, XAF(1_000_001), ref("r2")))
+      .to.be.revertedWithCustomError(jeton, "PlafondJourAtteint").withArgs(XAF(9_000_000), XAF(1_000_001), XAF(10_000_000));
+    await jeton.connect(plateforme).frapper(alice.address, XAF(1_000_000), ref("r3"));
+    await expect(jeton.connect(plateforme).fixerPlafondJour(XAF(1_000_000_000))).to.be.revertedWithCustomError(jeton, "AccessControlUnauthorizedAccount");
+    await time.increase(24 * 3600);
+    await jeton.connect(plateforme).frapper(alice.address, XAF(5_000_000), ref("r4"));
+    await expect(jeton.connect(admin).fixerPlafondJour(XAF(50_000_000))).to.emit(jeton, "PlafondJour").withArgs(XAF(50_000_000));
+    await jeton.connect(plateforme).frapper(alice.address, XAF(20_000_000), ref("r5"));
+    expect(await jeton.totalSupply()).to.equal(XAF(35_000_000));
+  });
+
+  it("reprend ce qu'une clé volée a frappé : gel, puis destruction par l'admin seul", async function () {
+    const { jeton, admin, plateforme, alice, inconnu } = await loadFixture(deployer);
+    await jeton.connect(plateforme).frapper(inconnu.address, XAF(3_000_000), ref("frappe-volee"));
+    await expect(jeton.connect(admin).detruireFondsGeles(inconnu.address, ref("incident-1")))
+      .to.be.revertedWithCustomError(jeton, "AdresseNonGelee").withArgs(inconnu.address);
+    await jeton.connect(admin).geler(inconnu.address, "incident 1 : clé de frappe compromise");
+    await expect(jeton.connect(plateforme).detruireFondsGeles(inconnu.address, ref("incident-1")))
+      .to.be.revertedWithCustomError(jeton, "AccessControlUnauthorizedAccount");
+    await expect(jeton.connect(admin).detruireFondsGeles(inconnu.address, ref("incident-1")))
+      .to.emit(jeton, "FondsGelesDetruits").withArgs(inconnu.address, XAF(3_000_000), ref("incident-1"));
+    expect(await jeton.balanceOf(inconnu.address)).to.equal(0n);
+    expect(await jeton.totalSupply()).to.equal(0n);
+    await expect(jeton.connect(inconnu).transfer(alice.address, 0)).to.be.revertedWithCustomError(jeton, "AdresseGelee");
+  });
+
+  it("n'a pas de voie pour brûler ses XAFe contre une référence que la plateforme ne lit pas", async function () {
+    const { jeton } = await loadFixture(deployer);
+    expect(jeton.interface.getFunction("rendre")).to.equal(null);
   });
 
   it("en pause, plus rien ne bouge — ni frappe, ni transfert, ni destruction", async function () {
@@ -78,7 +104,6 @@ describe("XAFe", function () {
     await jeton.connect(admin).pauser();
     await expect(jeton.connect(plateforme).frapper(bob.address, XAF(1), ref("r2"))).to.be.revertedWithCustomError(jeton, "EnforcedPause");
     await expect(jeton.connect(alice).transfer(bob.address, XAF(1))).to.be.revertedWithCustomError(jeton, "EnforcedPause");
-    await expect(jeton.connect(alice).rendre(XAF(1), ref("c"))).to.be.revertedWithCustomError(jeton, "EnforcedPause");
     await expect(jeton.connect(alice).pauser()).to.be.revertedWithCustomError(jeton, "AccessControlUnauthorizedAccount");
     await jeton.connect(admin).reprendre();
     await jeton.connect(alice).transfer(bob.address, XAF(1));

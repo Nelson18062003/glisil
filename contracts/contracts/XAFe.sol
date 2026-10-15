@@ -20,6 +20,16 @@ pragma solidity ^0.8.28;
  *    la conformité (COBAC, COSUMAF) peut exiger d'un émetteur.
  *  - Chaque frappe et chaque destruction porte sa référence : la chaîne et
  *    le grand livre de la plateforme se rapprochent ligne à ligne.
+ *  - Un plafond de frappe par jour : la clé du FRAPPEUR vit sur un serveur,
+ *    et une clé volée ne doit pas pouvoir frapper sans limite. Au-delà, il
+ *    faut l'ADMIN (une autre clé, hors ligne) pour relever le plafond.
+ *  - Ce qu'une clé volée a frappé se reprend : l'ADMIN gèle les adresses qui
+ *    l'ont reçu, puis détruit leurs fonds gelés.
+ *
+ *  Il n'y a PAS de voie pour qu'un client « rende » ses XAFe en les brûlant
+ *  lui-même : un XAFe revient en l'envoyant à son adresse de dépôt, que le
+ *  moteur connaît. Une destruction contre une référence que le moteur ne sait
+ *  pas lire détruisait l'argent sans recrédit possible.
  */
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
@@ -35,10 +45,17 @@ contract XAFe is ERC20, AccessControl, Pausable {
     mapping(bytes32 => bool) public referenceUtilisee;
     /// Les adresses gelées : ni envoi, ni réception.
     mapping(address => bool) public gele;
+    /// Ce qui peut se frapper en un jour (en unités), toutes frappes confondues.
+    uint256 public plafondJour;
+    /// Ce qui a été frappé, par jour (block.timestamp / 1 jour).
+    mapping(uint256 => uint256) public frappeLeJour;
+    /// Vrai le temps d'une destruction de fonds gelés : le gel ne bloque pas sa propre reprise.
+    bool private _reprise;
 
     event Frappe(address indexed vers, uint256 montant, bytes32 indexed empreinte);
     event Detruit(address indexed depuis, uint256 montant, bytes32 indexed empreinte);
-    event Rendu(address indexed depuis, uint256 montant, bytes32 indexed compte);
+    event FondsGelesDetruits(address indexed adresse, uint256 montant, bytes32 indexed empreinte);
+    event PlafondJour(uint256 plafond);
     event Gele(address indexed adresse, string motif);
     event Degele(address indexed adresse);
 
@@ -46,13 +63,23 @@ contract XAFe is ERC20, AccessControl, Pausable {
     error ReferenceVide();
     error MontantNul();
     error AdresseGelee(address adresse);
+    error AdresseNonGelee(address adresse);
+    error PlafondJourAtteint(uint256 dejaFrappe, uint256 montant, uint256 plafond);
 
-    constructor(address admin) ERC20("XAFe", "XAFe") {
+    constructor(address admin, uint256 plafond) ERC20("XAFe", "XAFe") {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(FRAPPEUR_ROLE, admin);
         _grantRole(DESTRUCTEUR_ROLE, admin);
         _grantRole(GELEUR_ROLE, admin);
         _grantRole(PAUSEUR_ROLE, admin);
+        plafondJour = plafond;
+        emit PlafondJour(plafond);
+    }
+
+    /// Relever (ou baisser) le plafond de frappe : l'ADMIN seul, jamais le FRAPPEUR.
+    function fixerPlafondJour(uint256 plafond) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        plafondJour = plafond;
+        emit PlafondJour(plafond);
     }
 
     /// Six décimales : 1 XAF = 1 000 000 unités.
@@ -70,6 +97,10 @@ contract XAFe is ERC20, AccessControl, Pausable {
         if (empreinte == bytes32(0)) revert ReferenceVide();
         if (montant == 0) revert MontantNul();
         if (referenceUtilisee[empreinte]) revert ReferenceDejaUtilisee(empreinte);
+        uint256 jour = block.timestamp / 1 days;
+        uint256 deja = frappeLeJour[jour];
+        if (deja + montant > plafondJour) revert PlafondJourAtteint(deja, montant, plafondJour);
+        frappeLeJour[jour] = deja + montant;
         referenceUtilisee[empreinte] = true;
         _mint(vers, montant);
         emit Frappe(vers, montant, empreinte);
@@ -87,18 +118,6 @@ contract XAFe is ERC20, AccessControl, Pausable {
         emit Detruit(_msgSender(), montant, empreinte);
     }
 
-    /**
-     * Un client rend lui-même ses XAFe à la plateforme, en les brûlant avec
-     * l'empreinte de son code de compte : le veilleur de chaîne recrédite.
-     * (La voie simple reste d'envoyer à son adresse de dépôt.)
-     */
-    function rendre(uint256 montant, bytes32 compte) external whenNotPaused {
-        if (montant == 0) revert MontantNul();
-        if (compte == bytes32(0)) revert ReferenceVide();
-        _burn(_msgSender(), montant);
-        emit Rendu(_msgSender(), montant, compte);
-    }
-
     /* ---------------------------------------------------- conformité */
 
     function geler(address adresse, string calldata motif) external onlyRole(GELEUR_ROLE) {
@@ -109,6 +128,23 @@ contract XAFe is ERC20, AccessControl, Pausable {
     function degeler(address adresse) external onlyRole(GELEUR_ROLE) {
         gele[adresse] = false;
         emit Degele(adresse);
+    }
+
+    /**
+     * Reprendre ce qu'une clé volée a frappé, ou ce qu'une autorité a saisi :
+     * l'adresse doit d'abord être gelée (un geste séparé, qui se voit), puis
+     * l'ADMIN détruit tout son solde. L'empreinte dit pourquoi (la décision,
+     * l'incident) et se rapproche du grand livre comme une frappe.
+     */
+    function detruireFondsGeles(address adresse, bytes32 empreinte) external onlyRole(DEFAULT_ADMIN_ROLE) whenNotPaused {
+        if (!gele[adresse]) revert AdresseNonGelee(adresse);
+        if (empreinte == bytes32(0)) revert ReferenceVide();
+        uint256 montant = balanceOf(adresse);
+        if (montant == 0) revert MontantNul();
+        _reprise = true;
+        _burn(adresse, montant);
+        _reprise = false;
+        emit FondsGelesDetruits(adresse, montant, empreinte);
     }
 
     function pauser() external onlyRole(PAUSEUR_ROLE) {
@@ -124,8 +160,10 @@ contract XAFe is ERC20, AccessControl, Pausable {
      * destruction. En pause, rien ne bouge ; une adresse gelée ne bouge pas.
      */
     function _update(address depuis, address vers, uint256 montant) internal override whenNotPaused {
-        if (gele[depuis]) revert AdresseGelee(depuis);
-        if (gele[vers]) revert AdresseGelee(vers);
+        if (!_reprise) {
+            if (gele[depuis]) revert AdresseGelee(depuis);
+            if (gele[vers]) revert AdresseGelee(vers);
+        }
         super._update(depuis, vers, montant);
     }
 }
