@@ -232,6 +232,27 @@ begin
   insert into _attaques values ('#3', 'un client exécute des fonctions de service (se créditer, jouer TOTEM)', v is not null, v);
 end $$;
 
+-- #58 · un boîtier réinstallé repart à la ligne 1 : son premier SMS neuf passe pour « déjà vu ».
+do $$
+declare r jsonb;
+begin
+  r := totem_sms_recu('akwa-1', 1, 'mtn', '677000000', '670999058', 58000, '20390000058', 'un SMS NEUF, après réinstallation', now());
+  insert into _attaques values ('#58', 'un SMS neuf d''un boîtier réinstallé passe pour « déjà vu » : jamais crédité ni retenu',
+    coalesce((r ->> 'deja')::boolean, false), r::text);
+end $$;
+
+-- #78 · le compte et son numéro « vérifié » naissent sur une simple DEMANDE de code.
+do $$
+declare d boolean;
+begin
+  if not exists (select 1 from information_schema.columns where table_schema = 'auth' and table_name = 'users' and column_name = 'phone_confirmed_at') then
+    alter table auth.users add column phone_confirmed_at timestamptz;
+  end if;
+  insert into auth.users (id, phone) values ('a0000000-0000-0000-0000-0000000000f8', '+237677100078');
+  d := exists (select 1 from numeros where numero = '677100078' and verifie_le is not null);
+  insert into _attaques values ('#78', 'un numéro naît « vérifié » sur une simple demande de code', d, null);
+end $$;
+
 \pset format unaligned
 \pset tuples_only on
 select n || '|' || (case when defaut then 'DEFAUT' else 'tenu' end) || '|' || constat || '|' || left(coalesce(detail, ''), 90) from _attaques order by n;

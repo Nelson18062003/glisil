@@ -44,11 +44,16 @@ $$;
 -- pas un client : pas de compte. Et rien ici ne doit faire échouer
 -- l'inscription — un téléphone déjà connu, un numéro déjà vérifié ailleurs —
 -- sinon Supabase répond « Database error saving new user », sans rien dire.
+--
+-- Et pas avant que le téléphone soit PROUVÉ : GoTrue crée la ligne auth.users
+-- dès qu'on DEMANDE un code, puis pose phone_confirmed_at quand le bon code
+-- revient. Le numéro « vérifié » naissait sur une simple demande.
 create function handle_nouvel_utilisateur() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare v_num text := nullif(normaliser_numero(new.phone), '');
 begin
-  if v_num is null then return new; end if;
+  if v_num is null or new.phone_confirmed_at is null then return new; end if;
+  if tg_op = 'UPDATE' and old.phone_confirmed_at is not null then return new; end if;
   insert into comptes (id, telephone) values (new.id, v_num) on conflict do nothing;
   if found and length(v_num) = 9 and operateur_du_numero(v_num) is not null then
     insert into numeros (compte_id, operateur, numero, verifie_le, actif_des)
@@ -61,7 +66,7 @@ end $$;
 do $$
 begin
   if to_regclass('auth.users') is not null then
-    execute 'create trigger comptes_naissance after insert on auth.users for each row execute function public.handle_nouvel_utilisateur()';
+    execute 'create trigger comptes_naissance after insert or update of phone_confirmed_at on auth.users for each row execute function public.handle_nouvel_utilisateur()';
   end if;
 end $$;
 

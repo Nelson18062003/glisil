@@ -100,6 +100,15 @@ const colonne = Object.fromEntries(sql(`select distinct on (table_name) table_na
    where table_schema = 'public' and is_identity = 'NO' and is_generated = 'NEVER' and column_default is null
    order by table_name, ordinal_position`).split("\n").filter(Boolean).map((l) => l.split("|")));
 
+// Une simple DEMANDE de code ne fait naître ni compte ni numéro vérifié : GoTrue crée l'utilisateur
+// tout de suite, le déclencheur attend que le téléphone soit prouvé.
+{
+  const r = await fetch(`${AUTH}/otp`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone: "237699120003" }) });
+  const enAuth = Number(sql(`select count(*) from auth.users where phone = '237699120003'`));
+  const comptes = Number(sql(`select count(*) from comptes where telephone = '699120003'`));
+  exiger(r.ok && enAuth === 1 && comptes === 0, "demander un code ne fait naître aucun compte (GoTrue a créé l'utilisateur, le téléphone n'est pas prouvé)",
+    `otp ${r.status} · auth.users ${enAuth} · comptes ${comptes}`);
+}
 const bob = await inscrire("237677120001");
 const alice = await inscrire("237677120002");
 ok("deux clients s'inscrivent par OTP, comme dans l'application (GoTrue réel)");

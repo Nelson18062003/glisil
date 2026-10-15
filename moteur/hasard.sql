@@ -93,7 +93,7 @@ begin
    where s.bloque <> coalesce(j.total, 0);
   if v is not null then raise exception 'I6 bloqué injustifié : %', v; end if;
   -- I7
-  if exists (select 1 from depot_paiements p join entrees_retenues r using (terminal, source_id) where r.etat = 'retenue') then
+  if exists (select 1 from depot_paiements p join entrees_retenues r using (terminal, source_id, empreinte) where r.etat = 'retenue') then
     raise exception 'I7 un SMS crédité ET retenu';
   end if;
   if exists (select 1 from depot_declarations x left join depot_paiements p on p.id = x.paiement_id

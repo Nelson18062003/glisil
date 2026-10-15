@@ -22,5 +22,5 @@ while IFS='|' read -r n etat constat detail; do
   if [ "$etat" = "DEFAUT" ] && [ "$apres" = "tenu" ]; then marque="✓"; else marque="✗"; ECHEC=1; fi
   printf '%s %-4s %-8s %-8s %s\n' "$marque" "$n" "$etat" "${apres:-absent}" "$constat"
 done <"$AVANT/avant.txt"
-[ "$(wc -l <"$AVANT/avant.txt")" -ge 15 ] || { echo "✗ moins d'attaques rejouées que prévu"; ECHEC=1; }
+[ "$(wc -l <"$AVANT/avant.txt")" -ge 17 ] || { echo "✗ moins d'attaques rejouées que prévu"; ECHEC=1; }
 [ "$ECHEC" = "0" ] && echo "✓ chaque défaut se produit sur le code d'avant, aucun aujourd'hui" || { echo "✗ rouge puis vert : voir ci-dessus"; exit 1; }

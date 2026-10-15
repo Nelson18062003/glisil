@@ -56,7 +56,7 @@ begin
   r := totem_sms_recu('akwa-1', 1, 'mtn', '677000000', '677123456', 1000000, '20394817101', 'Vous avez recu 1,000,000 FCFA de ALICE (677123456). ID: 20394817101', now());
   assert r ->> 'resultat' = 'credite' and r ->> 'etat' = 'credite', r;
   assert solde(a, 'XAFe', 'dispo') = 1000000, 'l''ID attendait : 1 000 000 crédités à l''arrivée du SMS';
-  r := totem_sms_recu('akwa-1', 1, 'mtn', '677000000', '677123456', 1000000, '20394817101', '…', now());
+  r := totem_sms_recu('akwa-1', 1, 'mtn', '677000000', '677123456', 1000000, '20394817101', 'Vous avez recu 1,000,000 FCFA de ALICE (677123456). ID: 20394817101', now());
   assert (r ->> 'deja')::boolean and solde(a, 'XAFe', 'dispo') = 1000000, 'le même SMS relu ne crédite pas deux fois';
   -- Le SMS avant l'ID : retenu, puis rapproché quand l'ID arrive.
   r := totem_sms_recu('akwa-1', 2, 'mtn', '677000000', '677123456', 1000000, '20394817102', '…', now());
@@ -1114,14 +1114,18 @@ do $$
 begin
   insert into auth.users (id, email) values ('eeeeeeee-0000-0000-0000-000000000001', 'a@xafe.exchange'), ('eeeeeeee-0000-0000-0000-000000000002', 'b@xafe.exchange');
   assert not exists (select 1 from comptes where id::text like 'eeeeeeee-%'), 'pas de compte client pour un administrateur';
+  -- le code est DEMANDÉ : GoTrue crée l'utilisateur, le téléphone n'est pas encore prouvé
   insert into auth.users (id, phone) values ('eeeeeeee-0000-0000-0000-000000000003', '+237677333444');
+  assert not exists (select 1 from comptes where id = 'eeeeeeee-0000-0000-0000-000000000003'), 'pas de compte sur une simple demande de code';
+  -- le bon code revient : GoTrue pose phone_confirmed_at
+  update auth.users set phone_confirmed_at = now() where id = 'eeeeeeee-0000-0000-0000-000000000003';
   assert (select telephone from comptes where id = 'eeeeeeee-0000-0000-0000-000000000003') = '677333444';
   assert (select verifie_le from numeros where compte_id = 'eeeeeeee-0000-0000-0000-000000000003') is not null, 'le téléphone de connexion est son premier numéro';
   -- l'utilisateur est supprimé de l'auth (sa ligne « comptes » reste : pas de clé étrangère), puis se réinscrit
   delete from auth.users where id = 'eeeeeeee-0000-0000-0000-000000000003';
-  insert into auth.users (id, phone) values ('eeeeeeee-0000-0000-0000-000000000004', '+237677333444');
+  insert into auth.users (id, phone, phone_confirmed_at) values ('eeeeeeee-0000-0000-0000-000000000004', '+237677333444', now());
   assert not exists (select 1 from comptes where id = 'eeeeeeee-0000-0000-0000-000000000004'), 'le téléphone garde son compte : pas un second';
-  raise notice '✓ 11.8 deux administrateurs par e-mail, un téléphone qui se réinscrit : aucune inscription ne tombe';
+  raise notice '✓ 11.8 un compte naît quand le téléphone est prouvé, pas quand le code est demandé ; deux administrateurs par e-mail, un téléphone qui se réinscrit : aucune inscription ne tombe';
 end $$;
 
 -- 11.9 · un remboursement : jamais d'un SMS déjà crédité, relançable après un échec, un résultat rejoué ne compte pas.
@@ -1249,6 +1253,18 @@ begin
 end $$;
 rollback;
 update terminaux set vu_le = now() where id = 'akwa-1';
+
+-- 11.17 · un boîtier réinstallé repart à la ligne 1 : ses SMS neufs ne passent pas pour « déjà vus ».
+do $$
+declare r jsonb;
+begin
+  r := totem_sms_recu('akwa-1', 1, 'mtn', '677000000', '670999170', 61000, '20394917001', 'Vous avez recu 61000 FCFA… (après réinstallation)', now());
+  assert not coalesce((r ->> 'deja')::boolean, false), 'un SMS neuf sur une ligne déjà vue est traité : ' || r;
+  assert (r ->> 'source_id_reutilise')::boolean, 'et la réponse dit que le numéro de ligne a resservi';
+  r := totem_sms_recu('akwa-1', 1, 'mtn', '677000000', '670999170', 61000, '20394917001', 'Vous avez recu 61000 FCFA… (après réinstallation)', now());
+  assert (r ->> 'deja')::boolean, 'le même SMS relu reste reconnu';
+  raise notice '✓ 11.17 un boîtier réinstallé : ses SMS neufs sont traités, un SMS relu reste reconnu';
+end $$;
 
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;

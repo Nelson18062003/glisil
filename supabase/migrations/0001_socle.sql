@@ -282,8 +282,18 @@ create index depot_declarations_depot on depot_declarations (depot_id);
 create index depot_declarations_attendues on depot_declarations (operateur, transaction_id) where etat = 'attendu';
 create index depot_declarations_du_jour on depot_declarations (compte_id, credite_le) where etat = 'credite';
 
--- Les SMS qui ont crédité un dépôt. (terminal, source_id) : un SMS ne crédite
--- qu'une fois, même relu après une coupure.
+-- L'identité d'un SMS. Le numéro de ligne du robot (source_id) ne suffit
+-- pas : il vit sur la carte SD du boîtier, et un boîtier réinstallé repart à
+-- 1 — ses SMS NEUFS passaient alors pour « déjà vus », de l'argent reçu et
+-- jamais crédité, sans un mot. Un SMS relu après une coupure garde le même
+-- texte, la même référence, le même montant : la même empreinte.
+create function _empreinte_sms(p_texte text, p_reference text, p_montant numeric) returns text
+language sql immutable as $$
+  select md5(coalesce(p_texte, '') || '|' || coalesce(p_reference, '') || '|' || coalesce(p_montant::text, ''))
+$$;
+
+-- Les SMS qui ont crédité un dépôt. (terminal, source_id, empreinte) : un SMS
+-- ne crédite qu'une fois, même relu après une coupure.
 create table depot_paiements (
   id                  bigint generated always as identity primary key,
   depot_id            uuid not null references depots(id),
@@ -296,7 +306,8 @@ create table depot_paiements (
   texte               text,
   emis_le             timestamptz,
   cree_le             timestamptz not null default now(),
-  unique (terminal, source_id)
+  empreinte           text not null,
+  unique (terminal, source_id, empreinte)
 );
 
 -- Un SMS d'argent que personne n'a encore déclaré : retenu, jamais crédité
@@ -323,7 +334,8 @@ create table entrees_retenues (
   motif               text,
   bloquee             boolean not null default false,  -- vrai : aucune déclaration ne la prendra plus seule
   cree_le             timestamptz not null default now(),
-  unique (terminal, source_id)
+  empreinte           text not null,
+  unique (terminal, source_id, empreinte)
 );
 create index entrees_retenues_transaction on entrees_retenues (operateur, transaction_id) where etat = 'retenue';
 
@@ -465,6 +477,7 @@ declare
   v_d      depots;
   v_palier jsonb;
   v_jour   numeric;
+  v_paiement bigint;
 begin
   select * into v_x from depot_declarations where id = p_decl_id for update;
   select * into v_d from depots where id = v_x.depot_id for update;
@@ -488,14 +501,16 @@ begin
     end if;
   end if;
 
-  insert into depot_paiements (depot_id, declaration_id, terminal, source_id, montant, numero_payeur, reference_operateur, texte, emis_le)
-  values (v_d.id, v_x.id, p_terminal, p_source_id, p_montant, p_numero_payeur, p_reference_operateur, p_texte, p_emis_le);
+  insert into depot_paiements (depot_id, declaration_id, terminal, source_id, montant, numero_payeur, reference_operateur, texte, emis_le, empreinte)
+  values (v_d.id, v_x.id, p_terminal, p_source_id, p_montant, p_numero_payeur, p_reference_operateur, p_texte, p_emis_le,
+          _empreinte_sms(p_texte, p_reference_operateur, p_montant))
+  returning id into v_paiement;
   perform _mouvement(v_d.compte_id, 'XAFe', p_montant, 0, 'depot', 'depots', v_d.reference);
   insert into emissions (sens, montant, source_table, source_id) values ('emission', p_montant, 'depots', v_d.reference);
   update depots set montant_recu = montant_recu + p_montant, etat = 'credite', credite_le = now() where id = v_d.id;
   update depot_declarations
      set etat = 'credite', montant = p_montant, numero_payeur = p_numero_payeur, credite_le = now(),
-         paiement_id = (select id from depot_paiements where terminal = p_terminal and source_id = p_source_id)
+         paiement_id = v_paiement
    where id = v_x.id returning * into v_x;
   if p_retenue_id is not null then
     update entrees_retenues set etat = 'rapprochee', depot_id = v_d.id where id = p_retenue_id;
@@ -630,25 +645,31 @@ declare
   v_a     jsonb := '{}'::jsonb;
   v_num   text := nullif(normaliser_numero(p_numero_payeur), '');
   v_id    text := normaliser_transaction_id(p_reference);
+  v_emp   text := _empreinte_sms(p_texte, p_reference, p_montant);
+  v_reutilise boolean;
 begin
   perform pg_advisory_xact_lock(hashtext('sms:' || p_terminal || ':' || p_source_id::text));
   -- Le même SMS, relu après une coupure : la même réponse, rien de plus.
-  select * into v_p from depot_paiements where terminal = p_terminal and source_id = p_source_id;
+  select * into v_p from depot_paiements where terminal = p_terminal and source_id = p_source_id and empreinte = v_emp;
   if found then
     select * into v_d from depots where id = v_p.depot_id;
     return jsonb_build_object('resultat', 'credite', 'reference', v_d.reference, 'etat', v_d.etat, 'deja', true);
   end if;
-  select * into v_r from entrees_retenues where terminal = p_terminal and source_id = p_source_id;
+  select * into v_r from entrees_retenues where terminal = p_terminal and source_id = p_source_id and empreinte = v_emp;
   if found then return jsonb_build_object('resultat', 'retenue', 'id', v_r.id, 'deja', true); end if;
+  -- Ce numéro de ligne a déjà servi à un AUTRE SMS : le boîtier a été réinstallé. Ce SMS est neuf ; on le
+  -- traite, et on le dit (la réponse et le journal du robot le portent).
+  v_reutilise := exists (select 1 from depot_paiements where terminal = p_terminal and source_id = p_source_id)
+              or exists (select 1 from entrees_retenues where terminal = p_terminal and source_id = p_source_id);
 
   update terminaux set vu_le = now() where id = p_terminal;
   select * into v_float from floats
    where operateur = p_operateur and numero = normaliser_numero(p_float_numero) and terminal = p_terminal;
   if not found then
     insert into entrees_retenues (terminal, source_id, operateur, float_numero, numero_payeur, montant,
-                                  reference_operateur, transaction_id, texte, emis_le, motif, bloquee)
+                                  reference_operateur, transaction_id, texte, emis_le, motif, bloquee, empreinte)
     values (p_terminal, p_source_id, p_operateur, p_float_numero, v_num, p_montant, p_reference, v_id, p_texte, p_emis_le,
-            'ce numéro n''est pas un float de ce terminal : l''équipe vérifie', true)
+            'ce numéro n''est pas un float de ce terminal : l''équipe vérifie', true, v_emp)
     returning * into v_r;
     return jsonb_build_object('resultat', 'retenue', 'id', v_r.id, 'motif', v_r.motif);
   end if;
@@ -661,7 +682,8 @@ begin
       v_x := _crediter_declaration((v_a ->> 'id')::uuid, p_terminal, p_source_id, p_montant, v_num, p_reference, p_texte, p_emis_le, null);
       select * into v_d from depots where id = v_x.depot_id;
       if v_x.etat = 'credite' then
-        return jsonb_build_object('resultat', 'credite', 'reference', v_d.reference, 'etat', v_d.etat, 'montant_recu', v_d.montant_recu);
+        return jsonb_strip_nulls(jsonb_build_object('resultat', 'credite', 'reference', v_d.reference, 'etat', v_d.etat,
+                                                    'montant_recu', v_d.montant_recu, 'source_id_reutilise', case when v_reutilise then true end));
       end if;
       -- refusée (palier) : le SMS est retenu, rattaché au dossier pour l'équipe
       v_a := jsonb_build_object('motif', v_x.motif, 'bloquee', true, 'depot_id', v_d.id);
@@ -669,11 +691,12 @@ begin
   end if;
 
   insert into entrees_retenues (terminal, source_id, float_id, operateur, float_numero, numero_payeur, montant,
-                                reference_operateur, transaction_id, texte, emis_le, depot_id, motif, bloquee)
+                                reference_operateur, transaction_id, texte, emis_le, depot_id, motif, bloquee, empreinte)
   values (p_terminal, p_source_id, v_float.id, p_operateur, p_float_numero, v_num, p_montant, p_reference, v_id, p_texte, p_emis_le,
-          (v_a ->> 'depot_id')::uuid, v_a ->> 'motif', coalesce((v_a ->> 'bloquee')::boolean, false))
+          (v_a ->> 'depot_id')::uuid, v_a ->> 'motif', coalesce((v_a ->> 'bloquee')::boolean, false), v_emp)
   returning * into v_r;
-  return jsonb_strip_nulls(jsonb_build_object('resultat', 'retenue', 'id', v_r.id, 'motif', v_r.motif));
+  return jsonb_strip_nulls(jsonb_build_object('resultat', 'retenue', 'id', v_r.id, 'motif', v_r.motif,
+                                              'source_id_reutilise', case when v_reutilise then true end));
 end $$;
 
 -- ───────────────────────────── sorties ─────────────────────────────────────

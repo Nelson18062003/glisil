@@ -167,11 +167,11 @@ begin
   end if;
   -- un SMS dont la référence n'a pas été lue reçoit un identifiant à lui, pour qu'un second ne lui soit pas confondu
   v_tx := case when length(coalesce(v_r.transaction_id, '')) >= 6 then v_r.transaction_id
-               else 'SMS' || upper(regexp_replace(v_r.terminal, '[^A-Za-z0-9]', '', 'g')) || v_r.source_id::text end;
+               else 'SMSRETENU' || v_r.id::text end;
   perform pg_advisory_xact_lock(hashtext('tx:' || v_r.operateur || ':' || v_tx));
   select * into v_r from entrees_retenues where id = p_id for update;
   if v_r.etat <> 'retenue' then raise exception 'cette entrée n''est plus retenue' using detail = v_r.etat; end if;
-  if exists (select 1 from depot_paiements where terminal = v_r.terminal and source_id = v_r.source_id) then
+  if exists (select 1 from depot_paiements where terminal = v_r.terminal and source_id = v_r.source_id and empreinte = v_r.empreinte) then
     raise exception 'ce SMS a déjà crédité un dépôt';
   end if;
   select * into v_d from depots where reference = p_reference for update;
@@ -214,7 +214,7 @@ begin
   if not found then raise exception 'entrée inconnue'; end if;
   if v_r.etat <> 'retenue' then raise exception 'cette entrée n''est plus retenue' using detail = v_r.etat; end if;
   if v_r.numero_payeur is null or coalesce(v_r.montant, 0) <= 0 then raise exception 'payeur ou montant inconnu : remboursement manuel'; end if;
-  if exists (select 1 from depot_paiements where terminal = v_r.terminal and source_id = v_r.source_id)
+  if exists (select 1 from depot_paiements where terminal = v_r.terminal and source_id = v_r.source_id and empreinte = v_r.empreinte)
      or (length(coalesce(v_r.transaction_id, '')) >= 6
          and exists (select 1 from depot_declarations where operateur = v_r.operateur and transaction_id = v_r.transaction_id and etat = 'credite')) then
     raise exception 'ce paiement a déjà été crédité' using detail = 'le rembourser le paierait deux fois';
