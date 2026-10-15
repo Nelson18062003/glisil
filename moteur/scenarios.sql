@@ -509,12 +509,9 @@ begin
   exception when others then
     assert sqlerrm = 'numéro pas encore vérifié', sqlerrm;
   end;
-  begin
-    perform confirmer_numero(v_id, '000000');
-    raise exception 'aurait dû refuser';
-  exception when others then
-    assert sqlerrm = 'code SMS incorrect', sqlerrm;
-  end;
+  r := confirmer_numero(v_id, '000000');
+  assert r ->> 'erreur' = 'code SMS incorrect' and (r ->> 'essais_restants')::int = 4, r;
+  assert (select essais from numeros_codes where numero_id = v_id) = 1, 'un code SMS faux se COMPTE : il ne lève pas, son écriture reste';
   r := confirmer_numero(v_id, v_code);
   assert r ->> 'verifie_le' is not null and (r ->> 'actif_des')::timestamptz > now() + interval '23 hours', r;
   begin
@@ -570,6 +567,14 @@ begin
   assert adresse_depot('USDT', 'bep20') = '0x1111111111111111111111111111111111111111';
   assert adresse_depot('USDT', 'bep20') = '0x1111111111111111111111111111111111111111', 'la même adresse à chaque fois';
   assert adresse_depot('USDT', 'trc20') is null, 'aucune adresse préparée : rien à inventer';
+  begin
+    perform demander_retrait_crypto('USDT', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 100, 'k-cr-0', '1357');
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm = 'retraits crypto pas encore ouverts', sqlerrm;
+  end;
+  assert solde(b, 'USDT', 'bloque') = 0, 'fermés : rien ne se bloque sans issue';
+  update parametres set valeur = valeur || '{"retraits_ouverts": true}' where cle = 'crypto';
   r := demander_retrait_crypto('USDT', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 100, 'k-cr-1', '1357');
   assert r ->> 'etat' = 'en_attente' and (r ->> 'frais')::numeric = 1, r;
   assert solde(b, 'USDT', 'dispo') = usdt_avant - 101 and solde(b, 'USDT', 'bloque') = 101, 'montant et frais bloqués';
@@ -785,3 +790,466 @@ begin
   raise notice '✓ 10.6 fermer le marché ferme vraiment le carnet ; le rouvrir le rouvre';
 end $$;
 commit;
+
+-- ───────────────── 11 · ce que la revue adverse a trouvé ──────────────────
+-- Chaque bloc rejoue une attaque ou une panne trouvée par la revue, et exige
+-- qu'elle ne passe plus.
+
+insert into comptes (id, telephone, nom, palier) values
+  ('44444444-4444-4444-4444-444444444444', '670444444', 'Mallory', 1),
+  ('55555555-5555-5555-5555-555555555555', '670555000', 'Eve', 1);
+insert into numeros (compte_id, operateur, numero, verifie_le, actif_des) values
+  ('44444444-4444-4444-4444-444444444444', 'mtn', '670444444', now() - interval '2 days', now() - interval '1 day'),
+  ('55555555-5555-5555-5555-555555555555', 'mtn', '670555000', now() - interval '2 days', now() - interval '1 day');
+
+-- 11.1 · les droits. anon n'exécute RIEN ; authenticated n'exécute que ce qui
+-- lit auth.uid() (ou se garde par _exiger_droit), plus quatre lectures
+-- publiques du marché. Aucune fonction de service ne lui est ouverte.
+do $$
+declare v text;
+begin
+  select string_agg(p.oid::regprocedure::text, ', ') into v from pg_proc p
+   where p.pronamespace = 'public'::regnamespace and has_function_privilege('anon', p.oid, 'execute');
+  assert v is null, 'anon exécute : ' || v;
+  select string_agg(p.oid::regprocedure::text, ', ') into v from pg_proc p
+   where p.pronamespace = 'public'::regnamespace and has_function_privilege('authenticated', p.oid, 'execute')
+     and p.proname !~ '^(carnet|transactions_recentes|cotation|chandelles)$'
+     and p.prosrc !~ 'auth\.uid\(\)' and p.prosrc !~ '_exiger_droit';
+  assert v is null, 'authenticated exécute sans lire la session : ' || v;
+  select string_agg(p.oid::regprocedure::text, ', ') into v from pg_proc p
+   where p.pronamespace = 'public'::regnamespace and has_function_privilege('authenticated', p.oid, 'execute')
+     and (p.proname ~ '^(totem_|chaine_|_)' or p.proname in ('crediter_crypto', 'expirer_depots', 'circulation', 'parametre'));
+  assert v is null, 'une fonction de service est ouverte aux clients : ' || v;
+  assert not has_function_privilege('authenticated', 'demander_sortie(numeric, uuid, text)', 'execute'), 'la sortie sans code reste au moteur';
+  select string_agg(c.relname, ', ') into v from pg_class c
+   where c.relnamespace = 'public'::regnamespace and c.relkind = 'r'
+     and (has_table_privilege('anon', c.oid, 'select') or has_table_privilege('authenticated', c.oid, 'insert')
+          or has_table_privilege('authenticated', c.oid, 'update') or has_table_privilege('authenticated', c.oid, 'delete'));
+  assert v is null, 'une table s''ouvre à anon ou s''écrit en direct : ' || v;
+  select string_agg(c.relname, ', ') into v from pg_class c
+   where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and has_table_privilege('authenticated', c.oid, 'select')
+     and c.relname in ('codes_secrets', 'numeros_codes', 'terminaux', 'floats', 'entrees_retenues', 'commandes', 'messages_sortants',
+                       'remboursements', 'journal_admin', 'adresses_libres', 'emissions');
+  assert v is null, 'un client lit une table de service : ' || v;
+  -- le témoin : une fonction née APRÈS les migrations n'est ouverte à personne (le robinet par défaut est coupé)
+  create function _temoin_droits() returns int language sql as $f$ select 1 $f$;
+  assert not has_function_privilege('authenticated', '_temoin_droits()', 'execute')
+     and not has_function_privilege('anon', '_temoin_droits()', 'execute'), 'une fonction neuve naît ouverte : les droits par défaut ne sont pas coupés';
+  drop function _temoin_droits();
+  raise notice '✓ 11.1 anon n''exécute rien, un client n''exécute que ce qui lit sa session ; une fonction neuve naît fermée';
+end $$;
+
+begin;
+set local role authenticated;
+set local xafe.compte = '22222222-2222-2222-2222-222222222222';
+do $$
+begin
+  begin perform crediter_crypto('22222222-2222-2222-2222-222222222222', 'USDT', 'bep20', 1000000, '0xvol', 'x'); raise exception 'aurait dû refuser';
+  exception when insufficient_privilege then null; end;
+  begin perform _mouvement('22222222-2222-2222-2222-222222222222', 'XAFe', 1000000, 0, 'vol', null, null); raise exception 'aurait dû refuser';
+  exception when insufficient_privilege then null; end;
+  begin perform chaine_resultat_retrait('XAFe-CR-000001', false, null); raise exception 'aurait dû refuser';
+  exception when insufficient_privilege then null; end;
+  begin perform * from totem_messages_en_attente('akwa-1'); raise exception 'aurait dû refuser';
+  exception when insufficient_privilege then null; end;
+  begin perform * from codes_secrets; raise exception 'aurait dû refuser';
+  exception when insufficient_privilege then null; end;
+  raise notice '✓ 11.1b un client ne frappe pas d''USDT, n''écrit pas un solde, ne joue ni la chaîne ni TOTEM, ne lit aucune empreinte';
+end $$;
+rollback;
+
+-- 11.2 · pgcrypto vit dans « extensions » (comme chez Supabase) : les codes
+-- ont été hachés et vérifiés plus haut, donc chaque appel est qualifié.
+do $$
+begin
+  assert not exists (select 1 from pg_proc where proname = 'crypt' and pronamespace = 'public'::regnamespace), 'le harnais doit garder pgcrypto hors de public';
+  assert exists (select 1 from codes_secrets where empreinte like '$2a$%'), 'les codes secrets sont des empreintes bcrypt';
+  assert not exists (select 1 from information_schema.columns where table_schema = 'public' and column_name = 'code_hash'), 'plus aucune empreinte dans une table lisible';
+  raise notice '✓ 11.2 pgcrypto hors de public, et aucune empreinte dans une table que le client lit';
+end $$;
+
+-- 11.3 · des transaction ID tapés d'avance ne prennent pas le paiement d'un autre.
+-- a) Le payeur est le numéro vérifié d'Alice : la déclaration de Mallory est refusée, Alice reprend son SMS.
+begin;
+set local xafe.compte = '44444444-4444-4444-4444-444444444444';
+select ouvrir_depot('mtn', 'k-mal-1') \gset m1_
+select declarer_transaction((select reference from depots where cle = 'k-mal-1'), '20394900001') \gset m1d_
+commit;
+do $$
+declare r jsonb; m uuid := '44444444-4444-4444-4444-444444444444';
+begin
+  r := totem_sms_recu('akwa-1', 101, 'mtn', '677000000', '677123456', 10000, '20394900001', '…', now());
+  assert r ->> 'resultat' = 'retenue', r;
+  assert coalesce(solde(m, 'XAFe', 'dispo'), 0) = 0, 'Mallory n''est pas créditée';
+  assert (select etat from depot_declarations where compte_id = m and transaction_id = '20394900001') = 'refuse';
+  assert (select montant from depot_declarations where compte_id = m and transaction_id = '20394900001') is null, 'le refus ne lui dit pas combien';
+end $$;
+begin;
+set local xafe.compte = '11111111-1111-1111-1111-111111111111';
+select ouvrir_depot('mtn', 'k-al-11') \gset a11_
+do $$
+declare r jsonb; a uuid := '11111111-1111-1111-1111-111111111111'; avant numeric := solde(a, 'XAFe', 'dispo');
+begin
+  r := declarer_transaction((select reference from depots where cle = 'k-al-11'), '20394900001');
+  assert r ->> 'etat' = 'credite' and solde(a, 'XAFe', 'dispo') = avant + 10000, r;
+  raise notice '✓ 11.3a un ID tapé par un autre compte ne prend pas un paiement venu de mon numéro ; je le reprends en le tapant';
+end $$;
+commit;
+
+-- b) Payeur inconnu, ID tapé vingt minutes AVANT le paiement : impossible pour celui qui a payé.
+begin;
+set local xafe.compte = '44444444-4444-4444-4444-444444444444';
+select declarer_transaction((select reference from depots where cle = 'k-mal-1'), '20394900002') \gset m2d_
+commit;
+update depot_declarations set declare_le = now() - interval '20 minutes' where transaction_id = '20394900002';
+do $$
+declare r jsonb;
+begin
+  r := totem_sms_recu('akwa-1', 102, 'mtn', '677000000', '670999111', 20000, '20394900002', '…', now());
+  assert r ->> 'resultat' = 'retenue' and r ->> 'motif' like '%tapé avant le paiement%', r;
+end $$;
+begin;
+set local xafe.compte = '55555555-5555-5555-5555-555555555555';
+select ouvrir_depot('mtn', 'k-eve-1') \gset e1_
+do $$
+declare r jsonb;
+begin
+  r := declarer_transaction((select reference from depots where cle = 'k-eve-1'), '20394900002');
+  assert r ->> 'etat' = 'credite' and solde('55555555-5555-5555-5555-555555555555', 'XAFe', 'dispo') = 20000, r;
+  raise notice '✓ 11.3b un ID tapé avant le paiement est refusé ; celui qui le tape après l''avoir reçu est crédité';
+end $$;
+commit;
+
+-- c) Payeur inconnu, deux comptes en lice : on ne tire pas au sort, l'équipe tranche.
+begin;
+set local xafe.compte = '44444444-4444-4444-4444-444444444444';
+select declarer_transaction((select reference from depots where cle = 'k-mal-1'), '20394900003') \gset m3d_
+commit;
+begin;
+set local xafe.compte = '55555555-5555-5555-5555-555555555555';
+select declarer_transaction((select reference from depots where cle = 'k-eve-1'), '20394900003') \gset e3d_
+commit;
+do $$
+declare r jsonb;
+begin
+  r := totem_sms_recu('akwa-1', 103, 'mtn', '677000000', '670999222', 30000, '20394900003', '…', now() - interval '1 minute');
+  assert r ->> 'resultat' = 'retenue' and r ->> 'motif' like 'plusieurs comptes%', r;
+  assert (select count(*) from depot_declarations where transaction_id = '20394900003' and etat = 'refuse') = 2;
+  assert (select bloquee from entrees_retenues where transaction_id = '20394900003'), 'l''équipe seule la dénoue';
+end $$;
+begin;
+set local xafe.compte = '33333333-3333-3333-3333-333333333333';
+select ouvrir_depot('mtn', 'k-ch-11') \gset c11_
+do $$
+declare r jsonb;
+begin
+  r := declarer_transaction((select reference from depots where cle = 'k-ch-11'), '20394900003');
+  assert r ->> 'etat' = 'attendu', 'un troisième venu ne la prend pas non plus';
+end $$;
+commit;
+begin;
+set local xafe.compte = 'dddddddd-0000-0000-0000-000000000002';
+do $$
+declare r jsonb;
+begin
+  r := admin_rapprocher_retenue((select id from entrees_retenues where transaction_id = '20394900003'), (select reference from depots where cle = 'k-eve-1'));
+  assert r ->> 'etat' = 'credite' and solde('55555555-5555-5555-5555-555555555555', 'XAFe', 'dispo') = 50000, r;
+  assert (select etat from depot_declarations where transaction_id = '20394900003' and compte_id = '33333333-3333-3333-3333-333333333333') = 'refuse',
+         'le troisième apprend que l''ID est pris';
+  raise notice '✓ 11.3c deux comptes sur un même ID d''un payeur inconnu : personne n''est crédité au hasard, l''équipe rattache';
+end $$;
+commit;
+
+-- d) Taper des ID au hasard ne coûte rien : cinq en attente au plus.
+begin;
+set local xafe.compte = '44444444-4444-4444-4444-444444444444';
+do $$
+declare ref text := (select reference from depots where cle = 'k-mal-1'); i int;
+begin
+  for i in 1 .. 5 loop perform declarer_transaction(ref, '2039495000' || i); end loop;
+  begin
+    perform declarer_transaction(ref, '20394950009');
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm = 'trop de transaction ID en attente', sqlerrm;
+  end;
+  raise notice '✓ 11.3d pas plus de cinq transaction ID en attente par compte';
+end $$;
+rollback;
+
+-- 11.4 · un boîtier n'écrit que pour SES cartes : un SMS sur le float d'un
+-- autre terminal (ici l'Orange de bonaberi-2, poussé par akwa-1) ne crédite rien.
+begin;
+set local xafe.compte = '55555555-5555-5555-5555-555555555555';
+select ouvrir_depot('om', 'k-eve-om') \gset eom_
+select declarer_transaction((select reference from depots where cle = 'k-eve-om'), 'MP261015.0900.E00004') \gset e4d_
+commit;
+do $$
+declare r jsonb;
+begin
+  assert (select terminal from floats where numero = '699000001') = 'bonaberi-2', 'le décor : cette carte est à un autre boîtier';
+  r := totem_sms_recu('akwa-1', 104, 'om', '699000001', '670555000', 4900000, 'MP261015.0900.E00004', '…', now());
+  assert r ->> 'resultat' = 'retenue' and r ->> 'motif' like '%pas un float de ce terminal%', r;
+  r := totem_sms_recu('akwa-1', 105, 'om', '690000000', '670555000', 4900000, 'MP261015.0900.E00004', '…', now());
+  assert r ->> 'resultat' = 'retenue', 'un float inconnu ne crédite pas';
+  assert solde('55555555-5555-5555-5555-555555555555', 'XAFe', 'dispo') = 50000, 'Eve n''a rien reçu de plus';
+  assert (select etat from depot_declarations where transaction_id = 'MP2610150900E00004') = 'attendu';
+  raise notice '✓ 11.4 un SMS hors des floats du terminal qui l''envoie est retenu, jamais crédité';
+end $$;
+
+-- 11.5 · les arrondis d'un achat limite au repos ne bouchent plus le carnet (et ne laissent pas un centime bloqué).
+begin;
+set local xafe.compte = '22222222-2222-2222-2222-222222222222';
+select placer_ordre('achat', 'limite', 10.22, 600.05, 'o-arr') \gset arr_
+commit;
+begin;
+set local xafe.compte = '11111111-1111-1111-1111-111111111111';
+do $$
+declare r jsonb;
+begin
+  assert (select bloque from ordres where cle = 'o-arr') = 6132.51;
+  r := placer_ordre('vente', 'marche', 10.11, null, 'o-arr-v1');
+  assert (select bloque from ordres where cle = 'o-arr') = 66.01, (select bloque from ordres where cle = 'o-arr');
+  r := placer_ordre('vente', 'marche', 10, null, 'o-arr-v2');
+  assert (r -> 'ordre' ->> 'executee')::numeric = 0.11, r;
+  assert (select etat from ordres where cle = 'o-arr') = 'execute' and (select bloque from ordres where cle = 'o-arr') = 0;
+  assert solde('22222222-2222-2222-2222-222222222222', 'XAFe', 'bloque') = 0, 'pas un centime ne reste bloqué';
+end $$;
+commit;
+-- le preneur limite payé sous sa limite : 10,05 à 600,10 contre une vente à 600,05
+begin;
+set local xafe.compte = '11111111-1111-1111-1111-111111111111';
+select placer_ordre('vente', 'limite', 10.05, 600.05, 'o-arr2-v') \gset arr2_
+commit;
+begin;
+set local xafe.compte = '22222222-2222-2222-2222-222222222222';
+do $$
+declare r jsonb;
+begin
+  r := placer_ordre('achat', 'limite', 10.05, 600.10, 'o-arr2-a');
+  assert r -> 'ordre' ->> 'etat' = 'execute' and (r -> 'ordre' ->> 'bloque')::numeric = 0, r;
+  assert solde('22222222-2222-2222-2222-222222222222', 'XAFe', 'bloque') = 0, 'le centime de trop revient';
+  assert total('XAFe') = circulation(), format('XAFe : %s en soldes, %s en circulation', total('XAFe'), circulation());
+  raise notice '✓ 11.5 un achat limite se règle au centime : ni carnet bouché, ni centime bloqué, ni XAFe créé';
+end $$;
+commit;
+
+-- 11.6 · un compte désactivé ne fait plus aucun geste d'argent ; réactivé, il les retrouve.
+begin;
+set local xafe.compte = 'dddddddd-0000-0000-0000-000000000001';
+select admin_desactiver_compte('33333333-3333-3333-3333-333333333333', false, 'enquête') \gset des_
+commit;
+begin;
+set local xafe.compte = '33333333-3333-3333-3333-333333333333';
+do $$
+declare v text; f text;
+begin
+  foreach f in array array['ouvrir_depot(''mtn'')', 'placer_ordre(''achat'', ''limite'', 10, 600.00)',
+                           'demander_sortie(1000, ''cccccccc-0000-0000-0000-000000000001'', null, ''9876'')',
+                           'ajouter_numero(''mtn'', ''677888777'')', 'declarer_transaction((select reference from depots where cle = ''k-ch-11''), ''20394900099'')'] loop
+    begin
+      execute 'select ' || f;
+      raise exception 'aurait dû refuser : %', f;
+    exception when others then
+      assert sqlerrm = 'compte désactivé', f || ' → ' || sqlerrm;
+    end;
+  end loop;
+  assert mes_soldes() is not null, 'il lit encore ses soldes';
+  raise notice '✓ 11.6 un compte désactivé ne dépose, ne déclare, ne négocie, ne sort ni n''ajoute de numéro';
+end $$;
+rollback;
+begin;
+set local xafe.compte = 'dddddddd-0000-0000-0000-000000000001';
+select admin_desactiver_compte('33333333-3333-3333-3333-333333333333', true) \gset rea_
+commit;
+
+-- 11.7 · le code secret ne se remplace pas sans l'ancien ; un numéro ne se réserve pas sans preuve.
+begin;
+set local xafe.compte = '22222222-2222-2222-2222-222222222222';
+do $$
+declare r jsonb;
+begin
+  begin
+    perform completer_profil('Bob', '0000');
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm = 'code secret déjà choisi', sqlerrm;
+  end;
+  assert (verifier_code_secret('1357') ->> 'ok')::boolean, 'l''ancien code tient toujours';
+  begin
+    perform ajouter_numero('om', '677111222');
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm = 'numéro invalide', '677 n''est pas Orange : ' || sqlerrm;
+  end;
+  begin
+    perform ajouter_numero('mtn', '677123456');
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm = 'ce numéro est déjà sur un autre compte', sqlerrm;
+  end;
+  r := ajouter_numero('mtn', '677666555');
+  assert r ->> 'verifie_le' is null, r;
+end $$;
+commit;
+begin;
+set local xafe.compte = '55555555-5555-5555-5555-555555555555';
+do $$
+declare r jsonb;
+begin
+  r := ajouter_numero('mtn', '677666555');
+  assert r ->> 'numero' = '677666555', 'un numéro seulement AJOUTÉ par un autre ne retient rien';
+  begin
+    perform renvoyer_code_numero((r ->> 'id')::uuid);
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm = 'un code vient de partir', sqlerrm;
+  end;
+  raise notice '✓ 11.7 le premier code ne se rechoisit pas ; un numéro non prouvé ne bloque personne ; les codes ont leur cadence';
+end $$;
+rollback;
+
+-- 11.8 · le déclencheur de naissance : un administrateur par e-mail n'est pas un client, et rien ne fait échouer une inscription.
+do $$
+begin
+  insert into auth.users (id, email) values ('eeeeeeee-0000-0000-0000-000000000001', 'a@xafe.exchange'), ('eeeeeeee-0000-0000-0000-000000000002', 'b@xafe.exchange');
+  assert not exists (select 1 from comptes where id::text like 'eeeeeeee-%'), 'pas de compte client pour un administrateur';
+  insert into auth.users (id, phone) values ('eeeeeeee-0000-0000-0000-000000000003', '+237677333444');
+  assert (select telephone from comptes where id = 'eeeeeeee-0000-0000-0000-000000000003') = '677333444';
+  assert (select verifie_le from numeros where compte_id = 'eeeeeeee-0000-0000-0000-000000000003') is not null, 'le téléphone de connexion est son premier numéro';
+  insert into auth.users (id, phone) values ('eeeeeeee-0000-0000-0000-000000000004', '+237677333444');
+  raise notice '✓ 11.8 deux administrateurs par e-mail, un téléphone déjà connu : aucune inscription ne tombe';
+end $$;
+
+-- 11.9 · un remboursement : jamais d'un SMS déjà crédité, relançable après un échec, un résultat rejoué ne compte pas.
+begin;
+set local xafe.compte = 'dddddddd-0000-0000-0000-000000000001';
+do $$
+declare r jsonb; v_id bigint; v_rbt bigint; v_rbt2 bigint;
+begin
+  r := totem_sms_recu('akwa-1', 120, 'mtn', '677000000', '670999333', 15000, '20394900120', '…', now());
+  v_id := (r ->> 'id')::bigint;
+  perform admin_rembourser_retenue(v_id, 'payé par erreur');
+  select id into v_rbt from remboursements where retenue_id = v_id;
+  assert (totem_resultat_remboursement(v_rbt, 'akwa-1', false, 'x') ->> 'deja')::boolean, 'pas réclamé : un résultat ne compte pas';
+  perform totem_reclamer_remboursement(v_rbt, 'akwa-1');
+  r := totem_resultat_remboursement(v_rbt, 'akwa-1', false, 'réseau muet');
+  assert (select etat from entrees_retenues where id = v_id) = 'retenue', 'échoué : l''entrée revient';
+  r := admin_rembourser_retenue(v_id, 'deuxième essai');
+  select id into v_rbt2 from remboursements where retenue_id = v_id and etat = 'en_attente';
+  assert v_rbt2 is not null and v_rbt2 <> v_rbt, 'un second essai a sa propre clé';
+  begin
+    perform admin_rembourser_retenue((select id from entrees_retenues where transaction_id = '20394817102'), 'x');
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm like 'cette entrée n''est plus retenue%' or sqlerrm = 'ce paiement a déjà été crédité', sqlerrm;
+  end;
+  raise notice '✓ 11.9 un remboursement se relance après un échec, un résultat non réclamé ne compte pas';
+end $$;
+commit;
+
+-- 11.10 · un « échouée » renvoyé faute d'accusé ne compte pas comme un second échec.
+begin;
+set local xafe.compte = '11111111-1111-1111-1111-111111111111';
+select demander_sortie(10000, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-s-11', '1234') \gset s11_
+commit;
+do $$
+declare c commandes; r jsonb; v_id bigint := (select k.id from commandes k join sorties s on s.id = k.sortie_id where s.cle = 'k-s-11');
+begin
+  c := totem_reclamer_commande(v_id, 'akwa-1');
+  r := totem_resultat_commande(v_id, 'akwa-1', false, 'réseau muet', null, 0);
+  assert (r ->> 'reprises')::int = 1, r;
+  r := totem_resultat_commande(v_id, 'akwa-1', false, 'réseau muet', null, 0);
+  assert (r ->> 'deja')::boolean, 'le même échec renvoyé est un doublon';
+  c := totem_reclamer_commande(v_id, 'akwa-1');
+  r := totem_resultat_commande(v_id, 'akwa-1', false, 'en retard', null, 0);
+  assert (r ->> 'deja')::boolean and (select reprises from commandes where id = v_id) = 1, 'un échec de la tentative 0 ne compte pas pendant la tentative 1';
+  r := totem_resultat_commande(v_id, 'akwa-1', true, 'Transfert reussi', 'MP-11', 1);
+  assert r ->> 'sortie' = 'envoyee', r;
+  raise notice '✓ 11.10 un résultat vaut pour SA tentative : rejoué ou en retard, il ne rend pas les XAFe d''un transfert parti';
+end $$;
+
+-- 11.11 · un paramètre mal formé est refusé avant d'être écrit.
+begin;
+set local xafe.compte = 'dddddddd-0000-0000-0000-000000000001';
+do $$
+declare v jsonb;
+begin
+  foreach v in array array['{"placeur": 0.0005, "preneur": "0.001", "sortie": 0.005}'::jsonb, '{"placeur": 0.0005, "preneur": 0.001, "sortie": 0.5}'::jsonb, '{"placeur": 0.0005}'::jsonb] loop
+    begin
+      perform admin_modifier_parametre('frais', v);
+      raise exception 'aurait dû refuser : %', v;
+    exception when others then
+      assert sqlerrm = 'paramètre invalide', sqlerrm;
+    end;
+  end loop;
+  begin
+    perform admin_modifier_parametre('paliers', '{"0": {"entree_jour": 500000}, "1": null, "2": null}');
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm = 'paramètre invalide', sqlerrm;
+  end;
+  assert (parametre('frais') ->> 'sortie')::numeric = 0.005, 'rien n''a été écrit';
+  raise notice '✓ 11.11 des frais en texte, à 50 %%, ou un palier incomplet sont refusés avant d''arrêter le moteur';
+end $$;
+rollback;
+
+-- 11.12 · le plafond du palier compte aussi la chaîne, et des XAFe partis sur la chaîne restent comptés.
+begin;
+set local xafe.compte = '22222222-2222-2222-2222-222222222222';
+do $$
+declare r jsonb;
+begin
+  begin
+    perform demander_retrait_crypto('USDT', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 1000, null, '1357');
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm = 'plafond du palier atteint', 'Bob (palier 0) ne sort pas 600 000 XAF par la chaîne : ' || sqlerrm;
+  end;
+  r := demander_retrait_crypto('XAFe', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 20000, 'k-cr-x', '1357');
+  r := chaine_resultat_retrait(r ->> 'reference', true, '0xtx-x');
+  assert total('XAFe') = circulation() and circulation_chaine() = 20000, format('soldes %s, circulation %s, chaîne %s', total('XAFe'), circulation(), circulation_chaine());
+  raise notice '✓ 11.12 un retrait crypto compte dans le plafond ; des XAFe partis sur la chaîne restent dus et comptés';
+end $$;
+commit;
+
+-- 11.13 · une pièce de vérification est un fichier du dossier du compte, pas celui d'un autre.
+begin;
+set local xafe.compte = '22222222-2222-2222-2222-222222222222';
+do $$
+begin
+  begin
+    perform demander_verification('identite', '["33333333-3333-3333-3333-333333333333/entreprise/rccm.jpg"]');
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm = 'pièce invalide', sqlerrm;
+  end;
+  raise notice '✓ 11.13 on ne joint pas les papiers d''un autre client';
+end $$;
+rollback;
+
+-- 11.14 · une sortie ne se cloue pas à un boîtier muet.
+update terminaux set vu_le = now() - interval '1 hour' where id = 'akwa-1';
+begin;
+set local xafe.compte = '11111111-1111-1111-1111-111111111111';
+do $$
+declare avant numeric := solde('11111111-1111-1111-1111-111111111111', 'XAFe', 'dispo');
+begin
+  begin
+    perform demander_sortie(10000, 'aaaaaaaa-0000-0000-0000-000000000001', null, '1234');
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm = 'aucun boîtier en ligne pour cet opérateur', sqlerrm;
+  end;
+  assert solde('11111111-1111-1111-1111-111111111111', 'XAFe', 'dispo') = avant, 'rien n''est bloqué';
+  raise notice '✓ 11.14 sans boîtier en ligne, une sortie est refusée au lieu de bloquer les XAFe';
+end $$;
+rollback;
+update terminaux set vu_le = now() where id = 'akwa-1';
+
+do $$
+begin
+  assert total('XAFe') = circulation(), format('XAFe : %s en soldes, %s en circulation', total('XAFe'), circulation());
+  assert not exists (select 1 from ordres where bloque < 0) and not exists (select 1 from soldes where bloque < 0 or disponible < 0);
+  raise notice '✓ 11.15 à la fin, la somme des soldes vaut toujours la circulation';
+end $$;

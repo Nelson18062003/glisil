@@ -52,12 +52,30 @@ PSQL="psql -h /tmp -p $PORT -U postgres -v ON_ERROR_STOP=1 -q"
 
 $COMME "PATH=$PATH $PSQL -c 'create database xafe'" >/dev/null
 
-# auth.uid() : chez Supabase, c'est le compte du jeton ; ici, une variable de session.
+# Ce que Supabase pose AVANT nos migrations, imité au plus près — sinon le
+# harnais éprouverait un PostgreSQL plus sage que la production :
+#   · anon et authenticated reçoivent d'office ALL sur toute table et EXECUTE
+#     sur toute fonction de public (les « default privileges » du projet) ;
+#   · pgcrypto vit dans le schéma « extensions », pas dans public ;
+#   · auth.uid() est le compte du jeton — ici, une variable de session ;
+#   · auth.users existe, et nos migrations y posent un déclencheur.
 cat >"$GRAPPE/auth.sql" <<'SQL'
+create role anon nologin;
+create role authenticated nologin;
+create role service_role nologin bypassrls;
+grant usage on schema public to anon, authenticated, service_role;
+alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
+alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+create schema extensions;
+create extension pgcrypto with schema extensions;
 create schema auth;
 create function auth.uid() returns uuid language sql stable as $$
   select nullif(current_setting('xafe.compte', true), '')::uuid
 $$;
+grant usage on schema auth to anon, authenticated;
+grant execute on function auth.uid() to anon, authenticated;
+create table auth.users (id uuid primary key, phone text, email text);
 SQL
 $COMME "PATH=$PATH $PSQL -d xafe -f $GRAPPE/auth.sql" >/dev/null
 
@@ -76,4 +94,6 @@ if [ "$STATUT" != "0" ]; then
   echo "✗ un scénario est tombé (voir ci-dessus)"
   exit 1
 fi
+echo "· courses"
+. "$ICI/moteur/courses.sh"
 echo "✓ le moteur tient"

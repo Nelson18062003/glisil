@@ -94,6 +94,7 @@ begin
   perform _exiger_droit('voir');
   select jsonb_build_object(
     'circulation', circulation(),
+    'circulation_chaine', circulation_chaine(),
     'soldes', (select coalesce(jsonb_object_agg(actif, jsonb_build_object('disponible', d, 'bloque', b)), '{}'::jsonb)
                  from (select actif, sum(disponible) d, sum(bloque) b from soldes where compte_id <> compte_maison() group by actif) s),
     'maison', (select coalesce(jsonb_object_agg(actif, disponible), '{}'::jsonb) from soldes where compte_id = compte_maison()),
@@ -138,64 +139,98 @@ begin
   select coalesce(jsonb_agg(jsonb_build_object('id', e.id, 'terminal', e.terminal, 'operateur', e.operateur, 'float_numero', e.float_numero,
                             'numero_payeur', e.numero_payeur, 'montant', e.montant, 'reference_operateur', e.reference_operateur,
                             'transaction_id', e.transaction_id, 'texte', e.texte, 'emis_le', e.emis_le, 'etat', e.etat,
+                            'motif', e.motif, 'bloquee', e.bloquee,
                             'depot_reference', (select reference from depots where id = e.depot_id), 'cree_le', e.cree_le,
                             'compte_suggere', (select jsonb_build_object('id', c.id, 'nom', c.nom, 'telephone', c.telephone)
-                                                 from numeros n join comptes c on c.id = n.compte_id
-                                                where n.numero = e.numero_payeur and n.retire_le is null limit 1)) order by e.cree_le desc), '[]'::jsonb)
+                                                 from comptes c where c.id = _proprietaire_du_numero(e.numero_payeur))) order by e.cree_le desc), '[]'::jsonb)
     into r
     from (select * from entrees_retenues where etat = p_etat order by cree_le desc limit p_n) e;
   return r;
 end $$;
 
 -- Rapprocher à la main : le client a mal recopié son ID, ou n'a rien
--- déclaré ; l'opérateur rattache le SMS retenu à son dossier. Le crédit suit
--- exactement la voie automatique (_crediter_declaration), palier compris.
+-- déclaré, ou l'appariement a refusé (payeur d'un autre compte, ID tapé par
+-- plusieurs) ; l'opérateur rattache le SMS retenu au dossier qu'il a vérifié.
+-- C'est la seule voie qui passe outre la règle du numéro payeur : un humain a
+-- regardé. Le crédit suit la voie automatique (_crediter_declaration), palier
+-- compris. Le verrou du transaction ID est pris AVANT celui de la ligne,
+-- dans le même ordre que declarer_transaction : jamais d'étreinte mortelle.
 create function admin_rapprocher_retenue(p_id bigint, p_reference text) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare v_r entrees_retenues; v_d depots; v_x depot_declarations;
+declare v_r entrees_retenues; v_d depots; v_x depot_declarations; v_tx text;
 begin
   perform _exiger_droit('rapprocher');
-  select * into v_r from entrees_retenues where id = p_id for update;
+  select * into v_r from entrees_retenues where id = p_id;
   if not found then raise exception 'entrée inconnue'; end if;
+  if v_r.operateur is null or coalesce(v_r.montant, 0) <= 0 then
+    raise exception 'opérateur ou montant inconnu' using detail = 'ce SMS ne se crédite pas : remboursement manuel';
+  end if;
+  -- un SMS dont la référence n'a pas été lue reçoit un identifiant à lui, pour qu'un second ne lui soit pas confondu
+  v_tx := case when length(coalesce(v_r.transaction_id, '')) >= 6 then v_r.transaction_id
+               else 'SMS' || upper(regexp_replace(v_r.terminal, '[^A-Za-z0-9]', '', 'g')) || v_r.source_id::text end;
+  perform pg_advisory_xact_lock(hashtext('tx:' || v_r.operateur || ':' || v_tx));
+  select * into v_r from entrees_retenues where id = p_id for update;
   if v_r.etat <> 'retenue' then raise exception 'cette entrée n''est plus retenue' using detail = v_r.etat; end if;
+  if exists (select 1 from depot_paiements where terminal = v_r.terminal and source_id = v_r.source_id) then
+    raise exception 'ce SMS a déjà crédité un dépôt';
+  end if;
   select * into v_d from depots where reference = p_reference for update;
   if not found then raise exception 'dépôt inconnu'; end if;
   if v_d.etat = 'annule' then raise exception 'ce dépôt est annulé'; end if;
   if v_d.operateur <> v_r.operateur then raise exception 'l''opérateur du SMS n''est pas celui du dossier'; end if;
-  if exists (select 1 from depot_declarations where operateur = v_r.operateur and transaction_id = v_r.transaction_id and etat = 'credite') then
+  if exists (select 1 from depot_declarations where operateur = v_r.operateur and transaction_id = v_tx and etat = 'credite') then
     raise exception 'transaction ID déjà utilisé';
   end if;
-  -- une déclaration qui attendait ce même ID sur ce dossier est reprise ; sinon on l'écrit
-  select * into v_x from depot_declarations where depot_id = v_d.id and transaction_id = v_r.transaction_id;
-  if not found then
+  -- la déclaration de CE compte pour cet ID est reprise sur ce dossier ; sinon on l'écrit
+  select * into v_x from depot_declarations where compte_id = v_d.compte_id and operateur = v_r.operateur and transaction_id = v_tx for update;
+  if found then
+    update depot_declarations set depot_id = v_d.id, etat = 'attendu', motif = 'rapproché par l''administration'
+     where id = v_x.id returning * into v_x;
+  else
     insert into depot_declarations (depot_id, compte_id, operateur, transaction_id, motif)
-    values (v_d.id, v_d.compte_id, v_r.operateur, v_r.transaction_id, 'rapproché par l''administration')
-    on conflict (operateur, transaction_id) do update set depot_id = v_d.id, compte_id = v_d.compte_id, etat = 'attendu', motif = 'rapproché par l''administration'
+    values (v_d.id, v_d.compte_id, v_r.operateur, v_tx, 'rapproché par l''administration')
     returning * into v_x;
-  elsif v_x.etat = 'refuse' then
-    update depot_declarations set etat = 'attendu', motif = 'rapproché par l''administration' where id = v_x.id returning * into v_x;
   end if;
   v_x := _crediter_declaration(v_x.id, v_r.terminal, v_r.source_id, v_r.montant, v_r.numero_payeur, v_r.reference_operateur, v_r.texte, v_r.emis_le, v_r.id);
+  if v_x.etat = 'credite' then
+    -- les autres comptes qui attendaient ce même ID savent qu'il est pris
+    update depot_declarations set etat = 'refuse', motif = 'rattaché à un autre dossier par l''équipe'
+     where operateur = v_r.operateur and transaction_id = v_tx and etat = 'attendu';
+  end if;
   perform _journaliser('rapprocher_retenue', p_id::text, jsonb_build_object('reference', p_reference, 'resultat', v_x.etat));
   return _declaration_json(v_x);
 end $$;
 
--- Rembourser : l'argent repart au payeur par TOTEM (un transfert sans sortie
--- client), et l'entrée est close. Le montant rendu est celui du SMS.
+-- Rembourser : l'argent repart au payeur par TOTEM, depuis le float qui l'a
+-- reçu, et l'entrée est close (elle revient « retenue » si le transfert
+-- échoue). Jamais un SMS qui a déjà crédité quelqu'un : ce serait payer deux
+-- fois. Un remboursement échoué se relance : chaque essai a sa clé.
 create function admin_rembourser_retenue(p_id bigint, p_note text) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare v_r entrees_retenues; v_float floats;
+declare v_r entrees_retenues; v_float floats; v_n int;
 begin
   perform _exiger_droit('rembourser');
   select * into v_r from entrees_retenues where id = p_id for update;
   if not found then raise exception 'entrée inconnue'; end if;
   if v_r.etat <> 'retenue' then raise exception 'cette entrée n''est plus retenue' using detail = v_r.etat; end if;
-  if v_r.numero_payeur is null or v_r.montant is null then raise exception 'payeur ou montant inconnu : remboursement manuel'; end if;
+  if v_r.numero_payeur is null or coalesce(v_r.montant, 0) <= 0 then raise exception 'payeur ou montant inconnu : remboursement manuel'; end if;
+  if exists (select 1 from depot_paiements where terminal = v_r.terminal and source_id = v_r.source_id)
+     or (length(coalesce(v_r.transaction_id, '')) >= 6
+         and exists (select 1 from depot_declarations where operateur = v_r.operateur and transaction_id = v_r.transaction_id and etat = 'credite')) then
+    raise exception 'ce paiement a déjà été crédité' using detail = 'le rembourser le paierait deux fois';
+  end if;
   select * into v_float from floats where id = v_r.float_id;
+  if not found or v_float.terminal is null then
+    raise exception 'float inconnu : remboursement manuel' using detail = 'aucun boîtier ne porte la carte qui a reçu cet argent';
+  end if;
+  if exists (select 1 from remboursements where retenue_id = p_id and etat in ('en_attente', 'en_cours')) then
+    raise exception 'un remboursement est déjà en route';
+  end if;
+  select count(*) + 1 into v_n from remboursements where retenue_id = p_id;
   insert into remboursements (retenue_id, terminal, float_id, operateur, numero, montant, note, cle)
-  values (p_id, v_float.terminal, v_r.float_id, v_r.operateur, v_r.numero_payeur, v_r.montant, p_note, 'rbt-' || p_id::text);
+  values (p_id, v_float.terminal, v_float.id, v_r.operateur, v_r.numero_payeur, v_r.montant, p_note, 'rbt-' || p_id::text || '-' || v_n::text);
   update entrees_retenues set etat = 'remboursee' where id = p_id;
-  perform _journaliser('rembourser_retenue', p_id::text, jsonb_build_object('montant', v_r.montant, 'numero', v_r.numero_payeur, 'note', p_note));
+  perform _journaliser('rembourser_retenue', p_id::text, jsonb_build_object('montant', v_r.montant, 'numero', v_r.numero_payeur, 'note', p_note, 'essai', v_n));
   return jsonb_build_object('ok', true, 'montant', v_r.montant, 'numero', v_r.numero_payeur);
 end $$;
 
@@ -214,9 +249,11 @@ create table remboursements (
   reference_operateur text,
   cle        text not null unique,
   cree_le    timestamptz not null default now(),
+  reclamee_le timestamptz,
   traite_le  timestamptz
 );
 alter table remboursements enable row level security;
+create index remboursements_de_la_retenue on remboursements (retenue_id);
 
 create function totem_remboursements_en_attente(p_terminal text)
 returns setof remboursements language plpgsql security definer set search_path = public as $$
@@ -229,7 +266,8 @@ create function totem_reclamer_remboursement(p_id bigint, p_terminal text)
 returns remboursements language plpgsql security definer set search_path = public as $$
 declare v remboursements;
 begin
-  update remboursements set etat = 'en_cours', terminal = p_terminal where id = p_id and (terminal = p_terminal or terminal is null) and etat = 'en_attente' returning * into v;
+  update remboursements set etat = 'en_cours', terminal = p_terminal, reclamee_le = now()
+   where id = p_id and (terminal = p_terminal or terminal is null) and etat = 'en_attente' returning * into v;
   if not found then raise exception 'commande déjà prise ou inconnue'; end if;
   return v;
 end $$;
@@ -240,10 +278,27 @@ declare v remboursements;
 begin
   select * into v from remboursements where id = p_id and terminal = p_terminal for update;
   if not found then raise exception 'remboursement inconnu'; end if;
-  if v.etat in ('fait', 'echoue') then return jsonb_build_object('remboursement', v.etat, 'deja', true); end if;
+  -- un résultat ne vaut que pour un remboursement réclamé ; le reste est un doublon
+  if v.etat <> 'en_cours' then return jsonb_build_object('remboursement', v.etat, 'deja', true); end if;
   update remboursements set etat = case when p_ok then 'fait' else 'echoue' end, resultat = p_resultat, reference_operateur = p_reference_operateur, traite_le = now() where id = p_id;
   if not p_ok then update entrees_retenues set etat = 'retenue' where id = v.retenue_id; end if;
   return jsonb_build_object('remboursement', case when p_ok then 'fait' else 'echoue' end);
+end $$;
+
+-- Un remboursement réclamé par un boîtier qui s'est tu : rendu à un autre tour,
+-- comme une commande. Jamais un remboursement « fait » : l'argent est parti.
+create function admin_liberer_remboursement(p_id bigint) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v remboursements;
+begin
+  perform _exiger_droit('rembourser');
+  select * into v from remboursements where id = p_id for update;
+  if not found then raise exception 'remboursement inconnu'; end if;
+  if v.etat <> 'en_cours' then raise exception 'seul un remboursement en cours se libère' using detail = v.etat; end if;
+  if v.reclamee_le > now() - interval '5 minutes' then raise exception 'réclamé il y a moins de cinq minutes : le boîtier compose peut-être encore'; end if;
+  update remboursements set etat = 'en_attente', reclamee_le = null where id = p_id;
+  perform _journaliser('liberer_remboursement', p_id::text);
+  return jsonb_build_object('ok', true);
 end $$;
 
 -- ──────────────────────────── les sorties ──────────────────────────────────
@@ -297,7 +352,7 @@ end $$;
 -- Créer un boîtier : sa clé est rendue UNE fois, ici ; elle ne se relit pas.
 create function admin_creer_terminal(p_id text, p_nom text, p_lieu text) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare v_cle text := encode(gen_random_bytes(32), 'hex');
+declare v_cle text := encode(extensions.gen_random_bytes(32), 'hex');
 begin
   perform _exiger_droit('terminaux');
   if p_id !~ '^[a-z0-9-]{3,32}$' then raise exception 'identifiant invalide' using detail = 'minuscules, chiffres et tirets'; end if;
@@ -308,7 +363,7 @@ end $$;
 
 create function admin_renouveler_cle(p_id text) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare v_cle text := encode(gen_random_bytes(32), 'hex');
+declare v_cle text := encode(extensions.gen_random_bytes(32), 'hex');
 begin
   perform _exiger_droit('terminaux');
   update terminaux set cle = v_cle where id = p_id;
@@ -322,6 +377,11 @@ language plpgsql security definer set search_path = public as $$
 declare v_id int;
 begin
   perform _exiger_droit('terminaux');
+  if normaliser_numero(p_numero) !~ '^6[0-9]{8}$' or operateur_du_numero(p_numero) is distinct from p_operateur then
+    raise exception 'numéro invalide' using detail = 'un numéro camerounais de cet opérateur';
+  end if;
+  perform 1 from terminaux where id = p_terminal;
+  if not found then raise exception 'terminal inconnu'; end if;
   insert into floats (operateur, numero, terminal, code_agent) values (p_operateur, normaliser_numero(p_numero), p_terminal, p_code_agent) returning id into v_id;
   perform _journaliser('creer_float', v_id::text, jsonb_build_object('operateur', p_operateur, 'numero', normaliser_numero(p_numero), 'terminal', p_terminal));
   return jsonb_build_object('id', v_id);
@@ -441,11 +501,56 @@ begin
   return r || jsonb_build_object('operateurs', (select jsonb_agg(jsonb_build_object('id', id, 'nom', nom, 'plafond_par_transfert', plafond_par_transfert, 'plafond_jour', plafond_jour) order by id) from operateurs));
 end $$;
 
+-- Un paramètre est lu par le moteur à chaque geste : une valeur mal formée
+-- (un nombre en texte, une clé oubliée, des frais à 50 %) arrêterait les
+-- dépôts, les sorties ou le verrou du code secret — ou lèverait un plafond.
+-- Elle est refusée ici, avec la raison, avant d'être écrite.
+create function _nombre_entre(v jsonb, p_min numeric, p_max numeric, p_entier boolean default false) returns boolean
+language sql immutable as $$
+  -- une clé absente rend null, et « not null » n'est pas vrai : on dit faux, net
+  select coalesce(jsonb_typeof(v) = 'number' and (v #>> '{}')::numeric between p_min and p_max
+                  and (not p_entier or (v #>> '{}')::numeric = trunc((v #>> '{}')::numeric)), false)
+$$;
+
+create function _verifier_parametre(p_cle text, v jsonb) returns void
+language plpgsql as $$
+declare k text; p jsonb; ok boolean;
+begin
+  if jsonb_typeof(v) <> 'object' then raise exception 'paramètre invalide' using detail = 'un objet JSON est attendu'; end if;
+  ok := case p_cle
+    when 'frais' then _nombre_entre(v -> 'placeur', 0, 0.05) and _nombre_entre(v -> 'preneur', 0, 0.05) and _nombre_entre(v -> 'sortie', 0, 0.05)
+    when 'marche' then v ->> 'paire' = 'USDT/XAFe' and _nombre_entre(v -> 'pas_prix', 0.01, 100) and _nombre_entre(v -> 'quantite_min', 0.01, 1000000)
+                       and jsonb_typeof(v -> 'ouvert') = 'boolean'
+    when 'depot' then _nombre_entre(v -> 'validite_minutes', 5, 1440, true) and _nombre_entre(v -> 'grace_minutes', 0, 10080, true)
+    when 'sortie' then _nombre_entre(v -> 'reprises_max', 1, 10, true)
+    when 'code_secret' then _nombre_entre(v -> 'essais', 1, 10, true) and _nombre_entre(v -> 'verrou_minutes', 1, 1440, true)
+                       and _nombre_entre(v -> 'longueur_min', 4, 6, true) and _nombre_entre(v -> 'longueur_max', 4, 8, true)
+                       and (v ->> 'longueur_min')::int <= (v ->> 'longueur_max')::int
+    when 'crypto' then _nombre_entre(v -> 'frais' -> 'USDT', 0, 1000) and _nombre_entre(v -> 'frais' -> 'XAFe', 0, 1000000)
+                       and _nombre_entre(v -> 'confirmations' -> 'bep20', 1, 1000, true) and _nombre_entre(v -> 'confirmations' -> 'trc20', 1, 1000, true)
+                       and jsonb_typeof(v -> 'retraits_ouverts') = 'boolean'
+    when 'paliers' then (select bool_and(x) from (values (v ? '0'), (v ? '1'), (v ? '2')) t(x))
+    else false end;
+  if p_cle = 'paliers' and ok then
+    foreach k in array array['0', '1', '2'] loop
+      p := v -> k;
+      if jsonb_typeof(p) = 'null' then continue; end if;
+      if not (jsonb_typeof(p) = 'object' and _nombre_entre(p -> 'entree_jour', 0, 1e12, true) and _nombre_entre(p -> 'sortie_jour', 0, 1e12, true)) then
+        ok := false;
+      end if;
+    end loop;
+  end if;
+  if not coalesce(ok, false) then
+    raise exception 'paramètre invalide' using detail = format('« %s » : une clé manque, ou une valeur sort de ses bornes', p_cle);
+  end if;
+end $$;
+
 create function admin_modifier_parametre(p_cle text, p_valeur jsonb) returns jsonb
 language plpgsql security definer set search_path = public as $$
 begin
   perform _exiger_droit('parametres');
   if p_cle not in ('frais', 'marche', 'depot', 'sortie', 'paliers', 'crypto', 'code_secret') then raise exception 'paramètre inconnu'; end if;
+  perform _verifier_parametre(p_cle, p_valeur);
   update parametres set valeur = p_valeur where cle = p_cle;
   if not found then raise exception 'paramètre inconnu'; end if;
   perform _journaliser('modifier_parametre', p_cle, p_valeur);
@@ -462,15 +567,4 @@ begin
   return r;
 end $$;
 
--- ─────────────────────────────── droits ────────────────────────────────────
-grant execute on function
-  mon_profil_admin(), admin_creer_administrateur(uuid, text, text, text), admin_desactiver_administrateur(uuid, boolean),
-  admin_tableau(), admin_entrees(text, int), admin_retenues(text, int), admin_rapprocher_retenue(bigint, text), admin_rembourser_retenue(bigint, text),
-  admin_sorties(text, int), admin_liberer_commande(bigint),
-  admin_terminaux(), admin_creer_terminal(text, text, text), admin_renouveler_cle(text), admin_creer_float(text, text, text, text), admin_activer_float(int, boolean),
-  admin_clients(text, int), admin_client(uuid), admin_changer_palier(uuid, int, text), admin_valider_verification(uuid, boolean, text), admin_desactiver_compte(uuid, boolean, text),
-  admin_marche(), admin_parametres(), admin_modifier_parametre(text, jsonb), admin_journal(int)
-  to authenticated;
-grant all on all tables in schema public to service_role;
-grant all on all sequences in schema public to service_role;
-grant execute on all functions in schema public to service_role;
+-- Les GRANT sont dans 0004_droits.sql.
