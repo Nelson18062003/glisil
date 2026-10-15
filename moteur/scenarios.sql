@@ -503,6 +503,8 @@ begin
   assert jsonb_array_length(mes_numeros()) = 2;
   select substring(texte from 'code est ([0-9]{6})') into v_code from messages_sortants where numero = '699112233';
   assert v_code is not null, 'un SMS avec le code attend TOTEM';
+  assert (select texte like 'Glisil : %' from messages_sortants where numero = '699112233'), 'le SMS du code se signe Glisil';
+  assert (select nom from comptes where maison) = 'Glisil', 'le compte de la maison s''appelle Glisil';
   begin
     perform demander_sortie(1000, v_id, null, '1357');
     raise exception 'aurait dû refuser';

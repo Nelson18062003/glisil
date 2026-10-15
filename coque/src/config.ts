@@ -9,11 +9,11 @@ import Constants from 'expo-constants';
 type Extra = { baseUrl?: string; startPath?: string };
 const extra = (Constants.expoConfig?.extra ?? {}) as Extra;
 
-export const BASE_URL = (extra.baseUrl ?? 'https://app.xafe.exchange').replace(/\/+$/, '');
+export const BASE_URL = (extra.baseUrl ?? 'https://app.glisil.com').replace(/\/+$/, '');
 export const START_URL = BASE_URL + (extra.startPath ?? '/');
 export const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 /** Ajouté à l'agent utilisateur : l'application sait qu'elle est dans la coque. */
-export const USER_AGENT_SUFFIX = `XAFeExchange/${APP_VERSION}`;
+export const USER_AGENT_SUFFIX = `Glisil/${APP_VERSION}`;
 
 /** Les pages qui s'ouvrent DANS la coque ; tout le reste part vers le téléphone (tel:, wa.me, navigateur). */
 export function estUrlDeLApp(url: string): boolean {

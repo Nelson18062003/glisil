@@ -1,4 +1,4 @@
-# XAFe Exchange · l'administration
+# Glisil · l'administration
 
 L'application web de l'équipe : les réserves, les entrées (dossiers de dépôt,
 SMS retenus à rapprocher ou rembourser), les sorties que TOTEM compose, les
@@ -33,8 +33,8 @@ la migration et compare.
 
 Sans `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`, une maison déjà vivante
 tourne en mémoire : trois boîtiers, cinq floats, douze clients, des SMS
-retenus, une sortie coincée. Comptes : `nelson@xafe.exchange` (super admin),
-`ops@xafe.exchange` (opérateur), `support@xafe.exchange` (support), mot de
+retenus, une sortie coincée. Comptes : `nelson@glisil.com` (super admin),
+`ops@glisil.com` (opérateur), `support@glisil.com` (support), mot de
 passe `demo`.
 
 Avec les deux variables, la connexion est par e-mail et mot de passe

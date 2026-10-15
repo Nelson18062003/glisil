@@ -10,9 +10,9 @@ import type { GuichetAdmin } from "./guichet";
 import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, Tableau, Terminal, Transfert, Wallets } from "./types";
 
 export const COMPTES_DEMO: Record<string, { motDePasse: string; profil: Profil }> = {
-  "nelson@xafe.exchange": { motDePasse: "demo", profil: { id: "d1", email: "nelson@xafe.exchange", nom: "Nelson Soh", role: "super_admin", actif: true, droits: DROITS.super_admin } },
-  "ops@xafe.exchange": { motDePasse: "demo", profil: { id: "d2", email: "ops@xafe.exchange", nom: "Aminatou Bello", role: "operateur", actif: true, droits: DROITS.operateur } },
-  "support@xafe.exchange": { motDePasse: "demo", profil: { id: "d3", email: "support@xafe.exchange", nom: "Serge Kamga", role: "support", actif: true, droits: DROITS.support } },
+  "nelson@glisil.com": { motDePasse: "demo", profil: { id: "d1", email: "nelson@glisil.com", nom: "Nelson Soh", role: "super_admin", actif: true, droits: DROITS.super_admin } },
+  "ops@glisil.com": { motDePasse: "demo", profil: { id: "d2", email: "ops@glisil.com", nom: "Aminatou Bello", role: "operateur", actif: true, droits: DROITS.operateur } },
+  "support@glisil.com": { motDePasse: "demo", profil: { id: "d3", email: "support@glisil.com", nom: "Serge Kamga", role: "support", actif: true, droits: DROITS.support } },
 };
 
 const CLE_STOCKAGE = "xafe.admin.demo.v1";

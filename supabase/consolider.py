@@ -31,6 +31,8 @@ TEMOINS = {
     "0005_exploitation.sql": ("false", "rejouable telle quelle"),
     "0006_veilleur_en_ligne.sql": ("to_regclass('public.chaine_tours') is not null", "la table des tours du veilleur"),
     "0007_configuration_du_veilleur.sql": ("to_regprocedure('public.chaine_configuration()') is not null", "la fonction chaine_configuration"),
+    # 0008 renomme et remplace une fonction : rejouable telle quelle.
+    "0008_glisil.sql": ("false", "rejouable telle quelle"),
 }
 
 
@@ -43,7 +45,7 @@ def main() -> None:
     sortie = RACINE / "migrations" / f"{date}_consolidated.sql"
     morceaux = [
         "-- ╔════════════════════════════════════════════════════════════════════════╗",
-        "-- ║  XAFe Exchange · toutes les migrations, en un seul fichier             ║",
+        "-- ║  Glisil · toutes les migrations, en un seul fichier             ║",
         "-- ║  Fabriqué par supabase/consolider.py à partir de supabase/migrations : ║",
         "-- ║  ne pas modifier à la main, le refaire.                                 ║",
         "-- ║                                                                        ║",

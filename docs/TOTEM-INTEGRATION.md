@@ -1,8 +1,8 @@
-# TOTEM ↔ XAFe Exchange · le contrat
+# TOTEM ↔ Glisil · le contrat
 
 TOTEM est le boîtier qui porte les cartes SIM des floats (les numéros MoMo
 que les clients paient) : il lit les SMS de l'opérateur et compose les
-transferts USSD. XAFe Exchange ne parle jamais à MTN ni à Orange : il parle à
+transferts USSD. Glisil ne parle jamais à MTN ni à Orange : il parle à
 TOTEM. Ce document dit exactement ce qui passe, dans les deux sens.
 
 ## Deux sens, deux portes

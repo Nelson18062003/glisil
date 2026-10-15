@@ -148,7 +148,7 @@ verifier(reste == 0, "aucun encaissement ne reste retenu : chaque ID tapé tel q
 # signature (#54). Seule la requête capturée, telle quelle, est rejouée.
 import totem.xafe as module_xafe                  # noqa: E402
 ids = sql("""insert into messages_sortants (terminal, operateur, numero, texte, cle, expire_le)
-             select 'akwa-1', 'mtn', '677120001', 'XAFe Exchange : votre code est 000000.', 'chaine-' || g || '-' || extract(epoch from clock_timestamp()), now() + interval '10 minutes'
+             select 'akwa-1', 'mtn', '677120001', 'Glisil : votre code est 000000.', 'chaine-' || g || '-' || extract(epoch from clock_timestamp()), now() + interval '10 minutes'
                from generate_series(1, 2) g returning id""").split()
 premier, second = int(ids[0]), int(ids[1])
 releve = [d["id"] for d in porte.commandes_en_attente()]

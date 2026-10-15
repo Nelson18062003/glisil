@@ -219,7 +219,7 @@ try {
   await capturer("wallets");
   await page.getByRole("button", { name: "Se déconnecter" }).click();
   await page.waitForURL(/\/connexion$/);
-  await page.getByLabel("E-mail").fill("support@xafe.exchange");
+  await page.getByLabel("E-mail").fill("support@glisil.com");
   await page.getByLabel("Mot de passe").fill("demo");
   await page.getByRole("button", { name: "Entrer" }).click();
   await page.waitForURL(`${BASE}/`);

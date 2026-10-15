@@ -126,7 +126,7 @@ const ok = (texte: string) => { n++; console.log(`✓ ${texte}`); };
     if (nom === "totem_commandes_en_attente") return [{ id: 7, parametres: { operateur: "mtn", numero: "677123456", montant: 746250 } }];
     if (nom === "totem_reclamer_commande") { if (prise) throw new Error("commande déjà prise ou inconnue"); prise = true; return { id: 7, etat: "en_cours" }; }
     if (nom === "totem_resultat_commande") return { commande: args.p_ok ? "faite" : "en_attente", sortie: "en_cours" };
-    if (nom === "totem_messages_en_attente") return [{ id: 3, numero: "699112233", texte: "XAFe Exchange : votre code est 123456." }];
+    if (nom === "totem_messages_en_attente") return [{ id: 3, numero: "699112233", texte: "Glisil : votre code est 123456." }];
     if (nom === "totem_resultat_message") return { message: args.p_ok ? "envoye" : "echoue" };
     if (nom === "totem_remboursements_en_attente") return [{ id: 5, numero: "670999333", montant: 15000 }];
     if (nom === "totem_reclamer_remboursement") return { id: 5, etat: "en_cours" };

@@ -1,7 +1,7 @@
 import { createTheme } from "@mui/material/styles";
 
 /*
- * XAFe Exchange · thème Material Design 3.
+ * Glisil · thème Material Design 3.
  * Une couleur principale (vert), un accent (ambre, celui du logo), et les
  * conteneurs tonals de Material pour les icônes et les états.
  */

@@ -64,7 +64,7 @@ export function App() {
   const deverrouiller = useCallback(async () => {
     if (biometrieDisponible === false) { setVerrouille(false); return; }
     try {
-      const r = await LocalAuthentication.authenticateAsync({ promptMessage: 'Ouvrir XAFe Exchange', cancelLabel: 'Annuler', disableDeviceFallback: false });
+      const r = await LocalAuthentication.authenticateAsync({ promptMessage: 'Ouvrir Glisil', cancelLabel: 'Annuler', disableDeviceFallback: false });
       if (r.success) setVerrouille(false);
     } catch {
       /* le téléphone n'a pas pu demander : on reste verrouillé, le bouton permet de réessayer */
@@ -181,7 +181,7 @@ export function App() {
         {verrouille && biometrieDisponible !== false && (
           <View style={[styles.voile, { backgroundColor: VERT }]}>
             <Text style={styles.marque}>X</Text>
-            <Text style={[styles.titre, { color: '#FFFFFF' }]}>XAFe Exchange</Text>
+            <Text style={[styles.titre, { color: '#FFFFFF' }]}>Glisil</Text>
             <Text style={[styles.texte, { color: '#DDEFE4' }]}>Votre empreinte ou votre visage pour ouvrir.</Text>
             <Pressable onPress={() => void deverrouiller()} style={[styles.bouton, { backgroundColor: '#FFFFFF' }]}><Text style={[styles.boutonTexte, { color: VERT }]}>Déverrouiller</Text></Pressable>
           </View>

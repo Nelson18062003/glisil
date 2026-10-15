@@ -1,9 +1,9 @@
 {
-  "name": "xafe-exchange-app",
+  "name": "glisil-app",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "XAFe Exchange · l'application des clients (Android, Material Design 3)",
+  "description": "Glisil · l'application des clients (Android, Material Design 3)",
   "scripts": {
     "dev": "vite --host --port 5180",
     "build": "tsc -p tsconfig.json && vite build",

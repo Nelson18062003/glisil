@@ -44,9 +44,9 @@ export function Coquille({ titre, actions, children }: { titre: string; actions?
     <Box sx={{ display: "flex", minHeight: "100dvh", bgcolor: "background.default" }}>
       <Drawer variant="permanent" sx={{ width: LARGEUR, flexShrink: 0, "& .MuiDrawer-paper": { width: LARGEUR, boxSizing: "border-box", borderRight: 1, borderColor: "divider", bgcolor: "background.paper" } }}>
         <Stack direction="row" alignItems="center" gap={1.5} sx={{ px: 2.5, py: 2.5 }}>
-          <Avatar sx={{ bgcolor: "primary.main", fontWeight: 700 }}>X</Avatar>
+          <Marque size={40} />
           <Box>
-            <Typography fontWeight={700} lineHeight={1.1}>XAFe Exchange</Typography>
+            <Typography fontWeight={700} lineHeight={1.1}>Glisil</Typography>
             <Typography variant="caption">Administration</Typography>
           </Box>
         </Stack>
@@ -188,6 +188,18 @@ export function Section({ titre, action, children }: { titre: string; action?: R
         {action}
       </Stack>
       {children}
+    </Box>
+  );
+}
+
+/** La marque Glisil : un G blanc d'un seul trait, dont la barre file vers la droite (même dessin que coque/scripts/icones.py). */
+export function Marque({ size = 44 }: { size?: number }) {
+  return (
+    <Box component="svg" viewBox="0 0 100 100" role="img" aria-label="Glisil" sx={{ width: size, height: size, flexShrink: 0, borderRadius: "50%", bgcolor: "primary.main" }}>
+      <path d="M 72.5 50 A 22.5 22.5 0 1 1 60.56 30.13" fill="none" stroke="#FFFFFF" strokeWidth={11} />
+      <circle cx={60.56} cy={30.13} r={5.5} fill="#FFFFFF" />
+      <rect x={50} y={39} width={28} height={11} fill="#FFFFFF" />
+      <circle cx={50} cy={44.5} r={5.5} fill="#FFFFFF" />
     </Box>
   );
 }

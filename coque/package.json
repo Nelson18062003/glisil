@@ -1,9 +1,9 @@
 {
-  "name": "xafe-exchange-coque",
+  "name": "glisil-coque",
   "version": "1.0.0",
   "private": true,
   "main": "index.ts",
-  "description": "XAFe Exchange · la coque Android (et iOS) de l'application cliente : une WebView, le pont vers le téléphone, le verrou biométrique, les mises à jour",
+  "description": "Glisil · la coque Android (et iOS) de l'application cliente : une WebView, le pont vers le téléphone, le verrou biométrique, les mises à jour",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",

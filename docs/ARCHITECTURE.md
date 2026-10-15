@@ -1,4 +1,4 @@
-# XAFe Exchange · l'architecture
+# Glisil · l'architecture
 
 *Ce que le système est, pièce par pièce, et où vit chaque règle.*
 

@@ -366,3 +366,15 @@ export function useCompteARebours(jusqua: string | undefined): number {
   }, [jusqua]);
   return reste;
 }
+
+/** La marque Glisil : un G blanc d'un seul trait, dont la barre file vers la droite (même dessin que coque/scripts/icones.py). */
+export function Marque({ size = 44 }: { size?: number }) {
+  return (
+    <Box component="svg" viewBox="0 0 100 100" role="img" aria-label="Glisil" sx={{ width: size, height: size, flexShrink: 0, borderRadius: "50%", bgcolor: "primary.main" }}>
+      <path d="M 72.5 50 A 22.5 22.5 0 1 1 60.56 30.13" fill="none" stroke="#FFFFFF" strokeWidth={11} />
+      <circle cx={60.56} cy={30.13} r={5.5} fill="#FFFFFF" />
+      <rect x={50} y={39} width={28} height={11} fill="#FFFFFF" />
+      <circle cx={50} cy={44.5} r={5.5} fill="#FFFFFF" />
+    </Box>
+  );
+}

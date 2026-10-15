@@ -58,7 +58,7 @@ export function Compte() {
         <Row icon={<HelpOutlineRounded />} tone="neutral" primary="Aide" to="/compte/aide" />
       </List>
       <Button variant="text" color="error" startIcon={<LogoutRounded />} onClick={() => void session.deconnecter()}>Se déconnecter</Button>
-      <Typography variant="caption" textAlign="center">XAFe Exchange · {import.meta.env.MODE === "production" ? "" : "mode "}{useGuichet().mode === "demo" ? "démonstration" : ""}</Typography>
+      <Typography variant="caption" textAlign="center">Glisil · {import.meta.env.MODE === "production" ? "" : "mode "}{useGuichet().mode === "demo" ? "démonstration" : ""}</Typography>
     </Screen>
   );
 }
@@ -341,7 +341,7 @@ export function CompteApi() {
       </Card>
       <Typography variant="body2">Les clés se créeront ici, avec leurs droits (lecture seule, ordres, retraits) et leur adresse IP autorisée. Rien à faire aujourd'hui : dites-nous ce dont vous avez besoin.</Typography>
       <Box sx={{ flex: 1 }} />
-      {WHATSAPP && <Button variant="outlined" startIcon={<WhatsApp />} href={`https://wa.me/${WHATSAPP}?text=${encodeURIComponent("Bonjour, je souhaite un accès API XAFe Exchange pour mon desk.")}`} target="_blank" rel="noopener">Nous écrire</Button>}
+      {WHATSAPP && <Button variant="outlined" startIcon={<WhatsApp />} href={`https://wa.me/${WHATSAPP}?text=${encodeURIComponent("Bonjour, je souhaite un accès API Glisil pour mon desk.")}`} target="_blank" rel="noopener">Nous écrire</Button>}
     </Screen>
   );
 }

@@ -1,23 +1,23 @@
 {
   "expo": {
-    "name": "XAFe Exchange",
-    "slug": "xafe-exchange",
-    "scheme": "xafe",
+    "name": "Glisil",
+    "slug": "glisil",
+    "scheme": "glisil",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "backgroundColor": "#F4F7F4",
     "ios": {
-      "bundleIdentifier": "exchange.xafe.app",
+      "bundleIdentifier": "com.glisil.app",
       "supportsTablet": false,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSFaceIDUsageDescription": "XAFe Exchange utilise Face ID pour que vous seul puissiez ouvrir l'application."
+        "NSFaceIDUsageDescription": "Glisil utilise Face ID pour que vous seul puissiez ouvrir l'application."
       }
     },
     "android": {
-      "package": "exchange.xafe.app",
+      "package": "com.glisil.app",
       "adaptiveIcon": {
         "backgroundColor": "#0B6B3A",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -33,10 +33,10 @@
       "expo-sharing",
       ["expo-splash-screen", { "image": "./assets/splash-icon.png", "imageWidth": 160, "resizeMode": "contain", "backgroundColor": "#0B6B3A" }],
       "expo-web-browser",
-      ["expo-local-authentication", { "faceIDPermission": "XAFe Exchange utilise Face ID pour que vous seul puissiez ouvrir l'application." }]
+      ["expo-local-authentication", { "faceIDPermission": "Glisil utilise Face ID pour que vous seul puissiez ouvrir l'application." }]
     ],
     "extra": {
-      "baseUrl": "https://app.xafe.exchange",
+      "baseUrl": "https://app.glisil.com",
       "startPath": "/"
     },
     "runtimeVersion": { "policy": "appVersion" },
