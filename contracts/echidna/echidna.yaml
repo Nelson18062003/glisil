@@ -1,0 +1,5 @@
+testLimit: 100000
+seqLen: 80
+shrinkLimit: 2000
+corpusDir: null
+cryticArgs: ["--solc-remaps", "@openzeppelin=node_modules/@openzeppelin", "--solc-args", "--optimize --optimize-runs 200"]

@@ -13,6 +13,8 @@ floats MoMo et les comptes en banque (`emissions` dans le moteur).
 ```sh
 npm install
 npm test                 # onze épreuves : référence unique, plafond du jour, rôles, pause, gel, reprise
+slither . --filter-paths node_modules   # l'analyse statique (0 constat)
+sh echidna/eprouver.sh   # 100 000 appels au hasard, six promesses (TEMOIN=1 : un jeton sans plafond doit y tomber)
 cp .env.example .env     # CLE_PRIVEE, RPC, CLE_BSCSCAN
 PLAFOND_JOUR_XAF=50000000 npm run deployer:testnet   # le plafond de frappe par jour, en XAF
 ```
