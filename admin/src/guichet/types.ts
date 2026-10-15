@@ -36,6 +36,8 @@ export type Entree = {
 export type Retenue = {
   id: number; terminal: string; operateur: string; float_numero: string; numero_payeur: string | null; montant: number | null; reference_operateur: string | null;
   transaction_id: string | null; texte: string | null; emis_le: string | null; etat: "retenue" | "rapprochee" | "remboursee"; depot_reference: string | null; cree_le: string;
+  /** pourquoi l'appariement automatique a refusé ; « bloquee » : seule l'équipe la dénoue */
+  motif?: string | null; bloquee?: boolean;
   compte_suggere: { id: string; nom: string | null; telephone: string } | null;
 };
 export type Transfert = { id: number; terminal: string; etat: string; montant_xafe: number; montant_envoye: number; reprises: number; resultat: string | null; reference_operateur: string | null; reclamee_le: string | null };

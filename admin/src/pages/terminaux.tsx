@@ -23,14 +23,15 @@ export function Terminaux() {
   const [erreur, setErreur] = useState<unknown>(null);
   const [enCours, setEnCours] = useState(false);
   const [copie, setCopie] = useState(false);
+  const [aRenouveler, setARenouveler] = useState<string | null>(null);
 
   const creer = async () => {
     setEnCours(true); setErreur(null);
     try { const r = await guichet.creerTerminal(f); setNouveau(false); setF({ id: "", nom: "", lieu: "" }); setCle(r); await rafraichir(); } catch (e) { setErreur(e); } finally { setEnCours(false); }
   };
   const renouveler = async (id: string) => {
-    setErreur(null);
-    try { const r = await guichet.renouvelerCle(id); setCle({ id, cle: r.cle }); } catch (e) { setErreur(e); }
+    setErreur(null); setEnCours(true);
+    try { const r = await guichet.renouvelerCle(id); setARenouveler(null); setCle({ id, cle: r.cle }); } catch (e) { setErreur(e); } finally { setEnCours(false); }
   };
   const ajouterFloat = async () => {
     if (!float) return;
@@ -61,12 +62,19 @@ export function Terminaux() {
           peut("terminaux") ? (
             <Stack direction="row" gap={0.5} key="a">
               <Button size="small" variant="outlined" onClick={() => setFloat(t.id)} sx={{ minHeight: 32 }}>Ajouter un float</Button>
-              <Button size="small" variant="text" onClick={() => void renouveler(t.id)} sx={{ minHeight: 32 }}>Renouveler la clé</Button>
+              <Button size="small" variant="text" onClick={() => setARenouveler(t.id)} sx={{ minHeight: 32 }}>Renouveler la clé</Button>
             </Stack>
           ) : "",
         ])}
       />
       <Typography variant="body2">Un boîtier est « muet » quand il n'a rien dit depuis dix minutes : ses floats reçoivent encore, mais aucun dossier neuf ne leur est attribué tant qu'un autre boîtier parle. La clé d'un boîtier signe chacun de ses appels ; elle se pose dans TOTEM et ne se relit pas ici.</Typography>
+
+      {/* Renouveler coupe le boîtier tout de suite : sans confirmation, un clic de travers arrêtait les dépôts et les sorties de toute une boutique. */}
+      <Dialogue ouvert={Boolean(aRenouveler)} titre={`Renouveler la clé de ${aRenouveler ?? ""} ?`} onFermer={() => setARenouveler(null)} onValider={() => aRenouveler && void renouveler(aRenouveler)} libelle="Renouveler la clé" couleur="error" enCours={enCours}>
+        <Typography variant="body2">L'ancienne clé cesse de marcher <b>tout de suite</b> : ce boîtier ne pourra plus pousser un SMS ni relever un transfert tant que la nouvelle n'est pas posée dans sa configuration. Les dépôts payés pendant ce temps restent sur la carte et arriveront quand il reparlera.</Typography>
+        <Typography variant="body2">À faire si la clé a fuité (carte SD perdue, boîtier retiré du service), ou quand vous êtes devant le boîtier.</Typography>
+        <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
+      </Dialogue>
 
       <Dialogue ouvert={nouveau} titre="Nouveau terminal" onFermer={() => setNouveau(false)} onValider={() => void creer()} libelle="Créer et montrer la clé" enCours={enCours} desactive={!/^[a-z0-9-]{3,32}$/.test(f.id) || f.nom.length < 2}>
         <TextField label="Identifiant" value={f.id} onChange={(e) => setF({ ...f, id: e.target.value })} helperText="minuscules, chiffres et tirets : akwa-1" fullWidth autoFocus />

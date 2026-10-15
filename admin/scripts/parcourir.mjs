@@ -103,6 +103,16 @@ try {
   await capturer("terminaux-cle");
   await page.getByRole("button", { name: "Fermer" }).click();
   await voir("Kribi plage");
+  /* renouveler une clé coupe le boîtier : on le demande, et « Annuler » ne touche à rien */
+  await page.getByRole("button", { name: "Renouveler la clé" }).first().click();
+  await voir("cesse de marcher");
+  await page.getByRole("dialog").getByRole("button", { name: "Annuler" }).click();
+  await page.getByRole("dialog").waitFor({ state: "detached" });
+  exiger(await page.locator("[data-cle]").count() === 0, "annuler ne renouvelle rien");
+  await page.getByRole("button", { name: "Renouveler la clé" }).first().click();
+  await page.getByRole("dialog").getByRole("button", { name: "Renouveler la clé" }).click();
+  await page.locator("[data-cle]").waitFor();
+  await page.getByRole("button", { name: "Fermer" }).click();
 
   etape("Clients : valider des pièces, le palier monte");
   await page.goto(`${BASE}/clients?filtre=verifications`);

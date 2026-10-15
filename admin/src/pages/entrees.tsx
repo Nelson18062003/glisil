@@ -91,25 +91,32 @@ function Retenues() {
         {([["Retenus", "retenue"], ["Rapprochés", "rapprochee"], ["Remboursés", "remboursee"]] as const).map(([l, v]) => (
           <Chip key={v} label={l} onClick={() => setEtat(v)} color={etat === v ? "primary" : undefined} variant={etat === v ? "filled" : "outlined"} />
         ))}
-        <Typography variant="body2" sx={{ ml: 2 }}>Un SMS d'argent que personne n'a déclaré. Rien n'est crédité au hasard : on rattache au bon dossier, ou on rembourse.</Typography>
+        <Typography variant="body2" sx={{ ml: 2 }}>Un SMS d'argent que personne n'a pu prendre. Rien n'est crédité au hasard : c'est le numéro qui a payé qui décide, et quand il ne suffit pas, c'est vous. On rattache au bon dossier, ou on rembourse.</Typography>
       </Stack>
       {fait && <Typography variant="body2" sx={{ bgcolor: "#CDEFD9", color: "#06331B", px: 2, py: 1, borderRadius: 3 }} onClick={() => setFait(null)}>{fait}</Typography>}
       <Tableau
-        colonnes={["Reçu", "Terminal · float", "Payeur", { label: "Montant", align: "right" }, "Transaction ID", "Compte probable", "État", ""]}
+        colonnes={["Reçu", "Carte", "Payeur · compte probable", { label: "Montant", align: "right" }, "Transaction ID", ""]}
         lignes={(data ?? []).map((r) => [
-          `${jourRelatif(r.emis_le ?? r.cree_le)} ${heure(r.emis_le ?? r.cree_le)}`,
-          `${r.terminal} · ${r.operateur.toUpperCase()} ${numeroEnTranches(r.float_numero)}`,
-          r.numero_payeur ? numeroEnTranches(r.numero_payeur) : "inconnu",
+          <Stack key="q"><span>{jourRelatif(r.emis_le ?? r.cree_le)}</span><Typography variant="caption">{heure(r.emis_le ?? r.cree_le)}</Typography></Stack>,
+          <Stack key="f"><span>{(r.operateur ?? "?").toUpperCase()} {numeroEnTranches(r.float_numero ?? "")}</span><Typography variant="caption">{r.terminal}</Typography></Stack>,
+          <Stack key="p">
+            <span>{r.numero_payeur ? numeroEnTranches(r.numero_payeur) : "inconnu"}</span>
+            {r.compte_suggere
+              ? <Link to={`/clients/${r.compte_suggere.id}`} style={{ color: "inherit", fontSize: 12 }}>{r.compte_suggere.nom ?? numeroEnTranches(r.compte_suggere.telephone)}</Link>
+              : <Typography variant="caption">aucun compte à ce numéro</Typography>}
+          </Stack>,
           r.montant != null ? `${xaf(r.montant)} XAF` : "—",
-          <Typography fontFamily="Roboto Mono, monospace" fontSize={13} key="t">{r.transaction_id ?? "—"}</Typography>,
-          r.compte_suggere ? <Link key="c" to={`/clients/${r.compte_suggere.id}`} style={{ color: "inherit" }}>{r.compte_suggere.nom ?? numeroEnTranches(r.compte_suggere.telephone)}</Link> : <Typography variant="caption" key="c">aucun numéro connu</Typography>,
-          <Etat valeur={r.etat} key="e" />,
+          <Stack key="t" gap={0.25}>
+            <Typography fontFamily="Roboto Mono, monospace" fontSize={13}>{r.transaction_id || "—"}</Typography>
+            {/* pourquoi l'appariement a refusé : en rouge quand l'équipe seule peut trancher */}
+            {r.etat === "retenue" && r.motif && <Typography variant="caption" color={r.bloquee ? "error" : "text.secondary"} sx={{ whiteSpace: "normal", maxWidth: 260 }}>{r.motif}</Typography>}
+          </Stack>,
           r.etat === "retenue" ? (
             <Stack direction="row" gap={0.5} key="a">
               {peut("rapprocher") && <Button size="small" variant="contained" onClick={() => ouvrir(r, "rapprocher")} sx={{ minHeight: 32 }}>Rapprocher</Button>}
               {peut("rembourser") && <Button size="small" variant="outlined" color="error" onClick={() => ouvrir(r, "rembourser")} sx={{ minHeight: 32 }}>Rembourser</Button>}
             </Stack>
-          ) : r.depot_reference ?? "",
+          ) : <Stack key="a" direction="row" gap={1} alignItems="center"><Etat valeur={r.etat} />{r.depot_reference ?? ""}</Stack>,
         ])}
         vide="Aucun SMS retenu : tout ce qui est arrivé a trouvé son dossier."
       />
