@@ -91,6 +91,9 @@ const ok = (texte: string) => { n++; console.log(`✓ ${texte}`); };
     if (nom === "totem_resultat_commande") return { commande: args.p_ok ? "faite" : "en_attente", sortie: "en_cours" };
     if (nom === "totem_messages_en_attente") return [{ id: 3, numero: "699112233", texte: "XAFe Exchange : votre code est 123456." }];
     if (nom === "totem_resultat_message") return { message: args.p_ok ? "envoye" : "echoue" };
+    if (nom === "totem_remboursements_en_attente") return [{ id: 5, numero: "670999333", montant: 15000 }];
+    if (nom === "totem_reclamer_remboursement") return { id: 5, etat: "en_cours" };
+    if (nom === "totem_resultat_remboursement") return { remboursement: args.p_ok ? "fait" : "echoue" };
     throw new Error(`rpc inattendue ${nom}`);
   };
   const url = (chemin: string) => new URL(`https://x.supabase.co/functions/v1/totem-commandes${chemin}`);
@@ -122,9 +125,27 @@ const ok = (texte: string) => { n++; console.log(`✓ ${texte}`); };
   assert.deepEqual(envoye.corps, { message: "envoye" });
   ok("les SMS à envoyer passent par le même guichet, avec leur propre type");
 
+  await traiterCommandes(rpc, "akwa-1", "PATCH", url("/7"), { etat: "echouee", resultat: "réseau muet", tentative: 2 });
+  assert.deepEqual(appels[appels.length - 1].args, { p_id: 7, p_terminal: "akwa-1", p_ok: false, p_resultat: "réseau muet", p_reference_operateur: null, p_tentative: 2 });
+  const avant = appels.length;
+  assert.equal((await traiterCommandes(rpc, "akwa-1", "PATCH", url("/7"), { etat: "echouee", tentative: "deux" })).statut, 400);
+  assert.equal(appels.length, avant, "une tentative illisible n'atteint pas le moteur");
+  ok("un transfert rend compte de SA tentative : le moteur reconnaît un échec renvoyé faute d'accusé");
+
+  const rbt = await traiterCommandes(rpc, "akwa-1", "GET", url("?type=remboursements"), null);
+  assert.deepEqual(appels[appels.length - 1], { nom: "totem_remboursements_en_attente", args: { p_terminal: "akwa-1" } });
+  assert.equal((rbt.corps as unknown[]).length, 1);
+  await traiterCommandes(rpc, "akwa-1", "PATCH", url("/5"), { type: "remboursements", etat: "en_cours" });
+  assert.deepEqual(appels[appels.length - 1], { nom: "totem_reclamer_remboursement", args: { p_id: 5, p_terminal: "akwa-1" } });
+  const rendu = await traiterCommandes(rpc, "akwa-1", "PATCH", url("/5"), { type: "remboursements", etat: "fait", resultat: "Transfert reussi", reference_operateur: "20394817999", tentative: 0 });
+  assert.deepEqual(appels[appels.length - 1], { nom: "totem_resultat_remboursement", args: { p_id: 5, p_terminal: "akwa-1", p_ok: true, p_resultat: "Transfert reussi", p_reference_operateur: "20394817999" } });
+  assert.deepEqual(rendu.corps, { remboursement: "fait" });
+  ok("les remboursements ont leur guichet : relevés, réclamés, rendus — l'argent retenu repart vraiment au payeur");
+
   assert.equal((await traiterCommandes(rpc, "akwa-1", "PATCH", url("/7"), { etat: "bizarre" })).statut, 400);
   assert.equal((await traiterCommandes(rpc, "akwa-1", "DELETE", url("/7"), null)).statut, 405);
   assert.equal((await traiterCommandes(rpc, "akwa-1", "GET", url("?type=autre"), null)).statut, 400);
+  assert.equal((await traiterCommandes(rpc, "akwa-1", "GET", url("?type=constructor"), null)).statut, 400, "un nom hérité d'Object n'est pas un guichet");
   ok("un état inconnu, un verbe inconnu, un type inconnu : refusés avant le moteur");
 }
 

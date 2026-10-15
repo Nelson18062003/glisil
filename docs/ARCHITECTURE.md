@@ -59,6 +59,9 @@ l'application. C'est la leçon de Bonzini et de TOTEM, reprise telle quelle.
 | 1 XAFe = 1 XAF : on n'émet qu'à la réception d'un SMS de paiement, on ne détruit qu'au transfert sorti | `totem_sms_recu`, `totem_resultat_commande` |
 | Un SMS ne crédite qu'une fois | `depot_paiements (terminal, source_id)` unique |
 | Un SMS sans référence est retenu, jamais crédité | `totem_sms_recu` → `entrees_retenues` |
+| Le numéro qui a payé décide à qui va le paiement, pas le premier qui tape l'ID | `_apparier` |
+| Un SMS ne crédite que s'il vient d'un float porté par le terminal qui le pousse | `totem_sms_recu` |
+| Le même SMS, ou un ID et son SMS, arrivant au même instant se voient | verrous consultatifs `sms:` puis `tx:` |
 | Un dépôt se paie en plusieurs transferts, chacun crédite dès son SMS | `depots.montant_recu`, état `partiel` |
 | Une sortie ne va qu'à un numéro vérifié depuis 24 h | `demander_sortie` |
 | Une sortie au-delà du plafond opérateur est découpée | `demander_sortie` → `commandes` |
@@ -70,6 +73,11 @@ l'application. C'est la leçon de Bonzini et de TOTEM, reprise telle quelle.
 | Frais : placeur 0,05 %, preneur 0,10 %, dans l'actif reçu ; sortie 0,5 % | `parametres`, `placer_ordre`, `demander_sortie` |
 | Un geste part une fois | clé d'intention sur dépôts, sorties, ordres |
 | Un client ne voit que ses lignes | politiques RLS, lecture seule ; toute écriture passe par une RPC |
+| Un client n'exécute que ce qui lit sa session ; anon rien | `0004_droits.sql` : tout fermé, la liste ouverte |
+| Un compte désactivé ne fait plus aucun geste d'argent | `_exiger_compte_actif` |
+| Le plafond du palier compte les sorties MoMo ET la chaîne, sous verrou du compte | `_sorties_du_jour`, `demander_sortie`, `demander_retrait_crypto` |
+| Un résultat de TOTEM vaut pour la commande réclamée et SA tentative | `totem_resultat_commande` |
+| Les empreintes des codes ne sont dans aucune table lisible | `codes_secrets`, `numeros_codes` |
 
 ## Les surfaces
 
@@ -92,7 +100,7 @@ l'application. C'est la leçon de Bonzini et de TOTEM, reprise telle quelle.
 ## Vérifier avant d'annoncer
 
 ```sh
-sh moteur/verifier-le-moteur.sh      # un PostgreSQL neuf, le schéma, puis les scénarios qui attaquent
+sh moteur/verifier-le-moteur.sh      # un PostgreSQL neuf façon Supabase, le schéma, les scénarios qui attaquent, les courses
 cd app && npm test                   # le noyau de l'application : formats, argent, erreurs
 cd app && npm run build              # l'application cliente, type-check compris
 cd app && node scripts/parcourir.mjs # le parcours entier, joué dans un vrai Chromium
@@ -110,3 +118,17 @@ rejoue la vie d'un dépôt, d'une sortie et d'un carnet : SMS rejoué, SMS
 appariement partiel, auto-négociation, solde insuffisant, et vérifie à la fin
 que la somme des soldes vaut exactement les émissions moins les destructions.
 « Le déclencheur est créé » ne dit rien de ce qu'il fait.
+
+**Le harnais imite Supabase, pas un PostgreSQL sage.** Avant les migrations
+il pose ce que Supabase pose : `anon` et `authenticated` reçoivent d'office
+tous les droits sur ce qui naît dans `public`, pgcrypto vit dans le schéma
+`extensions`, `auth.users` existe. Contre un PostgreSQL nu, `revoke … from
+public` avait l'air de tout fermer — et chez Supabase, n'importe quel client
+pouvait appeler `crediter_crypto` ou `totem_sms_recu`. Le scénario 11.1
+compare ce qui est ouvert à ce qui doit l'être.
+
+**Une course ne se voit qu'à deux.** `moteur/courses.sh` ouvre deux
+connexions en même temps (le même SMS poussé deux fois ; l'ID tapé à
+l'instant où le SMS arrive ; deux sorties contre le même plafond). Chaque
+course a son témoin : la fonction privée de son verrou doit reproduire la
+faute, sinon la course ne prouve rien.

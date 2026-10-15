@@ -1,7 +1,7 @@
-// Le guichet où TOTEM relève ce qu'il doit faire : les transferts à composer
-// et les SMS à envoyer.
-//   GET   /functions/v1/totem-commandes?type=transferts|sms
-//   PATCH /functions/v1/totem-commandes/:id   {"type", "etat", "resultat", "reference_operateur"}
+// Le guichet où TOTEM relève ce qu'il doit faire : les transferts à composer,
+// les SMS à envoyer et les remboursements à renvoyer au payeur.
+//   GET   /functions/v1/totem-commandes?type=transferts|sms|remboursements
+//   PATCH /functions/v1/totem-commandes/:id   {"type", "etat", "resultat", "reference_operateur", "tentative"}
 // Signée par le boîtier (voir _shared/porte.ts). Le contrat : docs/TOTEM-INTEGRATION.md.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.10";
 import { lireEntetes, reponseHttp, traiterCommandes, verifier } from "../_shared/porte.ts";

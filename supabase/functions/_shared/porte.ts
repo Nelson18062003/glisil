@@ -110,43 +110,60 @@ export async function traiterSms(rpc: Rpc, terminal: string, charge: unknown): P
 
 /* ----------------------------------------------------------- commandes */
 
+/** Les trois guichets : chacun relève, réclame et rend compte par ses propres RPC. */
+const GUICHETS = {
+  transferts: { relever: "totem_commandes_en_attente", reclamer: "totem_reclamer_commande", rendre: "totem_resultat_commande", reference: true, tentative: true },
+  sms: { relever: "totem_messages_en_attente", reclamer: "totem_reclamer_message", rendre: "totem_resultat_message", reference: false, tentative: false },
+  remboursements: { relever: "totem_remboursements_en_attente", reclamer: "totem_reclamer_remboursement", rendre: "totem_resultat_remboursement", reference: true, tentative: false },
+} as const;
+type TypeDeGuichet = keyof typeof GUICHETS;
+
 /**
- * Les transferts à composer et les SMS à envoyer, pour ce terminal :
- *   GET   ?type=transferts|sms          → ce qui attend
- *   PATCH /:id  {type, etat: "en_cours"} → réclamer (refusé si déjà pris)
- *   PATCH /:id  {type, etat: "faite"|"envoye", resultat, reference_operateur}
- *   PATCH /:id  {type, etat: "echouee"|"echoue", resultat}
- * `type` vaut "transferts" par défaut. Le même protocole que la table
- * `commandes` de TOTEM : relever, réclamer, composer, rendre compte.
+ * Ce que ce terminal doit faire : les transferts à composer, les SMS à
+ * envoyer, les remboursements à renvoyer au payeur.
+ *   GET   ?type=transferts|sms|remboursements   → ce qui attend
+ *   PATCH /:id  {type, etat: "en_cours"}          → réclamer (refusé si déjà pris)
+ *   PATCH /:id  {type, etat: "faite"|"envoye"|"fait", resultat, reference_operateur, tentative}
+ *   PATCH /:id  {type, etat: "echouee"|"echoue", resultat, tentative}
+ * `type` vaut "transferts" par défaut. `tentative` (transferts) est la valeur
+ * de « reprises » rendue par la réclamation : un résultat ne vaut que pour la
+ * tentative qu'il décrit, et un échec renvoyé faute d'accusé n'en est pas un
+ * second. Le même protocole que la table `commandes` de TOTEM : relever,
+ * réclamer, composer, rendre compte.
  */
 export async function traiterCommandes(rpc: Rpc, terminal: string, methode: string, url: URL, charge: unknown): Promise<Reponse> {
   const morceaux = url.pathname.split("/").filter(Boolean);
   const id = morceaux.length > 0 && /^[0-9]+$/.test(morceaux[morceaux.length - 1]) ? Number(morceaux[morceaux.length - 1]) : null;
   const corps = (charge && typeof charge === "object" ? charge : {}) as Ligne;
   const type = String(corps.type ?? url.searchParams.get("type") ?? "transferts");
-  if (type !== "transferts" && type !== "sms") return { statut: 400, corps: { erreur: "type inconnu : transferts ou sms" } };
-  const sms = type === "sms";
+  if (!Object.hasOwn(GUICHETS, type)) return { statut: 400, corps: { erreur: "type inconnu : transferts, sms ou remboursements" } };
+  const g = GUICHETS[type as TypeDeGuichet];
 
   try {
     if (methode === "GET") {
-      const r = await rpc(sms ? "totem_messages_en_attente" : "totem_commandes_en_attente", { p_terminal: terminal });
+      const r = await rpc(g.relever, { p_terminal: terminal });
       return { statut: 200, corps: r ?? [] };
     }
     if (methode === "PATCH" && id !== null) {
       const etat = String(corps.etat ?? "");
       if (etat === "en_cours") {
-        const r = await rpc(sms ? "totem_reclamer_message" : "totem_reclamer_commande", { p_id: id, p_terminal: terminal });
+        const r = await rpc(g.reclamer, { p_id: id, p_terminal: terminal });
         return { statut: 200, corps: r };
       }
-      const ok = etat === "faite" || etat === "envoye";
+      const ok = etat === "faite" || etat === "envoye" || etat === "fait";
       const ko = etat === "echouee" || etat === "echoue";
       if (ok || ko) {
         const args: Record<string, unknown> = { p_id: id, p_terminal: terminal, p_ok: ok, p_resultat: texte(corps.resultat) };
-        if (!sms) args.p_reference_operateur = texte(corps.reference_operateur);
-        const r = await rpc(sms ? "totem_resultat_message" : "totem_resultat_commande", args);
+        if (g.reference) args.p_reference_operateur = texte(corps.reference_operateur);
+        if (g.tentative && corps.tentative !== undefined && corps.tentative !== null) {
+          const t = nombre(corps.tentative);
+          if (t === null || !Number.isInteger(t) || t < 0) return { statut: 400, corps: { erreur: "tentative : un entier, la valeur de « reprises » à la réclamation" } };
+          args.p_tentative = t;
+        }
+        const r = await rpc(g.rendre, args);
         return { statut: 200, corps: r };
       }
-      return { statut: 400, corps: { erreur: "etat inconnu : en_cours, faite, echouee (transferts) · en_cours, envoye, echoue (sms)" } };
+      return { statut: 400, corps: { erreur: "etat inconnu : en_cours, puis faite / envoye / fait, ou echouee / echoue" } };
     }
     return { statut: 405, corps: { erreur: "GET ?type=… ou PATCH /:id" } };
   } catch (e) {
