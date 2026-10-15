@@ -58,10 +58,6 @@ export function CryptoDeposer() {
     if (!adresse) return;
     try { await navigator.clipboard.writeText(adresse); setCopie(true); setTimeout(() => setCopie(false), 1500); } catch { /* le presse-papiers peut être refusé */ }
   };
-  const partager = async () => {
-    if (!adresse) return;
-    try { await navigator.share({ title: `Mon adresse ${actif} ${RESEAUX[reseau].nom}`, text: adresse }); } catch { await copier(); }
-  };
 
   return (
     <Screen title={`Déposer des ${actif}`} back="/crypto">
@@ -79,10 +75,7 @@ export function CryptoDeposer() {
             {adresse ?? (isLoading ? "…" : "Elle vous sera attribuée dans quelques instants ; revenez ici.")}
           </Typography>
         </Stack>
-        <Stack direction="row" gap={1} sx={{ width: "100%" }}>
-          <Button variant="contained" startIcon={copie ? <CheckCircleRounded /> : <ContentCopyRounded />} fullWidth disabled={!adresse} onClick={() => void copier()}>{copie ? "Copiée" : "Copier"}</Button>
-          <Button variant="outlined" fullWidth disabled={!adresse} onClick={() => void partager()}>Partager</Button>
-        </Stack>
+        <Button variant="contained" startIcon={copie ? <CheckCircleRounded /> : <ContentCopyRounded />} fullWidth disabled={!adresse} onClick={() => void copier()}>{copie ? "Adresse copiée" : "Copier l'adresse"}</Button>
       </Card>
       <Typography variant="body2" textAlign="center">
         {actif} sur {RESEAUX[reseau].chaine} uniquement. Crédit automatique après {RESEAUX[reseau].confirmations} confirmations ; vous êtes prévenu. L'adresse est la même à chaque fois.

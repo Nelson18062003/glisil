@@ -135,7 +135,7 @@ function dossierVitrine(): Dossier {
   d.depots.push({
     reference: "XAFe-DP-000401", operateur: "mtn", floatNumero: "677000000", codeAgent: "480213", reception: "ouverte", montantRecu: 3_000_000,
     etat: "credite", creeLe: iso(hier), expireLe: iso(hier + 1800_000), crediteLe: iso(hier + 240_000),
-    declarations: [1, 2, 3].map((i) => ({ id: uuid(), transactionId: `2039481${i}04`, etat: "credite" as const, montant: 1_000_000, numeroPayeur: NUMERO_VITRINE, motif: null, declareLe: iso(hier + i * 80_000 - 20_000), crediteLe: iso(hier + i * 80_000) })),
+    declarations: [1, 2, 3].map((i) => ({ id: uuid(), transactionId: `2039481${i}04`, etat: "credite" as const, montant: 1_000_000, numeroPayeur: NUMERO_VITRINE, motif: null, declareLe: iso(hier + i * 80_000 - 20_000), crediteLe: iso(hier + i * 80_000), luLe: iso(hier + i * 80_000 - 2_000) })),
   });
   d.transferts.push({ id: uuid(), actif: "USDT", reseau: "bep20", sens: "sortie", montant: 2000, txHash: "0x8a1f3c…", adresse: "0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21", quand: iso(hier + 30_000_000) });
   const t1 = maintenant() - 2 * 3600_000;
@@ -289,7 +289,7 @@ export class GuichetDemo implements Guichet {
         return;
       }
     }
-    decl.etat = "credite"; decl.montant = montant; decl.numeroPayeur = d.compte.telephone; decl.crediteLe = iso();
+    decl.etat = "credite"; decl.montant = montant; decl.numeroPayeur = d.compte.telephone; decl.crediteLe = iso(); decl.luLe = iso(maintenant() - 2_000);
     dep.montantRecu += montant;
     dep.etat = "credite";
     dep.crediteLe = iso();

@@ -10,7 +10,7 @@
 // échoue à la première erreur de console, et laisse une capture de chaque écran
 // dans app/captures/. « Ça compile » ne dit rien d'un parcours.
 import { spawn } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createConnection } from "node:net";
 
@@ -43,6 +43,8 @@ if (!(await portPris())) { console.error("✗ Le serveur ne démarre pas."); pro
 /* ---------------------------------------------------------- le navigateur */
 
 await mkdir(OUT, { recursive: true });
+/* les captures d'un parcours précédent ne restent pas à côté de celles-ci : des numéros décalés trompent l'œil */
+for (const f of await readdir(OUT)) if (f.endsWith(".png")) await rm(`${OUT}${f}`);
 process.env.PLAYWRIGHT_DISABLE_FORCED_CHROMIUM_PROXIED_LOOPBACK ??= "1";
 const proxy = process.env.HTTPS_PROXY ? { server: process.env.HTTPS_PROXY, bypass: "localhost,127.0.0.1" } : undefined;
 const navigateur = await chromium.launch({ proxy });
@@ -56,6 +58,8 @@ page.on("console", (m) => { if (m.type() === "error" && !/favicon|fonts.googleap
 let numero = 0;
 const capturer = async (nom) => {
   numero += 1;
+  /* les couleurs des boutons glissent sur 250 ms : une photo prise avant montre un état qui n'existe pas */
+  await page.waitForTimeout(400);
   await page.screenshot({ path: `${OUT}${String(numero).padStart(2, "0")}-${nom}.png`, fullPage: true });
 };
 const etape = (texte) => console.log(`· ${texte}`);
@@ -191,8 +195,17 @@ try {
   await page.waitForTimeout(500);
   await capturer("marche-graphique");
   await page.goto(`${BASE}/marche/carnet`);
-  await voir("Dernières transactions");
+  await voir("Carnet d'ordres");
+  await voir("Achat (XAFe)");
   await capturer("marche-carnet");
+  /* le pas regroupe vraiment : à 1,00, chaque prix affiché est un franc rond */
+  await page.getByRole("button", { name: "Pas de prix" }).click();
+  await page.getByRole("menuitem", { name: "Pas 1,00" }).click();
+  await voir("Pas 1,00");
+  const prixAffiches = await page.locator("button >> text=/^\\d{3},\\d{2}$/").allInnerTexts();
+  exiger(prixAffiches.length > 0 && prixAffiches.every((p) => p.endsWith(",00")), `au pas de 1,00, les prix sont ronds : ${prixAffiches.slice(0, 6).join(" ")}`);
+  await page.getByRole("tab", { name: "Transactions" }).click();
+  await voir("Heure");
 
   /* ----------------------------------------------------- historique */
   etape("Historique : la liste, puis le détail du dépôt avec ses transaction ID");
@@ -201,8 +214,13 @@ try {
   await capturer("historique");
   await page.getByText("Entrée MTN MoMo").first().click();
   await page.waitForURL(/\/historique\/XAFe-DP-/);
-  await voir("ID 20394817250");
+  await voir("Référence MTN");
+  await voir("20394817250");
+  await voir("Lu par TOTEM");
   await capturer("historique-detail");
+  /* le reçu se télécharge comme un fichier */
+  const [fichier] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Télécharger le reçu" }).click()]);
+  exiger(fichier.suggestedFilename().startsWith("Recu-XAFe-DP-"), `le reçu porte sa référence : ${fichier.suggestedFilename()}`);
 
   /* --------------------------------------------------------- crypto */
   etape("Crypto : l'adresse de dépôt et son code QR");

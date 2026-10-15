@@ -7,9 +7,11 @@
 import AddRounded from "@mui/icons-material/AddRounded";
 import ArrowDropDownRounded from "@mui/icons-material/ArrowDropDownRounded";
 import CandlestickChartOutlined from "@mui/icons-material/CandlestickChartOutlined";
+import FormatListBulletedRounded from "@mui/icons-material/FormatListBulletedRounded";
 import InfoOutlined from "@mui/icons-material/InfoOutlined";
+import MoreHorizRounded from "@mui/icons-material/MoreHorizRounded";
 import RemoveRounded from "@mui/icons-material/RemoveRounded";
-import { Box, Button, ButtonBase, Chip, Divider, IconButton, Paper, Slider, Snackbar, Stack, Tab, Tabs, Typography } from "@mui/material";
+import { Box, Button, ButtonBase, Chip, Divider, IconButton, Menu, MenuItem, Paper, Slider, Snackbar, Stack, Tab, Tabs, Typography } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useCarnet, useChandelles, useCotation, useGuichet, useMesOrdres, useOrdre, useRafraichir, useSoldes, useTransactions } from "../../guichet";
@@ -17,7 +19,7 @@ import type { Chandelle, Cote, Execution, Niveau, Ordre, TypeOrdre } from "../..
 import { achatMax, arrondi2, FRAIS, fraisOrdre, MARCHE, prixValide, quantiteValide, simulerMarche, totalOrdre } from "../../noyau/argent";
 import { enTranches, heure, heureSecondes, jourRelatif, pourcent, prix as fPrix, usdt as fUsdt, xaf } from "../../noyau/format";
 import { useParcours } from "../../navigation/parcours";
-import { Attente, BUY, BUY_BG, Card, Feuille, FeuilleErreur, Line, Screen, SELL, SELL_BG, Squelette, Success } from "../../ui";
+import { Attente, Badge, BUY, BUY_BG, Card, Feuille, FeuilleErreur, Line, Screen, SELL, SELL_BG, Squelette, Success } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
 
 const couleur = (c: Cote) => (c === "achat" ? BUY : SELL);
@@ -28,6 +30,7 @@ const fond = (c: Cote) => (c === "achat" ? BUY_BG : SELL_BG);
 function PairHeader({ chart = true }: { chart?: boolean }) {
   const { data: c } = useCotation();
   const [paire, setPaire] = useState(false);
+  const [menu, setMenu] = useState<HTMLElement | null>(null);
   const v = c?.variation24h ?? 0;
   return (
     <Stack direction="row" alignItems="center" sx={{ px: 2, minHeight: 56 }}>
@@ -46,6 +49,16 @@ function PairHeader({ chart = true }: { chart?: boolean }) {
           <CandlestickChartOutlined />
         </IconButton>
       )}
+      {chart && (
+        <IconButton aria-label="Plus" onClick={(e) => setMenu(e.currentTarget)}>
+          <MoreHorizRounded />
+        </IconButton>
+      )}
+      <Menu anchorEl={menu} open={Boolean(menu)} onClose={() => setMenu(null)} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }}>
+        <MenuItem component={Link} to="/rapide" onClick={() => setMenu(null)}>Achat rapide</MenuItem>
+        <MenuItem component={Link} to="/marche/carnet" onClick={() => setMenu(null)}>Tout le carnet</MenuItem>
+        <MenuItem component={Link} to="/marche/ordres" onClick={() => setMenu(null)}>Mes ordres</MenuItem>
+      </Menu>
       <Feuille ouverte={paire} onFermer={() => setPaire(false)} titre="Paires">
         <Stack gap={1}>
           <Paper sx={{ p: 1.5, borderRadius: 3, bgcolor: "#CDEFD9", display: "flex", justifyContent: "space-between" }}>
@@ -93,7 +106,10 @@ function MidPrice({ big }: { big?: boolean }) {
 }
 
 function CompactBook({ onPick }: { onPick: (p: number) => void }) {
-  const { data: carnet } = useCarnet(7);
+  const [pas, setPas] = useState(MARCHE.pasPrix);
+  const [menuPas, setMenuPas] = useState<HTMLElement | null>(null);
+  const { data: brut } = useCarnet(pas > MARCHE.pasPrix ? 60 : 7);
+  const carnet = useMemo(() => (brut ? { achats: regrouper(brut.achats, pas, "achat").slice(0, 7), ventes: regrouper(brut.ventes, pas, "vente").slice(0, 7) } : undefined), [brut, pas]);
   const max = useMemo(() => Math.max(1, ...(carnet?.achats ?? []).map((n) => n.quantite), ...(carnet?.ventes ?? []).map((n) => n.quantite)), [carnet]);
   return (
     <Stack sx={{ flex: 1, minWidth: 0 }}>
@@ -109,8 +125,16 @@ function CompactBook({ onPick }: { onPick: (p: number) => void }) {
         </>
       )}
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1 }}>
-        <Typography variant="caption" sx={{ whiteSpace: "nowrap" }}>Pas {fPrix(MARCHE.pasPrix)}</Typography>
-        <Button size="small" variant="text" component={Link} to="/marche/carnet" sx={{ minHeight: 28, fontSize: 12, px: 0.5, whiteSpace: "nowrap", minWidth: 0 }}>Tout le carnet</Button>
+        <ButtonBase onClick={(e) => setMenuPas(e.currentTarget)} aria-label="Pas du carnet" sx={{ borderRadius: 2, px: 1, py: 0.25, bgcolor: "background.default", gap: 0.25 }}>
+          <Typography variant="body2" sx={{ color: "text.primary", fontSize: 13 }}>{fPrix(pas)}</Typography>
+          <ArrowDropDownRounded fontSize="small" />
+        </ButtonBase>
+        <Menu anchorEl={menuPas} open={Boolean(menuPas)} onClose={() => setMenuPas(null)}>
+          {[MARCHE.pasPrix, 0.5, 1, 5].filter((x, i, t) => t.indexOf(x) === i).map((x) => (
+            <MenuItem key={x} selected={x === pas} onClick={() => { setPas(x); setMenuPas(null); }}>{fPrix(x)}</MenuItem>
+          ))}
+        </Menu>
+        <IconButton size="small" aria-label="Tout le carnet" component={Link} to="/marche/carnet"><FormatListBulletedRounded fontSize="small" /></IconButton>
       </Stack>
     </Stack>
   );
@@ -332,6 +356,26 @@ function OpenOrder({ o, onCancel }: { o: Ordre; onCancel?: (id: string) => void 
   );
 }
 
+/* un ordre exécuté, comme la maquette : prix moyen, quantité, total */
+function OrdreFait({ o }: { o: Ordre }) {
+  return (
+    <Stack component={Link} to={`/marche/ordres/${o.id}`} gap={0.75} sx={{ py: 1.5, borderTop: 1, borderColor: "divider", color: "inherit", textDecoration: "none" }}>
+      <Stack direction="row" alignItems="center" gap={1}>
+        <Chip label={o.cote === "achat" ? "Achat" : "Vente"} size="small" sx={{ height: 22, fontSize: 12, bgcolor: fond(o.cote), color: couleur(o.cote), fontWeight: 600 }} />
+        <Typography sx={{ fontWeight: 600, fontSize: 14 }}>USDT/XAFe</Typography>
+        <Box sx={{ flex: 1 }} />
+        <Typography variant="caption">{heure(o.majLe ?? o.creeLe)}</Typography>
+        <Chip label={o.etat === "execute" ? "Exécuté" : "Partiel"} size="small" sx={{ height: 22, fontSize: 12 }} />
+      </Stack>
+      <Stack direction="row" justifyContent="space-between">
+        <Cell label="Prix moyen" value={o.prixMoyen != null ? fPrix(o.prixMoyen) : "—"} />
+        <Cell label="Quantité" value={fUsdt(o.executee)} />
+        <Cell label="Total (XAFe)" value={xaf(o.rapide?.total ?? o.totalXafe)} align="right" />
+      </Stack>
+    </Stack>
+  );
+}
+
 function useAnnuler() {
   const guichet = useGuichet();
   const rafraichir = useRafraichir();
@@ -344,12 +388,33 @@ function useAnnuler() {
 
 /* ================================================== 1 · écran de trading */
 
+/* l'onglet « Actifs » : ce que le compte a, disponible et bloqué au carnet */
+function Actifs() {
+  const { data: soldes } = useSoldes();
+  if (!soldes) return <Squelette hauteur={80} radius={12} />;
+  return (
+    <Stack>
+      {(["XAFe", "USDT"] as const).map((a) => (
+        <Stack key={a} direction="row" alignItems="center" gap={1.5} sx={{ py: 1.5, borderTop: 1, borderColor: "divider" }}>
+          <Badge kind={a === "XAFe" ? "xafe" : "usdt"} size={36} />
+          <Typography sx={{ fontWeight: 600, flex: 1 }}>{a}</Typography>
+          <Stack alignItems="flex-end">
+            <Typography sx={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{a === "XAFe" ? xaf(Math.trunc(soldes[a].disponible)) : fUsdt(soldes[a].disponible)}</Typography>
+            <Typography variant="caption">{soldes[a].bloque > 0 ? `${a === "XAFe" ? xaf(soldes[a].bloque) : fUsdt(soldes[a].bloque)} bloqués au carnet` : "disponible"}</Typography>
+          </Stack>
+        </Stack>
+      ))}
+    </Stack>
+  );
+}
+
 export function Marche() {
   const navigate = useNavigate();
   const { data: ordres } = useMesOrdres();
   const [, poser] = useParcours("marche");
   const [place, setPlace] = useState<string | null>(null);
   const { annuler, erreur, effacer } = useAnnuler();
+  const [bas, setBas] = useState<"ouverts" | "actifs">("ouverts");
   const ouverts = (ordres ?? []).filter((o) => o.etat === "ouvert" || o.etat === "partiel");
 
   return (
@@ -363,12 +428,13 @@ export function Marche() {
       </Paper>
       <Box sx={{ mt: 1.5 }}>
         <Stack direction="row" alignItems="center">
-          <Tabs value="ouverts" sx={{ minHeight: 40, flex: 1 }}>
+          <Tabs value={bas} onChange={(_, v) => setBas(v)} sx={{ minHeight: 40, flex: 1 }}>
             <Tab value="ouverts" label={`Ordres ouverts (${ouverts.length})`} sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
+            <Tab value="actifs" label="Actifs" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
           </Tabs>
           <Button size="small" variant="text" component={Link} to="/marche/ordres" sx={{ minHeight: 32, fontSize: 13 }}>Tout voir</Button>
         </Stack>
-        {!ordres ? <Squelette hauteur={80} radius={12} /> : ouverts.length === 0 ? (
+        {bas === "actifs" ? <Actifs /> : !ordres ? <Squelette hauteur={80} radius={12} /> : ouverts.length === 0 ? (
           <Typography variant="body2" sx={{ py: 2, textAlign: "center" }}>Aucun ordre en attente.</Typography>
         ) : ouverts.slice(0, 3).map((o) => <OpenOrder key={o.id} o={o} onCancel={(id) => void annuler(id)} />)}
       </Box>
@@ -429,12 +495,14 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-const INTERVALLES: [string, number][] = [["15 min", 15], ["1 h", 60], ["4 h", 240], ["1 j", 1440]];
+const INTERVALLES: [string, number][] = [["15 min", 15], ["1 h", 60], ["4 h", 240], ["1 j", 1440], ["1 sem", 10080]];
+const PLUS: [string, number][] = [["5 min", 5], ["30 min", 30], ["1 mois", 43200]];
 
 export function MarcheGraphique() {
   const navigate = useNavigate();
   const { data: c } = useCotation();
   const [minutes, setMinutes] = useState(60);
+  const [plus, setPlus] = useState<HTMLElement | null>(null);
   const { data: chandelles } = useChandelles(minutes, 28);
   const { data: carnet } = useCarnet(5);
   const [onglet, setOnglet] = useState<"carnet" | "infos">("carnet");
@@ -462,6 +530,12 @@ export function MarcheGraphique() {
         {INTERVALLES.map(([t, m]) => (
           <Chip key={t} label={t} size="small" onClick={() => setMinutes(m)} variant={m === minutes ? "filled" : "outlined"} color={m === minutes ? "primary" : undefined} sx={{ height: 28, fontSize: 12 }} />
         ))}
+        {(() => { const autre = PLUS.find(([, m]) => m === minutes); return (
+          <Chip label={autre ? autre[0] : "Plus"} size="small" onClick={(e) => setPlus(e.currentTarget)} variant={autre ? "filled" : "outlined"} color={autre ? "primary" : undefined} sx={{ height: 28, fontSize: 12 }} />
+        ); })()}
+        <Menu anchorEl={plus} open={Boolean(plus)} onClose={() => setPlus(null)}>
+          {PLUS.map(([t, m]) => <MenuItem key={t} onClick={() => { setMinutes(m); setPlus(null); }}>{t}</MenuItem>)}
+        </Menu>
       </Stack>
       <Paper sx={{ p: 1, borderRadius: 3 }}>
         <Candles chandelles={chandelles ?? []} dernier={c?.dernier ?? null} />
@@ -515,9 +589,24 @@ export function MarcheGraphique() {
 
 /* ========================================= 3 · carnet complet + transactions */
 
+/* Regrouper le carnet par pas de prix : les achats vers le bas, les ventes vers le haut — on ne promet jamais un meilleur prix que le vrai. */
+function regrouper(niveaux: Niveau[], pas: number, cote: Cote): Niveau[] {
+  if (pas <= MARCHE.pasPrix) return niveaux;
+  const m = new Map<number, number>();
+  for (const n of niveaux) {
+    const p = arrondi2((cote === "achat" ? Math.floor(n.prix / pas + 1e-9) : Math.ceil(n.prix / pas - 1e-9)) * pas);
+    m.set(p, arrondi2((m.get(p) ?? 0) + n.quantite));
+  }
+  return [...m].map(([prix, quantite]) => ({ prix, quantite })).sort((a, b) => (cote === "achat" ? b.prix - a.prix : a.prix - b.prix)).slice(0, 12);
+}
+
 export function MarcheCarnet() {
   const navigate = useNavigate();
-  const { data: carnet } = useCarnet(12);
+  const [onglet, setOnglet] = useState<"carnet" | "trades">("carnet");
+  const [pas, setPas] = useState(MARCHE.pasPrix);
+  const [menuPas, setMenuPas] = useState<HTMLElement | null>(null);
+  const { data: brut } = useCarnet(pas > MARCHE.pasPrix ? 60 : 12);
+  const carnet = brut ? { achats: regrouper(brut.achats, pas, "achat"), ventes: regrouper(brut.ventes, pas, "vente") } : undefined;
   const { data: trades } = useTransactions(20);
   const [filtre, setFiltre] = useState<"Tout" | "Achats" | "Ventes">("Tout");
   const [, poser] = useParcours("marche");
@@ -545,13 +634,26 @@ export function MarcheCarnet() {
 
   return (
     <Screen back="/marche" title="USDT/XAFe" gap={1}>
+      <Tabs value={onglet} onChange={(_, v) => setOnglet(v)} sx={{ minHeight: 40 }}>
+        <Tab value="carnet" label="Carnet d'ordres" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
+        <Tab value="trades" label="Transactions" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
+      </Tabs>
+      {onglet === "carnet" && <>
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Stack direction="row" gap={0.5}>
           {(["Tout", "Achats", "Ventes"] as const).map((t) => (
             <Chip key={t} label={t} size="small" onClick={() => setFiltre(t)} variant={t === filtre ? "filled" : "outlined"} color={t === filtre ? "primary" : undefined} sx={{ height: 28, fontSize: 12 }} />
           ))}
         </Stack>
-        <Typography variant="body2">Pas {fPrix(MARCHE.pasPrix)}</Typography>
+        <ButtonBase onClick={(e) => setMenuPas(e.currentTarget)} aria-label="Pas de prix" sx={{ borderRadius: 2, px: 1, py: 0.5, bgcolor: "background.paper", gap: 0.25 }}>
+          <Typography variant="body2" sx={{ color: "text.primary" }}>Pas {fPrix(pas)}</Typography>
+          <ArrowDropDownRounded fontSize="small" />
+        </ButtonBase>
+        <Menu anchorEl={menuPas} open={Boolean(menuPas)} onClose={() => setMenuPas(null)}>
+          {[MARCHE.pasPrix, 0.5, 1, 5].filter((x, i, t) => t.indexOf(x) === i).map((x) => (
+            <MenuItem key={x} selected={x === pas} onClick={() => { setPas(x); setMenuPas(null); }}>Pas {fPrix(x)}</MenuItem>
+          ))}
+        </Menu>
       </Stack>
       <Paper sx={{ p: 1.5, borderRadius: 3 }}>
         {!carnet ? <Squelette hauteur={330} radius={8} /> : (
@@ -569,8 +671,8 @@ export function MarcheCarnet() {
           <Typography sx={{ fontSize: 12, color: SELL, fontWeight: 600 }}>{100 - pctA} % V</Typography>
         </Stack>
       </Paper>
-      <Typography variant="subtitle1" sx={{ mt: 0.5 }}>Dernières transactions</Typography>
-      <Paper sx={{ p: 1.5, borderRadius: 3 }}>
+      </>}
+      {onglet === "trades" && <Paper sx={{ p: 1.5, borderRadius: 3 }}>
         <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
           <Typography variant="caption">Heure</Typography>
           <Typography variant="caption">Prix (XAFe)</Typography>
@@ -583,7 +685,7 @@ export function MarcheCarnet() {
             <Typography sx={{ fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{fUsdt(t.quantite)}</Typography>
           </Stack>
         ))}
-      </Paper>
+      </Paper>}
     </Screen>
   );
 }
@@ -592,19 +694,23 @@ export function MarcheCarnet() {
 
 export function MarcheOrdres() {
   const { data: ordres } = useMesOrdres();
-  const [onglet, setOnglet] = useState<"ouverts" | "historique">("ouverts");
+  const [onglet, setOnglet] = useState<"ouverts" | "historique" | "executions">("ouverts");
   const [toutAnnuler, setToutAnnuler] = useState(false);
   const { annuler, erreur, effacer } = useAnnuler();
   const ouverts = (ordres ?? []).filter((o) => o.etat === "ouvert" || o.etat === "partiel");
   const clos = (ordres ?? []).filter((o) => o.etat === "execute" || o.etat === "annule");
+  const executes = (ordres ?? []).filter((o) => o.executee > 0);
+  const aujourdHui = executes.filter((o) => jourRelatif(o.majLe ?? o.creeLe) === jourRelatif(new Date().toISOString()));
+  const liste = onglet === "executions" ? executes : clos;
   const groupes = new Map<string, Ordre[]>();
-  for (const o of clos) groupes.set(jourRelatif(o.creeLe), [...(groupes.get(jourRelatif(o.creeLe)) ?? []), o]);
+  for (const o of liste) groupes.set(jourRelatif(o.creeLe), [...(groupes.get(jourRelatif(o.creeLe)) ?? []), o]);
 
   return (
     <Screen back="/marche" title="Ordres" gap={1}>
       <Tabs value={onglet} onChange={(_, v) => setOnglet(v)} sx={{ minHeight: 40 }}>
         <Tab value="ouverts" label={`Ouverts (${ouverts.length})`} sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
         <Tab value="historique" label="Historique" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
+        <Tab value="executions" label="Exécutions" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
       </Tabs>
       {onglet === "ouverts" ? (
         <>
@@ -612,14 +718,18 @@ export function MarcheOrdres() {
             {ouverts.length === 0 ? <Typography variant="body2" sx={{ py: 3, textAlign: "center" }}>Aucun ordre en attente.</Typography> : ouverts.map((o) => <OpenOrder key={o.id} o={o} onCancel={(id) => void annuler(id)} />)}
           </Paper>
           {ouverts.length > 1 && <Button variant="outlined" color="error" onClick={() => setToutAnnuler(true)}>Tout annuler</Button>}
+          {aujourdHui.length > 0 && <>
+            <Typography variant="subtitle1" sx={{ mt: 1 }}>Aujourd'hui</Typography>
+            <Paper sx={{ px: 2, borderRadius: 3 }}>{aujourdHui.slice(0, 5).map((o) => <OrdreFait key={o.id} o={o} />)}</Paper>
+          </>}
         </>
-      ) : clos.length === 0 ? (
+      ) : liste.length === 0 ? (
         <Typography variant="body2" sx={{ py: 3, textAlign: "center" }}>Pas encore d'ordre exécuté.</Typography>
       ) : (
         [...groupes].map(([jour, os]) => (
           <Box key={jour}>
             <Typography variant="subtitle1" sx={{ my: 1 }}>{jour}</Typography>
-            <Paper sx={{ px: 2, borderRadius: 3 }}>{os.map((o) => <OpenOrder key={o.id} o={o} />)}</Paper>
+            <Paper sx={{ px: 2, borderRadius: 3 }}>{os.map((o) => (onglet === "executions" ? <OrdreFait key={o.id} o={o} /> : <OpenOrder key={o.id} o={o} />))}</Paper>
           </Box>
         ))
       )}

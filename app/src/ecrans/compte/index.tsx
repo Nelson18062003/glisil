@@ -30,6 +30,13 @@ import { useGesteUnique } from "../../ui/gestes";
    était un bouche-trou, et les messages des clients partaient chez un inconnu. */
 const WHATSAPP = /^\d{11,15}$/.test(String(import.meta.env.VITE_SUPPORT_WHATSAPP ?? "")) ? String(import.meta.env.VITE_SUPPORT_WHATSAPP) : null;
 
+/** « MTN, Orange · 2 vérifiés » : les opérateurs, puis le nombre */
+function resumeNumeros(numeros: { operateur: string; verifieLe: string | null }[]): string {
+  const verifies = numeros.filter((n) => n.verifieLe);
+  const ops = [...new Set(verifies.map((n) => (n.operateur === "om" ? "Orange" : "MTN")))].join(", ");
+  return verifies.length === 0 ? "Aucun vérifié" : `${ops} · ${verifies.length} vérifié${verifies.length > 1 ? "s" : ""}`;
+}
+
 export function Compte() {
   const session = useSession();
   const { data: compte } = useCompte();
@@ -44,8 +51,8 @@ export function Compte() {
         {palier && <Chip icon={<VerifiedRounded />} label={palier.nom} sx={{ bgcolor: tones.green.bg, color: tones.green.fg, "& .MuiChip-icon": { color: tones.green.fg } }} />}
       </Stack>
       <List>
-        <Row icon={<PhoneAndroidRounded />} tone="green" primary="Mes numéros MoMo" secondary={numeros ? `${numeros.filter((n) => n.verifieLe).length} vérifié${numeros.filter((n) => n.verifieLe).length > 1 ? "s" : ""}` : " "} to="/compte/numeros" />
-        <Row icon={<VerifiedRounded />} tone="amber" primary="Paliers et limites" secondary={palier ? (palier.entreeJour === null ? "Sans plafond plateforme" : `${xaf(palier.entreeJour)} XAF par jour`) : " "} to="/compte/paliers" />
+        <Row icon={<PhoneAndroidRounded />} tone="green" primary="Mes numéros MoMo" secondary={numeros ? resumeNumeros(numeros) : " "} to="/compte/numeros" />
+        <Row icon={<VerifiedRounded />} tone="amber" primary="Paliers et limites" secondary={palier && compte ? `Palier ${compte.palier} · ${palier.entreeJour === null ? "sans plafond plateforme" : `${xaf(palier.entreeJour)} XAF par jour`}` : " "} to="/compte/paliers" />
         <Row icon={<ShieldOutlined />} tone="blue" primary="Sécurité" secondary="Code secret, appareils" to="/compte/securite" />
         <Row icon={<KeyRounded />} tone="neutral" primary="Accès API" secondary="Pour les desks" to="/compte/api" />
         <Row icon={<HelpOutlineRounded />} tone="neutral" primary="Aide" to="/compte/aide" />

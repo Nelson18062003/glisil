@@ -46,6 +46,8 @@ export type Declaration = {
   motif: string | null;
   declareLe: string;
   crediteLe: string | null;
+  /** quand TOTEM a lu le SMS qui a payé */
+  luLe?: string | null;
 };
 export type Depot = {
   reference: string;

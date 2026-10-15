@@ -320,6 +320,15 @@ create table depot_paiements (
   unique (terminal, source_id, empreinte)
 );
 
+-- Une déclaration dit aussi QUAND TOTEM a lu le SMS qui l'a payée (« Lu par
+-- TOTEM » sur le reçu), et la référence de l'opérateur.
+create or replace function _declaration_json(x depot_declarations) returns jsonb
+language sql stable as $$
+  select jsonb_build_object('id', x.id, 'transaction_id', x.transaction_id, 'etat', x.etat, 'montant', x.montant,
+                            'numero_payeur', x.numero_payeur, 'motif', x.motif, 'declare_le', x.declare_le, 'credite_le', x.credite_le,
+                            'lu_le', (select p.cree_le from depot_paiements p where p.id = x.paiement_id))
+$$;
+
 -- Un SMS d'argent que personne n'a encore déclaré : retenu, jamais crédité
 -- au hasard. Il attend son transaction ID, ou un remboursement par l'équipe.
 create table entrees_retenues (

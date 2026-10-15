@@ -9,7 +9,7 @@
 // voir les boutons qui ne sont pas à lui. Échoue à la première erreur de
 // console. Captures dans admin/captures/.
 import { spawn } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createConnection } from "node:net";
 
@@ -26,6 +26,8 @@ process.on("exit", arreter);
 for (let i = 0; i < 60 && !(await portPris()); i++) await new Promise((r) => setTimeout(r, 250));
 
 await mkdir(OUT, { recursive: true });
+/* les captures d'un parcours précédent ne restent pas à côté de celles-ci : des numéros décalés trompent l'œil */
+for (const f of await readdir(OUT)) if (f.endsWith(".png")) await rm(`${OUT}${f}`);
 process.env.PLAYWRIGHT_DISABLE_FORCED_CHROMIUM_PROXIED_LOOPBACK ??= "1";
 const proxy = process.env.HTTPS_PROXY ? { server: process.env.HTTPS_PROXY, bypass: "localhost,127.0.0.1" } : undefined;
 const navigateur = await chromium.launch({ proxy });

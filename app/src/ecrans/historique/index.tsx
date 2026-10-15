@@ -6,7 +6,7 @@ import ArrowDownwardRounded from "@mui/icons-material/ArrowDownwardRounded";
 import ArrowUpwardRounded from "@mui/icons-material/ArrowUpwardRounded";
 import CurrencyBitcoinRounded from "@mui/icons-material/CurrencyBitcoinRounded";
 import ReplayRounded from "@mui/icons-material/ReplayRounded";
-import ShareRounded from "@mui/icons-material/ShareRounded";
+import DownloadRounded from "@mui/icons-material/DownloadRounded";
 import SwapHorizRounded from "@mui/icons-material/SwapHorizRounded";
 import { Box, Button, Chip, Stack, Typography } from "@mui/material";
 import { useState } from "react";
@@ -117,10 +117,18 @@ export function HistoriqueDetail() {
   if (o.nature === "ordre") return <Navigate to={`/marche/ordres/${o.reference}`} replace />;
 
   const a = apparence(o);
-  const partager = async () => {
-    const texte = recu(o, compte?.nom);
-    try { await navigator.share({ title: `Reçu ${o.reference}`, text: texte }); setPartage("Reçu partagé."); }
-    catch { try { await navigator.clipboard.writeText(texte); setPartage("Reçu copié dans le presse-papiers."); } catch { setPartage("Le partage n'est pas disponible ici."); } }
+  /* un seul paiement crédité : le reçu de la maquette, ligne à ligne ; plusieurs : la liste des transaction ID */
+  const seul = o.nature === "depot" && o.detail.declarations.length === 1 && o.detail.declarations[0].etat === "credite" ? o.detail.declarations[0] : null;
+  const opCourt = o.nature === "depot" ? opDe(o.detail.operateur).nom.split(" ")[0] : "";
+  /* le reçu se télécharge comme un fichier : un lien ne survit pas au partage */
+  const telecharger = () => {
+    const fichier = new Blob([recu(o, compte?.nom)], { type: "text/plain;charset=utf-8" });
+    const lien = document.createElement("a");
+    lien.href = URL.createObjectURL(fichier);
+    lien.download = `Recu-${o.reference}.txt`;
+    lien.click();
+    setTimeout(() => URL.revokeObjectURL(lien.href), 5_000);
+    setPartage("Reçu téléchargé.");
     setTimeout(() => setPartage(null), 2500);
   };
 
@@ -132,10 +140,20 @@ export function HistoriqueDetail() {
         <Chip label={ETATS[o.etat] ?? o.etat} size="small" sx={{ mt: 1, bgcolor: tones[a.tone].bg, color: tones[a.tone].fg }} />
       </Box>
 
-      {o.nature === "depot" && (
+      {o.nature === "depot" && seul && (
+        <Card>
+          {seul.numeroPayeur && <Line label="Depuis" value={`${opCourt} · ${numeroEnTranches(seul.numeroPayeur)}`} />}
+          {seul.luLe && <Line label="Lu par TOTEM" value={heureSecondes(seul.luLe)} />}
+          {seul.crediteLe && <Line label="Crédité" value={heureSecondes(seul.crediteLe)} />}
+          <Line label="Référence XAFe" value={o.reference} />
+          <Line label={`Référence ${opCourt}`} value={seul.transactionId} />
+        </Card>
+      )}
+
+      {o.nature === "depot" && !seul && (
         <Card>
           <Line label="Par" value={`${opDe(o.detail.operateur).nom} · float ${numeroEnTranches(o.detail.floatNumero)}`} />
-          <Line label="Dossier" value={o.reference} mono />
+          <Line label="Référence XAFe" value={o.reference} />
           {o.detail.declarations.map((d) => (
             <Line key={d.id} label={d.etat === "credite" ? `ID ${d.transactionId}` : d.etat === "refuse" ? `ID ${d.transactionId} · retenu` : `ID ${d.transactionId} · en attente`} value={d.montant != null ? `${xaf(d.montant)} XAF${d.crediteLe ? ` · ${heureSecondes(d.crediteLe)}` : ""}` : "SMS pas encore lu"} mono />
           ))}
@@ -173,7 +191,7 @@ export function HistoriqueDetail() {
         {o.nature === "depot" && (o.etat === "en_attente" || o.detail.declarations.some((d) => d.etat === "attendu")) && (
           <Button variant="contained" startIcon={<ReplayRounded />} component={Link} to={`/entrer/transaction/${o.reference}`}>Reprendre : entrer un transaction ID</Button>
         )}
-        {!enSuspens(o) && <Button variant="outlined" startIcon={<ShareRounded />} onClick={() => void partager()}>{partage ?? "Partager le reçu"}</Button>}
+        {!enSuspens(o) && <Button variant="outlined" startIcon={<DownloadRounded />} onClick={telecharger}>{partage ?? "Télécharger le reçu"}</Button>}
         <Button variant="text" component={Link} to={`/compte/aide?ref=${encodeURIComponent(o.reference)}`}>Signaler un problème</Button>
       </Stack>
     </Screen>

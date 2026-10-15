@@ -20,6 +20,7 @@ const lireTel = () => { try { return sessionStorage.getItem(CLE_TEL) ?? ""; } ca
 const garderTel = (t: string) => { try { sessionStorage.setItem(CLE_TEL, t); } catch { /* sans stockage, on redemande le numéro */ } };
 
 export function Bienvenue() {
+  const [creer, setCreer] = useState(false);
   const guichet = useGuichet();
   const navigate = useNavigate();
   const [tel, setTel] = useState(lireTel);
@@ -60,9 +61,14 @@ export function Bienvenue() {
         <Button variant="contained" disabled={!numeroValide(tel) || enCours} onClick={() => void continuer()}>
           {enCours ? "Envoi du code…" : "Continuer"}
         </Button>
-        <Typography variant="caption" textAlign="center">
-          Pas encore de compte ? Il se crée avec ce numéro, tout de suite.
-        </Typography>
+        {/* il n'y a pas d'inscription à part : le compte naît avec le numéro, au premier code */}
+        {!creer ? (
+          <Button variant="text" onClick={() => { setCreer(true); document.querySelector<HTMLInputElement>("input[type=tel]")?.focus(); }}>Créer un compte</Button>
+        ) : (
+          <Typography variant="caption" textAlign="center" role="status">
+            Tapez votre numéro et continuez : votre compte se crée avec lui, dès le code SMS.
+          </Typography>
+        )}
       </Stack>
       <FeuilleErreur erreur={erreur} onFermer={effacerErreur} onRecommencer={() => void continuer()} />
     </Screen>

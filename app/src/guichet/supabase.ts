@@ -28,7 +28,7 @@ function trouve(j: J | null, message: string): J {
 }
 
 function declaration(j: J): Declaration {
-  return { id: s(j.id), transactionId: s(j.transaction_id), etat: j.etat as Declaration["etat"], montant: nn(j.montant), numeroPayeur: sn(j.numero_payeur), motif: sn(j.motif), declareLe: s(j.declare_le), crediteLe: sn(j.credite_le) };
+  return { id: s(j.id), transactionId: s(j.transaction_id), etat: j.etat as Declaration["etat"], montant: nn(j.montant), numeroPayeur: sn(j.numero_payeur), motif: sn(j.motif), declareLe: s(j.declare_le), crediteLe: sn(j.credite_le), luLe: sn(j.lu_le) };
 }
 function depot(j: J): Depot {
   return {
