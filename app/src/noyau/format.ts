@@ -145,3 +145,8 @@ export function initiales(nom: string | null | undefined): string {
 export function adresseCourte(adresse: string): string {
   return adresse.length <= 14 ? adresse : `${adresse.slice(0, 6)}…${adresse.slice(-4)}`;
 }
+
+/** Un taux tel qu'on le dit : 0.005 → « 0,5 % », 0.001 → « 0,1 % ». */
+export function pourcent(taux: number): string {
+  return `${(Math.round(taux * 100_000) / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 3 })} %`;
+}

@@ -1247,6 +1247,24 @@ end $$;
 rollback;
 update terminaux set vu_le = now() where id = 'akwa-1';
 
+-- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
+begin;
+set local xafe.compte = '22222222-2222-2222-2222-222222222222';
+do $$
+declare r jsonb := parametres_publics();
+begin
+  assert (r -> 'frais' ->> 'sortie')::numeric = (parametre('frais') ->> 'sortie')::numeric, r;
+  assert (r -> 'crypto' ->> 'retraits_ouverts')::boolean, 'ouverts plus haut dans ces scénarios';
+  assert jsonb_array_length(r -> 'operateurs') = 2 and (r -> 'operateurs' -> 0 ->> 'plafond_par_transfert')::numeric = 1000000, r;
+  assert not (r ? 'code_secret') and not (r ? 'depot'), 'rien d''autre que ce que l''écran montre';
+end $$;
+rollback;
+do $$
+begin
+  assert parametres_publics() is null, 'sans session, rien';
+  raise notice '✓ 11.16 l''écran lit les frais, plafonds et pas que l''équipe a posés';
+end $$;
+
 do $$
 begin
   assert total('XAFe') = circulation(), format('XAFe : %s en soldes, %s en circulation', total('XAFe'), circulation());

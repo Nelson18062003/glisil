@@ -39,7 +39,7 @@ grant execute on function
   demander_sortie(numeric, uuid, text, text), ma_sortie(text),
   -- le marché
   placer_ordre(text, text, numeric, numeric, text), annuler_ordre(uuid), mes_ordres(), mon_ordre(uuid), mes_soldes(),
-  carnet(int), transactions_recentes(int), cotation(), chandelles(int, int),
+  carnet(int), transactions_recentes(int), cotation(), chandelles(int, int), parametres_publics(),
   -- la crypto
   adresse_depot(text, text), demander_retrait_crypto(text, text, text, numeric, text, text), mon_retrait_crypto(text),
   -- l'historique

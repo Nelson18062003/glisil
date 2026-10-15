@@ -8,8 +8,8 @@ import { Box, Button, CircularProgress, Divider, Stack, Typography } from "@mui/
 import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useGuichet, useNumeros, useSoldes, useSortie } from "../../guichet";
-import { decouperSortie, montantValide, operateur as opDe } from "../../noyau/argent";
-import { apresFrappe, duree, jourRelatif, montantDepuisSaisie, numeroEnTranches, quand, xaf } from "../../noyau/format";
+import { decouperSortie, FRAIS, montantValide, operateur as opDe } from "../../noyau/argent";
+import { apresFrappe, duree, jourRelatif, montantDepuisSaisie, numeroEnTranches, pourcent, quand, xaf } from "../../noyau/format";
 import { parcours, useParcours } from "../../navigation/parcours";
 import { Amount, Card, Chips, Dot, FeuilleErreur, Keypad, Line, List, Points, Row, Screen, Squelette, Success } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
@@ -96,7 +96,7 @@ export function SortirVerifier() {
     <Screen title="Vérifiez" back="/sortir/destination">
       <Card>
         <Line label="Montant" value={`${xaf(etat.montant)} XAFe`} />
-        <Line label="Frais (0,5 %)" value={xaf(d.frais)} />
+        <Line label={`Frais (${pourcent(FRAIS.sortie)})`} value={xaf(d.frais)} />
         <Divider />
         <Line label="Vous recevez" value={`${xaf(d.envoi)} XAF`} strong />
         <Line label="Vers" value={`${op.nom.split(" ")[0]} · ${numeroEnTranches(numero.numero)}`} />

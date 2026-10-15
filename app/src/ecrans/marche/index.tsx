@@ -14,8 +14,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useCarnet, useChandelles, useCotation, useGuichet, useMesOrdres, useOrdre, useRafraichir, useSoldes, useTransactions } from "../../guichet";
 import type { Chandelle, Cote, Execution, Niveau, Ordre, TypeOrdre } from "../../guichet/types";
-import { achatMax, arrondi2, fraisOrdre, MARCHE, prixValide, quantiteValide, simulerMarche, totalOrdre } from "../../noyau/argent";
-import { enTranches, heure, heureSecondes, jourRelatif, prix as fPrix, usdt as fUsdt, xaf } from "../../noyau/format";
+import { achatMax, arrondi2, FRAIS, fraisOrdre, MARCHE, prixValide, quantiteValide, simulerMarche, totalOrdre } from "../../noyau/argent";
+import { enTranches, heure, heureSecondes, jourRelatif, pourcent, prix as fPrix, usdt as fUsdt, xaf } from "../../noyau/format";
 import { useParcours } from "../../navigation/parcours";
 import { BUY, BUY_BG, Card, Feuille, FeuilleErreur, Line, Screen, SELL, SELL_BG, Squelette, Success } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
@@ -238,7 +238,7 @@ function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean }) => v
 
       <Feuille ouverte={typeOuvert} onFermer={() => setTypeOuvert(false)} titre="Type d'ordre">
         <Stack gap={1}>
-          {([["limite", "Limite", "Vous fixez le prix. L'ordre attend au carnet jusqu'à trouver preneur. Frais 0,05 % s'il attend, 0,10 % s'il prend."], ["marche", "Marché", "Exécuté tout de suite au meilleur prix disponible, jusqu'à ce que vos fonds soient épuisés. Frais 0,10 %."]] as [TypeOrdre, string, string][]).map(([t, nom, aide]) => (
+          {([["limite", "Limite", `Vous fixez le prix. L'ordre attend au carnet jusqu'à trouver preneur. Frais ${pourcent(FRAIS.placeur)} s'il attend, ${pourcent(FRAIS.preneur)} s'il prend.`], ["marche", "Marché", `Exécuté tout de suite au meilleur prix disponible, jusqu'à ce que vos fonds soient épuisés. Frais ${pourcent(FRAIS.preneur)}.`]] as [TypeOrdre, string, string][]).map(([t, nom, aide]) => (
             <ButtonBase key={t} onClick={() => { poser({ type: t }); setTypeOuvert(false); }} sx={{ textAlign: "left", borderRadius: 3 }}>
               <Paper sx={{ p: 1.5, borderRadius: 3, width: "100%", bgcolor: f.type === t ? "#CDEFD9" : "background.default" }}>
                 <Typography fontWeight={600}>{nom}</Typography>
@@ -480,7 +480,7 @@ export function MarcheGraphique() {
           <Line label="Prix en" value="XAFe par USDT" />
           <Line label="Pas de prix" value={fPrix(MARCHE.pasPrix)} />
           <Line label="Quantité minimale" value={`${MARCHE.quantiteMin} USDT`} />
-          <Line label="Frais placeur · preneur" value="0,05 % · 0,10 %" />
+          <Line label="Frais placeur · preneur" value={`${pourcent(FRAIS.placeur)} · ${pourcent(FRAIS.preneur)}`} />
           <Line label="1 XAFe" value="1 XAF, garanti par les floats MoMo et les banques" />
         </Card>
       )}

@@ -18,8 +18,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useCompte, useGuichet, useNumeros, useRafraichir } from "../../guichet";
 import type { IdOperateur } from "../../guichet/types";
 import { CODE_SMS_DEMO } from "../../guichet/demo";
-import { OPERATEURS, PALIERS, operateur as opDe } from "../../noyau/argent";
-import { initiales, jourRelatif, numeroEnTranches, numeroSaisi, numeroValide, operateurDuNumero, xaf } from "../../noyau/format";
+import { FRAIS, OPERATEURS, PALIERS, operateur as opDe } from "../../noyau/argent";
+import { initiales, jourRelatif, numeroEnTranches, numeroSaisi, numeroValide, operateurDuNumero, pourcent, xaf } from "../../noyau/format";
 import { parcours } from "../../navigation/parcours";
 import { useSession } from "../../session/session";
 import { tones } from "../../theme";
@@ -337,11 +337,12 @@ export function CompteApi() {
   );
 }
 
-const FAQ: [string, string][] = [
+/* une fonction, pas une constante : les frais se lisent au moment d'afficher, après les paramètres de l'équipe */
+const faq = (): [string, string][] => [
   ["Combien de temps pour être crédité ?", "Dès que TOTEM lit le SMS de votre paiement, en général moins de 10 secondes après que vous avez tapé le transaction ID. Si le SMS arrive après, votre ID attend et se crédite tout seul."],
   ["Pourquoi un transaction ID ?", "MTN et Orange en donnent un à chaque opération, et le même ID est dans le SMS que notre float reçoit. C'est la preuve la plus simple et la plus sûre : pas de capture d'écran, pas de montant à taper."],
   ["Un XAFe vaut toujours 1 XAF ?", "Oui. Un XAFe n'est créé que quand un XAF est reçu, et détruit quand un XAF est envoyé. Les réserves sont sur nos floats MoMo et nos comptes en banque."],
-  ["Que coûte une sortie ?", "0,5 % du montant, arrondis au franc supérieur par transfert. Au-delà du plafond de l'opérateur, la sortie part en plusieurs transferts ; vous les voyez tous."],
+  ["Que coûte une sortie ?", `${pourcent(FRAIS.sortie)} du montant, arrondis au franc supérieur par transfert. Au-delà du plafond de l'opérateur, la sortie part en plusieurs transferts ; vous les voyez tous.`],
   ["Un transfert a échoué, où est mon argent ?", "Après trois essais, les XAFe de ce transfert reviennent en disponible sur votre compte. Le détail de l'opération le dit, et vous êtes prévenu."],
   ["Pourquoi attendre 24 h pour un nouveau numéro ?", "Pour que personne qui aurait pris votre téléphone ne puisse vider votre compte vers son propre numéro dans la minute."],
 ];
@@ -355,7 +356,7 @@ export function CompteAide() {
   return (
     <Screen title="Aide" back="/compte">
       <Box>
-        {FAQ.map(([q, r]) => (
+        {faq().map(([q, r]) => (
           <Accordion key={q} disableGutters sx={{ bgcolor: "background.paper", "&:before": { display: "none" }, borderRadius: "16px !important", mb: 1, overflow: "hidden" }}>
             <AccordionSummary expandIcon={<ExpandMoreRounded />}><Typography fontWeight={500}>{q}</Typography></AccordionSummary>
             <AccordionDetails><Typography variant="body2">{r}</Typography></AccordionDetails>

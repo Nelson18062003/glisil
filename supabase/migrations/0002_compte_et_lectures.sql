@@ -425,6 +425,23 @@ language sql stable security definer set search_path = public as $$
   select coalesce(jsonb_agg(jsonb_build_object('t', t, 'o', o, 'h', h, 'l', l, 'c', c, 'v', v) order by t), '[]'::jsonb) from c
 $$;
 
+-- Ce que l'écran doit savoir pour MONTRER d'avance ce que le moteur fera :
+-- frais, pas de prix, plafonds. L'équipe les change en base ; une copie figée
+-- dans l'application annonçait 0,5 % de frais au moment de signer quand le
+-- moteur en prenait 1 %. Le moteur reste seul juge : ceci n'est qu'un miroir.
+create function parametres_publics() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'frais', parametre('frais'),
+    'marche', parametre('marche'),
+    'paliers', parametre('paliers'),
+    'crypto', jsonb_build_object('frais', parametre('crypto') -> 'frais',
+                                 'retraits_ouverts', coalesce((parametre('crypto') ->> 'retraits_ouverts')::boolean, false)),
+    'operateurs', (select jsonb_agg(jsonb_build_object('id', id, 'nom', nom, 'plafond_par_transfert', plafond_par_transfert,
+                                                       'plafond_jour', plafond_jour) order by id) from operateurs))
+   where auth.uid() is not null
+$$;
+
 create function mes_ordres() returns jsonb
 language sql stable security definer set search_path = public as $$
   select coalesce(jsonb_agg(_ordre_json(o) order by o.cree_le desc, o.numero desc), '[]'::jsonb)

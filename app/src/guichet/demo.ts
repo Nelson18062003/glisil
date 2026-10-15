@@ -584,6 +584,9 @@ export class GuichetDemo implements Guichet {
     return copie(n);
   }
 
+  /** la démonstration garde les valeurs de la migration, écrites dans noyau/argent.ts */
+  async parametres() { return null; }
+
   async renvoyerCodeNumero(id: string) {
     const d = this.dossier();
     const n = d.numeros.find((x) => x.id === id && !x.retireLe);

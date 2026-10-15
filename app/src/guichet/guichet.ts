@@ -65,6 +65,8 @@ export interface Guichet {
   confirmerNumero(p: { id: string; code: string }): Promise<Numero>;
   /** Un nouveau code SMS pour un numéro pas encore vérifié (une minute entre deux). */
   renvoyerCodeNumero(id: string): Promise<Numero>;
+  /** Les frais, pas et plafonds posés par l'équipe (parametres_publics) ; null s'ils ne se lisent pas. */
+  parametres(): Promise<unknown>;
   retirerNumero(p: { id: string; codeSecret: string }): Promise<void>;
   demanderSortie(p: { montant: number; numeroId: string; cle: string; codeSecret: string }): Promise<Sortie>;
   sortie(reference: string): Promise<Sortie>;

@@ -5,6 +5,7 @@
  */
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
+import { appliquerParametres } from "../noyau/argent";
 import { GuichetDemo } from "./demo";
 import type { Guichet } from "./guichet";
 import { GuichetSupabase } from "./supabase";
@@ -27,9 +28,20 @@ export function GuichetProvider({ guichet, children }: { guichet: Guichet; child
   useEffect(() => guichet.surChangement(() => { void client.invalidateQueries(); }), [guichet]);
   return (
     <Contexte.Provider value={guichet}>
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      <QueryClientProvider client={client}><Parametres />{children}</QueryClientProvider>
     </Contexte.Provider>
   );
+}
+
+/** Les frais et plafonds que l'équipe a posés, lus au démarrage puis toutes les cinq minutes, appliqués en place. */
+function Parametres() {
+  const g = useGuichet();
+  useQuery({
+    queryKey: ["parametres"],
+    queryFn: async () => { const p = await g.parametres().catch(() => null); appliquerParametres(p); return p ?? false; },
+    refetchInterval: 5 * 60_000,
+  });
+  return null;
 }
 
 export function useGuichet(): Guichet {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { achatMax, decouperSortie, fraisOrdre, nombreDeTransferts, prixValide, quantiteValide, simulerMarche } from "./argent.ts";
 import { lisible } from "./erreurs.ts";
-import { apresFrappe, enTranches, jourRelatif, numeroEnTranches, numeroSaisi, operateurDuNumero, prix, signe, usdt } from "./format.ts";
+import { apresFrappe, enTranches, jourRelatif, numeroEnTranches, numeroSaisi, operateurDuNumero, pourcent, prix, signe, usdt } from "./format.ts";
 
 test("un montant se lit en tranches", () => {
   assert.equal(enTranches(1000000), "1 000 000");
@@ -97,3 +97,32 @@ test("une date se lit dans la langue de l'écran", () => {
   assert.equal(jourRelatif(new Date(2026, 8, 30), maintenant), "30 sept.");
   assert.equal(jourRelatif(new Date(2025, 11, 25), maintenant), "25 déc. 2025");
 });
+
+test("les paramètres de l'équipe remplacent ceux de la migration, et une valeur abîmée ne passe pas", async () => {
+  const a = await import("./argent.ts");
+  const avant = { ...a.FRAIS };
+  assert.equal(a.appliquerParametres({
+    frais: { placeur: 0.0005, preneur: 0.001, sortie: 0.01 },
+    marche: { pas_prix: 0.1, quantite_min: "20" },
+    paliers: { "0": { entree_jour: 300000, sortie_jour: 250000 }, "1": { entree_jour: "abîmé" }, "2": null },
+    crypto: { frais: { USDT: 2, XAFe: 600 }, retraits_ouverts: false },
+    operateurs: [{ id: "om", plafond_par_transfert: 750000, plafond_jour: 3000000 }, { id: "inconnu", plafond_par_transfert: 1 }],
+  }), true);
+  assert.equal(a.FRAIS.sortie, 0.01);
+  assert.equal(pourcent(a.FRAIS.sortie), "1 %");
+  assert.equal(pourcent(0.0005), "0,05 %");
+  assert.equal(a.decouperSortie(100_000, 1_000_000).frais, 1_000, "l'écran annonce les frais que le moteur prendra");
+  assert.equal(a.MARCHE.pasPrix, 0.1);
+  assert.equal(a.MARCHE.quantiteMin, 20);
+  assert.equal(a.PALIERS[0].sortieJour, 250_000);
+  assert.equal(a.PALIERS[1].entreeJour, 5_000_000, "une valeur abîmée laisse la précédente");
+  assert.equal(a.PALIERS[2].entreeJour, null);
+  assert.equal(a.FRAIS_CRYPTO.USDT, 2);
+  assert.equal(a.CRYPTO.retraitsOuverts, false);
+  assert.equal(a.operateur("om").plafondParTransfert, 750_000);
+  assert.equal(a.appliquerParametres({ frais: { sortie: 0.9 } }), true);
+  assert.equal(a.FRAIS.sortie, 0.01, "des frais à 90 % ne s'affichent pas");
+  assert.equal(a.appliquerParametres(null), false);
+  Object.assign(a.FRAIS, avant);
+});
+

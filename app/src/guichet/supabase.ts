@@ -219,6 +219,10 @@ export class GuichetSupabase implements Guichet {
   async numeros() { return ((await this.rpc<J[]>("mes_numeros")) ?? []).map(numero); }
   async ajouterNumero({ operateur, numero: num }: { operateur: IdOperateur; numero: string }) { return numero(await this.rpc<J>("ajouter_numero", { p_operateur: operateur, p_numero: numeroSaisi(num) })); }
   async confirmerNumero({ id, code }: { id: string; code: string }) { return numero(await this.rpc<J>("confirmer_numero", { p_id: id, p_code: code })); }
+  async parametres() {
+    const { data, error } = await this.sb.rpc("parametres_publics");
+    return error ? null : data;
+  }
   async renvoyerCodeNumero(id: string) { return numero(await this.rpc<J>("renvoyer_code_numero", { p_id: id })); }
   async retirerNumero({ id, codeSecret }: { id: string; codeSecret: string }) { await this.rpc("retirer_numero", { p_id: id, p_code: codeSecret }); }
   async demanderSortie({ montant, numeroId, cle, codeSecret }: { montant: number; numeroId: string; cle: string; codeSecret: string }) {

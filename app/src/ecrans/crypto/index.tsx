@@ -16,7 +16,7 @@ import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useAdresseDepot, useGuichet, useRetraitCrypto, useSoldes } from "../../guichet";
 import type { Actif, Reseau } from "../../guichet/types";
-import { arrondi2, FRAIS_CRYPTO, RESEAUX } from "../../noyau/argent";
+import { arrondi2, CRYPTO, FRAIS_CRYPTO, RESEAUX } from "../../noyau/argent";
 import { adresseCourte, enTranches, quand, xaf } from "../../noyau/format";
 import { parcours, useParcours } from "../../navigation/parcours";
 import { Card, FeuilleErreur, Keypad, Line, List, Points, Row, Screen, Squelette, Success } from "../../ui";
@@ -98,6 +98,16 @@ export function CryptoRetirerReseau() {
   const navigate = useNavigate();
   const [c, poser] = useParcours("crypto");
   useEffect(() => { if (c.actif !== actif) poser({ actif, adresse: "", montant: 0 }); }, [actif, c.actif, poser]);
+  if (!CRYPTO.retraitsOuverts) {
+    /* fermé par le moteur : on le dit AVANT l'adresse, le montant et le code, pas après */
+    return (
+      <Screen title={`Retirer des ${actif}`} back="/crypto">
+        <Typography variant="body2">L'envoi vers un wallet externe n'est pas encore ouvert. Vos {actif} restent disponibles : vous pouvez les vendre au marché, ou sortir vos XAFe vers MoMo.</Typography>
+        <Box sx={{ flex: 1 }} />
+        <Button variant="contained" onClick={() => navigate("/marche")}>Aller au marché</Button>
+      </Screen>
+    );
+  }
   return (
     <Screen title={`Retirer des ${actif}`} back="/crypto">
       <Typography variant="body2">Sur quel réseau ?</Typography>
