@@ -52,6 +52,25 @@ CHARGE="$TMP/charge"; HOTE=127.0.0.1; PORT=$PORT_DB
 echo "· l'API, attaquée"
 node "$ICI/supabase/epreuve/attaquer-par-l-api.mjs"
 
+# La chaîne réelle : le robot TOTEM (son lecteur, sa ligne, sa signature) → porte.ts → ce moteur.
+TOTEM=${TOTEM:-$ICI/../totem}
+chaine() {
+  PORT_PORTE=54321 node --experimental-strip-types "$ICI/supabase/epreuve/porte-locale.mjs" >"$TMP/porte.log" 2>&1 &
+  PORTE_PID=$!
+  sleep 2
+  STATUT=0
+  TOTEM="$TOTEM" python3 "$ICI/supabase/epreuve/la-chaine-reelle.py" >"$TMP/chaine.log" 2>&1 || STATUT=$?
+  kill $PORTE_PID 2>/dev/null || true
+  return $STATUT
+}
+if [ -f "$TOTEM/totem/xafe.py" ]; then
+  echo "· la chaîne réelle : de vrais formats de SMS, lus par TOTEM ($TOTEM), jusqu'à ce moteur"
+  chaine || { cat "$TMP/chaine.log"; echo "✗ la chaîne réelle ne tient pas"; exit 1; }
+  cat "$TMP/chaine.log"
+else
+  echo "· la chaîne réelle : SAUTÉE — le dépôt TOTEM n'est pas à $TOTEM (TOTEM=… pour le dire)"
+fi
+
 if [ "${TEMOIN:-0}" = "1" ]; then
   echo "· témoin : la même attaque contre les migrations d'avant les corrections (6d453d3)"
   mkdir -p "$TMP/avant" && git -C "$ICI" archive 6d453d3 supabase/migrations | tar -x -C "$TMP/avant"
@@ -61,6 +80,11 @@ if [ "${TEMOIN:-0}" = "1" ]; then
   fi
   echo "✓ témoin : sur le code d'avant, l'attaque échoue $(grep -c '^✗ ' "$TMP/temoin.log") fois, dont :"
   grep '^✗ ' "$TMP/temoin.log" | grep -v 'exigence' | head -4 | sed 's/^/    /'
+  if [ -f "$TOTEM/totem/xafe.py" ]; then
+    if chaine; then echo "✗ témoin : la chaîne réelle passe aussi sur le code d'avant — elle ne prouve rien"; exit 1; fi
+    echo "✓ témoin : sur le code d'avant, la chaîne réelle échoue :"
+    grep '^✗ ' "$TMP/chaine.log" | grep -v 'exigence' | head -3 | sed 's/^/    /'
+  fi
 fi
 rm -rf "$TMP"
 echo "✓ sur une vraie pile Supabase, le moteur et son API tiennent"
