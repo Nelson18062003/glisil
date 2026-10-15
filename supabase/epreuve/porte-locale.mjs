@@ -35,7 +35,7 @@ createServer(async (req, res) => {
   const corps = Buffer.concat(morceaux).toString("utf8");
   const url = new URL(req.url, `http://${req.headers.host}`);
   const h = lireEntetes({ get: (n) => req.headers[n] ?? null });
-  let rep = await verifier(h, corps, cleDuTerminal);
+  let rep = await verifier(h, req.method, url, corps, cleDuTerminal);
   if (!rep) {
     let charge = null;
     try { charge = corps ? JSON.parse(corps) : null; } catch { rep = { statut: 400, corps: { erreur: "JSON illisible" } }; }

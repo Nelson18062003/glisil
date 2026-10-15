@@ -22,7 +22,7 @@ const rpc = async (nom: string, args: Record<string, unknown>) => {
 Deno.serve(async (req) => {
   const corps = await req.text();
   const entetes = lireEntetes(req.headers);
-  const refus = await verifier(entetes, corps, cleDuTerminal);
+  const refus = await verifier(entetes, req.method, new URL(req.url), corps, cleDuTerminal);
   if (refus) return reponseHttp(refus);
   let charge: unknown = null;
   if (corps) {

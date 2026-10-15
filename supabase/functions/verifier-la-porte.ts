@@ -25,27 +25,64 @@ const ok = (texte: string) => { n++; console.log(`✓ ${texte}`); };
 /* ------------------------------------------------------- la signature */
 {
   const corps = JSON.stringify({ source_id: 1 });
-  const bonne = await signer("secret-akwa", maintenant(), corps);
-  assert.equal(await verifier(entetes("akwa-1", maintenant(), bonne), corps, cleDuTerminal, maintenant), null);
+  const SMS = new URL("https://x.supabase.co/functions/v1/totem-sms");
+  const signe = (cle: string, ts: number, c = corps) => signer(cle, ts, "POST", "totem-sms", c);
+  const bonne = await signe("secret-akwa", maintenant());
+  assert.equal(await verifier(entetes("akwa-1", maintenant(), bonne), "POST", SMS, corps, cleDuTerminal, maintenant), null);
   ok("une requête bien signée entre");
 
   const refus = (r: unknown) => assert.deepEqual(r, { statut: 401, corps: { erreur: "signature refusée" } });
-  refus(await verifier(entetes("akwa-1", maintenant(), "0".repeat(64)), corps, cleDuTerminal, maintenant));
-  refus(await verifier(entetes("akwa-1", maintenant(), await signer("mauvaise", maintenant(), corps)), corps, cleDuTerminal, maintenant));
-  refus(await verifier(entetes("inconnu", maintenant(), await signer("secret-akwa", maintenant(), corps)), corps, cleDuTerminal, maintenant));
-  refus(await verifier(entetes("akwa-1", maintenant(), bonne), corps + " ", cleDuTerminal, maintenant));
-  refus(await verifier(lireEntetes({ get: () => null }), corps, cleDuTerminal, maintenant));
+  refus(await verifier(entetes("akwa-1", maintenant(), "0".repeat(64)), "POST", SMS, corps, cleDuTerminal, maintenant));
+  refus(await verifier(entetes("akwa-1", maintenant(), await signe("mauvaise", maintenant())), "POST", SMS, corps, cleDuTerminal, maintenant));
+  refus(await verifier(entetes("inconnu", maintenant(), await signe("secret-akwa", maintenant())), "POST", SMS, corps, cleDuTerminal, maintenant));
+  refus(await verifier(entetes("akwa-1", maintenant(), bonne), "POST", SMS, corps + " ", cleDuTerminal, maintenant));
+  refus(await verifier(lireEntetes({ get: () => null }), "POST", SMS, corps, cleDuTerminal, maintenant));
   ok("sans signature, avec une mauvaise clé, un terminal inconnu ou un corps retouché : refusé, toujours de la même façon");
 
   const vieux = maintenant() - FENETRE_SECONDES - 1;
-  refus(await verifier(entetes("akwa-1", vieux, await signer("secret-akwa", vieux, corps)), corps, cleDuTerminal, maintenant));
+  refus(await verifier(entetes("akwa-1", vieux, await signe("secret-akwa", vieux)), "POST", SMS, corps, cleDuTerminal, maintenant));
   const limite = maintenant() - FENETRE_SECONDES;
-  assert.equal(await verifier(entetes("akwa-1", limite, await signer("secret-akwa", limite, corps)), corps, cleDuTerminal, maintenant), null);
+  assert.equal(await verifier(entetes("akwa-1", limite, await signe("secret-akwa", limite)), "POST", SMS, corps, cleDuTerminal, maintenant), null);
   ok("une signature de plus de cinq minutes est refusée : rejouer une vieille requête ne sert à rien");
 
   /* la signature de bonaberi, présentée au nom d'akwa : refusée — un boîtier ne parle que pour lui */
-  refus(await verifier(entetes("akwa-1", maintenant(), await signer("secret-bonaberi", maintenant(), corps)), corps, cleDuTerminal, maintenant));
+  refus(await verifier(entetes("akwa-1", maintenant(), await signe("secret-bonaberi", maintenant())), "POST", SMS, corps, cleDuTerminal, maintenant));
   ok("la clé d'un autre boîtier ne vaut rien ici");
+
+  /* #54 — la signature couvre la méthode et la cible, requête comprise. Un
+     PATCH capturé pour la commande 7 ne réclame pas la commande 8 ; un GET
+     signé pour un guichet n'ouvre pas les deux autres. */
+  const reclamer = JSON.stringify({ type: "transferts", etat: "en_cours" });
+  const pour7 = await signer("secret-akwa", maintenant(), "PATCH", "totem-commandes/7", reclamer);
+  const cmd = (fin: string) => new URL(`https://x.supabase.co/functions/v1/totem-commandes${fin}`);
+  assert.equal(await verifier(entetes("akwa-1", maintenant(), pour7), "PATCH", cmd("/7"), reclamer, cleDuTerminal, maintenant), null);
+  refus(await verifier(entetes("akwa-1", maintenant(), pour7), "PATCH", cmd("/8"), reclamer, cleDuTerminal, maintenant));
+  refus(await verifier(entetes("akwa-1", maintenant(), pour7), "PATCH", cmd("/7?type=sms"), reclamer, cleDuTerminal, maintenant));
+  refus(await verifier(entetes("akwa-1", maintenant(), pour7), "POST", cmd("/7"), reclamer, cleDuTerminal, maintenant));
+  const releveSms = await signer("secret-akwa", maintenant(), "GET", "totem-commandes?type=sms", "");
+  assert.equal(await verifier(entetes("akwa-1", maintenant(), releveSms), "GET", cmd("?type=sms"), "", cleDuTerminal, maintenant), null);
+  refus(await verifier(entetes("akwa-1", maintenant(), releveSms), "GET", cmd("?type=remboursements"), "", cleDuTerminal, maintenant));
+  refus(await verifier(entetes("akwa-1", maintenant(), releveSms), "GET", cmd(""), "", cleDuTerminal, maintenant));
+  /* l'hébergement peut retirer « /functions/v1 » avant la fonction : même cible */
+  assert.equal(await verifier(entetes("akwa-1", maintenant(), pour7), "PATCH", new URL("http://edge:9000/totem-commandes/7"), reclamer, cleDuTerminal, maintenant), null);
+  ok("un PATCH signé pour la commande 7 ne vaut ni pour la 8, ni pour un autre guichet, ni sous une autre méthode");
+
+  /* témoin : l'ancienne signature (horodatage + corps) ne passe plus */
+  const { createHmac } = await import("node:crypto");
+  const ancienne = createHmac("sha256", "secret-akwa").update(`${maintenant()}.${reclamer}`).digest("hex");
+  refus(await verifier(entetes("akwa-1", maintenant(), ancienne), "PATCH", cmd("/7"), reclamer, cleDuTerminal, maintenant));
+  ok("témoin : la signature d'avant, qui ne couvrait que le corps, est refusée");
+
+  /* Les vecteurs figés, calculés par le hmac de Python — les mêmes que
+     tests/test_xafe.py chez TOTEM. Si l'un des deux côtés change sa façon
+     de signer, l'un des deux harnais tombe. */
+  const VECTEURS: [string, string, string, string][] = [
+    ["POST", "totem-sms", '{"source_id":1}', "39d1d43fa33a2b411a55c9acd469e95015592ec444780bdf3919d205845863e7"],
+    ["GET", "totem-commandes?type=sms", "", "15cee40c5d8b04bd7d2fb9c2957573fc1859d2b4f4f3dfc77e355363f09080fd"],
+    ["PATCH", "totem-commandes/7", reclamer, "d2f0862df695658e7e387a5831dcd4a5e04e4382a19f9550e1dc943cd5ca040b"],
+  ];
+  for (const [m, c, b, attendue] of VECTEURS) assert.equal(await signer("secret-akwa", 1_760_000_000, m, c, b), attendue, `${m} ${c}`);
+  ok("les vecteurs figés : la porte signe exactement comme le boîtier");
 }
 
 /* ---------------------------------------------------------- les SMS */

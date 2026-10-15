@@ -19,8 +19,22 @@ Chaque appel porte trois en-têtes :
 ```
 x-totem-terminal:    akwa-1
 x-totem-horodatage:  1760000000                       (secondes Unix à l'envoi)
-x-totem-signature:   hex( HMAC-SHA256( clé, horodatage + "." + corps ) )
+x-totem-signature:   hex( HMAC-SHA256( clé, horodatage + "." + MÉTHODE + " " + cible + "." + corps ) )
 ```
+
+La **cible** est le chemin à partir du nom de la porte, requête comprise :
+`totem-sms`, `totem-commandes?type=sms`, `totem-commandes/7`. Exemple, clé
+`secret-akwa`, horodatage `1760000000` :
+
+```
+1760000000.PATCH totem-commandes/7.{"type":"transferts","etat":"en_cours"}
+  → d2f0862df695658e7e387a5831dcd4a5e04e4382a19f9550e1dc943cd5ca040b
+```
+
+Signer le corps seul ne suffisait pas : « réclamer », capturé pour la
+commande 7, valait pendant cinq minutes pour toutes les commandes du boîtier.
+Les mêmes vecteurs sont figés des deux côtés (`verifier-la-porte.ts` ici,
+`tests/test_xafe.py` chez TOTEM).
 
 La clé est celle du boîtier (`terminaux.cle`, lisible par la clé de service
 seulement). Une signature vaut cinq minutes : rejouer une vieille requête est
@@ -28,7 +42,9 @@ refusé. Un terminal ne voit que **ses** commandes et ne peut écrire que pour
 **ses** cartes : un SMS dont `float_numero` n'est pas un float porté par CE
 terminal ne crédite jamais rien — il est retenu pour l'équipe. La porte est `supabase/functions/_shared/porte.ts` ; le
 harnais `supabase/functions/verifier-la-porte.ts` l'attaque (sans signature,
-mauvaise clé, corps retouché, signature d'hier, clé d'un autre boîtier).
+mauvaise clé, corps retouché, signature d'hier, clé d'un autre boîtier, une
+réclamation rejouée sur une autre commande, un autre guichet ou une autre
+méthode, la signature d'avant qui ne couvrait que le corps).
 
 ## (1) Un SMS d'argent reçu
 
@@ -82,6 +98,15 @@ Ce que la base en fait (`totem_sms_recu`) :
 3. sinon : range le SMS dans `entrees_retenues`. Personne n'est crédité au
    hasard. Quand le client déclare ensuite l'ID (`declarer_transaction`), la
    base retrouve le SMS retenu et applique la même règle.
+
+Un float retiré par l'équipe (`admin_activer_float`) **crédite encore** : la
+base ne regarde pas `actif` en lisant un SMS, et un client qui a payé avant le
+retrait n'y perd rien. Ce qui change, c'est ce que voit le client : le dossier
+porte `reception` — `ouverte`, `retardee` (le boîtier du float se tait depuis
+dix minutes : on peut payer, le crédit attendra son retour) ou `fermee` (le
+float est retiré : l'écran dit « ne payez pas ici » et propose un autre
+numéro). L'équipe, avant de retirer un float, voit combien de dossiers ouverts
+le donnent à payer.
 
 Les deux ordres d'arrivée marchent : le SMS avant l'ID, l'ID avant le SMS, et
 les deux au même instant (un verrou par transaction ID, éprouvé par

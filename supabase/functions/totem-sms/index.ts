@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return reponseHttp({ statut: 405, corps: { erreur: "POST seulement" } });
   const corps = await req.text();
   const entetes = lireEntetes(req.headers);
-  const refus = await verifier(entetes, corps, cleDuTerminal);
+  const refus = await verifier(entetes, req.method, new URL(req.url), corps, cleDuTerminal);
   if (refus) return reponseHttp(refus);
   let charge: unknown;
   try { charge = JSON.parse(corps); } catch { return reponseHttp({ statut: 400, corps: { erreur: "JSON illisible" } }); }

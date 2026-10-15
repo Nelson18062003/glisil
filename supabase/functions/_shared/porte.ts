@@ -8,7 +8,13 @@
  * Chaque requête porte trois en-têtes :
  *   x-totem-terminal    l'identifiant du boîtier ('akwa-1')
  *   x-totem-horodatage  les secondes Unix au moment de l'envoi
- *   x-totem-signature   hex( HMAC-SHA256( clé du terminal, horodatage + "." + corps ) )
+ *   x-totem-signature   hex( HMAC-SHA256( clé du terminal,
+ *                         horodatage + "." + MÉTHODE + " " + cible + "." + corps ) )
+ * La cible est le chemin à partir du nom de la porte, requête comprise :
+ * « totem-commandes/7 », « totem-commandes?type=sms », « totem-sms ».
+ * Signer le corps seul ne suffisait pas : « {"etat":"en_cours"} » signé pour
+ * la commande 7 valait, pendant cinq minutes, pour TOUTES les commandes du
+ * terminal — et un GET signé pour un guichet valait pour les deux autres.
  * Une signature vaut cinq minutes : au-delà, une requête rejouée est refusée.
  * Un boîtier ne voit que SES commandes et n'écrit que pour SES cartes.
  */
@@ -24,9 +30,22 @@ function hex(octets: ArrayBuffer): string {
   return Array.from(new Uint8Array(octets), (o) => o.toString(16).padStart(2, "0")).join("");
 }
 
-export async function signer(cle: string, horodatage: number | string, corps: string): Promise<string> {
+export async function signer(cle: string, horodatage: number | string, methode: string, cible: string, corps: string): Promise<string> {
   const k = await crypto.subtle.importKey("raw", encodeur.encode(cle), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return hex(await crypto.subtle.sign("HMAC", k, encodeur.encode(`${horodatage}.${corps}`)));
+  return hex(await crypto.subtle.sign("HMAC", k, encodeur.encode(`${horodatage}.${methode.toUpperCase()} ${cible}.${corps}`)));
+}
+
+/**
+ * Ce qu'une requête vise, tel que le boîtier l'a écrit : le chemin à partir
+ * du nom de la porte (« totem-… »), et la requête telle qu'elle est arrivée.
+ * Selon l'hébergement, l'adresse que voit la fonction commence par
+ * « /functions/v1/ » ou directement par son nom : on part du nom, des deux
+ * côtés pareil.
+ */
+export function cibleDe(url: URL): string {
+  const morceaux = url.pathname.split("/").filter(Boolean);
+  const i = morceaux.findIndex((m) => m.startsWith("totem-"));
+  return (i >= 0 ? morceaux.slice(i) : morceaux).join("/") + url.search;
 }
 
 /** Deux chaînes comparées en temps constant : une signature ne se devine pas octet par octet. */
@@ -51,6 +70,8 @@ export function lireEntetes(h: { get(nom: string): string | null }): Entetes {
  */
 export async function verifier(
   entetes: Entetes,
+  methode: string,
+  url: URL,
   corps: string,
   cleDuTerminal: (terminal: string) => Promise<string | null>,
   maintenant: () => number = () => Math.floor(Date.now() / 1000),
@@ -61,7 +82,7 @@ export async function verifier(
   if (Math.abs(maintenant() - Number(horodatage)) > FENETRE_SECONDES) return refus;
   const cle = await cleDuTerminal(terminal);
   if (!cle) return refus;
-  const attendue = await signer(cle, horodatage, corps);
+  const attendue = await signer(cle, horodatage, methode, cibleDe(url), corps);
   return memes(attendue, signature) ? null : refus;
 }
 

@@ -8,7 +8,8 @@ Ce qui est réel ici :
     le dépôt TOTEM (tests/test_analyse_sms.py), avec ses noms difficiles ;
   · le lecteur et la ligne : `analyser` et `PorteXafe._ligne` de TOTEM, tels
     qu'ils tournent sur le Pi ;
-  · la signature et l'envoi : `PorteXafe._appel` de TOTEM (HMAC, horodatage) ;
+  · la signature et l'envoi : `PorteXafe._appel` de TOTEM (HMAC sur horodatage,
+    méthode, chemin et corps) — et une réclamation capturée, rejouée ailleurs ;
   · la porte : `supabase/functions/_shared/porte.ts` (porte-locale.mjs) ;
   · le moteur, la base, l'auth : la pile Supabase de supabase/epreuve ;
   · les clients : inscrits par OTP chez GoTrue, avec le numéro qui paie, et
@@ -140,5 +141,42 @@ _, s = rpc("mes_soldes", {}, mallory_jeton)
 verifier(not s or float(s.get("XAFe", {}).get("disponible", 0)) == 0, "l'intrus qui a tapé un ID d'avance ne reçoit rien", json.dumps(s))
 reste = int(sql("select count(*) from entrees_retenues where etat = 'retenue' and source_id between 50000 and 59999"))
 verifier(reste == 0, "aucun encaissement ne reste retenu : chaque ID tapé tel qu'écrit dans le SMS a trouvé son paiement", f"{reste} retenus")
+# ---- la relève et la réclamation, signées par le robot, rejouées par un intrus --
+# Deux SMS à faire partir de ce boîtier. Le robot relève et prend le premier ;
+# quelqu'un capture ce PATCH en route et le rejoue — sur l'autre, sur un autre
+# guichet, sous une autre méthode — dans les cinq minutes que vaut la
+# signature (#54). Seule la requête capturée, telle quelle, est rejouée.
+import totem.xafe as module_xafe                  # noqa: E402
+ids = sql("""insert into messages_sortants (terminal, operateur, numero, texte, cle, expire_le)
+             select 'akwa-1', 'mtn', '677120001', 'XAFe Exchange : votre code est 000000.', 'chaine-' || g || '-' || extract(epoch from clock_timestamp()), now() + interval '10 minutes'
+               from generate_series(1, 2) g returning id""").split()
+premier, second = int(ids[0]), int(ids[1])
+releve = [d["id"] for d in porte.commandes_en_attente()]
+verifier(f"sms:{premier}" in releve and f"sms:{second}" in releve, "le robot relève les SMS à envoyer de SON boîtier, signé", str(releve))
+captures = []
+vrai_urlopen = module_xafe.urllib.request.urlopen
+module_xafe.urllib.request.urlopen = lambda req, timeout=None: (captures.append(req), vrai_urlopen(req, timeout=timeout))[1]
+try:
+    pris = porte.reclamer(f"sms:{premier}")
+finally:
+    module_xafe.urllib.request.urlopen = vrai_urlopen
+verifier(bool(pris), "le robot réclame le premier, signé avec la méthode et le chemin")
+capture = captures[-1]
+def rejouer(chemin, methode="PATCH"):
+    req = urllib.request.Request(f"{PORTE}/functions/v1/{chemin}", data=capture.data, method=methode)
+    for nom, valeur in capture.header_items():
+        req.add_header(nom, valeur)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return r.status
+    except urllib.error.HTTPError as e:
+        return e.code
+rejeux = {c: rejouer(c) for c in (f"totem-commandes/{second}", f"totem-commandes/{second}?type=transferts")}
+rejeux["POST"] = rejouer(f"totem-commandes/{premier}", "POST")
+verifier(set(rejeux.values()) == {401}, "le PATCH capturé, rejoué sur l'autre SMS, un autre guichet ou une autre méthode : refusé", str(rejeux))
+verifier(sql(f"select etat from messages_sortants where id = {second}") == "en_attente", "le second SMS n'a été pris par personne")
+verifier(rejouer(f"totem-commandes/{premier}") == 409, "rejouée telle quelle sur SA commande, la requête retombe sur la règle (déjà prise)")
+verifier(bool(porte.reclamer(f"sms:{second}")), "le robot, lui, prend le second")
+
 print("✓ la chaîne réelle tient, du lecteur de TOTEM au moteur XAFe" if not echecs else f"✗ {echecs} exigence(s) non tenue(s)")
 sys.exit(1 if echecs else 0)
