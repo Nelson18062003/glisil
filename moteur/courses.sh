@@ -9,11 +9,11 @@
 # doit reproduire la faute — sinon la course ne prouve rien.
 
 sql() { # sql <fichier> : joue un fichier, sortie dans $GRAPPE/<fichier>.log
-  $COMME "PATH=$PATH $PSQL -d xafe -f $GRAPPE/$1" >"$GRAPPE/$1.log" 2>&1
+  $COMME "PATH=$PATH $PSQL -d ${BASE:-xafe} -f $GRAPPE/$1" >"$GRAPPE/$1.log" 2>&1
 }
 valeur() { # valeur "<select>" : une seule valeur
   echo "$1" >"$GRAPPE/valeur.sql"
-  $COMME "PATH=$PATH $PSQL -d xafe -At -f $GRAPPE/valeur.sql"
+  $COMME "PATH=$PATH $PSQL -d ${BASE:-xafe} -At -f $GRAPPE/valeur.sql"
 }
 ensemble() { # ensemble <a.sql> <b.sql> : A commence, B le rejoint pendant qu'A attend
   sql "$1" & a=$!
@@ -52,7 +52,7 @@ BOB=22222222-2222-2222-2222-222222222222
 # ── 1 · le même SMS poussé deux fois en même temps (le robot n'a pas eu l'accusé)
 course_sms() { # course_sms <source_id> <transaction id>
   cat >"$GRAPPE/c1-decl.sql" <<SQL
-begin; set local xafe.compte = '$ALICE';
+begin; set local ${CLE_COMPTE:-xafe.compte} = '$ALICE';
 select declarer_transaction((select reference from depots where cle = 'k-al-11'), '$2');
 commit;
 SQL
@@ -79,7 +79,7 @@ echo "✓ 12.1 le même SMS poussé deux fois en même temps est crédité une f
 # ── 2 · l'ID tapé au moment même où TOTEM pousse le SMS
 course_id() { # course_id <source_id> <transaction id>
   cat >"$GRAPPE/c2-a.sql" <<SQL
-begin; set local xafe.compte = '$EVE';
+begin; set local ${CLE_COMPTE:-xafe.compte} = '$EVE';
 select declarer_transaction((select reference from depots where cle = 'k-eve-1'), '$2');
 select pg_sleep(1.5);
 commit;
@@ -105,7 +105,7 @@ echo "✓ 12.2 l'ID tapé à l'instant où le SMS arrive : ils se trouvent (tém
 course_sorties() { # course_sorties <préfixe de clé>
   for x in a b; do
     cat >"$GRAPPE/c3-$x.sql" <<SQL
-begin; set local xafe.compte = '$BOB';
+begin; set local ${CLE_COMPTE:-xafe.compte} = '$BOB';
 select demander_sortie(300000, 'bbbbbbbb-0000-0000-0000-000000000001', '$1-$x');
 select pg_sleep(1.5);
 commit;

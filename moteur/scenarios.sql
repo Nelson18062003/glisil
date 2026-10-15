@@ -1117,8 +1117,11 @@ begin
   insert into auth.users (id, phone) values ('eeeeeeee-0000-0000-0000-000000000003', '+237677333444');
   assert (select telephone from comptes where id = 'eeeeeeee-0000-0000-0000-000000000003') = '677333444';
   assert (select verifie_le from numeros where compte_id = 'eeeeeeee-0000-0000-0000-000000000003') is not null, 'le téléphone de connexion est son premier numéro';
+  -- l'utilisateur est supprimé de l'auth (sa ligne « comptes » reste : pas de clé étrangère), puis se réinscrit
+  delete from auth.users where id = 'eeeeeeee-0000-0000-0000-000000000003';
   insert into auth.users (id, phone) values ('eeeeeeee-0000-0000-0000-000000000004', '+237677333444');
-  raise notice '✓ 11.8 deux administrateurs par e-mail, un téléphone déjà connu : aucune inscription ne tombe';
+  assert not exists (select 1 from comptes where id = 'eeeeeeee-0000-0000-0000-000000000004'), 'le téléphone garde son compte : pas un second';
+  raise notice '✓ 11.8 deux administrateurs par e-mail, un téléphone qui se réinscrit : aucune inscription ne tombe';
 end $$;
 
 -- 11.9 · un remboursement : jamais d'un SMS déjà crédité, relançable après un échec, un résultat rejoué ne compte pas.

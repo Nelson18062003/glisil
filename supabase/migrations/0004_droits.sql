@@ -75,9 +75,18 @@ grant execute on all functions in schema public to service_role;
 do $$
 begin
   if to_regclass('storage.buckets') is null then return; end if;
-  insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-  values ('verifications', 'verifications', false, 10485760, array['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
-  on conflict (id) do nothing;
+  -- Les colonnes « public », « file_size_limit », « allowed_mime_types » sont
+  -- ajoutées par le service de stockage lui-même, pas par la base : sur une
+  -- base neuve elles n'existent pas encore. On crée le stockage avec ce qui
+  -- existe toujours, puis on pose les bornes si leurs colonnes sont là.
+  insert into storage.buckets (id, name) values ('verifications', 'verifications') on conflict (id) do nothing;
+  if exists (select 1 from information_schema.columns where table_schema = 'storage' and table_name = 'buckets' and column_name = 'public') then
+    execute $p$update storage.buckets set public = false where id = 'verifications'$p$;
+  end if;
+  if exists (select 1 from information_schema.columns where table_schema = 'storage' and table_name = 'buckets' and column_name = 'allowed_mime_types') then
+    execute $p$update storage.buckets set file_size_limit = 10485760,
+                 allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp', 'application/pdf'] where id = 'verifications'$p$;
+  end if;
   execute $p$drop policy if exists verifications_deposer on storage.objects$p$;
   execute $p$drop policy if exists verifications_relire on storage.objects$p$;
   execute $p$create policy verifications_deposer on storage.objects for insert to authenticated
