@@ -84,6 +84,8 @@ for m in "$ICI"/supabase/migrations/*.sql; do
   $COMME "PATH=$PATH $PSQL -d xafe -f $m" >"$GRAPPE/migration.log" 2>&1 || { cat "$GRAPPE/migration.log"; echo "✗ la migration $(basename "$m") ne passe pas"; exit 1; }
 done
 
+# HASARD_SEUL=1 : les migrations, puis le hasard seul (pour éprouver le hasard lui-même).
+if [ "${HASARD_SEUL:-0}" != "1" ]; then
 echo "· scénarios"
 # La sortie passe par un fichier : derrière un tube, le statut de psql se perdrait
 # et le harnais annoncerait « tient » sur un scénario tombé.
@@ -96,4 +98,11 @@ if [ "$STATUT" != "0" ]; then
 fi
 echo "· courses"
 . "$ICI/moteur/courses.sh"
+fi
+
+echo "· au hasard"
+STATUT=0
+$COMME "PATH=$PATH $PSQL -d xafe -f $ICI/moteur/hasard.sql" >"$GRAPPE/hasard.log" 2>&1 || STATUT=$?
+sed 's/^psql:.*NOTICE:  //; s/^NOTICE:  //' "$GRAPPE/hasard.log"
+[ "$STATUT" = "0" ] || { echo "✗ le hasard a cassé une règle (voir ci-dessus)"; exit 1; }
 echo "✓ le moteur tient"

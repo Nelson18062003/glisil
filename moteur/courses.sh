@@ -72,6 +72,9 @@ sans 'totem_sms_recu(text,bigint,text,text,text,numeric,text,text,timestamp with
 r=$(course_sms 9101 20394991101)
 rendre 'totem_sms_recu(text,bigint,text,text,text,numeric,text,text,timestamp with time zone)'
 [ "$r" = "1 1" ] || { echo "✗ témoin : sans son verrou, le même SMS devait finir crédité ET retenu (vu : $r)"; exit 1; }
+# le témoin a fabriqué exprès un SMS crédité ET retenu : on retire sa retenue, pour que la suite (le hasard) parte d'une base saine
+echo "delete from entrees_retenues where terminal = 'akwa-1' and source_id = 9101;" >"$GRAPPE/c1-nettoyer.sql"
+sql c1-nettoyer.sql
 r=$(course_sms 9102 20394991102)
 [ "$r" = "1 0" ] || { echo "✗ 12.1 le même SMS poussé deux fois ensemble : $r (crédité, retenu) au lieu de « 1 0 »"; exit 1; }
 echo "✓ 12.1 le même SMS poussé deux fois en même temps est crédité une fois, et pas retenu en plus (témoin : sans verrou, les deux)"

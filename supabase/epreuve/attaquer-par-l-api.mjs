@@ -164,17 +164,21 @@ ok("deux clients s'inscrivent par OTP, comme dans l'application (GoTrue réel)")
   sql(`insert into terminaux (id, nom, vu_le) values ('akwa-1', 'Akwa 1', now()) on conflict (id) do update set vu_le = now();
        insert into floats (operateur, numero, terminal) values ('mtn', '677000000', 'akwa-1') on conflict do nothing;`);
   r = await rpc("ouvrir_depot", { p_operateur: "mtn", p_cle: "k-api-1" }, bob.jeton);
-  exiger(r.statut === 200 && r.json?.float_numero === "677000000", "Bob ouvre un dossier de dépôt", JSON.stringify(r.json));
+  // le moteur choisit le float (le moins chargé d'un boîtier vivant) : Bob paie celui que son dossier lui indique
+  const floatsMtn = sql(`select numero || '|' || terminal from floats where operateur = 'mtn' and actif`).split("\n").map((l) => l.split("|"));
+  const leFloat = floatsMtn.find(([numero]) => numero === r.json?.float_numero);
+  exiger(r.statut === 200 && Boolean(leFloat), "Bob ouvre un dossier de dépôt, qui lui dit quel float payer", JSON.stringify(r.json));
+  const [floatNumero, floatTerminal] = leFloat ?? ["677000000", "akwa-1"];
   const ref = r.json.reference;
   // des identifiants à elle : l'épreuve peut passer après les scénarios, sur la même base
   const tx = `2039${String(Date.now()).slice(-7)}`;
   const source = 900_000 + Math.floor(Math.random() * 99_999);
   r = await rpc("declarer_transaction", { p_reference: ref, p_transaction_id: tx }, bob.jeton);
   exiger(r.json?.etat === "attendu", "il tape son transaction ID", JSON.stringify(r.json));
-  r = await rpc("totem_sms_recu", { p_terminal: "akwa-1", p_source_id: source, p_operateur: "mtn", p_float_numero: "677000000", p_numero_payeur: "677120001",
+  r = await rpc("totem_sms_recu", { p_terminal: floatTerminal, p_source_id: source, p_operateur: "mtn", p_float_numero: floatNumero, p_numero_payeur: "677120001",
     p_montant: 250000, p_reference: tx, p_texte: "Vous avez recu 250000 FCFA…", p_emis_le: new Date().toISOString() }, bob.jeton);
   exiger(refuse(r), "Bob ne peut pas jouer TOTEM lui-même", JSON.stringify(r.json));
-  r = await rpc("totem_sms_recu", { p_terminal: "akwa-1", p_source_id: source, p_operateur: "mtn", p_float_numero: "677000000", p_numero_payeur: "677120001",
+  r = await rpc("totem_sms_recu", { p_terminal: floatTerminal, p_source_id: source, p_operateur: "mtn", p_float_numero: floatNumero, p_numero_payeur: "677120001",
     p_montant: 250000, p_reference: tx, p_texte: "Vous avez recu 250000 FCFA…", p_emis_le: new Date().toISOString() }, SERVICE);
   exiger(r.statut === 200 && r.json?.resultat === "credite", "la clé de service (la porte de TOTEM) crédite", JSON.stringify(r.json));
   r = await rpc("mes_soldes", {}, bob.jeton);

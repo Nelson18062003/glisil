@@ -37,6 +37,13 @@ echo "· courses"
 COMME="sh -c"; PSQL="psql -h 127.0.0.1 -p $PORT_DB -U postgres -v ON_ERROR_STOP=1 -q"; GRAPPE=$TMP; BASE=postgres; CLE_COMPTE=request.jwt.claim.sub
 . "$ICI/moteur/courses.sh"
 
+echo "· au hasard"
+sed 's/xafe\.compte/request.jwt.claim.sub/g' "$ICI/moteur/hasard.sql" >"$TMP/hasard.sql"
+STATUT=0
+psql_postgres -v ON_ERROR_STOP=1 -q -f "$TMP/hasard.sql" >"$TMP/hasard.log" 2>&1 || STATUT=$?
+sed 's/^psql:.*NOTICE:  //; s/^NOTICE:  //' "$TMP/hasard.log" | grep -v '^$'
+[ "$STATUT" = "0" ] || { echo "✗ le hasard a cassé une règle sur la vraie pile"; exit 1; }
+
 echo "· l'API, attaquée"
 node "$ICI/supabase/epreuve/attaquer-par-l-api.mjs"
 
