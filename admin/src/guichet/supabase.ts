@@ -4,7 +4,7 @@
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { GuichetAdmin } from "./guichet";
-import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, Tableau, Terminal } from "./types";
+import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, Tableau, Terminal, Wallets } from "./types";
 
 export class ErreurMoteur extends Error {
   detail?: string;
@@ -69,6 +69,7 @@ export class GuichetSupabase implements GuichetAdmin {
   parametres() { return this.rpc<Parametres>("admin_parametres"); }
   async modifierParametre(cle: string, valeur: unknown) { await this.rpc("admin_modifier_parametre", { p_cle: cle, p_valeur: valeur }); }
   journal() { return this.rpc<LigneJournal[]>("admin_journal", { p_n: 200 }); }
+  wallets() { return this.rpc<Wallets>("admin_wallets"); }
 
   surChangement(cb: () => void) { this.auditeurs.add(cb); return () => { this.auditeurs.delete(cb); }; }
 }

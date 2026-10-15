@@ -1481,6 +1481,52 @@ begin
 end $$;
 rollback;
 
+-- 11.25 · le veilleur de chaîne : une transaction notée ne se remplace que nommée, et la base garde l'ancienne ;
+--         ce que le chaud doit encore, les dépôts orphelins, l'état publié — lus par l'équipe, pas par un client.
+begin;
+select _mouvement('22222222-2222-2222-2222-222222222222', 'USDT', 100, 0, 'essai', 'essai', '11.25');
+update parametres set valeur = jsonb_set(valeur, '{retraits_ouverts}', 'true') where cle = 'crypto';
+set local xafe.compte = '22222222-2222-2222-2222-222222222222';
+do $$
+declare r jsonb; ref text; dus jsonb;
+begin
+  r := demander_retrait_crypto('USDT', 'trc20', 'TPL66VK2gCXNCD7EJg9pgJRfqcRazjhUZY', 10, 'k-11.25', '1357');
+  ref := r ->> 'reference';
+  dus := chaine_retraits_en_attente('trc20');
+  assert dus @> jsonb_build_array(jsonb_build_object('reference', ref)), 'en attente, il est dû au chaud : ' || dus;
+  perform chaine_retraits_a_envoyer('trc20');
+  assert chaine_retraits_en_attente('trc20') @> jsonb_build_array(jsonb_build_object('reference', ref)), 'pris mais pas signé : toujours dû';
+  perform chaine_marquer_envoi(ref, 'aa01', '{"raw_data":{"expiration":1}}');
+  assert not chaine_retraits_en_attente('trc20') @> jsonb_build_array(jsonb_build_object('reference', ref)), 'signé : il ne compte plus dans ce que le froid doit laisser';
+  begin perform chaine_marquer_envoi(ref, 'aa02', '{}'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'un autre envoi est déjà signé', sqlerrm; end;
+  begin perform chaine_marquer_envoi(ref, 'aa02', '{}', 'ffff'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'un autre envoi est déjà signé', 'remplacer une transaction qu''on ne nomme pas : ' || sqlerrm; end;
+  perform chaine_marquer_envoi(ref, 'aa02', '{"raw_data":{"expiration":2}}', 'aa01');
+  assert (select tx_hash = 'aa02' and tx_remplacees = array['aa01'] from retraits_crypto where reference = ref), 'la nouvelle est notée, l''ancienne gardée';
+  perform chaine_marquer_envoi(ref, 'aa02', '{"raw_data":{"expiration":2}}');  -- renoter la même : rien de neuf
+  assert (select cardinality(tx_remplacees) = 1 from retraits_crypto where reference = ref);
+
+  perform chaine_signaler_orphelin('trc20', 'USDT', 'TPL66VK2gCXNCD7EJg9pgJRfqcRazjhUZY', 7, 'bb:0', 'adresse jamais attribuée à un client');
+  perform chaine_signaler_orphelin('trc20', 'USDT', 'TPL66VK2gCXNCD7EJg9pgJRfqcRazjhUZY', 7, 'bb:0', 'adresse jamais attribuée à un client');
+  assert (select count(*) from chaine_orphelins where preuve = 'bb:0') = 1, 'un orphelin, une ligne, même revu';
+  perform chaine_publier_etat('trc20', '{"chaud": "Tchaud", "alertes": ["a"]}');
+  perform chaine_publier_etat('trc20', '{"chaud": "Tchaud", "alertes": []}');
+  assert chaine_etat('trc20') ->> 'chaud' = 'Tchaud' and jsonb_array_length(chaine_etat('trc20') -> 'alertes') = 0, 'le dernier état remplace le précédent';
+  begin perform admin_wallets(); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'accès non autorisé', 'un client ne lit pas les wallets : ' || sqlerrm; end;
+end $$;
+set local xafe.compte = 'dddddddd-0000-0000-0000-000000000003';
+do $$
+declare w jsonb := admin_wallets(); t jsonb;
+begin
+  select x into t from jsonb_array_elements(w -> 'reseaux') x where x ->> 'reseau' = 'trc20';
+  assert t -> 'etat' ->> 'chaud' = 'Tchaud' and not (t ->> 'muet')::boolean and (t ->> 'retraits_remplaces')::int >= 1, t;
+  assert w -> 'orphelins' @> '[{"preuve": "bb:0"}]' and (w ->> 'du_usdt')::numeric > 0, w;
+  raise notice '✓ 11.25 le veilleur ne remplace qu''une transaction qu''il nomme, la base garde l''ancienne ; ce que le chaud doit, les dépôts orphelins et l''état publié se lisent par l''équipe, pas par un client';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

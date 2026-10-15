@@ -61,7 +61,7 @@ grant execute on function
   admin_creer_float(text, text, text, text), admin_activer_float(int, boolean),
   admin_clients(text, int, text), admin_client(uuid), admin_changer_palier(uuid, int, text),
   admin_valider_verification(uuid, boolean, text), admin_desactiver_compte(uuid, boolean, text),
-  admin_marche(), admin_parametres(), admin_modifier_parametre(text, jsonb), admin_journal(int)
+  admin_marche(), admin_parametres(), admin_modifier_parametre(text, jsonb), admin_journal(int), admin_wallets()
   to authenticated;
 
 -- ─────────────────────────── la clé de service ─────────────────────────────

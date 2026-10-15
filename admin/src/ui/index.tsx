@@ -4,6 +4,7 @@
  * dialogue d'action, et une erreur qui se dit en français.
  */
 import AccountBalanceRounded from "@mui/icons-material/AccountBalanceRounded";
+import AccountBalanceWalletRounded from "@mui/icons-material/AccountBalanceWalletRounded";
 import ArrowDownwardRounded from "@mui/icons-material/ArrowDownwardRounded";
 import ArrowUpwardRounded from "@mui/icons-material/ArrowUpwardRounded";
 import HistoryRounded from "@mui/icons-material/HistoryRounded";
@@ -30,6 +31,7 @@ const SECTIONS: { to: string; label: string; icone: ReactNode; droit: Droit }[] 
   { to: "/entrees", label: "Entrées", icone: <ArrowDownwardRounded />, droit: "voir" },
   { to: "/sorties", label: "Sorties", icone: <ArrowUpwardRounded />, droit: "voir" },
   { to: "/terminaux", label: "Terminaux", icone: <RouterRounded />, droit: "voir" },
+  { to: "/wallets", label: "Wallets", icone: <AccountBalanceWalletRounded />, droit: "voir" },
   { to: "/clients", label: "Clients", icone: <PeopleRounded />, droit: "clients" },
   { to: "/marche", label: "Marché", icone: <ShowChartRounded />, droit: "voir" },
   { to: "/parametres", label: "Paramètres", icone: <TuneRounded />, droit: "voir" },

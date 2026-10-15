@@ -632,4 +632,32 @@ begin
   return r;
 end $$;
 
+-- Les wallets, vus par l'équipe : ce que chaque veilleur a publié à son
+-- dernier tour (« muet » au-delà de deux minutes), et en face ce que la
+-- plateforme doit aux clients en USDT — ce que le chaud, le froid et les
+-- adresses de dépôt doivent couvrir, tous réseaux ensemble.
+create function admin_wallets() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare r jsonb;
+begin
+  perform _exiger_droit('voir');
+  select jsonb_build_object(
+    'reseaux', coalesce((select jsonb_agg(jsonb_build_object(
+        'reseau', n.reseau,
+        'etat', e.etat, 'maj_le', e.maj_le,
+        'muet', e.maj_le is null or e.maj_le < now() - interval '2 minutes',
+        'adresses_attribuees', (select count(*) from adresses_crypto a where a.reseau = n.reseau),
+        'adresses_libres', (select count(*) from adresses_libres l where l.reseau = n.reseau),
+        'retraits_en_cours', (select count(*) from retraits_crypto x where x.reseau = n.reseau and x.etat in ('en_attente', 'en_cours')),
+        'retraits_remplaces', (select count(*) from retraits_crypto x where x.reseau = n.reseau and cardinality(x.tx_remplacees) > 0),
+        'curseur', (select bloc from chaine_curseurs c where c.reseau = n.reseau)) order by n.reseau)
+      from (values ('bep20'), ('trc20')) as n(reseau) left join chaine_etats e on e.reseau = n.reseau), '[]'::jsonb),
+    'orphelins', coalesce((select jsonb_agg(jsonb_build_object('reseau', o.reseau, 'actif', o.actif, 'adresse', o.adresse, 'montant', o.montant, 'preuve', o.preuve, 'raison', o.raison, 'vu_le', o.vu_le) order by o.vu_le desc)
+                             from chaine_orphelins o), '[]'::jsonb),
+    'du_usdt', (select coalesce(sum(disponible + bloque), 0) from soldes where actif = 'USDT' and compte_id <> compte_maison()),
+    'maison_usdt', (select coalesce(sum(disponible + bloque), 0) from soldes where actif = 'USDT' and compte_id = compte_maison()))
+    into r;
+  return r;
+end $$;
+
 -- Les GRANT sont dans 0004_droits.sql.

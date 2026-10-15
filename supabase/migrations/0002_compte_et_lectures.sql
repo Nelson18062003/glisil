@@ -711,7 +711,12 @@ end $$;
 -- qu'elle part) : après une coupure, le veilleur rediffuse CETTE transaction
 -- au lieu d'en signer une seconde — un retrait ne part jamais deux fois.
 alter table retraits_crypto add column tx_brut text;
-create function chaine_marquer_envoi(p_reference text, p_tx_hash text, p_brut text) returns jsonb
+-- Les transactions signées puis REMPLACÉES : une seule cause admise, elle ne
+-- peut plus jamais entrer dans un bloc (Tron : passé son échéance ; EVM : son
+-- nonce a été pris par une autre). Gardées toutes : si deux envois partaient,
+-- on saurait lesquels.
+alter table retraits_crypto add column tx_remplacees text[] not null default '{}';
+create function chaine_marquer_envoi(p_reference text, p_tx_hash text, p_brut text, p_remplace text default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare v_r retraits_crypto;
 begin
@@ -719,11 +724,58 @@ begin
   if not found then raise exception 'retrait inconnu'; end if;
   if v_r.etat <> 'en_cours' then raise exception 'retrait pas en cours' using detail = v_r.etat; end if;
   if v_r.tx_hash is not null and v_r.tx_hash <> p_tx_hash then
-    raise exception 'un autre envoi est déjà signé' using detail = v_r.tx_hash;
+    -- remplacer se dit : le veilleur nomme la transaction qu'il sait morte (jugée sur la chaîne, pas sur une horloge)
+    if p_remplace is null or p_remplace <> v_r.tx_hash then
+      raise exception 'un autre envoi est déjà signé' using detail = v_r.tx_hash;
+    end if;
+    update retraits_crypto set tx_remplacees = tx_remplacees || v_r.tx_hash where id = v_r.id;
   end if;
   update retraits_crypto set tx_hash = p_tx_hash, tx_brut = p_brut where id = v_r.id returning * into v_r;
   return _retrait_json(v_r) || jsonb_build_object('tx_brut', v_r.tx_brut);
 end $$;
+
+-- Ce que les retraits d'un réseau doivent encore au wallet chaud : pris mais
+-- pas encore signés. Le veilleur n'envoie au froid que ce qui dépasse.
+create function chaine_retraits_en_attente(p_reseau text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('reference', x.reference, 'actif', x.actif, 'montant', x.montant) order by x.cree_le), '[]'::jsonb)
+    from retraits_crypto x where x.reseau = p_reseau and (x.etat = 'en_attente' or (x.etat = 'en_cours' and x.tx_hash is null))
+$$;
+
+-- Ce que le veilleur voit à chaque tour, publié pour l'administration (page
+-- « Wallets ») : soldes du chaud, froid, alertes. Il n'y a pas de clé ici,
+-- seulement des adresses et des chiffres.
+create table chaine_etats (reseau text primary key, etat jsonb not null, maj_le timestamptz not null default now());
+alter table chaine_etats enable row level security;
+create function chaine_publier_etat(p_reseau text, p_etat jsonb) returns void
+language sql security definer set search_path = public as $$
+  insert into chaine_etats (reseau, etat) values (p_reseau, p_etat)
+  on conflict (reseau) do update set etat = excluded.etat, maj_le = now()
+$$;
+create function chaine_etat(p_reseau text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select etat from chaine_etats where reseau = p_reseau
+$$;
+
+-- Un dépôt que le veilleur voit mais ne peut créditer (une adresse jamais
+-- montrée à un client, un XAFe qui ne se détruit pas) : il ne crédite
+-- personne, mais il ne se perd pas — l'équipe le voit tant qu'il n'est pas
+-- traité, même après un redémarrage du veilleur. Une preuve, une ligne.
+create table chaine_orphelins (
+  preuve  text primary key,
+  reseau  text not null,
+  actif   text not null,
+  adresse text not null,
+  montant numeric(20,2) not null,
+  raison  text not null,
+  vu_le   timestamptz not null default now()
+);
+alter table chaine_orphelins enable row level security;
+create function chaine_signaler_orphelin(p_reseau text, p_actif text, p_adresse text, p_montant numeric, p_preuve text, p_raison text) returns void
+language sql security definer set search_path = public as $$
+  insert into chaine_orphelins (preuve, reseau, actif, adresse, montant, raison) values (p_preuve, p_reseau, p_actif, p_adresse, p_montant, left(p_raison, 500))
+  on conflict (preuve) do nothing
+$$;
 
 -- ───────────────────────────── historique ──────────────────────────────────
 -- Les lignes de l'historique d'un compte, une fois pour toutes : la liste

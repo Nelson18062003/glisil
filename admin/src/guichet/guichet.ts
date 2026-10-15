@@ -1,4 +1,4 @@
-import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, Tableau, Terminal } from "./types";
+import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, Tableau, Terminal, Wallets } from "./types";
 
 /** LE GUICHET DE L'ADMINISTRATION : tout ce que les écrans demandent au moteur. */
 export interface GuichetAdmin {
@@ -39,6 +39,8 @@ export interface GuichetAdmin {
   parametres(): Promise<Parametres>;
   modifierParametre(cle: string, valeur: unknown): Promise<void>;
   journal(): Promise<LigneJournal[]>;
+  /** Les wallets de la plateforme : ce que le veilleur de chaîne voit, et ce qu'on doit en face. */
+  wallets(): Promise<Wallets>;
 
   surChangement(cb: () => void): () => void;
 }

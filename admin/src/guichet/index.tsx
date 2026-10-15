@@ -35,4 +35,5 @@ export function useClient(id: string | undefined) { const g = useGuichet(); retu
 export function useMarche() { const g = useGuichet(); return useQuery({ queryKey: ["marche"], queryFn: () => g.marche(), refetchInterval: 5_000 }); }
 export function useParametres() { const g = useGuichet(); return useQuery({ queryKey: ["parametres"], queryFn: () => g.parametres() }); }
 export function useJournal() { const g = useGuichet(); return useQuery({ queryKey: ["journal"], queryFn: () => g.journal(), refetchInterval: 15_000 }); }
+export function useWallets() { const g = useGuichet(); return useQuery({ queryKey: ["wallets"], queryFn: () => g.wallets(), refetchInterval: 15_000 }); }
 export function useRafraichir() { const qc = useQueryClient(); return () => qc.invalidateQueries(); }

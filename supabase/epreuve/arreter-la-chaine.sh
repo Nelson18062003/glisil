@@ -8,7 +8,7 @@ moi=$$
 for d in /proc/[0-9]*; do
   p=${d#/proc/}
   [ "$p" = "$moi" ] && continue
-  c=$(tr '\0' ' ' < "$d/cmdline" 2>/dev/null) || continue
+  c=$( { tr '\0' ' ' < "$d/cmdline"; } 2>/dev/null) || continue
   case "$c" in
     sh\ *|bash\ *|*/sh\ *|*/bash\ *) continue ;;
     *hardhat*"$PORT"*) kill "$p" 2>/dev/null ;;

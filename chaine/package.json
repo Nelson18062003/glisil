@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "veilleur": "node --experimental-strip-types src/veilleur.ts",
+    "mise-en-service": "node --experimental-strip-types src/mise-en-service.ts",
+    "epreuve": "node --experimental-strip-types epreuve/eprouver-les-wallets.ts",
     "test": "node --experimental-strip-types --test src/*.test.ts"
   },
   "dependencies": {

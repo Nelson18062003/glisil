@@ -207,6 +207,16 @@ try {
   await page.locator("[data-lecture-en-panne]").waitFor({ state: "detached" });
 
   etape("Le support ne voit que ce qui est à lui");
+
+  etape("Wallets : le chaud, le froid, ce qui réclame quelqu'un, ce qu'on doit");
+  await page.goto(`${BASE}/wallets`);
+  await voir("BNB Smart Chain · BEP20");
+  await voir("Tron · TRC20");
+  await voir("attendent leur inscription au contrat");
+  await voir("manque de TRX");
+  await voir("jamais attribuée à un client");
+  exiger(await page.locator('[data-tuile="Couverture"]').count() === 1, "la couverture des USDT dus est dite");
+  await capturer("wallets");
   await page.getByRole("button", { name: "Se déconnecter" }).click();
   await page.waitForURL(/\/connexion$/);
   await page.getByLabel("E-mail").fill("support@xafe.exchange");

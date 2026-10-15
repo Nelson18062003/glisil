@@ -9,6 +9,7 @@ import { Parametres } from "../pages/parametres";
 import { Sorties } from "../pages/sorties";
 import { Tableau } from "../pages/tableau";
 import { Terminaux } from "../pages/terminaux";
+import { Wallets } from "../pages/wallets";
 import { useSession } from "../session/session";
 
 function Attente() {
@@ -40,6 +41,7 @@ export const routeur = createBrowserRouter([
       { path: "/entrees", element: <Entrees /> },
       { path: "/sorties", element: <Sorties /> },
       { path: "/terminaux", element: <Terminaux /> },
+      { path: "/wallets", element: <Wallets /> },
       { path: "/clients", element: <Clients /> },
       { path: "/clients/:id", element: <ClientDetail /> },
       { path: "/marche", element: <Marche /> },

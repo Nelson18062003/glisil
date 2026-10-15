@@ -90,12 +90,15 @@ l'application. C'est la leçon de Bonzini et de TOTEM, reprise telle quelle.
 - **`admin/`** : l'administration, même pile : le tableau des réserves, les
   entrées (dossiers, SMS retenus à rapprocher ou rembourser), les sorties
   que TOTEM compose, les terminaux et leurs floats, les clients et leurs
-  paliers, le marché, les paramètres, le journal. Chaque action est gardée
+  paliers, le marché, les wallets, les paramètres, le journal. Chaque action est gardée
   en base par `admin_a_droit('<droit>')` (migration 0003).
 - **`supabase/functions/totem-sms`** et **`totem-commandes`** : la porte de
   TOTEM, voir `docs/TOTEM-INTEGRATION.md`.
-- **`contracts/`** : le jeton XAFe sur BNB Smart Chain (puis Tron), frappé à
-  la sortie vers un wallet externe, détruit au retour.
+- **`contracts/`** : le jeton XAFe, le même contrat sur BNB Smart Chain et
+  sur Tron, frappé à la sortie vers un wallet externe, détruit au retour.
+- **`chaine/`** : le veilleur de chaîne — nos propres wallets sur les deux
+  réseaux (une graine, des adresses dérivées, un wallet chaud, un froid), et
+  l'outil de mise en service. Voir `chaine/README.md`.
 
 ## Vérifier avant d'annoncer
 

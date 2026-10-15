@@ -69,3 +69,16 @@ export type Marche = {
 };
 export type Parametres = Record<string, unknown> & { operateurs?: { id: string; nom: string; plafond_par_transfert: number; plafond_jour: number | null }[] };
 export type LigneJournal = { id: number; admin: string | null; action: string; cible: string | null; detail: unknown; quand: string };
+
+/** Ce que le veilleur de chaîne a publié à son dernier tour, réseau par réseau (admin_wallets). */
+export type EtatChaine = {
+  chaud: string; usdt_chaud: number; natif_chaud: number;
+  froid: string | null; usdt_froid: number | null; plafond_chaud: number | null; garder_chaud: number | null;
+  a_inscrire: string[]; alertes: string[];
+};
+export type ReseauWallets = {
+  reseau: "bep20" | "trc20"; etat: EtatChaine | null; maj_le: string | null; muet: boolean;
+  adresses_attribuees: number; adresses_libres: number; retraits_en_cours: number; retraits_remplaces: number; curseur: number | null;
+};
+export type Orphelin = { reseau: string; actif: string; adresse: string; montant: number; preuve: string; raison: string; vu_le: string };
+export type Wallets = { reseaux: ReseauWallets[]; orphelins: Orphelin[]; du_usdt: number; maison_usdt: number };

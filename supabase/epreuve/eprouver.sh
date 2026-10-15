@@ -75,26 +75,39 @@ else
   echo "· la chaîne réelle : SAUTÉE — le dépôt TOTEM n'est pas à $TOTEM (TOTEM=… pour le dire)"
 fi
 
-# Nos wallets : une vraie chaîne EVM locale (Hardhat), le vrai contrat, le veilleur de chaîne/ — et ce moteur.
+# Nos wallets, sur les deux réseaux : une vraie chaîne EVM locale (Hardhat), un vrai nœud Tron (java-tron,
+# image tronbox/tre), le vrai contrat, le veilleur de chaîne/ — et ce moteur. Le même scénario, deux bancs.
 if [ -d "$ICI/contracts/node_modules" ] && [ -d "$ICI/chaine/node_modules" ]; then
-  echo "· nos wallets : adresses dérivées, dépôts confirmés, balayage, retraits signés une fois (chaîne locale)"
+  echo "· nos wallets : adresses dérivées, dépôts confirmés, balayage, retraits signés une fois, froid (BEP20 et TRC20)"
   (cd "$ICI/contracts" && npx hardhat compile >/dev/null 2>&1)
   (cd "$ICI/contracts" && setsid npx hardhat node --port 58545 --hostname 127.0.0.1 >"$TMP/hardhat.log" 2>&1 &)
+  docker rm -f tron-epreuve >/dev/null 2>&1 || true
+  docker run -d --name tron-epreuve -p 127.0.0.1:59090:9090 -e accounts=5 tronbox/tre >/dev/null
+  arreter_chaines() { sh "$ICI/supabase/epreuve/arreter-la-chaine.sh"; docker rm -f tron-epreuve >/dev/null 2>&1 || true; }
   for i in $(seq 1 60); do curl -s -X POST -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' http://127.0.0.1:58545 >/dev/null 2>&1 && break; sleep 1; done
-  arreter_hardhat() { sh "$ICI/supabase/epreuve/arreter-la-chaine.sh"; }
-  STATUT=0
-  # TEMOIN=0 : la passe normale n'hérite pas du « TEMOIN=1 » donné au script entier
-  (cd "$ICI/chaine" && TEMOIN=0 node --experimental-strip-types epreuve/eprouver-les-wallets.ts) >"$TMP/wallets.log" 2>&1 || STATUT=$?
-  grep -v ExperimentalWarning "$TMP/wallets.log" | grep -v "^(node:" 
-  if [ "$STATUT" != "0" ]; then arreter_hardhat; echo "✗ nos wallets ne tiennent pas"; exit 1; fi
+  # le nœud Tron est prêt quand il a créé ses comptes d'essai (ils sont crédités au premier bloc)
+  for i in $(seq 1 180); do curl -sf http://127.0.0.1:59090/admin/accounts-json 2>/dev/null | grep -q privateKeys && break; sleep 1; done
+  for R in bep20 trc20; do
+    STATUT=0
+    # TEMOIN=0 : la passe normale n'hérite pas du « TEMOIN=1 » donné au script entier
+    (cd "$ICI/chaine" && RESEAU=$R TEMOIN=0 node --experimental-strip-types epreuve/eprouver-les-wallets.ts) >"$TMP/wallets-$R.log" 2>&1 || STATUT=$?
+    grep -v ExperimentalWarning "$TMP/wallets-$R.log" | grep -v "^(node:"
+    if [ "$STATUT" != "0" ]; then arreter_chaines; echo "✗ nos wallets ne tiennent pas ($R)"; exit 1; fi
+  done
   if [ "${TEMOIN:-0}" = "1" ]; then
-    if (cd "$ICI/chaine" && TEMOIN=1 node --experimental-strip-types epreuve/eprouver-les-wallets.ts) >"$TMP/wallets-temoin.log" 2>&1; then
-      arreter_hardhat; echo "✗ témoin : un veilleur qui ne note pas sa transaction passe aussi — l'épreuve ne prouve rien"; exit 1
-    fi
-    echo "✓ témoin : un veilleur qui ne note pas sa transaction avant de la diffuser échoue :"
-    grep '^✗ ' "$TMP/wallets-temoin.log" | grep -v 'exigence' | head -3 | sed 's/^/    /'
+    # chaque veilleur fautif doit faire tomber SA vérification (voir l'en-tête de eprouver-les-wallets.ts)
+    for T in "bep20 1 rediffuse LA MÊME" "trc20 1 rediffuse LA MÊME" "bep20 2 qui tarde" "bep20 3 est remplacée" "trc20 3 est remplacée"; do
+      R=${T%% *}; RESTE=${T#* }; N=${RESTE%% *}; ATTENDU=${RESTE#* }
+      (cd "$ICI/chaine" && RESEAU=$R TEMOIN=$N node --experimental-strip-types epreuve/eprouver-les-wallets.ts) >"$TMP/wallets-temoin-$R-$N.log" 2>&1 || true
+      LIGNE=$(grep "^✗ \[$R\] .*$ATTENDU" "$TMP/wallets-temoin-$R-$N.log" | head -1)
+      if [ -z "$LIGNE" ]; then
+        arreter_chaines; echo "✗ témoin $N ($R) : « $ATTENDU » passe aussi avec un veilleur fautif — l'épreuve ne prouve rien"; exit 1
+      fi
+      echo "✓ témoin $N ($R) : le veilleur fautif échoue là où il doit :"
+      echo "    $LIGNE"
+    done
   fi
-  arreter_hardhat
+  arreter_chaines
 else
   echo "· nos wallets : SAUTÉS — npm install dans contracts/ et chaine/ d'abord"
 fi
