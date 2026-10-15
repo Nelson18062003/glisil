@@ -21,7 +21,7 @@
                         ▼
           ┌──────────────────────────────┐
           │  BNB Smart Chain · Tron      │   contracts/ : XAFe (ERC-20 / TRC-20)
-          │  USDT entrants, XAFe sortants│   veilleur de chaîne (edge function)
+          │  USDT entrants, XAFe sortants│   veilleur de chaîne (chaine/)    
           └──────────────────────────────┘
 ```
 

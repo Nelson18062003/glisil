@@ -7,7 +7,8 @@ couvert un pour un par les floats MoMo et les comptes en banque de la plateforme
   puis tape le **transaction ID** de son SMS ; TOTEM, le boîtier qui porte nos
   cartes, lit le même ID sur le float et les XAFe sont crédités, tout de suite.
 - Il **sort des XAF** vers un numéro vérifié ; TOTEM compose le transfert.
-- Il **achète et vend des USDT** sur un carnet d'ordres, limite ou marché.
+- Il **achète et vend des USDT** sur un carnet d'ordres, limite ou marché — ou en un geste (achat rapide, prix ferme, marge de la plateforme).
+- Il **dépose et retire des USDT** : son adresse de dépôt vient de nos propres wallets (`chaine/`).
 - Il **sort ses XAFe sur la chaîne** (BEP20, puis TRC20) vers son propre wallet.
 
 | Dossier | Ce que c'est | Vérifier |
@@ -17,6 +18,7 @@ couvert un pour un par les floats MoMo et les comptes en banque de la plateforme
 | `app/` | l'application des clients (Android, Material Design 3) | `cd app && npm test && npm run build && node scripts/parcourir.mjs` |
 | `admin/` | l'administration (web) | `cd admin && npm test && npm run build && node scripts/parcourir.mjs` |
 | `contracts/` | le jeton XAFe (ERC-20) | `cd contracts && npm test` |
+| `chaine/` | nos wallets : adresses de dépôt dérivées d'une graine, dépôts crédités, balayage, retraits signés par le wallet chaud | `cd chaine && npm test`, puis `sh supabase/epreuve/eprouver.sh` |
 | `design/` | les maquettes et la carte de navigation | `cd design/maquettes && npm run build` |
 | `docs/` | l'architecture, le contrat TOTEM | — |
 

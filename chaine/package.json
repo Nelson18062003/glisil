@@ -1,0 +1,14 @@
+{
+  "name": "xafe-chaine",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Le veilleur de chaîne : nos propres wallets (adresses de dépôt dérivées d'une graine, dépôts crédités, retraits signés par le wallet chaud)",
+  "type": "module",
+  "scripts": {
+    "veilleur": "node --experimental-strip-types src/veilleur.ts",
+    "test": "node --experimental-strip-types --test src/*.test.ts"
+  },
+  "dependencies": {
+    "ethers": "6.15.0"
+  }
+}

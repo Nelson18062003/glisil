@@ -75,6 +75,30 @@ else
   echo "· la chaîne réelle : SAUTÉE — le dépôt TOTEM n'est pas à $TOTEM (TOTEM=… pour le dire)"
 fi
 
+# Nos wallets : une vraie chaîne EVM locale (Hardhat), le vrai contrat, le veilleur de chaîne/ — et ce moteur.
+if [ -d "$ICI/contracts/node_modules" ] && [ -d "$ICI/chaine/node_modules" ]; then
+  echo "· nos wallets : adresses dérivées, dépôts confirmés, balayage, retraits signés une fois (chaîne locale)"
+  (cd "$ICI/contracts" && npx hardhat compile >/dev/null 2>&1)
+  (cd "$ICI/contracts" && setsid npx hardhat node --port 58545 --hostname 127.0.0.1 >"$TMP/hardhat.log" 2>&1 &)
+  for i in $(seq 1 60); do curl -s -X POST -H 'content-type: application/json' --data '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' http://127.0.0.1:58545 >/dev/null 2>&1 && break; sleep 1; done
+  arreter_hardhat() { sh "$ICI/supabase/epreuve/arreter-la-chaine.sh"; }
+  STATUT=0
+  # TEMOIN=0 : la passe normale n'hérite pas du « TEMOIN=1 » donné au script entier
+  (cd "$ICI/chaine" && TEMOIN=0 node --experimental-strip-types epreuve/eprouver-les-wallets.ts) >"$TMP/wallets.log" 2>&1 || STATUT=$?
+  grep -v ExperimentalWarning "$TMP/wallets.log" | grep -v "^(node:" 
+  if [ "$STATUT" != "0" ]; then arreter_hardhat; echo "✗ nos wallets ne tiennent pas"; exit 1; fi
+  if [ "${TEMOIN:-0}" = "1" ]; then
+    if (cd "$ICI/chaine" && TEMOIN=1 node --experimental-strip-types epreuve/eprouver-les-wallets.ts) >"$TMP/wallets-temoin.log" 2>&1; then
+      arreter_hardhat; echo "✗ témoin : un veilleur qui ne note pas sa transaction passe aussi — l'épreuve ne prouve rien"; exit 1
+    fi
+    echo "✓ témoin : un veilleur qui ne note pas sa transaction avant de la diffuser échoue :"
+    grep '^✗ ' "$TMP/wallets-temoin.log" | grep -v 'exigence' | head -3 | sed 's/^/    /'
+  fi
+  arreter_hardhat
+else
+  echo "· nos wallets : SAUTÉS — npm install dans contracts/ et chaine/ d'abord"
+fi
+
 if [ "${TEMOIN:-0}" = "1" ]; then
   echo "· témoin : la même attaque contre les migrations d'avant les corrections (6d453d3)"
   mkdir -p "$TMP/avant" && git -C "$ICI" archive 6d453d3 supabase/migrations | tar -x -C "$TMP/avant"

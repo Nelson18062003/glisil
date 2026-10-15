@@ -477,9 +477,12 @@ create table adresses_libres (
   actif   text not null check (actif in ('XAFe', 'USDT')),
   reseau  text not null check (reseau in ('bep20', 'trc20')),
   adresse text not null unique,
+  indice  int,                     -- le chemin de dérivation (m/44'/60'/0'/0/indice) : sans lui, la clé ne se retrouve pas
   cree_le timestamptz not null default now()
 );
 alter table adresses_libres enable row level security;
+alter table adresses_crypto add column indice int;
+create unique index adresses_crypto_une_adresse on adresses_crypto (reseau, lower(adresse));
 
 create function adresse_depot(p_actif text, p_reseau text) returns text
 language plpgsql security definer set search_path = public as $$
@@ -493,7 +496,7 @@ begin
   select * into v_libre from adresses_libres where actif = p_actif and reseau = p_reseau order by id for update skip locked limit 1;
   if not found then return null; end if;
   delete from adresses_libres where id = v_libre.id;
-  insert into adresses_crypto (compte_id, actif, reseau, adresse) values (v_compte, p_actif, p_reseau, v_libre.adresse)
+  insert into adresses_crypto (compte_id, actif, reseau, adresse, indice) values (v_compte, p_actif, p_reseau, v_libre.adresse, v_libre.indice)
   on conflict (compte_id, actif, reseau) do update set adresse = adresses_crypto.adresse
   returning adresse into v_adresse;
   return v_adresse;
@@ -623,6 +626,103 @@ begin
     perform _notifier(v_r.compte_id, 'Envoi non parti', format('%s %s sont revenus sur votre compte.', v_r.montant + v_r.frais, v_r.actif), '/historique/' || v_r.reference);
   end if;
   return _retrait_json(v_r);
+end $$;
+
+-- ─────────────────────────── le veilleur de chaîne ──────────────────────────
+-- Le service chaine/ (clé de service seulement) : il prépare les adresses de
+-- dépôt depuis la graine, crédite ce qu'il voit arriver après assez de
+-- confirmations, et envoie les retraits depuis le wallet chaud. La graine ne
+-- quitte jamais le service : la base ne connaît que des adresses et des indices.
+
+create function chaine_ajouter_adresses(p_actif text, p_reseau text, p_adresses jsonb) returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  insert into adresses_libres (actif, reseau, adresse, indice)
+  select p_actif, p_reseau, x.adresse, x.indice from jsonb_to_recordset(p_adresses) as x(adresse text, indice int)
+  on conflict (adresse) do nothing;
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+-- Tout ce que le veilleur doit regarder sur un réseau : les adresses attribuées
+-- (à qui créditer) et les libres (pour savoir combien en préparer, et à partir
+-- de quel indice).
+create function chaine_adresses(p_reseau text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'attribuees', coalesce((select jsonb_agg(jsonb_build_object('adresse', a.adresse, 'actif', a.actif, 'indice', a.indice, 'compte_id', a.compte_id))
+                              from adresses_crypto a where a.reseau = p_reseau), '[]'::jsonb),
+    'libres', (select jsonb_build_object('USDT', count(*) filter (where actif = 'USDT'), 'XAFe', count(*) filter (where actif = 'XAFe'))
+                 from adresses_libres where reseau = p_reseau),
+    -- la réserve aussi se surveille : un dépôt sur une adresse jamais montrée ne crédite personne, mais il se voit
+    'reserve', coalesce((select jsonb_agg(jsonb_build_object('adresse', l.adresse, 'actif', l.actif, 'indice', l.indice))
+                           from adresses_libres l where l.reseau = p_reseau), '[]'::jsonb),
+    'indice_max', greatest((select max(indice) from adresses_libres where reseau = p_reseau),
+                           (select max(indice) from adresses_crypto where reseau = p_reseau), 0))
+$$;
+
+-- Jusqu'où le veilleur a lu chaque réseau : redémarré, il reprend là, sans
+-- relire la chaîne depuis le premier bloc (relire ne crédite pas deux fois,
+-- mais coûte des heures sur la vraie BNB Smart Chain).
+create table chaine_curseurs (reseau text primary key, bloc bigint not null, maj_le timestamptz not null default now());
+alter table chaine_curseurs enable row level security;
+create function chaine_curseur(p_reseau text, p_bloc bigint default null) returns bigint
+language plpgsql security definer set search_path = public as $$
+declare v bigint;
+begin
+  if p_bloc is not null then
+    insert into chaine_curseurs (reseau, bloc) values (p_reseau, p_bloc)
+    on conflict (reseau) do update set bloc = greatest(chaine_curseurs.bloc, excluded.bloc), maj_le = now();
+  end if;
+  select bloc into v from chaine_curseurs where reseau = p_reseau;
+  return v;
+end $$;
+
+-- Un dépôt vu sur la chaîne, assez confirmé. p_preuve = « tx_hash:index du
+-- journal » : une transaction peut porter plusieurs transferts, et rejouée,
+-- elle ne crédite pas deux fois (crediter_crypto).
+create function chaine_crediter_depot(p_reseau text, p_adresse text, p_actif text, p_montant numeric, p_preuve text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_compte uuid;
+begin
+  select compte_id into v_compte from adresses_crypto
+   where reseau = p_reseau and lower(adresse) = lower(p_adresse) and actif = p_actif;
+  if not found then raise exception 'adresse non attribuée' using detail = format('%s %s %s', p_reseau, p_actif, p_adresse); end if;
+  if p_montant is null or p_montant <= 0 then raise exception 'montant invalide'; end if;
+  return crediter_crypto(v_compte, p_actif, p_reseau, p_montant, p_preuve, p_adresse);
+end $$;
+
+-- Les retraits à envoyer sur un réseau : ceux qui attendent passent « en_cours »
+-- (pris par ce veilleur) ; ceux déjà en cours reviennent aussi, pour reprendre
+-- après une coupure — avec le hash déjà signé, s'il y en a un.
+create function chaine_retraits_a_envoyer(p_reseau text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r jsonb;
+begin
+  update retraits_crypto set etat = 'en_cours'
+   where id in (select id from retraits_crypto where reseau = p_reseau and etat = 'en_attente' order by cree_le for update skip locked);
+  select coalesce(jsonb_agg(_retrait_json(x) || jsonb_build_object('tx_brut', x.tx_brut) order by x.cree_le), '[]'::jsonb) into r
+    from retraits_crypto x where x.reseau = p_reseau and x.etat = 'en_cours';
+  return r;
+end $$;
+
+-- Le hash est noté AVANT la diffusion, avec la transaction signée (publique dès
+-- qu'elle part) : après une coupure, le veilleur rediffuse CETTE transaction
+-- au lieu d'en signer une seconde — un retrait ne part jamais deux fois.
+alter table retraits_crypto add column tx_brut text;
+create function chaine_marquer_envoi(p_reference text, p_tx_hash text, p_brut text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_r retraits_crypto;
+begin
+  select * into v_r from retraits_crypto where reference = p_reference for update;
+  if not found then raise exception 'retrait inconnu'; end if;
+  if v_r.etat <> 'en_cours' then raise exception 'retrait pas en cours' using detail = v_r.etat; end if;
+  if v_r.tx_hash is not null and v_r.tx_hash <> p_tx_hash then
+    raise exception 'un autre envoi est déjà signé' using detail = v_r.tx_hash;
+  end if;
+  update retraits_crypto set tx_hash = p_tx_hash, tx_brut = p_brut where id = v_r.id returning * into v_r;
+  return _retrait_json(v_r) || jsonb_build_object('tx_brut', v_r.tx_brut);
 end $$;
 
 -- ───────────────────────────── historique ──────────────────────────────────
