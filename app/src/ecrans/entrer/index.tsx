@@ -9,6 +9,7 @@ import AddRounded from "@mui/icons-material/AddRounded";
 import CheckCircleRounded from "@mui/icons-material/CheckCircleRounded";
 import ContentCopyRounded from "@mui/icons-material/ContentCopyRounded";
 import ErrorOutlineRounded from "@mui/icons-material/ErrorOutlineRounded";
+import CloseRounded from "@mui/icons-material/CloseRounded";
 import HourglassTopRounded from "@mui/icons-material/HourglassTopRounded";
 import { Box, Button, Chip, CircularProgress, IconButton, Paper, Stack, TextField, Typography } from "@mui/material";
 import { useState } from "react";
@@ -186,7 +187,12 @@ export function EntrerTransaction() {
 
       {depot.declarations.length > 0 && (
         <Paper sx={{ p: 1, borderRadius: 6 }}>
-          {depot.declarations.map((d) => <LigneDeclaration key={d.id} d={d} />)}
+          {depot.declarations.map((d) => (
+            <LigneDeclaration key={d.id} d={d} onRetirer={d.etat === "attendu" ? () => void lancer(async () => {
+              await guichet.retirerDeclaration({ reference: depot.reference, transactionId: d.transactionId });
+              await rafraichir();
+            }) : undefined} />
+          ))}
         </Paper>
       )}
 
@@ -212,7 +218,8 @@ export function EntrerTransaction() {
   );
 }
 
-function LigneDeclaration({ d }: { d: Declaration }) {
+/** Une déclaration ; celle qui attend se retire (un ID mal recopié n'attendrait plus qu'un SMS qui ne viendra jamais). */
+function LigneDeclaration({ d, onRetirer }: { d: Declaration; onRetirer?: () => void }) {
   const etat = d.etat === "credite"
     ? { icone: <CheckCircleRounded />, tone: "green" as const, texte: `+${xaf(d.montant ?? 0)} XAFe · ${heure(d.crediteLe ?? d.declareLe)}` }
     : d.etat === "refuse"
@@ -226,8 +233,10 @@ function LigneDeclaration({ d }: { d: Declaration }) {
       <Stack sx={{ flex: 1, minWidth: 0 }}>
         <Typography fontWeight={500} sx={{ fontFamily: "Roboto Mono, monospace", fontSize: 15 }}>{d.transactionId}</Typography>
         <Typography variant="body2" noWrap sx={{ color: etat.tone === "red" ? "error.main" : undefined }}>{etat.texte}</Typography>
+        {onRetirer && <Typography variant="caption">Mal recopié ? Touchez × pour le retirer.</Typography>}
       </Stack>
       {d.etat === "credite" && <Chip label="Crédité" size="small" sx={{ bgcolor: tones.green.bg, color: tones.green.fg, height: 26 }} />}
+      {onRetirer && <IconButton aria-label={`Retirer l'ID ${d.transactionId}`} onClick={onRetirer} sx={{ width: 48, height: 48 }}><CloseRounded /></IconButton>}
     </Stack>
   );
 }

@@ -145,6 +145,23 @@ try {
   await voir("a validé des pièces");
   await capturer("journal");
 
+  etape("Sorties : un transfert cloué à un boîtier muet se réaffecte ; la sortie s'annule, ses XAFe reviennent");
+  await page.goto(`${BASE}/sorties`);
+  await page.getByRole("button", { name: /XAFe-WD-/ }).last().click();
+  await page.getByRole("button", { name: "Réaffecter" }).first().click();
+  await voir("Vers le boîtier");
+  await page.getByLabel("Vers le boîtier").click();
+  await page.getByRole("option").first().click();
+  await page.getByRole("dialog").getByRole("button", { name: "Réaffecter" }).click();
+  await voir("donné à");
+  await page.getByRole("button", { name: "Annuler ce qui n'est pas parti" }).first().click();
+  await page.getByLabel("Pourquoi (le journal le garde)").fill("boîtier de Yaoundé en panne");
+  // un état, pas une durée : le dialogue a fini d'apparaître
+  await page.waitForFunction(() => { const c = document.querySelector(".MuiDialog-container"); return c && getComputedStyle(c).opacity === "1"; });
+  await capturer("sorties-annuler");
+  await page.getByRole("dialog").getByRole("button", { name: "Annuler et rendre les XAFe" }).click();
+  await voir("XAFe revenus au client");
+
   etape("Le support ne voit que ce qui est à lui");
   await page.getByRole("button", { name: "Se déconnecter" }).click();
   await page.waitForURL(/\/connexion$/);

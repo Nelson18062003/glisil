@@ -510,6 +510,17 @@ export class GuichetDemo implements Guichet {
   }
 
   /** Le client tape le transaction ID de son SMS ; le faux TOTEM « trouve » le SMS trois secondes plus tard. */
+  async retirerDeclaration({ reference, transactionId }: { reference: string; transactionId: string }) {
+    const dep = this.dossier().depots.find((x) => x.reference === reference);
+    if (!dep) throw new ErreurMoteur("dépôt inconnu");
+    const decl = dep.declarations.find((x) => x.transactionId === transactionIdNormalise(transactionId));
+    if (!decl) throw new ErreurMoteur("transaction ID inconnu sur ce dépôt");
+    if (decl.etat !== "attendu") throw new ErreurMoteur("cette déclaration ne se retire plus");
+    dep.declarations = dep.declarations.filter((x) => x !== decl);
+    this.emettre();
+    return copie(dep);
+  }
+
   async declarerTransaction({ reference, transactionId }: { reference: string; transactionId: string }): Promise<Declaration> {
     const d = this.dossier();
     const dep = d.depots.find((x) => x.reference === reference);

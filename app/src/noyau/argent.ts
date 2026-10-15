@@ -100,17 +100,30 @@ export function montantValide(n: number, minimum = 1): boolean {
   return Number.isSafeInteger(n) && n >= minimum;
 }
 
-/** Une quantité d'USDT valide pour le carnet : ≥ minimum, deux décimales. */
-export function quantiteValide(q: number): boolean {
-  return Number.isFinite(q) && q >= MARCHE.quantiteMin && Math.round(q * 100) === q * 100;
+/**
+ * Le nombre de centimes d'une valeur, si elle en a un nombre entier ; sinon
+ * null. Le moteur juge en décimal exact (« q <> round(q, 2) ») ; un flottant
+ * n'est jamais exact : 19,99 × 100 vaut 1 998,999 999 999 999 8. Comparer
+ * « Math.round(q × 100) === q × 100 » refusait donc 19,99, 1,15, 0,29 —
+ * le bouton restait gris sur un ordre que le moteur acceptait. On tolère
+ * l'erreur du flottant, jamais un vrai troisième chiffre.
+ */
+export function centimes(x: number): number | null {
+  if (!Number.isFinite(x)) return null;
+  const n = Math.round(x * 100);
+  return Math.abs(x * 100 - n) < 1e-6 ? n : null;
 }
 
-/** Un prix valide : positif, multiple du pas. */
+/** Une quantité d'USDT valide pour le carnet : ≥ minimum, deux décimales au plus. */
+export function quantiteValide(q: number): boolean {
+  return centimes(q) !== null && q >= MARCHE.quantiteMin;
+}
+
+/** Un prix valide : positif, deux décimales au plus, multiple du pas. */
 export function prixValide(p: number): boolean {
-  if (!Number.isFinite(p) || p <= 0) return false;
-  const n = Math.round(p * 100);
-  const pas = Math.round(MARCHE.pasPrix * 100);
-  return n % pas === 0;
+  const n = centimes(p);
+  const pas = centimes(MARCHE.pasPrix);
+  return n !== null && n > 0 && pas !== null && pas > 0 && n % pas === 0;
 }
 
 export function arrondi2(n: number): number {

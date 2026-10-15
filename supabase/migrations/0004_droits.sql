@@ -29,7 +29,7 @@ grant select on administrateurs to authenticated;
 grant execute on function
   -- dépôts
   ouvrir_depot(text, text), mon_depot(text), mes_depots_en_attente(),
-  declarer_transaction(text, text), terminer_depot(text), annuler_depot(text),
+  declarer_transaction(text, text), retirer_declaration(text, text), terminer_depot(text), annuler_depot(text),
   -- le compte
   mon_compte(), completer_profil(text, text), verifier_code_secret(text), changer_code_secret(text, text),
   demander_verification(text, jsonb), mes_notifications(), marquer_notifications_lues(),
@@ -54,7 +54,7 @@ grant execute on function
   admin_creer_administrateur(uuid, text, text, text), admin_desactiver_administrateur(uuid, boolean),
   admin_tableau(), admin_entrees(text, int), admin_retenues(text, int),
   admin_rapprocher_retenue(bigint, text), admin_rembourser_retenue(bigint, text), admin_liberer_remboursement(bigint),
-  admin_sorties(text, int), admin_liberer_commande(bigint),
+  admin_sorties(text, int), admin_liberer_commande(bigint), admin_reaffecter_commande(bigint, text), admin_annuler_sortie(text, text),
   admin_terminaux(), admin_creer_terminal(text, text, text), admin_renouveler_cle(text),
   admin_creer_float(text, text, text, text), admin_activer_float(int, boolean),
   admin_clients(text, int), admin_client(uuid), admin_changer_palier(uuid, int, text),

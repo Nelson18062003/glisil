@@ -210,6 +210,9 @@ export class GuichetSupabase implements Guichet {
   async declarerTransaction({ reference, transactionId }: { reference: string; transactionId: string }) {
     return declaration(await this.rpc<J>("declarer_transaction", { p_reference: reference, p_transaction_id: transactionIdNormalise(transactionId) }));
   }
+  async retirerDeclaration({ reference, transactionId }: { reference: string; transactionId: string }) {
+    return depot(await this.rpc<J>("retirer_declaration", { p_reference: reference, p_transaction_id: transactionId }));
+  }
   async terminerDepot(reference: string) { return depot(await this.rpc<J>("terminer_depot", { p_reference: reference })); }
   async annulerDepot(reference: string) { return depot(await this.rpc<J>("annuler_depot", { p_reference: reference })); }
   async depotsEnAttente() { return ((await this.rpc<J[]>("mes_depots_en_attente")) ?? []).map(depot); }

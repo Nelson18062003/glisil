@@ -607,15 +607,41 @@ begin
   return _depot_json(v_d);
 end $$;
 
+-- Retirer un transaction ID mal recopié. Il attendait un SMS qui ne viendra
+-- jamais : le dossier restait « en attente » pour toujours, l'accueil le
+-- montrait sans fin, et rien ne permettait de l'effacer. Seule une
+-- déclaration qui ATTEND se retire : une déclaration créditée est de
+-- l'argent, une refusée est entre les mains de l'équipe. Le verrou du
+-- transaction ID passe d'abord : un SMS qui arrive au même instant crédite,
+-- ou trouve la déclaration partie — jamais entre les deux.
+create function retirer_declaration(p_reference text, p_transaction_id text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_d depots; v_x depot_declarations; v_id text := normaliser_transaction_id(p_transaction_id);
+begin
+  if auth.uid() is null then raise exception 'non connecté'; end if;
+  select * into v_d from depots where reference = p_reference and compte_id = auth.uid() for update;
+  if not found then raise exception 'dépôt inconnu'; end if;
+  perform pg_advisory_xact_lock(hashtext('tx:' || v_d.operateur || ':' || v_id));
+  select * into v_x from depot_declarations where depot_id = v_d.id and transaction_id = v_id for update;
+  if not found then raise exception 'transaction ID inconnu sur ce dépôt'; end if;
+  if v_x.etat <> 'attendu' then
+    raise exception 'cette déclaration ne se retire plus' using detail = case v_x.etat when 'credite' then 'elle a été créditée' else 'l''équipe la vérifie' end;
+  end if;
+  delete from depot_declarations where id = v_x.id;
+  return _depot_json(v_d);
+end $$;
+
 -- Un dossier ouvert, sans déclaration, passé sa validité : expiré. Une
 -- déclaration en attente, elle, n'expire jamais : le SMS peut arriver tard.
 create function expirer_depots() returns int
 language plpgsql security definer set search_path = public as $$
 declare n int;
 begin
+  -- une déclaration qui attend son SMS, ou que l'équipe doit trancher, garde son dossier ouvert ; une
+  -- déclaration retirée par le client (un ID mal recopié) ne le retient plus
   update depots d set etat = 'expire'
    where etat = 'en_attente' and expire_le < now()
-     and not exists (select 1 from depot_declarations x where x.depot_id = d.id);
+     and not exists (select 1 from depot_declarations x where x.depot_id = d.id and x.etat in ('attendu', 'refuse'));
   get diagnostics n = row_count;
   return n;
 end $$;

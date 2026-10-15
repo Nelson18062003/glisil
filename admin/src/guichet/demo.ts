@@ -81,12 +81,16 @@ function graine(): Etat {
       motif: "plusieurs comptes ont tapé ce transaction ID : l'équipe vérifie", bloquee: true },
     { id: 43, terminal: "akwa-1", operateur: "om", float_numero: "699000000", numero_payeur: clients[9].telephone, montant: 600_000, reference_operateur: "PP261012.0912.B77410", transaction_id: "PP2610120912B77410", texte: "Vous avez recu 600000 FCFA de BOB ESSOMBA. Ref: PP261012.0912.B77410", emis_le: iso(t - 14 * H), etat: "retenue", depot_reference: entrees[2].reference, cree_le: iso(t - 14 * H), compte_suggere: { id: clients[9].id, nom: clients[9].nom, telephone: clients[9].telephone } },
   ];
+  // un identifiant par transfert, unique dans toute la démonstration : deux transferts au même numéro, et un geste visait l'autre
+  let prochainTransfert = 100;
   const transferts = (n: number, etats: Transfert["etat"][], terminal: string): Transfert[] =>
-    Array.from({ length: n }, (_, i) => ({ id: 100 + i, terminal, etat: etats[i] ?? "en_attente", montant_xafe: 750_000, montant_envoye: 746_250, reprises: etats[i] === "echouee" ? 3 : 0, resultat: etats[i] === "faite" ? "Transfert reussi" : etats[i] === "echouee" ? "réseau muet" : null, reference_operateur: etats[i] === "faite" ? `2039481${8000 + i}` : null, reclamee_le: etats[i] === "en_cours" ? iso(t - 12 * 60_000) : null }));
+    Array.from({ length: n }, (_, i) => ({ id: prochainTransfert++, terminal, etat: etats[i] ?? "en_attente", montant_xafe: 750_000, montant_envoye: 746_250, reprises: etats[i] === "echouee" ? 3 : 0, resultat: etats[i] === "faite" ? "Transfert reussi" : etats[i] === "echouee" ? "réseau muet" : null, reference_operateur: etats[i] === "faite" ? `2039481${8000 + i}` : null, reclamee_le: etats[i] === "en_cours" ? iso(t - 12 * 60_000) : null }));
   const sorties: Sortie[] = [
     { reference: ref("XAFe-WD-"), etat: "en_cours", operateur: "mtn", numero: clients[3].telephone, montant: 1_500_000, frais: 7_500, montant_xaf: 1_492_500, montant_envoye: 746_250, montant_rendu: 0, cree_le: iso(t - 15 * 60_000), terminee_le: null, transferts: transferts(2, ["faite", "en_cours"], "yaounde-1"), compte: { id: clients[3].id, telephone: clients[3].telephone, nom: clients[3].nom } },
     { reference: ref("XAFe-WD-"), etat: "envoyee", operateur: "om", numero: clients[8].telephone, montant: 200_000, frais: 1_000, montant_xaf: 199_000, montant_envoye: 199_000, montant_rendu: 0, cree_le: iso(t - 3 * H), terminee_le: iso(t - 3 * H + 40_000), transferts: [{ id: 90, terminal: "akwa-1", etat: "faite", montant_xafe: 200_000, montant_envoye: 199_000, reprises: 0, resultat: "Transfert reussi", reference_operateur: "PP261012.1131.C00912", reclamee_le: iso(t - 3 * H + 5_000) }], compte: { id: clients[8].id, telephone: clients[8].telephone, nom: clients[8].nom } },
     { reference: ref("XAFe-WD-"), etat: "partielle", operateur: "mtn", numero: clients[6].telephone, montant: 2_000_000, frais: 10_000, montant_xaf: 1_990_000, montant_envoye: 995_000, montant_rendu: 1_000_000, cree_le: iso(t - 26 * H), terminee_le: iso(t - 25 * H), transferts: transferts(2, ["faite", "echouee"], "bonaberi-2"), compte: { id: clients[6].id, telephone: clients[6].telephone, nom: clients[6].nom } },
+    // clouée à un boîtier qui s'est tu : à réaffecter, ou à annuler
+    { reference: ref("XAFe-WD-"), etat: "en_attente", operateur: "mtn", numero: clients[5].telephone, montant: 600_000, frais: 3_000, montant_xaf: 597_000, montant_envoye: 0, montant_rendu: 0, cree_le: iso(t - 42 * 60_000), terminee_le: null, transferts: transferts(1, ["en_attente"], "yaounde-1").map((x) => ({ ...x, montant_xafe: 600_000, montant_envoye: 597_000 })), compte: { id: clients[5].id, telephone: clients[5].telephone, nom: clients[5].nom } },
   ];
   return {
     profil: null, terminaux, floats, clients, entrees, retenues, sorties,
@@ -208,6 +212,34 @@ export class GuichetDemo implements GuichetAdmin {
       this.noter("liberer_commande", String(id)); this.emettre(); return;
     }
     throw new ErreurMoteur("commande inconnue");
+  }
+
+  async reaffecterCommande(id: number, terminal: string) {
+    this.exiger("sorties");
+    for (const s of this.e.sorties) for (const t of s.transferts) if (t.id === id) {
+      if (t.etat !== "en_attente") throw new ErreurMoteur("seule une commande en attente se réaffecte", t.etat);
+      if (!this.e.floats.some((f) => f.terminal === terminal && f.actif && f.operateur === s.operateur)) throw new ErreurMoteur("ce terminal ne porte aucune carte de cet opérateur");
+      this.noter("reaffecter_commande", String(id), { de: t.terminal, vers: terminal });
+      t.terminal = terminal; this.emettre(); return;
+    }
+    throw new ErreurMoteur("commande inconnue");
+  }
+
+  async annulerSortie(reference: string, note: string) {
+    this.exiger("sorties");
+    if (note.trim().length < 3) throw new ErreurMoteur("une note est exigée", "pourquoi la sortie est annulée");
+    const s = this.e.sorties.find((x) => x.reference === reference);
+    if (!s) throw new ErreurMoteur("sortie inconnue");
+    if (s.transferts.some((t) => t.etat === "en_cours")) throw new ErreurMoteur("un transfert est en cours de composition", "libérez-le d'abord s'il est bloqué");
+    let rendu = 0;
+    for (const t of s.transferts) if (t.etat === "en_attente") { t.etat = "echouee"; t.resultat = `annulée par l'équipe : ${note}`; rendu += t.montant_xafe; }
+    if (rendu === 0) throw new ErreurMoteur("rien à annuler", "aucun transfert en attente");
+    s.montant_rendu += rendu;
+    s.etat = s.transferts.some((t) => t.etat === "faite") ? "partielle" : "annulee";
+    s.terminee_le = iso(maintenant());
+    this.noter("annuler_sortie", reference, { rendu, note });
+    this.emettre();
+    return { rendu, etat: s.etat };
   }
 
   async terminaux() {

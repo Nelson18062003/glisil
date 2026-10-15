@@ -100,7 +100,8 @@ test("une date se lit dans la langue de l'écran", () => {
 
 test("les paramètres de l'équipe remplacent ceux de la migration, et une valeur abîmée ne passe pas", async () => {
   const a = await import("./argent.ts");
-  const avant = { ...a.FRAIS };
+  // ce test touche des valeurs PARTAGÉES par tout le fichier : il les rend toutes en partant
+  const avant = structuredClone({ FRAIS: a.FRAIS, MARCHE: a.MARCHE, FRAIS_CRYPTO: a.FRAIS_CRYPTO, CRYPTO: a.CRYPTO, PALIERS: a.PALIERS, OPERATEURS: a.OPERATEURS });
   assert.equal(a.appliquerParametres({
     frais: { placeur: 0.0005, preneur: 0.001, sortie: 0.01 },
     marche: { pas_prix: 0.1, quantite_min: "20" },
@@ -123,7 +124,9 @@ test("les paramètres de l'équipe remplacent ceux de la migration, et une valeu
   assert.equal(a.appliquerParametres({ frais: { sortie: 0.9 } }), true);
   assert.equal(a.FRAIS.sortie, 0.01, "des frais à 90 % ne s'affichent pas");
   assert.equal(a.appliquerParametres(null), false);
-  Object.assign(a.FRAIS, avant);
+  Object.assign(a.FRAIS, avant.FRAIS); Object.assign(a.MARCHE, avant.MARCHE); Object.assign(a.FRAIS_CRYPTO, avant.FRAIS_CRYPTO);
+  Object.assign(a.CRYPTO, avant.CRYPTO); Object.assign(a.PALIERS, avant.PALIERS);
+  a.OPERATEURS.forEach((o, i) => Object.assign(o, avant.OPERATEURS[i]));
 });
 
 
@@ -137,4 +140,12 @@ test("une intention garde sa clé jusqu'à réussir ; une autre intention a la s
   assert.notEqual(i.cleDeLIntention("ord", sortie), k1, "un ordre n'emprunte pas la clé d'une sortie");
   i.intentionAccomplie("wd", sortie);
   assert.notEqual(i.cleDeLIntention("wd", sortie), k1, "réussie, l'intention est oubliée : une seconde sortie identique voulue est un geste neuf");
+});
+
+test("quantités et prix se jugent au centime, comme le moteur, malgré le flottant", async () => {
+  const a = await import("./argent.ts");
+  for (const q of [19.99, 1.15 + 10, 10.29, 12.35, 10.1, 20.07, 33.33]) assert.equal(a.quantiteValide(q), true, `${q} a deux décimales : le moteur l'accepte`);
+  for (const q of [10.123, 10.005, 9.99, NaN, Infinity]) assert.equal(a.quantiteValide(q), false, `${q} : le moteur le refuse`);
+  for (const p of [618.4, 618.05, 600.1, 599.95]) assert.equal(a.prixValide(p), true, `${p}`);
+  for (const p of [618.004, 618.01, 618.06, 0, -5]) assert.equal(a.prixValide(p), false, `${p}`);
 });

@@ -109,7 +109,8 @@ declare
   c uuid; g text; r jsonb; n int; ref text; tx text; x bigint; k commandes; rb remboursements;
   -- les remboursements ne réussissent que sur une retenue remboursable : on les tire plus souvent
   gestes text[] := array['depot', 'declarer', 'sms', 'sms', 'ordre', 'ordre', 'ordre', 'annuler', 'sortie', 'totem', 'totem',
-                         'usdt', 'retrait', 'chaine', 'rapprocher', 'rembourser', 'rembourser', 'rembourser', 'remboursement', 'remboursement', 'remboursement'];
+                         'usdt', 'retrait', 'chaine', 'rapprocher', 'rembourser', 'rembourser', 'rembourser', 'remboursement', 'remboursement', 'remboursement',
+                         'retirer', 'reaffecter', 'annuler_sortie'];
   payeurs text[] := array['678900001', '678900002', '678900003', '678900004', '678900005', '678900006', '670111222', '670333444', null];
 begin
   perform setseed(p_graine);
@@ -173,6 +174,18 @@ begin
       when 'rembourser' then
         perform set_config('xafe.compte', admin::text, true);
         perform admin_rembourser_retenue((select id from entrees_retenues where etat = 'retenue' order by random() limit 1), 'hasard');
+      when 'retirer' then
+        select x.transaction_id, d.reference into tx, ref from depot_declarations x join depots d on d.id = x.depot_id
+         where x.compte_id = c and x.etat = 'attendu' order by random() limit 1;
+        if ref is null then raise exception 'rien à faire' using errcode = 'P0001'; end if;
+        perform retirer_declaration(ref, tx);
+      when 'reaffecter' then
+        perform set_config('xafe.compte', admin::text, true);
+        perform admin_reaffecter_commande((select id from commandes where etat = 'en_attente' order by random() limit 1),
+                                          (array['akwa-1', 'hasard-2'])[1 + floor(random() * 2)::int]);
+      when 'annuler_sortie' then
+        perform set_config('xafe.compte', admin::text, true);
+        perform admin_annuler_sortie((select reference from sorties where etat in ('en_attente', 'en_cours') order by random() limit 1), 'hasard');
       when 'remboursement' then
         select * into rb from remboursements where etat in ('en_attente', 'en_cours') order by random() limit 1;
         if rb.id is null then raise exception 'rien à faire' using errcode = 'P0001'; end if;

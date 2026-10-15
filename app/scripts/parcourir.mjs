@@ -244,6 +244,20 @@ try {
   await taper(["1", "2", "3", "4", "5", "6"]);
   await voir("Numéro ajouté");
 
+  /* ---------------------------------------- un ID mal recopié se retire */
+  etape("Un transaction ID mal recopié se retire : le dépôt n'attend plus un SMS qui ne viendra jamais");
+  await page.goto(`${BASE}/entrer/operateur`);
+  await page.getByText("MTN MoMo", { exact: true }).click();
+  await page.waitForURL(/\/entrer\/payer\/XAFe-DP-\d+$/);
+  await page.getByRole("button", { name: "J'ai payé" }).click();
+  await page.getByLabel("Transaction ID").waitFor();
+  await page.getByLabel("Transaction ID").fill("2039X817999");
+  await page.getByRole("button", { name: "Ajouter" }).click();
+  await voir("Mal recopié ? Touchez × pour le retirer.");
+  await capturer("entrer-retirer");
+  await page.getByRole("button", { name: /Retirer l'ID 2039X817999/ }).click();
+  await page.getByText("Mal recopié ? Touchez × pour le retirer.").waitFor({ state: "detached" });
+
   /* -------------------------------------- une réponse perdue en route */
   etape("Une sortie partie dont la réponse se perd : revenir, recommencer — elle ne part pas deux fois");
   await page.goto(`${BASE}/sortir/montant`);

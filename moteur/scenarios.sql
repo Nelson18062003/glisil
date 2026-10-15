@@ -1266,6 +1266,60 @@ begin
   raise notice '✓ 11.17 un boîtier réinstallé : ses SMS neufs sont traités, un SMS relu reste reconnu';
 end $$;
 
+-- 11.18 · un transaction ID mal recopié se retire ; un ID crédité, jamais.
+begin;
+set local xafe.compte = '55555555-5555-5555-5555-555555555555';
+do $$
+declare r jsonb; ref text := (select reference from depots where cle = 'k-eve-1');
+begin
+  perform declarer_transaction(ref, '20399999918');
+  r := retirer_declaration(ref, '2039 9999 918');
+  assert not exists (select 1 from depot_declarations where transaction_id = '20399999918'), 'l''ID mal recopié est parti';
+  begin
+    perform retirer_declaration(ref, '20394900002');
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm = 'cette déclaration ne se retire plus', sqlerrm;
+  end;
+  raise notice '✓ 11.18 un transaction ID qui attend se retire ; un ID crédité ne se retire jamais';
+end $$;
+rollback;
+
+-- 11.19 · une sortie clouée à un boîtier muet : l'équipe la réaffecte, ou l'annule et les XAFe reviennent.
+insert into terminaux (id, nom, vu_le) values ('secours-3', 'Secours 3', now());
+insert into floats (operateur, numero, terminal) values ('mtn', '677000333', 'secours-3');
+begin;
+set local xafe.compte = '11111111-1111-1111-1111-111111111111';
+select declarer_transaction((select reference from depots where cle = 'k-dep-1'), '20390000190') \gset d19_
+commit;
+select totem_sms_recu('akwa-1', 190, 'mtn', '677000000', '677123456', 2000000, '20390000190', 'Vous avez recu 2,000,000 FCFA (19)', now()) \gset sms19_
+begin;
+set local xafe.compte = '11111111-1111-1111-1111-111111111111';
+select demander_sortie(1500000, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-s-19', '1234') \gset s19_
+commit;
+begin;
+set local xafe.compte = 'dddddddd-0000-0000-0000-000000000002';
+do $$
+declare r jsonb; a uuid := '11111111-1111-1111-1111-111111111111'; v_s sorties := (select s from sorties s where cle = 'k-s-19');
+        k1 bigint; k2 bigint; dispo numeric := solde(a, 'XAFe', 'dispo');
+begin
+  select min(id), max(id) into k1, k2 from commandes where sortie_id = v_s.id;
+  r := admin_reaffecter_commande(k1, 'secours-3');
+  assert (select terminal from commandes where id = k1) = 'secours-3' and (select parametres ->> 'float_numero' from commandes where id = k1) = '677000333', r;
+  begin perform admin_reaffecter_commande(k1, 'bonaberi-2'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'ce terminal ne porte aucune carte de cet opérateur', sqlerrm; end;
+  perform totem_reclamer_commande(k1, 'secours-3');
+  begin perform admin_annuler_sortie(v_s.reference, 'boîtier en panne'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'un transfert est en cours de composition', sqlerrm; end;
+  perform totem_resultat_commande(k1, 'secours-3', true, 'Transfert reussi', 'MP-19', 0);
+  r := admin_annuler_sortie(v_s.reference, 'boîtier en panne');
+  assert (r ->> 'rendu')::numeric = (select montant_xafe from commandes where id = k2) and r ->> 'etat' = 'partielle', r;
+  assert solde(a, 'XAFe', 'dispo') = dispo + (r ->> 'rendu')::numeric, 'les XAFe du transfert annulé sont revenus';
+  assert total('XAFe') = circulation(), 'rien n''est créé ni perdu';
+  raise notice '✓ 11.19 une sortie clouée à un boîtier muet se réaffecte, ou s''annule et ses XAFe reviennent — jamais un transfert réclamé';
+end $$;
+commit;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

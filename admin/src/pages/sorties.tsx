@@ -1,14 +1,16 @@
 /*
  * Les Sorties : ce que TOTEM compose, transfert par transfert. Une commande
- * réclamée par un boîtier qui s'est tu se libère ; jamais une commande faite.
+ * réclamée par un boîtier qui s'est tu se libère ; une commande en attente
+ * d'un boîtier muet se réaffecte, ou la sortie s'annule (ses XAFe reviennent) ;
+ * jamais une commande faite, ni une commande en train d'être composée.
  */
-import { Button, Chip, Collapse, Stack, Typography } from "@mui/material";
+import { Button, Chip, Collapse, MenuItem, Stack, TextField, Typography } from "@mui/material";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useGuichet, useRafraichir, useSorties } from "../guichet";
+import { useGuichet, useRafraichir, useSorties, useTerminaux } from "../guichet";
 import { heure, jourRelatif, numeroEnTranches, xaf } from "../noyau/format";
 import { useSession } from "../session/session";
-import { Coquille, Erreur, Etat, Tableau } from "../ui";
+import { Coquille, Dialogue, Erreur, Etat, Tableau } from "../ui";
 
 export function Sorties() {
   const guichet = useGuichet();
@@ -18,19 +20,35 @@ export function Sorties() {
   const { data } = useSorties(etat);
   const [ouverte, setOuverte] = useState<string | null>(null);
   const [erreur, setErreur] = useState<unknown>(null);
+  const { data: terminaux } = useTerminaux();
+  const [aReaffecter, setAReaffecter] = useState<{ id: number; operateur: string; de: string } | null>(null);
+  const [vers, setVers] = useState("");
+  const [aAnnuler, setAAnnuler] = useState<{ reference: string; montant: number } | null>(null);
+  const [note, setNote] = useState("");
+  const [enCours, setEnCours] = useState(false);
+  const [fait, setFait] = useState<string | null>(null);
 
   const liberer = async (id: number) => {
     try { await guichet.libererCommande(id); await rafraichir(); } catch (e) { setErreur(e); }
   };
+  const agir = async (geste: () => Promise<string>) => {
+    setEnCours(true); setErreur(null);
+    try { setFait(await geste()); setAReaffecter(null); setAAnnuler(null); setNote(""); setVers(""); await rafraichir(); } catch (e) { setErreur(e); } finally { setEnCours(false); }
+  };
+  /* les boîtiers qui portent une carte de cet opérateur, le plus récemment entendu d'abord */
+  const candidats = aReaffecter
+    ? (terminaux ?? []).filter((t) => t.id !== aReaffecter.de && (t.floats ?? []).some((f) => f.actif && f.operateur === aReaffecter.operateur))
+    : [];
 
   return (
     <Coquille titre="Sorties de XAF">
       <Stack direction="row" gap={1}>
-        {[["Toutes", null], ["En attente", "en_attente"], ["En cours", "en_cours"], ["Envoyées", "envoyee"], ["Partielles", "partielle"], ["Échouées", "echouee"]].map(([l, v]) => (
+        {[["Toutes", null], ["En attente", "en_attente"], ["En cours", "en_cours"], ["Envoyées", "envoyee"], ["Partielles", "partielle"], ["Échouées", "echouee"], ["Annulées", "annulee"]].map(([l, v]) => (
           <Chip key={String(v)} label={l as string} onClick={() => setEtat(v as string | null)} color={etat === v ? "primary" : undefined} variant={etat === v ? "filled" : "outlined"} />
         ))}
       </Stack>
       <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
+      {fait && <Typography variant="body2" sx={{ bgcolor: "#CDEFD9", color: "#06331B", px: 2, py: 1, borderRadius: 3 }} onClick={() => setFait(null)}>{fait}</Typography>}
       <Tableau
         colonnes={["Référence", "Client", "Vers", { label: "XAFe", align: "right" }, { label: "Envoyé", align: "right" }, { label: "Revenu", align: "right" }, "Transferts", "État", "Demandée"]}
         lignes={(data ?? []).map((s) => [
@@ -51,8 +69,13 @@ export function Sorties() {
                     <Typography variant="caption">{t.reprises > 0 ? `${t.reprises} reprise${t.reprises > 1 ? "s" : ""}` : ""}</Typography>
                     <Typography variant="caption" fontFamily="Roboto Mono, monospace">{t.reference_operateur ?? t.resultat ?? ""}</Typography>
                     {t.etat === "en_cours" && peut("sorties") && <Button size="small" variant="outlined" onClick={() => void liberer(t.id)} sx={{ minHeight: 26, fontSize: 12 }}>Libérer</Button>}
+                    {t.etat === "en_attente" && peut("sorties") && <Button size="small" variant="outlined" onClick={() => { setAReaffecter({ id: t.id, operateur: s.operateur, de: t.terminal }); setVers(""); }} sx={{ minHeight: 26, fontSize: 12 }}>Réaffecter</Button>}
                   </Stack>
                 ))}
+                {peut("sorties") && s.transferts.some((t) => t.etat === "en_attente") && !s.transferts.some((t) => t.etat === "en_cours") && (
+                  <Button size="small" variant="outlined" color="error" onClick={() => setAAnnuler({ reference: s.reference, montant: s.transferts.filter((t) => t.etat === "en_attente").reduce((m, t) => m + t.montant_xafe, 0) })}
+                    sx={{ minHeight: 28, fontSize: 12, alignSelf: "flex-start" }}>Annuler ce qui n'est pas parti</Button>
+                )}
               </Stack>
             </Collapse>
           </Stack>,
@@ -61,7 +84,25 @@ export function Sorties() {
         ])}
         vide="Aucune sortie."
       />
-      <Typography variant="body2">Un transfert « en cours » depuis plus de cinq minutes vient d'un boîtier qui s'est tu : le libérer le remet en attente pour le prochain tour. Un transfert fait ne se touche pas : l'argent est parti.</Typography>
+      <Typography variant="body2">Un transfert « en cours » depuis plus de cinq minutes vient d'un boîtier qui s'est tu : le libérer le remet en attente pour le prochain tour. Un transfert « en attente » d'un boîtier muet se donne à un autre boîtier, ou s'annule : ses XAFe reviennent au client. Un transfert fait ne se touche pas : l'argent est parti.</Typography>
+
+      <Dialogue ouvert={Boolean(aReaffecter)} titre={`Réaffecter le transfert #${aReaffecter?.id ?? ""}`} onFermer={() => setAReaffecter(null)} libelle="Réaffecter" enCours={enCours} desactive={!vers}
+        onValider={() => aReaffecter && void agir(async () => { await guichet.reaffecterCommande(aReaffecter.id, vers); return `Transfert #${aReaffecter.id} donné à ${vers}.`; })}>
+        <Typography variant="body2">Il attend {aReaffecter?.de}. Il partira du premier boîtier choisi ici qui le relève, depuis sa carte {aReaffecter?.operateur.toUpperCase()}.</Typography>
+        {candidats.length === 0
+          ? <Typography variant="body2" color="error">Aucun autre boîtier ne porte une carte de cet opérateur.</Typography>
+          : <TextField select label="Vers le boîtier" value={vers} onChange={(e) => setVers(e.target.value)} fullWidth>
+              {candidats.map((t) => <MenuItem key={t.id} value={t.id}>{t.nom} ({t.id}){t.muet ? " · muet" : ""}</MenuItem>)}
+            </TextField>}
+        <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
+      </Dialogue>
+
+      <Dialogue ouvert={Boolean(aAnnuler)} titre={`Annuler ${aAnnuler?.reference ?? ""}`} onFermer={() => setAAnnuler(null)} libelle="Annuler et rendre les XAFe" couleur="error" enCours={enCours} desactive={note.trim().length < 3}
+        onValider={() => aAnnuler && void agir(async () => { const r = await guichet.annulerSortie(aAnnuler.reference, note); return `${aAnnuler.reference} : ${xaf(r.rendu)} XAFe revenus au client.`; })}>
+        <Typography variant="body2">Les transferts qui n'ont pas encore été pris par un boîtier sont clos ; leurs {aAnnuler ? xaf(aAnnuler.montant) : ""} XAFe reviennent au client, qui est prévenu. Ce qui est déjà parti reste parti.</Typography>
+        <TextField label="Pourquoi (le journal le garde)" value={note} onChange={(e) => setNote(e.target.value)} fullWidth autoFocus />
+        <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
+      </Dialogue>
     </Coquille>
   );
 }

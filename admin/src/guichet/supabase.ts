@@ -48,6 +48,11 @@ export class GuichetSupabase implements GuichetAdmin {
   rembourser(id: number, note: string) { return this.rpc<{ montant: number; numero: string }>("admin_rembourser_retenue", { p_id: id, p_note: note }); }
   sorties(etat?: string | null) { return this.rpc<Sortie[]>("admin_sorties", { p_etat: etat ?? null, p_n: 200 }); }
   async libererCommande(id: number) { await this.rpc("admin_liberer_commande", { p_id: id }); }
+  async reaffecterCommande(id: number, terminal: string) { await this.rpc("admin_reaffecter_commande", { p_id: id, p_terminal: terminal }); }
+  async annulerSortie(reference: string, note: string) {
+    const r = await this.rpc<{ rendu: number; etat: string }>("admin_annuler_sortie", { p_reference: reference, p_note: note });
+    return { rendu: Number(r.rendu), etat: String(r.etat) };
+  }
   terminaux() { return this.rpc<Terminal[]>("admin_terminaux"); }
   creerTerminal({ id, nom, lieu }: { id: string; nom: string; lieu: string }) { return this.rpc<{ id: string; cle: string }>("admin_creer_terminal", { p_id: id, p_nom: nom, p_lieu: lieu }); }
   renouvelerCle(id: string) { return this.rpc<{ cle: string }>("admin_renouveler_cle", { p_id: id }); }

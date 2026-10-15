@@ -98,6 +98,18 @@ const DICTIONNAIRE: Record<string, Omit<ErreurLisible, "recommencer"> & { recomm
     suite: "Regardez vos dépôts en attente dans Historique.",
     recommencer: false,
   },
+  "cette déclaration ne se retire plus": {
+    titre: "Cet ID ne se retire plus",
+    argent: "Il a été crédité, ou l'équipe le vérifie : rien n'est perdu.",
+    suite: "Regardez son état dans le dépôt.",
+    recommencer: false,
+  },
+  "transaction id inconnu sur ce dépôt": {
+    titre: "Cet ID n'est plus sur ce dépôt",
+    argent: "Rien n'a bougé.",
+    suite: "La liste se met à jour.",
+    recommencer: false,
+  },
   "transaction id invalide": {
     titre: "Ce transaction ID n'est pas lisible",
     argent: "Rien n'a bougé.",

@@ -17,6 +17,10 @@ export interface GuichetAdmin {
 
   sorties(etat?: string | null): Promise<Sortie[]>;
   libererCommande(id: number): Promise<void>;
+  /** Donner un transfert EN ATTENTE à un autre boîtier qui porte une carte du même opérateur. */
+  reaffecterCommande(id: number, terminal: string): Promise<void>;
+  /** Annuler ce qui n'est pas encore parti d'une sortie : ses XAFe reviennent au client. */
+  annulerSortie(reference: string, note: string): Promise<{ rendu: number; etat: string }>;
 
   terminaux(): Promise<Terminal[]>;
   creerTerminal(p: { id: string; nom: string; lieu: string }): Promise<{ id: string; cle: string }>;

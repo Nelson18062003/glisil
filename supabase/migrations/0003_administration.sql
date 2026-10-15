@@ -335,6 +335,56 @@ begin
   return jsonb_build_object('ok', true);
 end $$;
 
+-- Un transfert attend un boîtier qui s'est tu : on le donne à un autre boîtier
+-- qui porte une carte du même opérateur. Seulement « en attente » : réclamé,
+-- il est peut-être en train d'être composé.
+create function admin_reaffecter_commande(p_id bigint, p_terminal text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v commandes; v_float floats;
+begin
+  perform _exiger_droit('sorties');
+  select * into v from commandes where id = p_id for update;
+  if not found then raise exception 'commande inconnue'; end if;
+  if v.etat <> 'en_attente' then raise exception 'seule une commande en attente se réaffecte' using detail = v.etat; end if;
+  select f.* into v_float from floats f where f.terminal = p_terminal and f.actif and f.operateur = v.parametres ->> 'operateur' order by f.id limit 1;
+  if not found then raise exception 'ce terminal ne porte aucune carte de cet opérateur'; end if;
+  update commandes set terminal = p_terminal, float_id = v_float.id,
+         parametres = parametres || jsonb_build_object('float_numero', v_float.numero)
+   where id = p_id;
+  perform _journaliser('reaffecter_commande', p_id::text, jsonb_build_object('de', v.terminal, 'vers', p_terminal));
+  return jsonb_build_object('ok', true, 'terminal', p_terminal, 'float_numero', v_float.numero);
+end $$;
+
+-- Annuler ce qui n'est pas encore parti d'une sortie : ses transferts EN
+-- ATTENTE sont clos, leurs XAFe reviennent au client. Un transfert réclamé
+-- (peut-être en train d'être composé) ou fait n'est jamais touché : il faut
+-- d'abord le libérer, après cinq minutes de silence du boîtier.
+create function admin_annuler_sortie(p_reference text, p_note text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_s sorties; v commandes; v_rendu numeric := 0; v_faites int; v_echouees int;
+begin
+  perform _exiger_droit('sorties');
+  if length(trim(coalesce(p_note, ''))) < 3 then raise exception 'une note est exigée' using detail = 'pourquoi la sortie est annulée'; end if;
+  select * into v_s from sorties where reference = p_reference for update;
+  if not found then raise exception 'sortie inconnue'; end if;
+  if exists (select 1 from commandes where sortie_id = v_s.id and etat = 'en_cours') then
+    raise exception 'un transfert est en cours de composition' using detail = 'libérez-le d''abord s''il est bloqué';
+  end if;
+  for v in select * from commandes where sortie_id = v_s.id and etat = 'en_attente' order by id for update loop
+    update commandes set etat = 'echouee', resultat = 'annulée par l''équipe : ' || p_note, traitee_le = now() where id = v.id;
+    perform _mouvement(v_s.compte_id, 'XAFe', v.montant_xafe, -v.montant_xafe, 'sortie_annulee', 'commandes', v.id::text);
+    v_rendu := v_rendu + v.montant_xafe;
+  end loop;
+  if v_rendu = 0 then raise exception 'rien à annuler' using detail = 'aucun transfert en attente'; end if;
+  select count(*) filter (where etat = 'faite'), count(*) filter (where etat = 'echouee') into v_faites, v_echouees from commandes where sortie_id = v_s.id;
+  update sorties set montant_rendu = montant_rendu + v_rendu,
+         etat = case when v_faites = 0 then 'annulee' else 'partielle' end, terminee_le = now()
+   where id = v_s.id returning * into v_s;
+  perform _notifier(v_s.compte_id, 'Sortie annulée', format('%s XAFe sont revenus sur votre compte.', to_char(v_rendu, 'FM999G999G999G999')), '/historique/' || v_s.reference);
+  perform _journaliser('annuler_sortie', p_reference, jsonb_build_object('rendu', v_rendu, 'note', p_note));
+  return jsonb_build_object('ok', true, 'rendu', v_rendu, 'etat', v_s.etat);
+end $$;
+
 -- ───────────────────────── terminaux et floats ─────────────────────────────
 create function admin_terminaux() returns jsonb
 language plpgsql stable security definer set search_path = public as $$

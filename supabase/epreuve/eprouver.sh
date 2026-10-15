@@ -26,6 +26,10 @@ TMP=$(mktemp -d /tmp/xafe-epreuve.XXXXXX)
 
 sh "$ICI/supabase/epreuve/monter.sh"
 
+N=$(psql_admin -Atc "select count(*) from cron.job where jobname = 'xafe-expirer-depots' and schedule = '*/5 * * * *'" 2>/dev/null || echo 0)
+[ "$N" = "1" ] || { echo "✗ expirer_depots() n'est pas planifiée par pg_cron sur la vraie base"; exit 1; }
+echo "✓ pg_cron planifie expirer_depots() toutes les cinq minutes"
+
 echo "· scénarios du moteur (auth.uid() de Supabase : request.jwt.claim.sub)"
 sed 's/xafe\.compte/request.jwt.claim.sub/g' "$ICI/moteur/scenarios.sql" >"$TMP/scenarios.sql"
 STATUT=0

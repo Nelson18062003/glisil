@@ -110,7 +110,7 @@ export function Tableau({ colonnes, lignes, vide = "Rien ici." }: { colonnes: (s
 }
 
 const ETATS: Record<string, { label: string; tone: Tone }> = {
-  en_attente: { label: "en attente", tone: "amber" }, attendu: { label: "attend le SMS", tone: "amber" }, credite: { label: "crédité", tone: "green" }, expire: { label: "expiré", tone: "neutral" }, annule: { label: "annulé", tone: "neutral" },
+  en_attente: { label: "en attente", tone: "amber" }, attendu: { label: "attend le SMS", tone: "amber" }, credite: { label: "crédité", tone: "green" }, expire: { label: "expiré", tone: "neutral" }, annule: { label: "annulé", tone: "neutral" }, annulee: { label: "annulée", tone: "neutral" },
   refuse: { label: "refusé", tone: "red" }, en_cours: { label: "en cours", tone: "blue" }, envoyee: { label: "envoyée", tone: "green" }, partielle: { label: "partielle", tone: "amber" }, echouee: { label: "échouée", tone: "red" },
   faite: { label: "fait", tone: "green" }, retenue: { label: "retenue", tone: "amber" }, rapprochee: { label: "rapprochée", tone: "green" }, remboursee: { label: "remboursée", tone: "blue" },
   ouvert: { label: "ouvert", tone: "blue" }, partiel: { label: "partiel", tone: "amber" }, execute: { label: "exécuté", tone: "green" }, muet: { label: "muet", tone: "red" }, actif: { label: "actif", tone: "green" }, inactif: { label: "en pause", tone: "neutral" },

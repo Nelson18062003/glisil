@@ -55,6 +55,8 @@ export interface Guichet {
   ouvrirDepot(p: { operateur: IdOperateur; cle: string }): Promise<Depot>;
   depot(reference: string): Promise<Depot>;
   declarerTransaction(p: { reference: string; transactionId: string }): Promise<Declaration>;
+  /** Retirer un ID mal recopié, tant qu'il attend son SMS. */
+  retirerDeclaration(p: { reference: string; transactionId: string }): Promise<Depot>;
   terminerDepot(reference: string): Promise<Depot>;
   annulerDepot(reference: string): Promise<Depot>;
   depotsEnAttente(): Promise<Depot[]>;
