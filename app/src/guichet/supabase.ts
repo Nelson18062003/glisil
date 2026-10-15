@@ -166,7 +166,12 @@ export class GuichetSupabase implements Guichet {
   async compte() { return compte(await this.rpc<J>("mon_compte")); }
   async completerProfil({ nom, codeSecret }: { nom: string; codeSecret: string }) { return compte(await this.rpc<J>("completer_profil", { p_nom: nom, p_code: codeSecret })); }
   async verifierCodeSecret(code: string): Promise<ResultatCode> {
-    const r = await this.rpc<J>("verifier_code_secret", { p_code: code });
+    /* PAS this.rpc : un code faux revient en {"ok": false, "erreur": …} — c'est une RÉPONSE que l'écran
+       de déverrouillage doit lire (essais restants, verrou), pas une exception qui le laisserait muet,
+       le code faux toujours dans les cases, renvoyé à chaque touche jusqu'au verrou. */
+    const { data, error } = await this.sb.rpc("verifier_code_secret", { p_code: code });
+    if (error) throw new ErreurMoteur(error.message, error.details || undefined);
+    const r = (data ?? {}) as J;
     return { ok: Boolean(r.ok), essaisRestants: nn(r.essais_restants) ?? undefined, verrouJusqua: sn(r.verrou_jusqua) };
   }
   async changerCodeSecret({ ancien, nouveau }: { ancien: string; nouveau: string }) { await this.rpc("changer_code_secret", { p_ancien: ancien, p_nouveau: nouveau }); }
@@ -214,6 +219,7 @@ export class GuichetSupabase implements Guichet {
   async numeros() { return ((await this.rpc<J[]>("mes_numeros")) ?? []).map(numero); }
   async ajouterNumero({ operateur, numero: num }: { operateur: IdOperateur; numero: string }) { return numero(await this.rpc<J>("ajouter_numero", { p_operateur: operateur, p_numero: numeroSaisi(num) })); }
   async confirmerNumero({ id, code }: { id: string; code: string }) { return numero(await this.rpc<J>("confirmer_numero", { p_id: id, p_code: code })); }
+  async renvoyerCodeNumero(id: string) { return numero(await this.rpc<J>("renvoyer_code_numero", { p_id: id })); }
   async retirerNumero({ id, codeSecret }: { id: string; codeSecret: string }) { await this.rpc("retirer_numero", { p_id: id, p_code: codeSecret }); }
   async demanderSortie({ montant, numeroId, cle, codeSecret }: { montant: number; numeroId: string; cle: string; codeSecret: string }) {
     return sortie(await this.rpc<J>("demander_sortie", { p_montant: montant, p_numero_id: numeroId, p_cle: cle, p_code: codeSecret }));

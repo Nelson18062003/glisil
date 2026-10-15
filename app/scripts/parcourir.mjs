@@ -228,6 +228,22 @@ try {
   await onglet.getByText("Entrée MTN MoMo").first().waitFor();
   await onglet.close();
 
+  /* ------------------------------------------------- un numéro ajouté */
+  etape("Un numéro ajouté : l'opérateur vient du numéro, le code se renvoie, un code faux se dit");
+  await page.goto(`${BASE}/compte/numeros/ajouter`);
+  await page.getByLabel("Numéro MoMo").fill("677112233");
+  await voir("d'après le numéro");
+  await capturer("compte-numero-ajouter");
+  await page.getByRole("button", { name: "Recevoir le code" }).click();
+  await voir("Renvoyer le code");
+  await page.getByRole("button", { name: "Renvoyer le code" }).click();
+  await voir("Nouveau code envoyé");
+  await taper(["0", "0", "0", "0", "0", "0"]);
+  await voir("Ce code n'est pas le bon");
+  await capturer("compte-numero-code");
+  await taper(["1", "2", "3", "4", "5", "6"]);
+  await voir("Numéro ajouté");
+
   exiger(erreurs.length === 0, `des erreurs ont été vues dans le navigateur :\n  ${erreurs.join("\n  ")}`);
   console.log(`✓ le parcours tient (${numero} captures dans app/captures/)`);
 } catch (e) {

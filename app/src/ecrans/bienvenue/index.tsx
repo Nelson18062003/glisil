@@ -192,7 +192,7 @@ export function Verrouillage() {
         if (r.verrouJusqua) setMessage(`Trois codes faux : le compte est verrouillé jusqu'à ${new Date(r.verrouJusqua).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}.`);
         else setMessage(`Code incorrect. ${r.essaisRestants ?? ""} essai${(r.essaisRestants ?? 0) > 1 ? "s" : ""} avant verrouillage.`);
       }
-    }).catch((e) => setMessage(lisible(e).titre));
+    }).catch((e) => { setCode(""); setMessage(lisible(e).titre); });
 
   const touche = (k: string) => {
     setFaux(false);

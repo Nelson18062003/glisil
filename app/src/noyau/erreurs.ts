@@ -70,10 +70,110 @@ const DICTIONNAIRE: Record<string, Omit<ErreurLisible, "recommencer"> & { recomm
     suite: "Regardez-le dans Historique.",
     recommencer: false,
   },
-  "aucun terminal disponible pour cet opérateur": {
-    titre: "Aucun terminal ne porte cet opérateur en ce moment",
-    argent: "Rien n'a bougé.",
+  "aucun boîtier en ligne pour cet opérateur": {
+    titre: "Nos cartes de cet opérateur ne répondent pas en ce moment",
+    argent: "Rien n'a bougé : aucun XAFe n'a été bloqué.",
+    suite: "Réessayez dans quelques minutes, ou sortez vers un numéro de l'autre opérateur.",
+  },
+  "aucun float disponible pour cet opérateur": {
+    titre: "Aucun numéro de cet opérateur n'est ouvert aux dépôts",
+    argent: "Rien n'a bougé. Ne payez aucun numéro pour l'instant.",
     suite: "Réessayez dans quelques minutes ou passez par l'autre opérateur.",
+  },
+  "compte désactivé": {
+    titre: "Votre compte est suspendu",
+    argent: "Vos soldes restent à vous ; aucun geste d'argent n'est possible pour l'instant.",
+    suite: "Contactez l'équipe XAFe sur WhatsApp, depuis Compte → Aide.",
+    recommencer: false,
+  },
+  "transaction id déjà utilisé": {
+    titre: "Ce transaction ID a déjà été crédité",
+    argent: "Ce paiement ne peut créditer qu'une fois.",
+    suite: "Vérifiez l'ID dans le SMS de l'opérateur. Si c'est bien le vôtre, écrivez à l'équipe.",
+    recommencer: false,
+  },
+  "transaction id déjà déclaré": {
+    titre: "Vous avez déjà tapé ce transaction ID",
+    argent: "Il attend sur un autre de vos dépôts : rien n'est perdu.",
+    suite: "Regardez vos dépôts en attente dans Historique.",
+    recommencer: false,
+  },
+  "transaction id invalide": {
+    titre: "Ce transaction ID n'est pas lisible",
+    argent: "Rien n'a bougé.",
+    suite: "Recopiez-le tel qu'il est écrit dans le SMS de l'opérateur, au moins six caractères.",
+  },
+  "trop de transaction id": {
+    titre: "Trop de transaction ID en attente",
+    argent: "Les ID déjà tapés restent valables : ils seront crédités dès leur SMS.",
+    suite: "Attendez que les premiers soient lus. L'équipe peut rapprocher les autres.",
+    recommencer: false,
+  },
+  "retraits crypto pas encore ouverts": {
+    titre: "L'envoi sur la chaîne n'est pas encore ouvert",
+    argent: "Rien n'a été bloqué : vos fonds restent disponibles.",
+    suite: "Vous pouvez sortir vers MoMo, ou vendre au marché.",
+    recommencer: false,
+  },
+  "pas de cours de référence": {
+    titre: "Le marché n'a pas encore de cours",
+    argent: "Rien n'a bougé.",
+    suite: "Le plafond de votre palier se compte en XAF : il faut un premier échange pour convertir.",
+    recommencer: false,
+  },
+  "code secret déjà choisi": {
+    titre: "Votre code secret est déjà choisi",
+    argent: "Rien n'a changé.",
+    suite: "Il se change dans Compte → Code secret, avec l'ancien.",
+    recommencer: false,
+  },
+  "code secret invalide": {
+    titre: "Le code secret doit faire quatre chiffres",
+    argent: "Rien n'a changé.",
+    suite: "Tapez quatre chiffres, sans lettres.",
+  },
+  "code sms incorrect": {
+    titre: "Ce code SMS n'est pas le bon",
+    argent: "Rien n'a bougé.",
+    suite: "Tapez les six chiffres reçus par SMS. Après cinq erreurs, demandez un nouveau code.",
+  },
+  "code sms expiré": {
+    titre: "Ce code SMS n'est plus valable",
+    argent: "Rien n'a bougé.",
+    suite: "Appuyez sur « Renvoyer le code » : un nouveau SMS part.",
+  },
+  "un code vient de partir": {
+    titre: "Un code vient de partir",
+    argent: "Rien n'a bougé.",
+    suite: "Attendez une minute : le SMS peut mettre un peu de temps.",
+  },
+  "trop de codes demandés": {
+    titre: "Trop de codes demandés pour ce numéro",
+    argent: "Rien n'a bougé.",
+    suite: "Réessayez dans une heure.",
+    recommencer: false,
+  },
+  "trop de numéros en attente de code": {
+    titre: "Trois numéros attendent déjà leur code",
+    argent: "Rien n'a bougé.",
+    suite: "Confirmez-les, ou retirez ceux qui ne sont pas à vous, dans Compte → Mes numéros MoMo.",
+    recommencer: false,
+  },
+  "ce numéro est déjà sur un autre compte": {
+    titre: "Ce numéro est déjà vérifié sur un autre compte",
+    argent: "Rien n'a bougé.",
+    suite: "Un numéro n'appartient qu'à un compte. S'il est à vous, écrivez à l'équipe.",
+    recommencer: false,
+  },
+  "numéro invalide": {
+    titre: "Ce numéro n'est pas un numéro MoMo de cet opérateur",
+    argent: "Rien n'a bougé.",
+    suite: "Neuf chiffres. MTN : 650 à 654, 67…, 68… ; Orange : 655 à 659, 69….",
+  },
+  "pièce invalide": {
+    titre: "Une pièce jointe n'a pas pu être lue",
+    argent: "Rien n'a bougé.",
+    suite: "Reprenez les photos depuis cet écran.",
   },
   "non connecté": {
     titre: "Votre session a expiré",

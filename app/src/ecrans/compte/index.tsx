@@ -108,12 +108,13 @@ export function CompteNumerosAjouter() {
   const rafraichir = useRafraichir();
   const [etape, setEtape] = useState<"numero" | "code" | "fait">("numero");
   const [numero, setNumero] = useState("");
-  const [operateur, setOperateur] = useState<IdOperateur | null>(null);
   const [id, setId] = useState<string | null>(null);
+  const [renvoye, setRenvoye] = useState(false);
   const [code, setCode] = useState("");
   const [faux, setFaux] = useState(false);
   const { lancer, enCours, erreur, effacerErreur } = useGesteUnique();
-  const op = operateur ?? operateurDuNumero(numero);
+  /* l'opérateur, c'est le numéro qui le dit : un 677 n'est pas un numéro Orange, et le moteur le refuserait */
+  const op: IdOperateur | null = operateurDuNumero(numero);
   const retour = parcours.lire().retour ?? "/compte/numeros";
 
   const ajouter = () =>
@@ -124,7 +125,20 @@ export function CompteNumerosAjouter() {
   const confirmer = (c: string) =>
     lancer(async () => {
       try { await guichet.confirmerNumero({ id: id!, code: c }); await rafraichir(); setEtape("fait"); }
-      catch (e) { setFaux(true); setCode(""); throw e; }
+      catch (e) {
+        setCode("");
+        /* Un code faux se dit sous les cases, et c'est tout : relancé, il restait en erreur « en attente »,
+           et la touche suivante (qui efface « faux ») faisait surgir sa feuille par-dessus le pavé.
+           Un code expiré, ou un numéro pris entre-temps, se dit en feuille, tel quel. */
+        if (e instanceof Error && e.message.toLowerCase().startsWith("code sms incorrect")) { setFaux(true); return; }
+        throw e;
+      }
+    });
+  const renvoyer = () =>
+    lancer(async () => {
+      await guichet.renvoyerCodeNumero(id!);
+      setFaux(false); setCode(""); setRenvoye(true);
+      window.setTimeout(() => setRenvoye(false), 60_000);
     });
   const touche = (k: string) => {
     setFaux(false);
@@ -154,9 +168,12 @@ export function CompteNumerosAjouter() {
         <Typography variant="body2">Un SMS a été envoyé au {numeroEnTranches(numero)} : c'est la preuve que ce numéro est à vous.{guichet.mode === "demo" ? ` Démonstration : ${CODE_SMS_DEMO}.` : ""}</Typography>
         <Cases longueur={6} valeur={code} erreur={faux} />
         {faux && <Typography variant="body2" color="error" textAlign="center">Ce code n'est pas le bon.</Typography>}
+        <Button variant="text" disabled={renvoye || enCours} onClick={() => void renvoyer()} sx={{ alignSelf: "center" }}>
+          {renvoye ? "Nouveau code envoyé" : "Renvoyer le code"}
+        </Button>
         <Box sx={{ flex: 1 }} />
         <Keypad onKey={touche} triple={null} />
-        <FeuilleErreur erreur={erreur && !faux ? erreur : null} onFermer={effacerErreur} />
+        <FeuilleErreur erreur={erreur} onFermer={effacerErreur} />
       </Screen>
     );
   }
@@ -167,7 +184,7 @@ export function CompteNumerosAjouter() {
         slotProps={{ input: { startAdornment: <Typography sx={{ mr: 1, color: "text.secondary" }}>+237</Typography>, sx: { fontSize: 22, fontVariantNumeric: "tabular-nums" } } }} />
       <Typography variant="body2">Opérateur</Typography>
       <List>
-        {OPERATEURS.map((o) => <Row key={o.id} badge={o.id} primary={o.nom} selected={op === o.id} onClick={() => setOperateur(o.id)} />)}
+        {OPERATEURS.map((o) => <Row key={o.id} badge={o.id} primary={o.nom} secondary={op === o.id ? "d'après le numéro" : undefined} selected={op === o.id} chevron={false} />)}
       </List>
       <Box sx={{ flex: 1 }} />
       <Button variant="contained" disabled={!numeroValide(numero) || !op || enCours} onClick={() => void ajouter()}>{enCours ? "Envoi du SMS…" : "Recevoir le code"}</Button>

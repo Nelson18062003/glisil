@@ -9,7 +9,7 @@
  */
 import { achatMax, arrondi2, decouperSortie, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide } from "../noyau/argent";
 import { ErreurMoteur } from "../noyau/erreurs";
-import { numeroSaisi, transactionIdNormalise } from "../noyau/format";
+import { numeroSaisi, operateurDuNumero, transactionIdNormalise } from "../noyau/format";
 import type { Guichet } from "./guichet";
 import type {
   Actif, Carnet, Chandelle, Compte, Cote, Cotation, Declaration, Depot, Execution, IdOperateur, Niveau, Notification, Numero, Operation, Ordre,
@@ -561,8 +561,10 @@ export class GuichetDemo implements Guichet {
   async ajouterNumero({ operateur, numero }: { operateur: IdOperateur; numero: string }) {
     const d = this.dossier();
     const n = numeroSaisi(numero);
-    if (!/^6\d{8}$/.test(n)) throw new ErreurMoteur("numéro invalide");
-    if (d.numeros.some((x) => x.numero === n && !x.retireLe)) throw new ErreurMoteur("ce numéro est déjà sur votre compte");
+    if (!/^6\d{8}$/.test(n) || operateurDuNumero(n) !== operateur) throw new ErreurMoteur("numéro invalide");
+    const deja = d.numeros.find((x) => x.numero === n && !x.retireLe);
+    if (deja?.verifieLe) throw new ErreurMoteur("ce numéro est déjà sur votre compte");
+    if (deja) { d.numerosEnAttente[deja.id] = CODE_SMS_DEMO; return copie(deja); }
     const nouveau: Numero = { id: uuid(), operateur, numero: n, verifieLe: null, actifDes: iso(maintenant() + 24 * 3600_000), retireLe: null };
     d.numeros.push(nouveau);
     d.numerosEnAttente[nouveau.id] = CODE_SMS_DEMO;
@@ -579,6 +581,14 @@ export class GuichetDemo implements Guichet {
     n.actifDes = iso(maintenant() + 24 * 3600_000);
     delete d.numerosEnAttente[id];
     this.emettre();
+    return copie(n);
+  }
+
+  async renvoyerCodeNumero(id: string) {
+    const d = this.dossier();
+    const n = d.numeros.find((x) => x.id === id && !x.retireLe);
+    if (!n) throw new ErreurMoteur("numéro inconnu sur ce compte");
+    if (!n.verifieLe) d.numerosEnAttente[id] = CODE_SMS_DEMO;
     return copie(n);
   }
 
