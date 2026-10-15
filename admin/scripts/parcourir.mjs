@@ -160,6 +160,14 @@ try {
   await page.goto(`${BASE}/parametres`);
   await voir("MTN MoMo");
   await capturer("parametres");
+  /* un brouillon en cours survit à l'enregistrement d'un AUTRE bloc (la relecture réécrivait tous les blocs) */
+  const brouillon = '{\n  "validite_minutes": 45,\n  "grace_minutes": 120\n}';
+  await page.getByLabel("paramètre depot").fill(brouillon);
+  await page.getByLabel("paramètre sortie").fill('{\n  "reprises_max": 4\n}');
+  await page.getByLabel("paramètre sortie").locator("xpath=ancestor::div[contains(@class,'MuiPaper-root')][1]").getByRole("button", { name: "Enregistrer" }).click();
+  await voir("Enregistré");
+  await page.waitForTimeout(500);
+  exiger((await page.getByLabel("paramètre depot").inputValue()) === brouillon, "le brouillon des dépôts, pas encore enregistré, est encore là");
   await page.goto(`${BASE}/journal`);
   await voir("a rapproché un SMS retenu");
   await voir("a remboursé un SMS retenu");

@@ -11,7 +11,7 @@ import { useGuichet, useNumeros, useSoldes, useSortie } from "../../guichet";
 import { decouperSortie, FRAIS, montantValide, operateur as opDe } from "../../noyau/argent";
 import { apresFrappe, duree, jourRelatif, montantDepuisSaisie, numeroEnTranches, pourcent, quand, xaf } from "../../noyau/format";
 import { parcours, useParcours } from "../../navigation/parcours";
-import { Amount, Card, Chips, Dot, FeuilleErreur, Keypad, Line, List, Points, Row, Screen, Squelette, Success } from "../../ui";
+import { Amount, Attente, Card, Chips, Dot, FeuilleErreur, Keypad, Line, List, Points, Row, Screen, Squelette, Success } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
 
 /* --------------------------------------------------------- 1 · montant */
@@ -36,7 +36,7 @@ export function SortirMontant() {
       <Amount
         value={saisie ? xaf(montant) : "0"}
         unit="XAFe"
-        hint={soldes ? (trop ? `Vous n'avez que ${xaf(dispo)} XAFe disponibles` : `Disponible : ${xaf(dispo)} XAFe`) : " "}
+        hint={soldes ? (trop ? `Vous n'avez que ${xaf(Math.trunc(dispo))} XAFe disponibles` : `Disponible : ${xaf(Math.trunc(dispo))} XAFe`) : " "}
         hintColor={trop ? "error.main" : undefined}
       />
       <Chips items={["100 000", "500 000", "Tout"]} selected={saisie === String(Math.trunc(dispo)) && dispo > 0 ? "Tout" : xaf(montant)} onSelect={choisir} />
@@ -161,9 +161,9 @@ export function SortirCode() {
 
 export function SortirEnvoye() {
   const { ref } = useParams();
-  const { data: s } = useSortie(ref);
+  const { data: s, error } = useSortie(ref);
   useEffect(() => { parcours.effacer("sortir"); }, []);
-  if (!s) return <Screen><Squelette hauteur={300} /></Screen>;
+  if (!s) return <Attente erreur={error} />;
   const op = opDe(s.operateur);
   const faits = s.transferts.filter((t) => t.etat === "faite").length;
 
@@ -172,7 +172,8 @@ export function SortirEnvoye() {
       <Success title={`${xaf(s.montantEnvoye)} XAF envoyés`} amount={`au ${numeroEnTranches(s.numero)}`} caption={`${op.nom}, ${quand(s.termineeLe ?? s.creeLe)}${s.transferts.length > 1 ? `, en ${s.transferts.length} transferts` : ""}.`}
         primary={{ label: "Retour à l'accueil", to: "/" }} secondary={{ label: "Voir le reçu", to: `/historique/${s.reference}` }}>
         <Card>
-          <Line label="XAFe détruits" value={xaf(s.montant)} />
+          <Line label="XAFe débités" value={xaf(s.montant)} />
+          <Line label="XAFe détruits" value={xaf(s.montantEnvoye)} />
           <Line label="Frais" value={xaf(s.frais)} />
           <Line label="Référence" value={s.reference} mono />
           {s.transferts.filter((t) => t.referenceOperateur).map((t, i) => <Line key={i} label={`Transaction ID ${op.nom.split(" ")[0]}`} value={t.referenceOperateur!} mono />)}

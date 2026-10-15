@@ -26,7 +26,9 @@ import { tones } from "../../theme";
 import { Card, Cases, Feuille, FeuilleErreur, Keypad, Line, List, Points, Row, Screen, Squelette } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
 
-const WHATSAPP = "237677000000";
+/* Le numéro du support vient de la configuration : un numéro écrit en dur ici
+   était un bouche-trou, et les messages des clients partaient chez un inconnu. */
+const WHATSAPP = /^\d{11,15}$/.test(String(import.meta.env.VITE_SUPPORT_WHATSAPP ?? "")) ? String(import.meta.env.VITE_SUPPORT_WHATSAPP) : null;
 
 export function Compte() {
   const session = useSession();
@@ -332,7 +334,7 @@ export function CompteApi() {
       </Card>
       <Typography variant="body2">Les clés se créeront ici, avec leurs droits (lecture seule, ordres, retraits) et leur adresse IP autorisée. Rien à faire aujourd'hui : dites-nous ce dont vous avez besoin.</Typography>
       <Box sx={{ flex: 1 }} />
-      <Button variant="outlined" startIcon={<WhatsApp />} href={`https://wa.me/${WHATSAPP}?text=${encodeURIComponent("Bonjour, je souhaite un accès API XAFe Exchange pour mon desk.")}`} target="_blank" rel="noopener">Nous écrire</Button>
+      {WHATSAPP && <Button variant="outlined" startIcon={<WhatsApp />} href={`https://wa.me/${WHATSAPP}?text=${encodeURIComponent("Bonjour, je souhaite un accès API XAFe Exchange pour mon desk.")}`} target="_blank" rel="noopener">Nous écrire</Button>}
     </Screen>
   );
 }
@@ -363,10 +365,14 @@ export function CompteAide() {
           </Accordion>
         ))}
       </Box>
-      <Typography variant="subtitle1" sx={{ mt: 1 }}>Signaler un problème</Typography>
-      <TextField label="Ce qui s'est passé" value={texte} onChange={(e) => setTexte(e.target.value)} fullWidth multiline minRows={3} />
-      <Button variant="contained" startIcon={<WhatsApp />} href={lien} target="_blank" rel="noopener" disabled={texte.trim().length < 5}>Envoyer sur WhatsApp</Button>
-      <Typography variant="caption" textAlign="center">L'équipe répond de 8 h à 20 h, sept jours sur sept.</Typography>
+      {WHATSAPP && (
+        <>
+          <Typography variant="subtitle1" sx={{ mt: 1 }}>Signaler un problème</Typography>
+          <TextField label="Ce qui s'est passé" value={texte} onChange={(e) => setTexte(e.target.value)} fullWidth multiline minRows={3} />
+          <Button variant="contained" startIcon={<WhatsApp />} href={lien} target="_blank" rel="noopener" disabled={texte.trim().length < 5}>Envoyer sur WhatsApp</Button>
+          <Typography variant="caption" textAlign="center">L'équipe répond de 8 h à 20 h, sept jours sur sept.</Typography>
+        </>
+      )}
     </Screen>
   );
 }

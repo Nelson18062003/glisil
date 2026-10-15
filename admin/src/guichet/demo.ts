@@ -301,7 +301,9 @@ export class GuichetDemo implements GuichetAdmin {
     this.exiger("paliers");
     const c = this.e.clients.find((x) => x.id === id);
     if (!c) throw new ErreurMoteur("compte inconnu");
-    c.palier = palier as 0 | 1 | 2; c.verification_en_cours = null;
+    c.palier = palier as 0 | 1 | 2;
+    /* comme le moteur : une vérification ne disparaît que si le palier posé la satisfait */
+    if ((c.verification_en_cours === "identite" && palier >= 1) || (c.verification_en_cours === "entreprise" && palier >= 2)) c.verification_en_cours = null;
     this.noter("changer_palier", id, { palier, note }); this.emettre();
   }
   async validerVerification(id: string, ok: boolean, note?: string) {

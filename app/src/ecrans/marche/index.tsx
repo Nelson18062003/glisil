@@ -17,7 +17,7 @@ import type { Chandelle, Cote, Execution, Niveau, Ordre, TypeOrdre } from "../..
 import { achatMax, arrondi2, FRAIS, fraisOrdre, MARCHE, prixValide, quantiteValide, simulerMarche, totalOrdre } from "../../noyau/argent";
 import { enTranches, heure, heureSecondes, jourRelatif, pourcent, prix as fPrix, usdt as fUsdt, xaf } from "../../noyau/format";
 import { useParcours } from "../../navigation/parcours";
-import { BUY, BUY_BG, Card, Feuille, FeuilleErreur, Line, Screen, SELL, SELL_BG, Squelette, Success } from "../../ui";
+import { Attente, BUY, BUY_BG, Card, Feuille, FeuilleErreur, Line, Screen, SELL, SELL_BG, Squelette, Success } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
 
 const couleur = (c: Cote) => (c === "achat" ? BUY : SELL);
@@ -88,7 +88,6 @@ function MidPrice({ big }: { big?: boolean }) {
       <Typography sx={{ fontSize: big ? 22 : 18, fontWeight: 700, color: col, fontVariantNumeric: "tabular-nums" }}>
         {c?.dernier != null ? fPrix(c.dernier) : "—"} {sens === "haut" ? "↑" : "↓"}
       </Typography>
-      {c?.dernier != null && <Typography variant="caption">≈ {enTranches(c.dernier / 568.7, 2)} $</Typography>}
     </Stack>
   );
 }
@@ -450,7 +449,6 @@ export function MarcheGraphique() {
         <Stack>
           <Typography sx={{ fontSize: 30, fontWeight: 700, color: v >= 0 ? BUY : SELL, lineHeight: 1.1, fontVariantNumeric: "tabular-nums" }}>{c?.dernier != null ? fPrix(c.dernier) : "—"}</Typography>
           <Typography variant="body2">
-            {c?.dernier != null && <>≈ {enTranches(c.dernier / 568.7, 2)} $ </>}
             <Box component="span" sx={{ color: v >= 0 ? BUY : SELL, fontWeight: 600 }}>{v >= 0 ? "+" : ""}{enTranches(v, 2)} %</Box>
           </Typography>
         </Stack>
@@ -653,9 +651,9 @@ function LigneExecution({ e }: { e: Execution }) {
 
 export function MarcheOrdreDetail() {
   const { id } = useParams();
-  const { data } = useOrdre(id);
+  const { data, error } = useOrdre(id);
   const { annuler, erreur, effacer } = useAnnuler();
-  if (!data) return <Screen title="Ordre" back="/marche/ordres"><Squelette hauteur={260} /></Screen>;
+  if (!data) return <Attente erreur={error} title="Ordre" back="/marche/ordres" hauteur={260} />;
   const { ordre: o, executions } = data;
   const ouvert = o.etat === "ouvert" || o.etat === "partiel";
   return (
@@ -692,8 +690,8 @@ export function MarcheOrdreDetail() {
 
 export function MarcheExecute() {
   const { id } = useParams();
-  const { data } = useOrdre(id);
-  if (!data) return <Screen><Squelette hauteur={300} /></Screen>;
+  const { data, error } = useOrdre(id);
+  if (!data) return <Attente erreur={error} back="/marche" />;
   const { ordre: o, executions } = data;
   const frais = executions.reduce((s, e) => s + e.frais, 0);
   const fraisActif = o.cote === "achat" ? "USDT" : "XAFe";

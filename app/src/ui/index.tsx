@@ -286,6 +286,22 @@ export function Squelette({ hauteur = 120, radius = 24 }: { hauteur?: number; ra
   return <Skeleton variant="rounded" height={hauteur} sx={{ borderRadius: radius / 4, bgcolor: "#E6EAE6" }} data-squelette="1" />;
 }
 
+/**
+ * Ce qu'un écran montre tant qu'il n'a pas sa donnée : des formes grises — ou,
+ * si la lecture a échoué, ce qui s'est passé. Une référence qui n'est pas sur
+ * ce compte (« dépôt inconnu ») laissait l'écran gris pour toujours.
+ */
+export function Attente({ erreur, hauteur = 300, title, back }: { erreur: unknown; hauteur?: number; title?: string; back?: string }) {
+  if (!erreur) return <Screen title={title} back={back}><Squelette hauteur={hauteur} /></Screen>;
+  const inconnu = erreur instanceof Error && / inconnue?$/.test(erreur.message);
+  const l = lisible(erreur);
+  return (
+    <Screen title={inconnu ? "Introuvable" : l.titre} back={back ?? "/"}>
+      <Typography variant="body2" data-attente-erreur="1">{inconnu ? "Cette opération n'est pas sur votre compte." : l.suite}</Typography>
+    </Screen>
+  );
+}
+
 export function Roue({ taille = 20 }: { taille?: number }) {
   return <CircularProgress size={taille} thickness={5} sx={{ color: "inherit" }} />;
 }

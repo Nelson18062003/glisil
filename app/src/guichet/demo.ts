@@ -26,7 +26,7 @@ type Tache =
   | { quand: number; type: "retrait"; reference: string }
   | { quand: number; type: "expiration"; reference: string };
 
-type CompteDemo = Compte & { codeSecret: string | null; echecs: number };
+type CompteDemo = Omit<Compte, "entreDuJour"> & { codeSecret: string | null; echecs: number };
 
 type Dossier = {
   compte: CompteDemo;
@@ -118,6 +118,12 @@ function dossierVide(telephone: string): Dossier {
   };
 }
 
+/** Ce qui est entré aujourd'hui : la somme des déclarations créditées depuis minuit. */
+function entreDuJour(d: Dossier): number {
+  const debut = new Date().setHours(0, 0, 0, 0);
+  return d.depots.flatMap((x) => x.declarations).filter((x) => x.etat === "credite" && x.crediteLe && new Date(x.crediteLe).getTime() >= debut).reduce((s, x) => s + (x.montant ?? 0), 0);
+}
+
 /** La vitrine : le compte 6 77 12 34 56 arrive avec une vie déjà écrite. */
 function dossierVitrine(): Dossier {
   const d = dossierVide(NUMERO_VITRINE);
@@ -195,8 +201,9 @@ export class GuichetDemo implements Guichet {
   }
 
   private compteParId(): Compte {
-    const { codeSecret: _c, echecs: _e, ...compte } = this.dossier().compte;
-    return compte;
+    const d = this.dossier();
+    const { codeSecret: _c, echecs: _e, ...compte } = d.compte;
+    return { ...compte, entreDuJour: entreDuJour(d) };
   }
 
   private reference(d: Dossier, prefixe: string): string {
@@ -275,9 +282,7 @@ export class GuichetDemo implements Guichet {
     const montant = Math.max(5_000, Number(chiffres.slice(-3) || "250") * 1_000);
     const p = PALIERS[d.compte.palier];
     if (p.entreeJour !== null) {
-      const debut = new Date().setHours(0, 0, 0, 0);
-      const jour = d.depots.flatMap((x) => x.declarations).filter((x) => x.etat === "credite" && x.crediteLe && new Date(x.crediteLe).getTime() >= debut).reduce((s, x) => s + (x.montant ?? 0), 0);
-      if (jour + montant > p.entreeJour) {
+      if (entreDuJour(d) + montant > p.entreeJour) {
         decl.etat = "refuse"; decl.montant = montant; decl.motif = "plafond du palier atteint : l'argent est retenu, l'équipe vous rembourse";
         this.notifier(d, "Paiement retenu", `${montant.toLocaleString("fr-FR")} XAF reçus au-delà de votre palier : ils vous seront remboursés.`, `/historique/${reference}`);
         return;

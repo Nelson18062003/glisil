@@ -307,6 +307,16 @@ try {
   exiger(chemin().split("/").pop() !== refMuet, "un nouveau dossier est ouvert");
   exiger(await page.getByRole("alert").count() === 0, "le nouveau numéro reçoit : aucun avertissement");
 
+  /* ------------------------- une référence qui n'est pas sur ce compte */
+  etape("Une référence inconnue dit « Introuvable » au lieu de rester grise pour toujours");
+  for (const adresse of ["/entrer/payer/XAFe-DP-999999", "/entrer/transaction/XAFe-DP-999999", "/sortir/envoye/XAFe-WD-999999", "/marche/ordres/inexistant", "/crypto/envoye/XAFe-CW-999999"]) {
+    await page.goto(`${BASE}${adresse}`);
+    await page.locator("[data-attente-erreur]").waitFor({ timeout: 10_000 });
+    exiger(await page.getByText("Introuvable", { exact: true }).count() >= 1, `${adresse} : « Introuvable »`);
+    exiger(await page.locator("[data-squelette]").count() === 0, `${adresse} : plus de formes grises`);
+  }
+  await capturer("reference-introuvable");
+
   exiger(erreurs.length === 0, `des erreurs ont été vues dans le navigateur :\n  ${erreurs.join("\n  ")}`);
   console.log(`✓ le parcours tient (${numero} captures dans app/captures/)`);
 } catch (e) {

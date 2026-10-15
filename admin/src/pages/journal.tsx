@@ -11,6 +11,13 @@ const ACTIONS: Record<string, string> = {
   modifier_parametre: "a modifié un paramètre", creer_administrateur: "a créé un administrateur", desactiver_administrateur: "a désactivé un administrateur", activer_administrateur: "a réactivé un administrateur",
 };
 
+/* Le moteur journalise aussi le rapprochement REFUSÉ (palier, plafond) : « a rapproché » mentait. */
+function libelle(l: { action: string; detail?: unknown }): string {
+  const resultat = l.detail && typeof l.detail === "object" ? (l.detail as Record<string, unknown>).resultat : undefined;
+  if (l.action === "rapprocher_retenue" && resultat && resultat !== "credite") return `a tenté de rapprocher un SMS retenu — ${resultat === "refuse" ? "refusé" : String(resultat)}`;
+  return ACTIONS[l.action] ?? l.action;
+}
+
 export function Journal() {
   const { data } = useJournal();
   return (
@@ -18,7 +25,7 @@ export function Journal() {
       <Typography variant="body2">Chaque action d'un administrateur, en ajout seul. Il se garde longtemps et se lit à plusieurs : aucun numéro ni nom de client n'y est écrit par le moteur, seulement des références. Vos notes y sont gardées telles quelles : n'y écrivez ni numéro ni nom.</Typography>
       <Tableau
         colonnes={["Quand", "Qui", "Action", "Sur", "Détail"]}
-        lignes={(data ?? []).map((l) => [`${jourRelatif(l.quand)} ${heureSecondes(l.quand)}`, l.admin ?? "—", ACTIONS[l.action] ?? l.action, l.cible ?? "—", <Typography key="d" variant="caption" fontFamily="Roboto Mono, monospace">{l.detail ? JSON.stringify(l.detail) : ""}</Typography>])}
+        lignes={(data ?? []).map((l) => [`${jourRelatif(l.quand)} ${heureSecondes(l.quand)}`, l.admin ?? "—", libelle(l), l.cible ?? "—", <Typography key="d" variant="caption" fontFamily="Roboto Mono, monospace">{l.detail ? JSON.stringify(l.detail) : ""}</Typography>])}
         vide="Rien encore."
       />
     </Coquille>

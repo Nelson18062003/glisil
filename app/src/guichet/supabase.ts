@@ -21,6 +21,12 @@ const sn = (v: unknown): string | null => (v === null || v === undefined ? null 
 
 /* ----------------------------------------------------- lectures du moteur */
 
+/** Le moteur rend NULL pour une référence qui n'est pas sur ce compte : c'est « inconnu », pas un objet vide à démonter. */
+function trouve(j: J | null, message: string): J {
+  if (!j || typeof j !== "object") throw new ErreurMoteur(message);
+  return j;
+}
+
 function declaration(j: J): Declaration {
   return { id: s(j.id), transactionId: s(j.transaction_id), etat: j.etat as Declaration["etat"], montant: nn(j.montant), numeroPayeur: sn(j.numero_payeur), motif: sn(j.motif), declareLe: s(j.declare_le), crediteLe: sn(j.credite_le) };
 }
@@ -60,6 +66,7 @@ function compte(j: J): Compte {
   return {
     id: s(j.id), telephone: s(j.telephone), nom: sn(j.nom), entreprise: sn(j.entreprise), palier: Number(j.palier ?? 0) as Compte["palier"],
     aCode: Boolean(j.a_code), verrouJusqua: sn(j.verrou_jusqua), verificationEnCours: (j.verification_en_cours as Compte["verificationEnCours"]) ?? null,
+    entreDuJour: n(j.entre_du_jour),
   };
 }
 function retrait(j: J): RetraitCrypto {
@@ -207,7 +214,7 @@ export class GuichetSupabase implements Guichet {
   /* ============================================================= entrer */
 
   async ouvrirDepot({ operateur, cle }: { operateur: IdOperateur; cle: string }) { return depot(await this.rpc<J>("ouvrir_depot", { p_operateur: operateur, p_cle: cle })); }
-  async depot(reference: string) { return depot(await this.rpc<J>("mon_depot", { p_reference: reference })); }
+  async depot(reference: string) { return depot(trouve(await this.rpc<J>("mon_depot", { p_reference: reference }), "dépôt inconnu")); }
   async declarerTransaction({ reference, transactionId }: { reference: string; transactionId: string }) {
     return declaration(await this.rpc<J>("declarer_transaction", { p_reference: reference, p_transaction_id: transactionIdNormalise(transactionId) }));
   }
@@ -232,7 +239,7 @@ export class GuichetSupabase implements Guichet {
   async demanderSortie({ montant, numeroId, cle, codeSecret }: { montant: number; numeroId: string; cle: string; codeSecret: string }) {
     return sortie(await this.rpc<J>("demander_sortie", { p_montant: montant, p_numero_id: numeroId, p_cle: cle, p_code: codeSecret }));
   }
-  async sortie(reference: string) { return sortie(await this.rpc<J>("ma_sortie", { p_reference: reference })); }
+  async sortie(reference: string) { return sortie(trouve(await this.rpc<J>("ma_sortie", { p_reference: reference }), "sortie inconnue")); }
 
   /* ============================================================= marché */
 
@@ -260,7 +267,7 @@ export class GuichetSupabase implements Guichet {
   }
   async mesOrdres() { return ((await this.rpc<J[]>("mes_ordres")) ?? []).map(ordre); }
   async ordre(id: string) {
-    const r = await this.rpc<J>("mon_ordre", { p_id: id });
+    const r = trouve(await this.rpc<J>("mon_ordre", { p_id: id }), "ordre inconnu");
     const o = ordre(r.ordre as J);
     return { ordre: o, executions: ((r.executions as J[]) ?? []).map((e) => execution(e, o.cote)) };
   }
@@ -277,7 +284,7 @@ export class GuichetSupabase implements Guichet {
   async demanderRetraitCrypto({ actif, reseau, adresse, montant, cle, codeSecret }: { actif: Actif; reseau: Reseau; adresse: string; montant: number; cle: string; codeSecret: string }) {
     return retrait(await this.rpc<J>("demander_retrait_crypto", { p_actif: actif, p_reseau: reseau, p_adresse: adresse, p_montant: montant, p_cle: cle, p_code: codeSecret }));
   }
-  async retraitCrypto(reference: string) { return retrait(await this.rpc<J>("mon_retrait_crypto", { p_reference: reference })); }
+  async retraitCrypto(reference: string) { return retrait(trouve(await this.rpc<J>("mon_retrait_crypto", { p_reference: reference }), "retrait inconnu")); }
 
   /* ========================================================= historique */
 

@@ -110,6 +110,11 @@ export function ClientDetail() {
           {PALIERS.map((p, i) => <MenuItem key={i} value={i}>{p}</MenuItem>)}
         </TextField>
         <TextField label="Pourquoi" value={note} onChange={(e) => setNote(e.target.value)} fullWidth />
+        {c.verification_en_cours && (
+          <Typography variant="body2" color="warning.main">
+            Des pièces ({c.verification_en_cours === "identite" ? "identité" : "entreprise"}) attendent l'équipe. Elles restent en attente tant que le palier posé ne les satisfait pas ({c.verification_en_cours === "identite" ? "palier 1" : "palier 2"}) : pour les examiner, passez plutôt par « Pièces ».
+          </Typography>
+        )}
         <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
       </Dialogue>
       <Dialogue ouvert={dialogue === "verification"} titre={`Pièces : ${c.verification_en_cours === "identite" ? "identité" : "entreprise"}`} onFermer={() => setDialogue(null)} onValider={() => void agir(() => guichet.validerVerification(c.id, true, note))} libelle={`Valider → palier ${c.verification_en_cours === "identite" ? Math.max(c.palier, 1) : 2}`} enCours={enCours}>

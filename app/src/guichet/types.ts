@@ -18,6 +18,8 @@ export type Compte = {
   aCode: boolean;
   verrouJusqua: string | null;
   verificationEnCours: "identite" | "entreprise" | null;
+  /** XAF déjà crédités aujourd'hui (journée de Douala) : ce qui reste du plafond s'en déduit */
+  entreDuJour: number;
 };
 
 export type Soldes = Record<Actif, { disponible: number; bloque: number }>;

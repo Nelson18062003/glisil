@@ -19,7 +19,7 @@ import type { Declaration, IdOperateur } from "../../guichet/types";
 import { OPERATEURS, PALIERS, operateur as opDe } from "../../noyau/argent";
 import { heure, numeroEnTranches, quand, xaf } from "../../noyau/format";
 import { tones } from "../../theme";
-import { Card, Feuille, FeuilleErreur, Line, List, Row, Screen, Squelette, Success } from "../../ui";
+import { Attente, Card, Feuille, FeuilleErreur, Line, List, Row, Screen, Success } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
 
 /* ------------------------------------------------------- 1 · opérateur */
@@ -63,7 +63,7 @@ export function EntrerPayer() {
   const { ref } = useParams();
   const guichet = useGuichet();
   const navigate = useNavigate();
-  const { data: depot } = useDepot(ref);
+  const { data: depot, error: erreurDepot } = useDepot(ref);
   const { data: compte } = useCompte();
   const [copie, setCopie] = useState(false);
   const [demande, setDemande] = useState(false);
@@ -84,7 +84,7 @@ export function EntrerPayer() {
     } else navigate("/entrer/operateur");
   };
 
-  if (!depot || !op) return <Screen title="Payez" onBack={() => navigate("/entrer/operateur")}><Squelette hauteur={260} /></Screen>;
+  if (!depot || !op) return <Attente erreur={erreurDepot} title="Payez" back="/entrer/operateur" hauteur={260} />;
 
   /* Le numéro ne reçoit plus : sans rien de déclaré, on referme ce dossier et on en ouvre un autre — un autre float. */
   const ailleurs = () => void lancer(async () => {
@@ -125,7 +125,9 @@ export function EntrerPayer() {
         </Stack>
         {depot.codeAgent && <Line label="Ou retrait chez notre agent, code" value={depot.codeAgent} strong />}
         <Line label="Plafond par transfert" value={`${xaf(op.plafondParTransfert)} XAF`} />
-        {palier?.entreeJour != null && <Line label="Votre plafond du jour" value={`${xaf(palier.entreeJour)} XAF`} />}
+        {palier?.entreeJour != null && compte && (
+          <Line label="Reste à entrer aujourd'hui" value={`${xaf(Math.max(0, palier.entreeJour - compte.entreDuJour))} sur ${xaf(palier.entreeJour)} XAF`} />
+        )}
         <Line label="Dossier" value={depot.reference} mono />
       </Card>
       <Typography variant="body2" textAlign="center">
@@ -163,7 +165,7 @@ export function EntrerTransaction() {
   const guichet = useGuichet();
   const navigate = useNavigate();
   const rafraichir = useRafraichir();
-  const { data: depot } = useDepot(ref);
+  const { data: depot, error: erreurDepot } = useDepot(ref);
   const [saisie, setSaisie] = useState("");
   const { lancer, enCours, erreur, effacerErreur } = useGesteUnique();
   const { lancer: lancerFin, enCours: finEnCours } = useGesteUnique();
@@ -186,7 +188,7 @@ export function EntrerTransaction() {
   const credites = depot?.declarations.filter((d) => d.etat === "credite") ?? [];
   const enAttente = depot?.declarations.filter((d) => d.etat === "attendu") ?? [];
 
-  if (!depot) return <Screen title="Transaction ID" back="/entrer/operateur"><Squelette hauteur={200} /></Screen>;
+  if (!depot) return <Attente erreur={erreurDepot} title="Transaction ID" back="/entrer/operateur" hauteur={200} />;
 
   return (
     <Screen title="Le transaction ID du SMS" back={`/entrer/payer/${depot.reference}`} fermer="/" gap={1.5}>
@@ -272,8 +274,8 @@ function LigneDeclaration({ d, onRetirer }: { d: Declaration; onRetirer?: () => 
 
 export function EntrerCredite() {
   const { ref } = useParams();
-  const { data: depot } = useDepot(ref);
-  if (!depot) return <Screen><Squelette hauteur={300} /></Screen>;
+  const { data: depot, error: erreurDepot } = useDepot(ref);
+  if (!depot) return <Attente erreur={erreurDepot} />;
   const credites = depot.declarations.filter((d) => d.etat === "credite");
   const dernier = depot.crediteLe ?? depot.creeLe;
   return (

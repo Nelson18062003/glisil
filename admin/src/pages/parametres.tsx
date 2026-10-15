@@ -26,13 +26,15 @@ export function Parametres() {
   const { peut } = useSession();
   const { data } = useParametres();
   const [brouillons, setBrouillons] = useState<Record<string, string>>({});
+  /* les blocs que la personne est en train d'écrire : une relecture (retour sur l'onglet, toutes les trois secondes) ne les écrase pas */
+  const [touches, setTouches] = useState<Set<string>>(new Set());
   const [erreur, setErreur] = useState<unknown>(null);
   const [fait, setFait] = useState<string | null>(null);
 
   useEffect(() => {
     if (!data) return;
-    setBrouillons(Object.fromEntries(BLOCS.map((b) => [b.cle, JSON.stringify(data[b.cle] ?? null, null, 2)])));
-  }, [data]);
+    setBrouillons((avant) => Object.fromEntries(BLOCS.map((b) => [b.cle, touches.has(b.cle) && avant[b.cle] !== undefined ? avant[b.cle] : JSON.stringify(data[b.cle] ?? null, null, 2)])));
+  }, [data, touches]);
 
   const enregistrer = async (cle: string) => {
     setErreur(null);
@@ -41,6 +43,8 @@ export function Parametres() {
       await guichet.modifierParametre(cle, valeur);
       setFait(cle); setTimeout(() => setFait(null), 1500);
       await rafraichir();
+      /* enregistré et relu : le bloc suit de nouveau la base */
+      setTouches((t) => { const n = new Set(t); n.delete(cle); return n; });
     } catch (e) { setErreur(e instanceof SyntaxError ? new Error(`${cle} : JSON illisible — ${e.message}`) : e); }
   };
 
@@ -55,7 +59,7 @@ export function Parametres() {
           <Paper key={b.cle} sx={{ p: 2.5, borderRadius: 5, flex: "1 1 360px", display: "flex", flexDirection: "column", gap: 1.5 }}>
             <Typography variant="h6">{b.titre}</Typography>
             <Typography variant="body2">{b.aide}</Typography>
-            <TextField value={brouillons[b.cle] ?? ""} onChange={(e) => setBrouillons({ ...brouillons, [b.cle]: e.target.value })} multiline minRows={4} fullWidth disabled={!peut("parametres")} inputProps={{ "aria-label": `paramètre ${b.cle}`, style: { fontFamily: "Roboto Mono, monospace", fontSize: 13 } }} />
+            <TextField value={brouillons[b.cle] ?? ""} onChange={(e) => { setTouches((t) => new Set(t).add(b.cle)); setBrouillons({ ...brouillons, [b.cle]: e.target.value }); }} multiline minRows={4} fullWidth disabled={!peut("parametres")} inputProps={{ "aria-label": `paramètre ${b.cle}`, style: { fontFamily: "Roboto Mono, monospace", fontSize: 13 } }} />
             {peut("parametres") && <Button variant="contained" onClick={() => void enregistrer(b.cle)} disabled={!data || brouillons[b.cle] === JSON.stringify(data[b.cle] ?? null, null, 2)}>{fait === b.cle ? "Enregistré" : "Enregistrer"}</Button>}
           </Paper>
         ))}

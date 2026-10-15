@@ -19,7 +19,7 @@ import type { Actif, Reseau } from "../../guichet/types";
 import { arrondi2, CRYPTO, FRAIS_CRYPTO, RESEAUX } from "../../noyau/argent";
 import { adresseCourte, enTranches, quand, xaf } from "../../noyau/format";
 import { parcours, useParcours } from "../../navigation/parcours";
-import { Card, FeuilleErreur, Keypad, Line, List, Points, Row, Screen, Squelette, Success } from "../../ui";
+import { Attente, Card, FeuilleErreur, Keypad, Line, List, Points, Row, Screen, Success } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
 
 const actifDe = (a: string | undefined): Actif => (a === "XAFe" ? "XAFe" : "USDT");
@@ -163,7 +163,8 @@ export function CryptoRetirerMontant() {
   const dispo = soldes ? soldes[actif].disponible : 0;
   const frais = FRAIS_CRYPTO[actif];
   const montant = Number(saisie.replace(",", ".")) || 0;
-  const maxi = Math.max(0, arrondi2(dispo - frais));
+  /* « Tout » ne propose jamais plus que le solde : un plancher, pas un arrondi (un XAFe se retire en entier) */
+  const maxi = Math.max(0, actif === "XAFe" ? Math.floor(dispo - frais + 1e-9) : Math.floor(arrondi2((dispo - frais) * 100) + 1e-9) / 100);
   const trop = montant + frais > dispo + 1e-9;
   const ok = montant > 0 && !trop && (actif === "XAFe" ? Number.isInteger(montant) : Math.round(montant * 100) === montant * 100);
 
@@ -265,9 +266,9 @@ export function CryptoRetirerCode() {
 
 export function CryptoEnvoye() {
   const { ref } = useParams();
-  const { data: r } = useRetraitCrypto(ref);
+  const { data: r, error } = useRetraitCrypto(ref);
   useEffect(() => { parcours.effacer("crypto"); }, []);
-  if (!r) return <Screen><Squelette hauteur={300} /></Screen>;
+  if (!r) return <Attente erreur={error} />;
   if (r.etat === "envoye") {
     return (
       <Success title={`${r.actif} envoyés`} amount={`${fmt(r.actif, r.montant)} ${r.actif}`} caption={`Vers ${adresseCourte(r.adresse)} sur ${RESEAUX[r.reseau].chaine}, ${quand(r.creeLe)}.`} primary={{ label: "Retour à l'accueil", to: "/" }} secondary={{ label: "Voir le détail", to: `/historique/${r.reference}` }}>
