@@ -25,3 +25,12 @@ couvert un pour un par les floats MoMo et les comptes en banque de la plateforme
 Lire d'abord `docs/ARCHITECTURE.md`, puis `design/NAVIGATION.md` et
 `docs/TOTEM-INTEGRATION.md`. Chaque harnais a été écrit pour prendre en défaut,
 et chacun l'a fait au moins une fois (les commits le racontent).
+
+### Installer la base d'un coup
+
+`migrations/20261015_consolidated.sql` contient toutes les migrations de
+`supabase/migrations`, dans l'ordre, en un seul fichier : Supabase → SQL Editor
+→ coller → Run. Chaque partie vérifie d'abord si elle est déjà en place : le
+fichier se rejoue sans danger, sur une base neuve comme sur une base à
+mi-chemin. Il se refait avec `python3 supabase/consolider.py` (ne pas le
+modifier à la main).
