@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useGuichet } from "../guichet";
 import { COMPTES_DEMO } from "../guichet/demo";
 import { useSession } from "../session/session";
-import { Erreur, Marque } from "../ui";
+import { Erreur, Marque, NomGlisil } from "../ui";
 
 export function Connexion() {
   const session = useSession();
@@ -27,7 +27,8 @@ export function Connexion() {
       <Paper component="form" onSubmit={(e) => { e.preventDefault(); void entrer(); }} sx={{ p: 4, borderRadius: 6, width: 400, display: "flex", flexDirection: "column", gap: 2.5 }}>
         <Stack alignItems="center" gap={1}>
           <Marque size={64} />
-          <Typography variant="h6">Glisil · administration</Typography>
+          <NomGlisil size={30} />
+          <Typography variant="overline">Administration</Typography>
           <Typography variant="body2" textAlign="center">Réserves, entrées, sorties, terminaux, clients, marché.</Typography>
         </Stack>
         <TextField label="E-mail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth autoFocus autoComplete="username" />

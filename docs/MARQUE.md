@@ -30,10 +30,16 @@ La situation : une monnaie qui était fixée, et qui glisse.
 
 ## La marque visible
 
-- **Le G** : un G blanc d'un seul trait sur le vert `#0B6B3A`, dont la barre
-  file jusqu'au bord. Dessiné une fois, dans `coque/scripts/icones.py` (les
-  icônes de l'application) et dans le composant `Marque` (`app/`, `admin/`,
-  `design/maquettes/`), avec la même géométrie.
+- **Le symbole, la comète** : une pièce d'or lancée en diagonale, sa traînée
+  derrière elle. L'argent qui va vite, et qui va quelque part. Sur l'icône,
+  la traînée est blanche sur le carré vert ; seul, le symbole a la traînée
+  verte. Dessiné une fois, avec la même géométrie, dans
+  `coque/scripts/icones.py` (les icônes de l'application) et dans le
+  composant `Marque` (`app/`, `admin/`, `design/maquettes/`).
+- **Le nom** : toujours en minuscules, « glisil », en Sora 700, serré
+  (−0,04 em). Composant `NomGlisil`. Dans une phrase, on écrit Glisil.
+- **Les couleurs** : le vert `#0B6B3A` (la sécurité, le franc CFA) et l'or
+  `#E8A33D` (la prospérité, le dollar), sur le papier `#F4F7F4`.
 - **Le X** : la pastille du jeton XAFe, dans les soldes et le marché. Elle ne
   représente jamais l'entreprise.
 - Le SMS du code de vérification se signe « Glisil : votre code est … »

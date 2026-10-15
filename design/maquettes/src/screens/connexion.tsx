@@ -1,5 +1,5 @@
 import { Box, Button, Paper, Stack, TextField, Typography } from "@mui/material";
-import { Marque, Screen } from "../ui";
+import { Marque, NomGlisil, Screen } from "../ui";
 
 export function Connexion() {
   return (
@@ -7,7 +7,7 @@ export function Connexion() {
       <Box sx={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 4 }}>
         <Stack alignItems="center" gap={2}>
           <Marque size={80} />
-          <Typography variant="h5">Glisil</Typography>
+          <NomGlisil size={36} />
           <Typography variant="body2" textAlign="center">
             Vos XAF, sur la blockchain.
           </Typography>

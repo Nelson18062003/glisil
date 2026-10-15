@@ -46,7 +46,7 @@ export function Coquille({ titre, actions, children }: { titre: string; actions?
         <Stack direction="row" alignItems="center" gap={1.5} sx={{ px: 2.5, py: 2.5 }}>
           <Marque size={40} />
           <Box>
-            <Typography fontWeight={700} lineHeight={1.1}>Glisil</Typography>
+            <NomGlisil size={22} />
             <Typography variant="caption">Administration</Typography>
           </Box>
         </Stack>
@@ -192,14 +192,32 @@ export function Section({ titre, action, children }: { titre: string; action?: R
   );
 }
 
-/** La marque Glisil : un G blanc d'un seul trait, dont la barre file vers la droite (même dessin que coque/scripts/icones.py). */
-export function Marque({ size = 44 }: { size?: number }) {
+const VERT_MARQUE = "#0B6B3A";
+const OR_MARQUE = "#E8A33D";
+
+/**
+ * La marque Glisil : la comète — une pièce d'or lancée, sa traînée derrière elle.
+ * `tuile` : sur le carré vert de l'icône (traînée blanche) ; sinon le symbole seul (traînée verte).
+ * Même géométrie que coque/scripts/icones.py.
+ */
+export function Marque({ size = 44, tuile = true }: { size?: number; tuile?: boolean }) {
+  const queue = tuile ? "#FFFFFF" : VERT_MARQUE;
   return (
-    <Box component="svg" viewBox="0 0 100 100" role="img" aria-label="Glisil" sx={{ width: size, height: size, flexShrink: 0, borderRadius: "50%", bgcolor: "primary.main" }}>
-      <path d="M 72.5 50 A 22.5 22.5 0 1 1 60.56 30.13" fill="none" stroke="#FFFFFF" strokeWidth={11} />
-      <circle cx={60.56} cy={30.13} r={5.5} fill="#FFFFFF" />
-      <rect x={50} y={39} width={28} height={11} fill="#FFFFFF" />
-      <circle cx={50} cy={44.5} r={5.5} fill="#FFFFFF" />
+    <Box component="svg" viewBox="0 0 100 100" role="img" aria-label="Glisil" sx={{ width: size, height: size, flexShrink: 0, display: "block" }}>
+      {tuile && <rect width={100} height={100} rx={22} fill={VERT_MARQUE} />}
+      <g transform={`translate(50 50) scale(${tuile ? 0.86 : 1}) translate(-50 -50) translate(3 -1) rotate(-35 50 50)`}>
+        <path d="M6 50 C 28 46 44 36 60 34 A16 16 0 0 1 60 66 C 44 64 28 54 6 50 Z" fill={queue} />
+        <circle cx={62} cy={50} r={12.5} fill={OR_MARQUE} />
+      </g>
+    </Box>
+  );
+}
+
+/** Le nom, tel que la marque l'écrit : « glisil », en minuscules, en Sora. */
+export function NomGlisil({ size = 28 }: { size?: number }) {
+  return (
+    <Box component="span" sx={{ fontFamily: '"Sora", "Roboto", system-ui, sans-serif', fontWeight: 700, fontSize: size, letterSpacing: "-0.04em", lineHeight: 1, color: "text.primary" }}>
+      glisil
     </Box>
   );
 }
