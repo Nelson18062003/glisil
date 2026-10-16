@@ -205,7 +205,23 @@ export function Icon({ children, tone = "neutral", size = 44 }: { children: Reac
   return <Avatar sx={{ width: size, height: size, bgcolor: tones[tone].bg, color: tones[tone].fg }}>{children}</Avatar>;
 }
 
+/**
+ * Le jeton XAFe, tel que les explorateurs et les wallets le montrent
+ * (design/marque/jeton.py) : le client reconnaît dans son wallet ce qu'il voit ici.
+ */
+export function JetonXafe({ size = 44 }: { size?: number }) {
+  return (
+    <Box component="svg" viewBox="0 0 100 100" role="img" aria-label="XAFe" sx={{ width: size, height: size, flexShrink: 0, display: "block" }}>
+      <circle cx="50" cy="50" r="50" fill="#0B6B3A" />
+      <g stroke="#FFFFFF" strokeWidth="13" strokeLinecap="round"><line x1="31" y1="31" x2="69" y2="69" /><line x1="69" y1="31" x2="31" y2="69" /></g>
+      <circle cx="50" cy="50" r="13.5" fill="#0B6B3A" />
+      <circle cx="50" cy="50" r="10" fill="#E8A33D" />
+    </Box>
+  );
+}
+
 export function Badge({ kind, size = 44 }: { kind: keyof typeof brand; size?: number }) {
+  if (kind === "xafe") return <JetonXafe size={size} />;
   const b = brand[kind];
   const label = { mtn: "MTN", om: "OM", usdt: "₮", xafe: "X" }[kind];
   return <Avatar sx={{ width: size, height: size, bgcolor: b.bg, color: b.fg, fontWeight: 700, fontSize: size / 3.2 }}>{label}</Avatar>;

@@ -1,0 +1,22 @@
+{
+  "nom": "XAFe",
+  "symbole": "XAFe",
+  "decimales": 6,
+  "description": "XAFe est le franc CFA (XAF) sur la blockchain : 1 XAFe = 1 XAF, couvert un pour un par les floats Mobile Money et les comptes de Glisil. Émis par Glisil, Douala.",
+  "description_en": "XAFe is the Central African CFA franc (XAF) on-chain: 1 XAFe = 1 XAF, backed one-to-one by Glisil's Mobile Money floats and bank accounts. Issued by Glisil, Douala.",
+  "site": "https://app.glisil.com",
+  "email": "support@glisil.com",
+  "logo": {
+    "svg": "https://app.glisil.com/xafe/xafe-jeton.svg",
+    "png_32": "https://app.glisil.com/xafe/xafe-32.png",
+    "png_64": "https://app.glisil.com/xafe/xafe-64.png",
+    "png_100": "https://app.glisil.com/xafe/xafe-100.png",
+    "png_256": "https://app.glisil.com/xafe/xafe-256.png",
+    "png_512": "https://app.glisil.com/xafe/xafe-512.png"
+  },
+  "contrats": {
+    "bsc_testnet": { "chainId": 97, "adresse": "0x750E774368240063BD5CF52b30b91183Efa4dAf3", "explorateur": "https://testnet.bscscan.com/token/0x750E774368240063BD5CF52b30b91183Efa4dAf3" },
+    "tron_nile": { "adresse": "TFtfFFmagGUjxGrG3cM4MX4kTv8YvBgLnk", "explorateur": "https://nile.tronscan.org/#/token20/TFtfFFmagGUjxGrG3cM4MX4kTv8YvBgLnk" }
+  },
+  "reseau_d_essai": true
+}
