@@ -10,8 +10,18 @@ export type Reseau = "bep20" | "trc20";
 
 export type Compte = {
   id: string;
+  /** au format international (+237677123456) ; un compte ancien garde son numéro local */
   telephone: string;
+  /** prénom et nom réunis, tels que les reçus les montrent */
   nom: string | null;
+  email: string | null;
+  prenom: string | null;
+  nomDeFamille: string | null;
+  /** AAAA-MM-JJ */
+  dateNaissance: string | null;
+  ville: string | null;
+  /** code ISO à deux lettres (CM, GA, FR…) */
+  pays: string | null;
   entreprise: string | null;
   palier: 0 | 1 | 2;
   /** le code secret des gestes d'argent est posé */
@@ -20,6 +30,18 @@ export type Compte = {
   verificationEnCours: "identite" | "entreprise" | null;
   /** XAF déjà crédités aujourd'hui (journée de Douala) : ce qui reste du plafond s'en déduit */
   entreDuJour: number;
+};
+
+/** Ce que la personne donne pour ouvrir son compte : tout est obligatoire. */
+export type ProfilInscription = {
+  prenom: string;
+  nom: string;
+  /** AAAA-MM-JJ */
+  naissance: string;
+  /** au format international */
+  telephone: string;
+  ville: string;
+  pays: string;
 };
 
 export type Soldes = Record<Actif, { disponible: number; bloque: number }>;

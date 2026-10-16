@@ -2,7 +2,8 @@
 
 Glisil émet le XAFe, son stablecoin, et opère le marché où il s'échange. Le
 nom vient de *glissile*, le mot des physiciens pour ce qui glisse sans
-résistance. Voir `docs/MARQUE.md`.
+résistance. Voir `docs/MARQUE.md`. On entre sans mot de passe, avec un code
+reçu par e-mail : voir `docs/CONNEXION.md`.
 
 Le franc CFA sur la blockchain, et un vrai marché spot USDT/XAFe. 1 XAFe = 1 XAF,
 couvert un pour un par les floats MoMo et les comptes en banque de la plateforme.

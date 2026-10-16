@@ -8,6 +8,7 @@ import { Box, CircularProgress } from "@mui/material";
 import { createBrowserRouter, Navigate, Outlet, useLocation } from "react-router-dom";
 import { Accueil, Notifications } from "../ecrans/accueil";
 import { Bienvenue, BienvenueCode, BienvenueProfil, Verrouillage } from "../ecrans/bienvenue";
+import { Inscription } from "../ecrans/bienvenue/inscription";
 import { Compte, CompteAide, CompteApi, CompteNumeros, CompteNumerosAjouter, ComptePaliers, ComptePaliersEntreprise, ComptePaliersIdentite, CompteSecurite } from "../ecrans/compte";
 import { Crypto, CryptoDeposer, CryptoEnvoye, CryptoRetirerAdresse, CryptoRetirerCode, CryptoRetirerMontant, CryptoRetirerReseau, CryptoRetirerVerifier } from "../ecrans/crypto";
 import { EntrerCredite, EntrerMontant, EntrerOperateur, EntrerPayer, EntrerTransaction } from "../ecrans/entrer";
@@ -31,6 +32,7 @@ function Garde() {
   const location = useLocation();
   if (etat.phase === "chargement") return <Attente />;
   if (etat.phase === "anonyme") return <Navigate to="/bienvenue" replace state={{ apres: location.pathname + location.search }} />;
+  if (etat.phase === "inscription") return <Navigate to="/bienvenue/inscription" replace />;
   if (etat.phase === "profil") return <Navigate to="/bienvenue/profil" replace />;
   if (etat.verrouille) return <Verrouillage />;
   return <Outlet />;
@@ -45,8 +47,9 @@ function Porte() {
     const apres = (location.state as { apres?: string } | null)?.apres;
     return <Navigate to={apres && apres !== "/bienvenue" ? apres : "/"} replace />;
   }
+  if (etat.phase === "inscription" && location.pathname !== "/bienvenue/inscription") return <Navigate to="/bienvenue/inscription" replace />;
   if (etat.phase === "profil" && location.pathname !== "/bienvenue/profil") return <Navigate to="/bienvenue/profil" replace />;
-  if (etat.phase === "anonyme" && location.pathname === "/bienvenue/profil") return <Navigate to="/bienvenue" replace />;
+  if (etat.phase === "anonyme" && (location.pathname === "/bienvenue/profil" || location.pathname === "/bienvenue/inscription")) return <Navigate to="/bienvenue" replace />;
   return <Outlet />;
 }
 
@@ -56,6 +59,7 @@ export const routeur = createBrowserRouter([
     children: [
       { path: "/bienvenue", element: <Bienvenue /> },
       { path: "/bienvenue/code", element: <BienvenueCode /> },
+      { path: "/bienvenue/inscription", element: <Inscription /> },
       { path: "/bienvenue/profil", element: <BienvenueProfil /> },
     ],
   },

@@ -1,10 +1,11 @@
 /*
- * Le vrai moteur : connexion par e-mail et mot de passe (Supabase Auth), puis
+ * Le vrai moteur : connexion par e-mail et code à six chiffres (Supabase Auth,
+ * sans mot de passe), puis
  * les RPC admin_* — chacune gardée en base par admin_a_droit().
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { GuichetAdmin } from "./guichet";
-import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, Tableau, Terminal, Wallets } from "./types";
+import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, StatsClients, Tableau, Terminal, Wallets } from "./types";
 
 export class ErreurMoteur extends Error {
   detail?: string;
@@ -32,11 +33,16 @@ export class GuichetSupabase implements GuichetAdmin {
     if (!data.session) return null;
     return (await this.rpc<Profil | null>("mon_profil_admin")) ?? null;
   }
-  async connecter(email: string, motDePasse: string) {
-    const { error } = await this.sb.auth.signInWithPassword({ email, password: motDePasse });
-    if (error) throw new ErreurMoteur("identifiants refusés");
-    const p = await this.rpc<Profil | null>("mon_profil_admin");
-    if (!p) { await this.sb.auth.signOut(); throw new ErreurMoteur("ce compte n'administre pas XAFe"); }
+  async demanderCode(email: string) {
+    const { error } = await this.sb.auth.signInWithOtp({ email: email.trim().toLowerCase(), options: { shouldCreateUser: true } });
+    if (error) throw new ErreurMoteur(/rate limit|too many|seconds/i.test(error.message) ? "trop de codes demandés : attendez une minute" : error.message);
+  }
+  async verifierCode(email: string, code: string) {
+    const { error } = await this.sb.auth.verifyOtp({ email: email.trim().toLowerCase(), token: code, type: "email" });
+    if (error) throw new ErreurMoteur("code incorrect ou expiré");
+    /* l'invitation devient la fiche d'administrateur ici, au premier passage */
+    const p = await this.rpc<Profil | null>("entrer_administration");
+    if (!p) { await this.sb.auth.signOut(); throw new ErreurMoteur("cette adresse n'administre pas Glisil", "demandez au super administrateur de vous inviter"); }
     return p;
   }
   async deconnecter() { await this.sb.auth.signOut(); }
@@ -60,6 +66,7 @@ export class GuichetSupabase implements GuichetAdmin {
     await this.rpc("admin_creer_float", { p_operateur: operateur, p_numero: numero, p_terminal: terminal, p_code_agent: codeAgent ?? null });
   }
   async activerFloat(id: number, actif: boolean) { await this.rpc("admin_activer_float", { p_id: id, p_actif: actif }); }
+  statistiquesClients() { return this.rpc<StatsClients>("admin_statistiques_clients"); }
   clients(recherche?: string, filtre?: string | null) { return this.rpc<Client[]>("admin_clients", { p_recherche: recherche ?? null, p_n: 200, p_filtre: filtre ?? null }); }
   client(id: string) { return this.rpc<ClientDetail>("admin_client", { p_id: id }); }
   async changerPalier(id: string, palier: number, note?: string) { await this.rpc("admin_changer_palier", { p_id: id, p_palier: palier, p_note: note ?? null }); }

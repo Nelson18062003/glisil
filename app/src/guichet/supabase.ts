@@ -1,15 +1,17 @@
 /*
- * LE GUICHET SUPABASE : le vrai moteur. L'authentification par OTP SMS est
- * celle de Supabase Auth ; tout le reste passe par les RPC du moteur
+ * LE GUICHET SUPABASE : le vrai moteur. L'authentification est celle de
+ * Supabase Auth : une adresse e-mail et un code à six chiffres reçu par
+ * e-mail, sans mot de passe ; tout le reste passe par les RPC du moteur
  * (supabase/migrations). Les écritures ne touchent jamais une table : la
  * base décide, l'écran montre.
  */
 import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
 import { ErreurMoteur } from "../noyau/erreurs";
+import { emailNormalise } from "../noyau/identite";
 import { numeroSaisi, transactionIdNormalise } from "../noyau/format";
 import type { Guichet } from "./guichet";
 import type {
-  Actif, Carnet, Chandelle, Compte, Cote, Cotation, Declaration, Depot, DevisRapide, Execution, IdOperateur, Notification, Numero, Operation, Ordre, SensRapide,
+  Actif, Carnet, Chandelle, Compte, Cote, Cotation, Declaration, Depot, DevisRapide, Execution, IdOperateur, Notification, Numero, Operation, Ordre, ProfilInscription, SensRapide,
   Reseau, ResultatCode, ResultatOrdre, RetraitCrypto, Soldes, Sortie, Transaction, TransfertCrypto, TypeOrdre,
 } from "./types";
 
@@ -18,6 +20,14 @@ const n = (v: unknown): number => (v === null || v === undefined ? 0 : Number(v)
 const nn = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 const s = (v: unknown): string => (v === null || v === undefined ? "" : String(v));
 const sn = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
+
+/** Les refus de Supabase Auth, dits en français : trop de codes demandés, adresse refusée. */
+function messageAuth(m: string): string {
+  if (/rate limit|too many|seconds/i.test(m)) return "trop de codes demandés : attendez une minute";
+  if (/invalid.*email|email.*invalid/i.test(m)) return "adresse e-mail invalide";
+  if (/signups? not allowed|disabled/i.test(m)) return "les inscriptions sont fermées pour le moment";
+  return m;
+}
 
 /* ----------------------------------------------------- lectures du moteur */
 
@@ -72,6 +82,7 @@ function numero(j: J): Numero {
 function compte(j: J): Compte {
   return {
     id: s(j.id), telephone: s(j.telephone), nom: sn(j.nom), entreprise: sn(j.entreprise), palier: Number(j.palier ?? 0) as Compte["palier"],
+    email: sn(j.email), prenom: sn(j.prenom), nomDeFamille: sn(j.nom_de_famille), dateNaissance: sn(j.date_naissance), ville: sn(j.ville), pays: sn(j.pays),
     aCode: Boolean(j.a_code), verrouJusqua: sn(j.verrou_jusqua), verificationEnCours: (j.verification_en_cours as Compte["verificationEnCours"]) ?? null,
     entreDuJour: n(j.entre_du_jour),
   };
@@ -123,10 +134,6 @@ export class GuichetSupabase implements Guichet {
     return data as T;
   }
 
-  private telephoneE164(brut: string): string {
-    return `+237${numeroSaisi(brut)}`;
-  }
-
   /* -------------------------------------------------------- temps réel */
 
   private async ecouter() {
@@ -159,16 +166,15 @@ export class GuichetSupabase implements Guichet {
     return data.session ? { compteId: data.session.user.id } : null;
   }
 
-  async demanderCode(telephone: string) {
-    const { error } = await this.sb.auth.signInWithOtp({ phone: this.telephoneE164(telephone) });
-    if (error) throw new ErreurMoteur(error.message);
+  async demanderCode(email: string) {
+    const { error } = await this.sb.auth.signInWithOtp({ email: emailNormalise(email), options: { shouldCreateUser: true } });
+    if (error) throw new ErreurMoteur(messageAuth(error.message));
   }
 
-  async verifierCodeSms(telephone: string, code: string) {
-    const { data, error } = await this.sb.auth.verifyOtp({ phone: this.telephoneE164(telephone), token: code, type: "sms" });
-    if (error || !data.user) throw new ErreurMoteur(error?.message ?? "code SMS incorrect");
-    const c = await this.compte();
-    return { compteId: data.user.id, nouveau: !c.nom };
+  async verifierCode(email: string, code: string) {
+    const { data, error } = await this.sb.auth.verifyOtp({ email: emailNormalise(email), token: code, type: "email" });
+    if (error || !data.user) throw new ErreurMoteur("code incorrect ou expiré", "demandez-en un nouveau si besoin");
+    return { nouveau: (await this.monCompte()) === null };
   }
 
   async seDeconnecter() {
@@ -178,7 +184,11 @@ export class GuichetSupabase implements Guichet {
 
   /* ============================================================= compte */
 
-  async compte() { return compte(await this.rpc<J>("mon_compte")); }
+  async compte() { return compte(trouve(await this.rpc<J | null>("mon_compte"), "compte pas encore ouvert")); }
+  async monCompte() { const j = await this.rpc<J | null>("mon_compte"); return j ? compte(j) : null; }
+  async ouvrirCompte(p: ProfilInscription) {
+    return compte(await this.rpc<J>("ouvrir_mon_compte", { p_prenom: p.prenom, p_nom: p.nom, p_naissance: p.naissance, p_telephone: p.telephone, p_ville: p.ville, p_pays: p.pays }));
+  }
   async completerProfil({ nom, codeSecret }: { nom: string; codeSecret: string }) { return compte(await this.rpc<J>("completer_profil", { p_nom: nom, p_code: codeSecret })); }
   async verifierCodeSecret(code: string): Promise<ResultatCode> {
     /* PAS this.rpc : un code faux revient en {"ok": false, "erreur": …} — c'est une RÉPONSE que l'écran

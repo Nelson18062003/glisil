@@ -47,7 +47,10 @@ try {
   await page.goto(`${BASE}/`);
   await page.waitForURL(/\/connexion$/);
   await capturer("connexion");
-  await page.getByRole("button", { name: "Entrer" }).click();
+  await page.getByRole("button", { name: "Recevoir mon code" }).click();
+  await page.getByLabel("Code reçu par e-mail").waitFor();
+  await capturer("connexion-code");
+  await page.getByLabel("Code reçu par e-mail").fill("123456");
   await page.waitForURL(`${BASE}/`);
   await voir("XAFe en circulation");
   await voir("SMS retenus");
@@ -219,9 +222,9 @@ try {
   await capturer("wallets");
   await page.getByRole("button", { name: "Se déconnecter" }).click();
   await page.waitForURL(/\/connexion$/);
-  await page.getByLabel("E-mail").fill("support@glisil.com");
-  await page.getByLabel("Mot de passe").fill("demo");
-  await page.getByRole("button", { name: "Entrer" }).click();
+  await page.getByLabel("Adresse e-mail").fill("support@glisil.com");
+  await page.getByRole("button", { name: "Recevoir mon code" }).click();
+  await page.getByLabel("Code reçu par e-mail").fill("123456");
   await page.waitForURL(`${BASE}/`);
   await voir("Serge Kamga");
   await page.goto(`${BASE}/entrees?onglet=retenues`);

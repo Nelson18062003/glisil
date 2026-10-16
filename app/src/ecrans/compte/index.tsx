@@ -20,6 +20,7 @@ import type { IdOperateur } from "../../guichet/types";
 import { CODE_SMS_DEMO } from "../../guichet/demo";
 import { FRAIS, OPERATEURS, PALIERS, operateur as opDe } from "../../noyau/argent";
 import { initiales, jourRelatif, numeroEnTranches, numeroSaisi, numeroValide, operateurDuNumero, pourcent, xaf } from "../../noyau/format";
+import { telephoneLisible } from "../../noyau/identite";
 import { parcours } from "../../navigation/parcours";
 import { useSession } from "../../session/session";
 import { tones } from "../../theme";
@@ -47,7 +48,8 @@ export function Compte() {
       <Stack alignItems="center" gap={1} py={2}>
         <Avatar sx={{ width: 88, height: 88, bgcolor: "primary.main", fontSize: 32, fontWeight: 600 }}>{initiales(compte?.nom)}</Avatar>
         <Typography variant="h6">{compte?.nom ?? "…"}</Typography>
-        <Typography variant="body2">{compte?.entreprise ?? numeroEnTranches(compte?.telephone ?? "")}</Typography>
+        <Typography variant="body2">{compte?.entreprise ?? telephoneLisible(compte?.telephone ?? "")}</Typography>
+        {compte?.email && <Typography variant="body2" sx={{ overflowWrap: "anywhere", textAlign: "center" }}>{compte.email}</Typography>}
         {palier && <Chip icon={<VerifiedRounded />} label={palier.nom} sx={{ bgcolor: tones.green.bg, color: tones.green.fg, "& .MuiChip-icon": { color: tones.green.fg } }} />}
       </Stack>
       <List>
@@ -361,7 +363,7 @@ export function CompteAide() {
   const ref = params.get("ref") ?? "";
   const { data: compte } = useCompte();
   const [texte, setTexte] = useState(ref ? `Référence ${ref} : ` : "");
-  const lien = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(`${compte?.nom ?? ""} (${numeroEnTranches(compte?.telephone ?? "")}) · ${texte}`)}`;
+  const lien = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(`${compte?.nom ?? ""} (${telephoneLisible(compte?.telephone ?? "")}${compte?.email ? ` · ${compte.email}` : ""}) · ${texte}`)}`;
   return (
     <Screen title="Aide" back="/compte">
       <Box>

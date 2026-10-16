@@ -7,12 +7,16 @@
 import { DROITS } from "../noyau/droits";
 import { ErreurMoteur } from "./supabase";
 import type { GuichetAdmin } from "./guichet";
-import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, Tableau, Terminal, Transfert, Wallets } from "./types";
+import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, StatsClients, Tableau, Terminal, Transfert, Wallets } from "./types";
 
-export const COMPTES_DEMO: Record<string, { motDePasse: string; profil: Profil }> = {
-  "nelson@glisil.com": { motDePasse: "demo", profil: { id: "d1", email: "nelson@glisil.com", nom: "Nelson Soh", role: "super_admin", actif: true, droits: DROITS.super_admin } },
-  "ops@glisil.com": { motDePasse: "demo", profil: { id: "d2", email: "ops@glisil.com", nom: "Aminatou Bello", role: "operateur", actif: true, droits: DROITS.operateur } },
-  "support@glisil.com": { motDePasse: "demo", profil: { id: "d3", email: "support@glisil.com", nom: "Serge Kamga", role: "support", actif: true, droits: DROITS.support } },
+/** le code de démonstration, celui qui « arrive par e-mail » */
+export const CODE_DEMO = "123456";
+const sansAccents = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "");
+
+export const COMPTES_DEMO: Record<string, { profil: Profil }> = {
+  "nelson@glisil.com": { profil: { id: "d1", email: "nelson@glisil.com", nom: "Nelson Soh", role: "super_admin", actif: true, droits: DROITS.super_admin } },
+  "ops@glisil.com": { profil: { id: "d2", email: "ops@glisil.com", nom: "Aminatou Bello", role: "operateur", actif: true, droits: DROITS.operateur } },
+  "support@glisil.com": { profil: { id: "d3", email: "support@glisil.com", nom: "Serge Kamga", role: "support", actif: true, droits: DROITS.support } },
 };
 
 const CLE_STOCKAGE = "xafe.admin.demo.v1";
@@ -27,7 +31,7 @@ type Etat = {
   profil: Profil | null;
   terminaux: Terminal[];
   floats: (Required<Pick<import("./types").Float, "id" | "operateur" | "numero" | "terminal" | "code_agent" | "actif">>)[];
-  clients: (Client & { soldes: Record<string, { disponible: number; bloque: number }>; numeros: ClientDetail["numeros"]; a_code: boolean })[];
+  clients: (Client & { soldes: Record<string, { disponible: number; bloque: number }>; numeros: ClientDetail["numeros"]; a_code: boolean; date_naissance: string })[];
   entrees: Entree[];
   retenues: Retenue[];
   sorties: Sortie[];
@@ -62,6 +66,13 @@ function graine(): Etat {
       soldes: { XAFe: { disponible: Math.round((i + 1) * 437_000), bloque: (i % 5) * 12_345 }, USDT: { disponible: Math.round((i + 1) * 310.5 * 100) / 100, bloque: 0 } },
       numeros: [{ id: `n${i}`, operateur: tel.startsWith("69") ? "om" : "mtn", numero: tel, verifie_le: iso(t - (30 - i) * 24 * H), actif_des: iso(t - (29 - i) * 24 * H), retire_le: null }],
       a_code: true,
+      email: `${sansAccents(nom).toLowerCase().replace(/[^a-z]+/g, ".").replace(/^\.|\.$/g, "")}@exemple.cm`,
+      ville: ["Douala", "Yaoundé", "Bafoussam", "Douala", "Garoua", "Douala", "Maroua", "Douala", "Libreville", "Yaoundé", "Lagos", "Paris"][i],
+      pays: ["CM", "CM", "CM", "CM", "CM", "CM", "CM", "CM", "GA", "CM", "NG", "FR"][i],
+      /* trois clients n'ont plus bougé depuis plus d'un mois : ils sont « inactifs » */
+      derniere_operation: i === 5 ? null : iso(t - (i >= 8 && i <= 10 ? 45 * 24 * H : (i + 1) * 5 * H)),
+      derniere_connexion: iso(t - (i * 13 + 1) * H),
+      date_naissance: `${1975 + i * 2}-${String((i % 12) + 1).padStart(2, "0")}-${String((i * 3) % 27 + 1).padStart(2, "0")}`,
     };
   });
   const entrees: Entree[] = clients.slice(0, 8).map((c, i) => {
@@ -131,9 +142,13 @@ export class GuichetDemo implements GuichetAdmin {
   }
 
   async session() { return this.e.profil ? copie(this.e.profil) : null; }
-  async connecter(email: string, motDePasse: string) {
+  async demanderCode(email: string) {
+    if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email.trim())) throw new ErreurMoteur("adresse e-mail invalide");
+  }
+  async verifierCode(email: string, code: string) {
+    if (code !== CODE_DEMO) throw new ErreurMoteur("code incorrect ou expiré");
     const c = COMPTES_DEMO[email.trim().toLowerCase()];
-    if (!c || c.motDePasse !== motDePasse) throw new ErreurMoteur("identifiants refusés");
+    if (!c) throw new ErreurMoteur("cette adresse n'administre pas Glisil", "demandez au super administrateur de vous inviter");
     this.e.profil = c.profil;
     this.emettre();
     return copie(c.profil);
@@ -277,19 +292,54 @@ export class GuichetDemo implements GuichetAdmin {
     f.actif = actif; this.noter(actif ? "activer_float" : "desactiver_float", String(id)); this.emettre();
   }
 
+  async statistiquesClients(): Promise<StatsClients> {
+    this.exiger("clients");
+    const cs = this.e.clients, t = maintenant(), J = 24 * H;
+    const actif = (c: Client) => !c.desactive_le && c.derniere_operation !== null && t - new Date(c.derniere_operation).getTime() < 30 * J;
+    const parPays: Record<string, number> = {};
+    for (const c of cs) parPays[c.pays ?? "?"] = (parPays[c.pays ?? "?"] ?? 0) + 1;
+    const jour = (d: number) => new Date(d).toISOString().slice(0, 10);
+    return {
+      total: cs.length, actifs_30j: cs.filter(actif).length,
+      connectes_7j: cs.filter((c) => c.derniere_connexion && t - new Date(c.derniere_connexion).getTime() < 7 * J).length,
+      nouveaux_7j: cs.filter((c) => t - new Date(c.cree_le).getTime() < 7 * J).length,
+      nouveaux_30j: cs.filter((c) => t - new Date(c.cree_le).getTime() < 30 * J).length,
+      verifies: cs.filter((c) => c.palier >= 1).length, en_verification: cs.filter((c) => c.verification_en_cours).length,
+      desactives: cs.filter((c) => c.desactive_le).length, inscriptions_inachevees: 3, par_pays: parPays,
+      inscriptions_30j: Array.from({ length: 30 }, (_, k) => { const d = jour(t - (29 - k) * J); return { jour: d, n: cs.filter((c) => c.cree_le.slice(0, 10) === d).length }; }),
+    };
+  }
+
   async clients(recherche?: string, filtre?: string | null) {
     this.exiger("clients");
     const q = (recherche ?? "").trim().toLowerCase();
     const chiffres = q.replace(/\D/g, "");
-    return copie(this.e.clients.filter((c) => filtre !== "verifications" || c.verification_en_cours).filter((c) => !q || (chiffres.length >= 3 && c.telephone.includes(chiffres)) || (c.nom ?? "").toLowerCase().includes(q) || (c.entreprise ?? "").toLowerCase().includes(q)).map(({ soldes: _s, numeros: _n, a_code: _a, ...c }) => c));
+    const t = maintenant();
+    const bouge = (c: Client) => c.derniere_operation !== null && t - new Date(c.derniere_operation).getTime() < 30 * 24 * H;
+    const garde = (c: Client) =>
+      !filtre ? true
+      : filtre === "verifications" ? Boolean(c.verification_en_cours)
+      : filtre === "desactives" ? Boolean(c.desactive_le)
+      : filtre === "nouveaux" ? t - new Date(c.cree_le).getTime() < 7 * 24 * H
+      : filtre === "actifs" ? !c.desactive_le && bouge(c)
+      : filtre === "inactifs" ? !c.desactive_le && !bouge(c)
+      : true;
+    return copie(this.e.clients.filter(garde).filter((c) => !q || (chiffres.length >= 3 && c.telephone.includes(chiffres)) || (c.nom ?? "").toLowerCase().includes(q) || (c.entreprise ?? "").toLowerCase().includes(q) || (c.email ?? "").includes(q) || (c.ville ?? "").toLowerCase().includes(q))
+      .map(({ soldes: _s, numeros: _n, a_code: _a, date_naissance: _d, ...c }) => c));
   }
   async client(id: string): Promise<ClientDetail> {
     this.exiger("clients");
     const c = this.e.clients.find((x) => x.id === id);
     if (!c) throw new ErreurMoteur("compte inconnu");
-    const { soldes, numeros, a_code, ...reste } = c;
+    const { soldes, numeros, a_code, date_naissance, ...reste } = c;
+    const [prenom, ...nomDeFamille] = (c.entreprise ? "" : c.nom ?? "").split(" ");
+    const depots = this.e.entrees.filter((x) => x.compte.id === id);
+    const sorties = this.e.sorties.filter((x) => x.compte.id === id);
     return copie({
-      compte: { ...reste, a_code, verrou_jusqua: null, verification_pieces: c.verification_en_cours ? [`${c.id}/${c.verification_en_cours}/piece-1.jpg`, `${c.id}/${c.verification_en_cours}/piece-2.jpg`] : null, code_verrou_jusqua: null },
+      totaux: { entre_xaf: depots.reduce((s, d) => s + d.montant_recu, 0), sorti_xaf: sorties.reduce((s, x) => s + x.montant_envoye, 0), ordres: 1, retraits_crypto: id === "c1" ? 1 : 0 },
+      retraits_crypto: id === "c1" ? [{ reference: "XAFe-CR-000412", actif: "USDT", reseau: "bep20", adresse: "0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21", montant: 500, frais: 1, etat: "envoye", tx_hash: "0x8a1f3c5b…", cree_le: iso(maintenant() - 30 * H) }] : [],
+      transferts_crypto: id === "c1" ? [{ id: 1, actif: "USDT", reseau: "trc20", sens: "entree", montant: 1200, adresse: "TEW4N3ZiF23GxHTYu8pen6r8uhHeZpALYZ", tx_hash: "4c1b…e90a", cree_le: iso(maintenant() - 52 * H) }] : [],
+      compte: { ...reste, a_code, verrou_jusqua: null, prenom: prenom || null, nom_de_famille: nomDeFamille.join(" ") || null, date_naissance: c.entreprise ? null : date_naissance, verification_pieces: c.verification_en_cours ? [`${c.id}/${c.verification_en_cours}/piece-1.jpg`, `${c.id}/${c.verification_en_cours}/piece-2.jpg`] : null, code_verrou_jusqua: null },
       soldes, numeros,
       depots: this.e.entrees.filter((x) => x.compte.id === id).map(({ compte: _c, ...d }) => d),
       sorties: this.e.sorties.filter((x) => x.compte.id === id).map(({ compte: _c, transferts: _t, ...s }) => s),

@@ -7,7 +7,8 @@ type Session = {
   pret: boolean;
   profil: Profil | null;
   peut: (droit: Droit) => boolean;
-  connecter: (email: string, motDePasse: string) => Promise<void>;
+  demanderCode: (email: string) => Promise<void>;
+  connecter: (email: string, code: string) => Promise<void>;
   deconnecter: () => Promise<void>;
 };
 
@@ -26,7 +27,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const valeur = useMemo<Session>(() => ({
     pret, profil,
     peut: (d) => aLeDroit(profil?.role, d),
-    connecter: async (email, mdp) => { setProfil(await guichet.connecter(email, mdp)); },
+    demanderCode: (email) => guichet.demanderCode(email),
+    connecter: async (email, code) => { setProfil(await guichet.verifierCode(email, code)); },
     deconnecter: async () => { await guichet.deconnecter(); setProfil(null); },
   }), [pret, profil, guichet]);
 

@@ -106,7 +106,7 @@ export function operateur(id: string): Operateur {
 }
 
 export const PALIERS: Record<number, { entreeJour: number | null; sortieJour: number | null; nom: string }> = {
-  0: { entreeJour: 500_000, sortieJour: 500_000, nom: "Palier 0 · numéro vérifié" },
+  0: { entreeJour: 500_000, sortieJour: 500_000, nom: "Palier 0 · e-mail vérifié" },
   1: { entreeJour: 5_000_000, sortieJour: 5_000_000, nom: "Palier 1 · identité vérifiée" },
   2: { entreeJour: null, sortieJour: null, nom: "Palier 2 · entreprise vérifiée" },
 };

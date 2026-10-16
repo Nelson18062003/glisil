@@ -19,3 +19,21 @@ verify_jwt = false
 # les secrets de la fonction) — pas par un jeton de session Supabase.
 [functions.veilleur]
 verify_jwt = false
+
+# L'entrée sans mot de passe (0009) : une adresse e-mail et un code à six
+# chiffres, valable 10 minutes. Le même modèle sert à la première inscription
+# (confirmation) et aux connexions suivantes (magic link) : il ne montre que le
+# code. Sur le projet en ligne, ces réglages se recopient dans le tableau de
+# bord (Authentication → Emails et → Providers → Email) — voir docs/CONNEXION.md.
+[auth.email]
+enable_signup = true
+otp_length = 6
+otp_expiry = 600
+
+[auth.email.template.confirmation]
+subject = "Votre code Glisil : {{ .Token }}"
+content_path = "./supabase/templates/code-par-email.html"
+
+[auth.email.template.magic_link]
+subject = "Votre code Glisil : {{ .Token }}"
+content_path = "./supabase/templates/code-par-email.html"

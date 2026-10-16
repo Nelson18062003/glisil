@@ -9,16 +9,21 @@
  */
 import { achatMax, arrondi2, coutAuCarnet, decouperSortie, devisSurLeCarnet, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide, RAPIDE } from "../noyau/argent";
 import { ErreurMoteur } from "../noyau/erreurs";
+import { emailNormalise, emailValide } from "../noyau/identite";
 import { numeroSaisi, operateurDuNumero, transactionIdNormalise } from "../noyau/format";
 import type { Guichet } from "./guichet";
 import type {
-  Actif, Carnet, Chandelle, Compte, Cote, Cotation, Declaration, Depot, DevisRapide, Execution, IdOperateur, Niveau, Notification, Numero, Operation, Ordre, SensRapide,
+  Actif, Carnet, Chandelle, Compte, Cote, Cotation, Declaration, Depot, DevisRapide, Execution, IdOperateur, Niveau, Notification, Numero, Operation, Ordre, ProfilInscription, SensRapide,
   Reseau, ResultatCode, ResultatOrdre, RetraitCrypto, Soldes, Sortie, Transaction, TransfertCrypto, TypeOrdre,
 } from "./types";
 
-const CLE_STOCKAGE = "xafe.demo.v3";
+const CLE_STOCKAGE = "xafe.demo.v4";
+/** le code de démonstration : celui qui arrive « par SMS » pour un numéro, et « par e-mail » pour se connecter */
 export const CODE_SMS_DEMO = "123456";
+export const CODE_DEMO = CODE_SMS_DEMO;
 const NUMERO_VITRINE = "677123456";
+/** l'adresse de la vitrine : elle arrive avec une vie déjà écrite */
+export const EMAIL_VITRINE = "demo@glisil.com";
 
 type Tache =
   | { quand: number; type: "sms"; reference: string; declarationId: string }
@@ -48,7 +53,8 @@ type Dossier = {
 type Marche = { mid: number; transactions: Transaction[]; chandelles: Chandelle[]; alea: number };
 
 type Etat = {
-  session: { telephone: string } | null;
+  /** la personne connectée, par son adresse ; ses dossiers sont rangés par adresse */
+  session: { email: string } | null;
   codeAttendu: string | null;
   dossiers: Record<string, Dossier>;
   marche: Marche;
@@ -109,12 +115,18 @@ function livreSynthetique(mid: number, profondeur: number): Carnet {
 
 /* ---------------------------------------------------------- le dossier */
 
-function dossierVide(telephone: string): Dossier {
+function dossierVide(email: string, p: ProfilInscription, numeroDejaVerifie = false): Dossier {
   const id = uuid();
+  /* comme la vraie base : le numéro de l'inscription n'est PAS un numéro de sortie vérifié ;
+     on l'ajoute et on le prouve par SMS dans Compte → Mes numéros. La vitrine, elle, a déjà le sien. */
+  const local = numeroDejaVerifie && /^\+2376\d{8}$/.test(p.telephone) ? p.telephone.slice(4) : null;
   return {
-    compte: { id, telephone, nom: null, entreprise: null, palier: 0, aCode: false, verrouJusqua: null, verificationEnCours: null, codeSecret: null, echecs: 0 },
+    compte: {
+      id, telephone: p.telephone, nom: `${p.prenom} ${p.nom}`, entreprise: null, palier: 0, aCode: false, verrouJusqua: null, verificationEnCours: null, codeSecret: null, echecs: 0,
+      email, prenom: p.prenom, nomDeFamille: p.nom, dateNaissance: p.naissance, ville: p.ville, pays: p.pays,
+    },
     soldes: { XAFe: { disponible: 0, bloque: 0 }, USDT: { disponible: 0, bloque: 0 } },
-    numeros: [{ id: uuid(), operateur: telephone.startsWith("69") || telephone.startsWith("65") ? "om" : "mtn", numero: telephone, verifieLe: iso(), actifDes: iso(), retireLe: null }],
+    numeros: local ? [{ id: uuid(), operateur: local.startsWith("69") || local.startsWith("65") ? "om" : "mtn", numero: local, verifieLe: iso(), actifDes: iso(), retireLe: null }] : [],
     depots: [], sorties: [], ordres: [], executions: [], retraits: [], transferts: [], notifications: [], taches: [], compteur: 417, numerosEnAttente: {},
   };
 }
@@ -125,11 +137,11 @@ function entreDuJour(d: Dossier): number {
   return d.depots.flatMap((x) => x.declarations).filter((x) => x.etat === "credite" && x.crediteLe && new Date(x.crediteLe).getTime() >= debut).reduce((s, x) => s + (x.montant ?? 0), 0);
 }
 
-/** La vitrine : le compte 6 77 12 34 56 arrive avec une vie déjà écrite. */
+/** La vitrine : demo@glisil.com arrive avec une vie déjà écrite. */
 function dossierVitrine(): Dossier {
-  const d = dossierVide(NUMERO_VITRINE);
+  const d = dossierVide(EMAIL_VITRINE, { prenom: "Nelson", nom: "Soh", naissance: "1988-06-21", telephone: `+237${NUMERO_VITRINE}`, ville: "Douala", pays: "CM" }, true);
   const hier = maintenant() - 20 * 3600_000;
-  d.compte = { ...d.compte, nom: "Nelson Soh", entreprise: "NORTON GAUSS BONZINI SARL", palier: 2, aCode: true, codeSecret: "1234" };
+  d.compte = { ...d.compte, entreprise: "NORTON GAUSS BONZINI SARL", palier: 2, aCode: true, codeSecret: "1234" };
   d.soldes = { XAFe: { disponible: 3_250_000, bloque: 0 }, USDT: { disponible: 2_608.05, bloque: 0 } };
   d.numeros.push({ id: uuid(), operateur: "om", numero: "699876543", verifieLe: iso(hier - 86400_000), actifDes: iso(hier), retireLe: null });
   d.depots.push({
@@ -195,9 +207,9 @@ export class GuichetDemo implements Guichet {
   }
 
   private dossier(): Dossier {
-    const tel = this.etat.session?.telephone;
-    const d = tel ? this.etat.dossiers[tel] : undefined;
-    if (!d) throw new ErreurMoteur("non connecté");
+    const email = this.etat.session?.email;
+    const d = email ? this.etat.dossiers[email] : undefined;
+    if (!d) throw new ErreurMoteur(email ? "compte pas encore ouvert" : "non connecté");
     return d;
   }
 
@@ -289,7 +301,7 @@ export class GuichetDemo implements Guichet {
         return;
       }
     }
-    decl.etat = "credite"; decl.montant = montant; decl.numeroPayeur = d.compte.telephone; decl.crediteLe = iso(); decl.luLe = iso(maintenant() - 2_000);
+    decl.etat = "credite"; decl.montant = montant; decl.numeroPayeur = d.numeros[0]?.numero ?? d.compte.telephone; decl.crediteLe = iso(); decl.luLe = iso(maintenant() - 2_000);
     dep.montantRecu += montant;
     dep.etat = "credite";
     dep.crediteLe = iso();
@@ -414,25 +426,24 @@ export class GuichetDemo implements Guichet {
   /* ============================================================ session */
 
   async session() {
-    const tel = this.etat.session?.telephone;
-    return tel && this.etat.dossiers[tel] ? { compteId: this.etat.dossiers[tel].compte.id } : null;
+    const email = this.etat.session?.email;
+    return email ? { compteId: this.etat.dossiers[email]?.compte.id ?? email } : null;
   }
 
-  async demanderCode(telephone: string) {
-    const n = numeroSaisi(telephone);
-    if (!/^6\d{8}$/.test(n)) throw new ErreurMoteur("numéro invalide");
-    this.etat.codeAttendu = CODE_SMS_DEMO;
+  async demanderCode(email: string) {
+    if (!emailValide(email)) throw new ErreurMoteur("adresse e-mail invalide");
+    this.etat.codeAttendu = CODE_DEMO;
     this.sauver();
   }
 
-  async verifierCodeSms(telephone: string, code: string) {
-    const n = numeroSaisi(telephone);
-    if (code !== this.etat.codeAttendu) throw new ErreurMoteur("code SMS incorrect");
-    if (!this.etat.dossiers[n]) this.etat.dossiers[n] = n === NUMERO_VITRINE ? dossierVitrine() : dossierVide(n);
-    this.etat.session = { telephone: n };
+  async verifierCode(email: string, code: string) {
+    const e = emailNormalise(email);
+    if (code !== this.etat.codeAttendu) throw new ErreurMoteur("code incorrect ou expiré", "demandez-en un nouveau si besoin");
+    if (e === EMAIL_VITRINE && !this.etat.dossiers[e]) this.etat.dossiers[e] = dossierVitrine();
+    this.etat.session = { email: e };
     this.etat.codeAttendu = null;
     this.emettre();
-    return { compteId: this.etat.dossiers[n].compte.id, nouveau: !this.etat.dossiers[n].compte.nom };
+    return { nouveau: !this.etat.dossiers[e] };
   }
 
   async seDeconnecter() {
@@ -443,6 +454,21 @@ export class GuichetDemo implements Guichet {
   /* ============================================================= compte */
 
   async compte() { return copie(this.compteParId()); }
+
+  async monCompte() {
+    const email = this.etat.session?.email;
+    return email && this.etat.dossiers[email] ? copie(this.compteParId()) : null;
+  }
+
+  async ouvrirCompte(p: ProfilInscription) {
+    const email = this.etat.session?.email;
+    if (!email) throw new ErreurMoteur("non connecté");
+    if (this.etat.dossiers[email]) throw new ErreurMoteur("compte déjà ouvert");
+    if (Object.values(this.etat.dossiers).some((d) => d.compte.telephone === p.telephone)) throw new ErreurMoteur("ce numéro est déjà utilisé", "il appartient à un autre compte");
+    this.etat.dossiers[email] = dossierVide(email, p);
+    this.emettre();
+    return copie(this.compteParId());
+  }
 
   async completerProfil({ nom, codeSecret }: { nom: string; codeSecret: string }) {
     const d = this.dossier();
@@ -673,7 +699,7 @@ export class GuichetDemo implements Guichet {
   /* ========================================================= marché */
 
   private mesNiveaux(cote: Cote): Niveau[] {
-    const d = this.etat.session ? this.etat.dossiers[this.etat.session.telephone] : undefined;
+    const d = this.etat.session ? this.etat.dossiers[this.etat.session.email] : undefined;
     if (!d) return [];
     const parPrix = new Map<number, number>();
     for (const o of d.ordres) if (["ouvert", "partiel"].includes(o.etat) && o.cote === cote && o.prix !== null) parPrix.set(o.prix, arrondi2((parPrix.get(o.prix) ?? 0) + o.restant));

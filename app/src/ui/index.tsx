@@ -389,9 +389,9 @@ export function Marque({ size = 44, tuile = true }: { size?: number; tuile?: boo
 }
 
 /** Le nom, tel que la marque l'écrit : « glisil », en minuscules, en Sora. */
-export function NomGlisil({ size = 28 }: { size?: number }) {
+export function NomGlisil({ size = 28, couleur = "text.primary" }: { size?: number; couleur?: string }) {
   return (
-    <Box component="span" sx={{ fontFamily: '"Sora", "Roboto", system-ui, sans-serif', fontWeight: 700, fontSize: size, letterSpacing: "-0.04em", lineHeight: 1, color: "text.primary" }}>
+    <Box component="span" sx={{ fontFamily: '"Sora", "Roboto", system-ui, sans-serif', fontWeight: 700, fontSize: size, letterSpacing: "-0.04em", lineHeight: 1, color: couleur }}>
       glisil
     </Box>
   );

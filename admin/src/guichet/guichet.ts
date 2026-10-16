@@ -1,11 +1,14 @@
-import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, Tableau, Terminal, Wallets } from "./types";
+import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, StatsClients, Tableau, Terminal, Wallets } from "./types";
 
 /** LE GUICHET DE L'ADMINISTRATION : tout ce que les écrans demandent au moteur. */
 export interface GuichetAdmin {
   readonly mode: "supabase" | "demo";
 
   session(): Promise<Profil | null>;
-  connecter(email: string, motDePasse: string): Promise<Profil>;
+  /** Pas de mot de passe : un code à six chiffres part à cette adresse. */
+  demanderCode(email: string): Promise<void>;
+  /** Le code prouve l'adresse ; une adresse invitée devient administrateur ici. Refuse une adresse qui n'administre pas. */
+  verifierCode(email: string, code: string): Promise<Profil>;
   deconnecter(): Promise<void>;
 
   tableau(): Promise<Tableau>;
@@ -28,7 +31,9 @@ export interface GuichetAdmin {
   creerFloat(p: { operateur: string; numero: string; terminal: string; codeAgent?: string | null }): Promise<void>;
   activerFloat(id: number, actif: boolean): Promise<void>;
 
-  /** filtre = "verifications" : les pièces qui attendent l'équipe, cherchées dans TOUS les comptes. */
+  /** Les chiffres d'ensemble : total, actifs, connectés, nouveaux, inscriptions inachevées… */
+  statistiquesClients(): Promise<StatsClients>;
+  /** filtre : null (tous) · actifs · inactifs · nouveaux · verifications · desactives — cherchés dans TOUS les comptes. */
   clients(recherche?: string, filtre?: string | null): Promise<Client[]>;
   client(id: string): Promise<ClientDetail>;
   changerPalier(id: string, palier: number, note?: string): Promise<void>;

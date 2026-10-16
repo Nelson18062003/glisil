@@ -48,9 +48,19 @@ export type Sortie = {
 export type Client = {
   id: string; telephone: string; nom: string | null; entreprise: string | null; palier: number; verification_en_cours: "identite" | "entreprise" | null;
   cree_le: string; desactive_le: string | null; xafe: number; usdt: number;
+  email: string | null; ville: string | null; pays: string | null;
+  /** la dernière écriture sur son compte (un mouvement d'argent) */
+  derniere_operation: string | null;
+  derniere_connexion: string | null;
 };
 export type ClientDetail = {
-  compte: Client & { a_code: boolean; verrou_jusqua: string | null; verification_pieces: string[] | null; code_verrou_jusqua: string | null };
+  compte: Client & {
+    a_code: boolean; verrou_jusqua: string | null; verification_pieces: string[] | null; code_verrou_jusqua: string | null;
+    prenom: string | null; nom_de_famille: string | null; date_naissance: string | null;
+  };
+  totaux?: { entre_xaf: number; sorti_xaf: number; ordres: number; retraits_crypto: number };
+  retraits_crypto?: { reference: string; actif: string; reseau: string; adresse: string; montant: number; frais: number; etat: string; tx_hash: string | null; cree_le: string }[];
+  transferts_crypto?: { id: string | number; actif: string; reseau: string; sens: "entree" | "sortie"; montant: number; adresse: string | null; tx_hash: string | null; cree_le: string }[];
   soldes: Record<string, { disponible: number; bloque: number }>;
   numeros: { id: string; operateur: string; numero: string; verifie_le: string | null; actif_des: string; retire_le: string | null }[];
   depots: Omit<Entree, "compte">[];
@@ -82,3 +92,20 @@ export type ReseauWallets = {
 };
 export type Orphelin = { reseau: string; actif: string; adresse: string; montant: number; preuve: string; raison: string; vu_le: string };
 export type Wallets = { reseaux: ReseauWallets[]; orphelins: Orphelin[]; du_usdt: number; maison_usdt: number };
+
+/** Les chiffres en tête de la page Clients (admin_statistiques_clients). */
+export type StatsClients = {
+  total: number;
+  /** ont bougé de l'argent dans les 30 derniers jours */
+  actifs_30j: number;
+  connectes_7j: number;
+  nouveaux_7j: number;
+  nouveaux_30j: number;
+  verifies: number;
+  en_verification: number;
+  desactives: number;
+  /** ont prouvé leur adresse e-mail sans finir leur profil */
+  inscriptions_inachevees: number;
+  par_pays: Record<string, number>;
+  inscriptions_30j: { jour: string; n: number }[];
+};

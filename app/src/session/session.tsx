@@ -8,9 +8,16 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { useGuichet } from "../guichet";
 import type { Compte, ResultatCode } from "../guichet/types";
 
+/*
+ * anonyme     personne n'est connecté : l'adresse e-mail, puis le code
+ * inscription l'adresse est prouvée, le compte n'est pas encore ouvert : le profil complet
+ * profil      le compte est ouvert, il manque le code secret des gestes d'argent
+ * connecte    tout est là ; l'écran peut être verrouillé
+ */
 type Etat =
   | { phase: "chargement" }
   | { phase: "anonyme" }
+  | { phase: "inscription" }
   | { phase: "profil"; compte: Compte }
   | { phase: "connecte"; compte: Compte; verrouille: boolean };
 
@@ -19,7 +26,10 @@ type Session = {
   compte: Compte | null;
   montantsMasques: boolean;
   basculerMasque: () => void;
-  connecter: (telephone: string, code: string) => Promise<{ nouveau: boolean }>;
+  /** l'adresse et son code ; rend l'étape où la personne doit aller */
+  connecter: (email: string, code: string) => Promise<{ suite: "inscription" | "profil" | "accueil" }>;
+  /** le compte vient de s'ouvrir : reste le code secret */
+  compteOuvert: (compte: Compte) => void;
   profilComplete: (compte: Compte) => void;
   deverrouiller: (code: string) => Promise<ResultatCode>;
   verrouiller: () => void;
@@ -52,8 +62,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const chargerCompte = useCallback(async () => {
     const s = await guichet.session();
     if (!s) { setEtat({ phase: "anonyme" }); return; }
-    const compte = await guichet.compte();
-    if (!compte.nom || !compte.aCode) { setEtat({ phase: "profil", compte }); return; }
+    const compte = await guichet.monCompte();
+    if (!compte) { setEtat({ phase: "inscription" }); return; }
+    if (!compte.aCode) { setEtat({ phase: "profil", compte }); return; }
     setEtat((avant) => ({ phase: "connecte", compte, verrouille: avant.phase === "connecte" ? avant.verrouille : !deverrouilleRecemment() }));
   }, [guichet]);
 
@@ -78,13 +89,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     compte: "compte" in etat ? etat.compte : null,
     montantsMasques,
     basculerMasque: () => setMasque((m) => { try { localStorage.setItem(CLE_MASQUE, m ? "0" : "1"); } catch { /* sans stockage, l'œil vit le temps de la session */ } return !m; }),
-    connecter: async (telephone, code) => {
-      const r = await guichet.verifierCodeSms(telephone, code);
-      const compte = await guichet.compte();
-      if (!compte.nom || !compte.aCode) setEtat({ phase: "profil", compte });
-      else { try { sessionStorage.setItem(CLE_DEVERROUILLE, String(Date.now())); } catch { /* idem */ } setEtat({ phase: "connecte", compte, verrouille: false }); }
-      return { nouveau: r.nouveau || !compte.nom };
+    connecter: async (email, code) => {
+      await guichet.verifierCode(email, code);
+      const compte = await guichet.monCompte();
+      if (!compte) { setEtat({ phase: "inscription" }); return { suite: "inscription" }; }
+      if (!compte.aCode) { setEtat({ phase: "profil", compte }); return { suite: "profil" }; }
+      try { sessionStorage.setItem(CLE_DEVERROUILLE, String(Date.now())); } catch { /* idem */ }
+      setEtat({ phase: "connecte", compte, verrouille: false });
+      return { suite: "accueil" };
     },
+    compteOuvert: (compte) => setEtat({ phase: "profil", compte }),
     profilComplete: (compte) => {
       try { sessionStorage.setItem(CLE_DEVERROUILLE, String(Date.now())); } catch { /* idem */ }
       setEtat({ phase: "connecte", compte, verrouille: false });
