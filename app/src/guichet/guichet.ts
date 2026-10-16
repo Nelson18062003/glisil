@@ -86,7 +86,7 @@ export interface Guichet {
   /** Les frais, pas et plafonds posés par l'équipe (parametres_publics) ; null s'ils ne se lisent pas. */
   parametres(): Promise<unknown>;
   retirerNumero(p: { id: string; codeSecret: string }): Promise<void>;
-  demanderSortie(p: { montant: number; numeroId: string; cle: string; codeSecret: string }): Promise<Sortie>;
+  demanderSortie(p: { montant: number; numeroId: string; cle: string; codeSecret: string; nom?: string }): Promise<Sortie>;
   sortie(reference: string): Promise<Sortie>;
 
   /* ---- marché */

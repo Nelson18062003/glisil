@@ -14,7 +14,7 @@ const BLOCS: { cle: string; titre: string; aide: string }[] = [
   { cle: "frais", titre: "Frais", aide: "placeur et preneur en fraction (0.001 = 0,10 %) ; sortie en fraction du montant" },
   { cle: "marche", titre: "Marché", aide: "la paire, le pas de prix, la quantité minimale, ouvert ou fermé" },
   { cle: "depot", titre: "Dépôts", aide: "validité d'un dossier (minutes) et grâce après expiration" },
-  { cle: "sortie", titre: "Sorties", aide: "nombre de reprises d'un transfert avant de le rendre au client" },
+  { cle: "sortie", titre: "Sorties", aide: "ouvertes : true/false ; mode : \"manuel\" (l'équipe paie et tape le transaction ID) ou \"totem\" (le boîtier compose) ; seuil_deux_personnes : au-delà de ce montant en XAF, une autre personne confirme (null = jamais) ; reprises_max : essais d'un transfert TOTEM" },
   { cle: "rapide", titre: "Achat rapide", aide: "la marge de la plateforme (0.01 = 1 %), la validité du prix en secondes, ouvert ou fermé" },
   { cle: "paliers", titre: "Paliers", aide: "plafonds par jour en entrée et en sortie ; null = sans plafond" },
   { cle: "crypto", titre: "Crypto", aide: "frais fixes par actif et confirmations par réseau" },

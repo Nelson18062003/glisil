@@ -91,6 +91,7 @@ const ok = (texte: string) => { n++; console.log(`✓ ${texte}`); };
   const rpc = async (nom: string, args: Record<string, unknown>) => {
     appels.push({ nom, args });
     if (args.p_source_id === 13) throw new Error("solde insuffisant");
+    if (nom === "totem_sms_sortant") return { resultat: "constatee", sortie: "XAFe-WD-000207" };
     return { resultat: args.p_reference === "20394817101" ? "credite" : "retenue", reference: "XAFe-DP-000418" };
   };
   const ligne = { terminal: "akwa-1", source_id: 48213, operateur: "mtn", float_numero: "677000000", sens: "entree", montant: 1000000, numero: "677123456", reference: "20394817101", texte: "Vous avez recu…", emis_le: "2026-10-12T13:02:11Z" };
@@ -100,18 +101,22 @@ const ok = (texte: string) => { n++; console.log(`✓ ${texte}`); };
   assert.deepEqual(appels[0], { nom: "totem_sms_recu", args: { p_terminal: "akwa-1", p_source_id: 48213, p_operateur: "mtn", p_float_numero: "677000000", p_numero_payeur: "677123456", p_montant: 1000000, p_reference: "20394817101", p_texte: "Vous avez recu…", p_emis_le: "2026-10-12T13:02:11Z" } });
   ok("un SMS arrive au moteur avec exactement ses champs, et la réponse du moteur revient au boîtier");
 
-  const lot = await traiterSms(rpc, "akwa-1", { lignes: [ligne, { ...ligne, source_id: 2, reference: "X" }, { ...ligne, source_id: 3, sens: "sortie" }, { ...ligne, source_id: 13 }, { ...ligne, source_id: 4, terminal: "bonaberi-2" }, { source_id: "" }] });
+  const lot = await traiterSms(rpc, "akwa-1", { lignes: [ligne, { ...ligne, source_id: 2, reference: "X" }, { ...ligne, source_id: 3, sens: "sortie", numero: "677999888", texte: "Transfert de 49 500 FCFA vers…" }, { ...ligne, source_id: 13 }, { ...ligne, source_id: 4, terminal: "bonaberi-2" }, { source_id: "" }, { ...ligne, source_id: 5, sens: "solde" }] });
   assert.equal(lot.statut, 200);
   const res = lot.corps as Record<string, unknown>[];
-  assert.equal(res.length, 6);
+  assert.equal(res.length, 7);
   assert.equal(res[0].resultat, "credite");
   assert.equal(res[1].resultat, "retenue");
-  assert.equal(res[2].resultat, "ignore");
+  assert.equal(res[2].resultat, "constatee");
   assert.equal(res[3].resultat, "erreur");
   assert.equal(res[4].resultat, "refuse");
   assert.equal(res[5].resultat, "refuse");
-  assert.equal(appels.length, 4, "quatre lignes ont atteint le moteur : les deux bonnes, celle qui échoue, et celle de l'autre terminal n'y va pas");
-  ok("un lot se traite ligne par ligne : une ligne cassée, une sortie, une ligne d'un autre boîtier ne font pas tomber les autres");
+  assert.equal(res[6].resultat, "ignore");
+  assert.equal(appels.length, 5, "cinq lignes ont atteint le moteur : les deux entrées, la sortie, celle qui échoue ; celle de l'autre terminal et le solde n'y vont pas");
+  const sortie = appels.find((a) => a.nom === "totem_sms_sortant");
+  assert.deepEqual(sortie?.args, { p_terminal: "akwa-1", p_source_id: 3, p_operateur: "mtn", p_float_numero: "677000000", p_numero: "677999888", p_montant: 1000000, p_reference: "20394817101", p_texte: "Transfert de 49 500 FCFA vers…", p_emis_le: "2026-10-12T13:02:11Z" });
+  assert.equal(appels.filter((a) => a.nom === "totem_sms_recu" && a.args.p_source_id === 3).length, 0, "une sortie n'est jamais lue comme une entrée");
+  ok("un lot se traite ligne par ligne : une ligne cassée, une ligne d'un autre boîtier ne font pas tomber les autres ; une sortie du float va au rapprochement, jamais au crédit ; un solde est ignoré");
 
   assert.equal((await traiterSms(rpc, "akwa-1", { lignes: [] })).statut, 400);
   ok("un lot vide est refusé");

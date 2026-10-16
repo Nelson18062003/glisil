@@ -7,7 +7,8 @@
 import { DROITS } from "../noyau/droits";
 import { ErreurMoteur } from "./supabase";
 import type { GuichetAdmin } from "./guichet";
-import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, StatsClients, Equipe, Tableau, Terminal, Transfert, Wallets } from "./types";
+import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Transfert, Wallets } from "./types";
+import { verifierPreuve } from "./preuve";
 
 /** le code de démonstration, celui qui « arrive par e-mail » */
 export const CODE_DEMO = "123456";
@@ -36,6 +37,10 @@ type Etat = {
   entrees: Entree[];
   retenues: Retenue[];
   sorties: Sortie[];
+  /** ce que les puces ont vu partir sans sortie en face */
+  nonExpliquees: SortieNonExpliquee[];
+  /** les captures déposées, en mémoire : chemin → adresse locale */
+  preuves: Record<string, string>;
   journal: LigneJournal[];
   parametres: Parametres;
   mid: number;
@@ -99,17 +104,26 @@ function graine(): Etat {
     Array.from({ length: n }, (_, i) => ({ id: prochainTransfert++, terminal, etat: etats[i] ?? "en_attente", montant_xafe: 750_000, montant_envoye: 746_250, reprises: etats[i] === "echouee" ? 3 : 0, resultat: etats[i] === "faite" ? "Transfert reussi" : etats[i] === "echouee" ? "réseau muet" : null, reference_operateur: etats[i] === "faite" ? `2039481${8000 + i}` : null, reclamee_le: etats[i] === "en_cours" ? iso(t - 12 * 60_000) : null }));
   const sorties: Sortie[] = [
     { reference: ref("XAFe-WD-"), etat: "en_cours", operateur: "mtn", numero: clients[3].telephone, montant: 1_500_000, frais: 7_500, montant_xaf: 1_492_500, montant_envoye: 746_250, montant_rendu: 0, cree_le: iso(t - 15 * 60_000), terminee_le: null, transferts: transferts(2, ["faite", "en_cours"], "yaounde-1"), compte: { id: clients[3].id, telephone: clients[3].telephone, nom: clients[3].nom } },
+    // payées à la main (0014) : une demande à payer, une payée par Aminatou qui attend une seconde personne
+    { reference: ref("XAFe-WD-"), etat: "en_attente", operateur: "mtn", numero: clients[2].telephone, montant: 250_000, frais: 1_250, montant_xaf: 248_750, montant_envoye: 0, montant_rendu: 0, cree_le: iso(t - 25 * 60_000), terminee_le: null, transferts: [], compte: { id: clients[2].id, telephone: clients[2].telephone, nom: clients[2].nom, palier: clients[2].palier },
+      mode: "manuel", nom_beneficiaire: clients[2].nom, pris_le: null, pris_par: null, transaction_id: null, preuve: null, payee_le: null, payee_par: null, payee_par_moi: false, confirmee_par: null, a_confirmer: false, motif: null, rapprochement: null },
+    { reference: ref("XAFe-WD-"), etat: "en_cours", operateur: "om", numero: clients[4].telephone, montant: 1_200_000, frais: 6_000, montant_xaf: 1_194_000, montant_envoye: 0, montant_rendu: 0, cree_le: iso(t - 70 * 60_000), terminee_le: null, transferts: [], compte: { id: clients[4].id, telephone: clients[4].telephone, nom: clients[4].nom, palier: clients[4].palier },
+      mode: "manuel", nom_beneficiaire: clients[4].nom, pris_le: iso(t - 50 * 60_000), pris_par: "Aminatou Bello", transaction_id: "PP261016.1412.C47121", preuve: null, payee_le: iso(t - 40 * 60_000), payee_par: "Aminatou Bello", payee_par_moi: false, confirmee_par: null, a_confirmer: true, motif: null,
+      rapprochement: { etat: "concorde", montant: 1_194_000, numero: clients[4].telephone, terminal: "akwa-1", emis_le: iso(t - 41 * 60_000), texte: `Transfert de 1194000 FCFA vers ${clients[4].telephone} reussi. ID: PP261016.1412.C47121` } },
     { reference: ref("XAFe-WD-"), etat: "envoyee", operateur: "om", numero: clients[8].telephone, montant: 200_000, frais: 1_000, montant_xaf: 199_000, montant_envoye: 199_000, montant_rendu: 0, cree_le: iso(t - 3 * H), terminee_le: iso(t - 3 * H + 40_000), transferts: [{ id: 90, terminal: "akwa-1", etat: "faite", montant_xafe: 200_000, montant_envoye: 199_000, reprises: 0, resultat: "Transfert reussi", reference_operateur: "PP261012.1131.C00912", reclamee_le: iso(t - 3 * H + 5_000) }], compte: { id: clients[8].id, telephone: clients[8].telephone, nom: clients[8].nom } },
     { reference: ref("XAFe-WD-"), etat: "partielle", operateur: "mtn", numero: clients[6].telephone, montant: 2_000_000, frais: 10_000, montant_xaf: 1_990_000, montant_envoye: 995_000, montant_rendu: 1_000_000, cree_le: iso(t - 26 * H), terminee_le: iso(t - 25 * H), transferts: transferts(2, ["faite", "echouee"], "bonaberi-2"), compte: { id: clients[6].id, telephone: clients[6].telephone, nom: clients[6].nom } },
     // clouée à un boîtier qui s'est tu : à réaffecter, ou à annuler
     { reference: ref("XAFe-WD-"), etat: "en_attente", operateur: "mtn", numero: clients[5].telephone, montant: 600_000, frais: 3_000, montant_xaf: 597_000, montant_envoye: 0, montant_rendu: 0, cree_le: iso(t - 42 * 60_000), terminee_le: null, transferts: transferts(1, ["en_attente"], "yaounde-1").map((x) => ({ ...x, montant_xafe: 600_000, montant_envoye: 597_000 })), compte: { id: clients[5].id, telephone: clients[5].telephone, nom: clients[5].nom } },
   ];
+  const nonExpliquees: SortieNonExpliquee[] = [
+    { id: 3, terminal: "akwa-1", operateur: "mtn", float_numero: "677000000", numero: "677998877", montant: 35_000, transaction_id: "MP261016.0912.B09311", texte: "Transfert de 35 000 FCFA a JEAN TCHOUA (677998877) reussi. ID: MP261016.0912.B09311", emis_le: iso(t - 6 * H) },
+  ];
   return {
-    profil: null, terminaux, floats, clients, entrees, retenues, sorties,
+    profil: null, terminaux, floats, clients, entrees, retenues, sorties, nonExpliquees, preuves: {},
     journal: [{ id: 1, admin: "Nelson Soh", action: "creer_terminal", cible: "yaounde-1", detail: null, quand: iso(t - 5 * 24 * H) }],
     parametres: {
       frais: { placeur: 0.0005, preneur: 0.001, sortie: 0.005 }, marche: { paire: "USDT/XAFe", pas_prix: 0.05, quantite_min: 10, ouvert: true },
-      depot: { validite_minutes: 30, grace_minutes: 120 }, sortie: { reprises_max: 3 }, rapide: { marge: 0.01, validite_secondes: 20, ouvert: true }, crypto: { frais: { USDT: 1, XAFe: 500 }, confirmations: { bep20: 15, trc20: 20 } },
+      depot: { validite_minutes: 30, grace_minutes: 120 }, sortie: { reprises_max: 3, mode: "manuel", seuil_deux_personnes: 500_000 }, rapide: { marge: 0.01, validite_secondes: 20, ouvert: true }, crypto: { frais: { USDT: 1, XAFe: 500 }, confirmations: { bep20: 15, trc20: 20 } },
       code_secret: { essais: 3, verrou_minutes: 15, longueur_min: 4, longueur_max: 6 },
       support: { email: "support@glisil.com", whatsapp: null },
       conditions: { version: "2026-10-16" },
@@ -245,11 +259,95 @@ export class GuichetDemo implements GuichetAdmin {
     throw new ErreurMoteur("commande inconnue");
   }
 
+  private sortieManuelle(reference: string) {
+    const s = this.e.sorties.find((x) => x.reference === reference);
+    if (!s) throw new ErreurMoteur("sortie inconnue");
+    if (s.mode !== "manuel") throw new ErreurMoteur("cette sortie est composée par TOTEM", "elle se suit dans ses transferts");
+    return s;
+  }
+  private moi() { return this.e.profil?.nom ?? this.e.profil?.email ?? "?"; }
+  /* même règle que la base : le SMS de la puce qui porte cet ID, et s'il dit la même chose */
+  private rapprochementDe(s: Sortie) {
+    if (!s.transaction_id) return null;
+    const k = this.e.nonExpliquees.find((x) => x.operateur === s.operateur && x.transaction_id === s.transaction_id);
+    if (!k) return s.rapprochement?.etat === "concorde" ? s.rapprochement : { etat: "absent" as const };
+    this.e.nonExpliquees = this.e.nonExpliquees.filter((x) => x !== k);
+    return { etat: k.montant === s.montant_xaf && k.numero === s.numero ? "concorde" as const : "ecart" as const, montant: k.montant ?? undefined, numero: k.numero, terminal: k.terminal, emis_le: k.emis_le, texte: k.texte };
+  }
+  private clore(s: Sortie) {
+    s.etat = "envoyee"; s.montant_envoye = s.montant_xaf; s.terminee_le = iso(maintenant()); s.a_confirmer = false;
+  }
+
+  async prendreSortie(reference: string) {
+    this.exiger("sorties");
+    const s = this.sortieManuelle(reference);
+    if (s.etat !== "en_attente") throw new ErreurMoteur("cette sortie n'attend plus", s.etat);
+    s.etat = "en_cours"; s.pris_le = iso(maintenant()); s.pris_par = this.moi();
+    this.noter("prendre_sortie", reference); this.emettre();
+  }
+  async payerSortie(reference: string, transactionId: string, preuve: string | null) {
+    this.exiger("sorties");
+    const s = this.sortieManuelle(reference);
+    if (!["en_attente", "en_cours"].includes(s.etat)) throw new ErreurMoteur("cette sortie est déjà close", s.etat);
+    if (s.payee_le) throw new ErreurMoteur("paiement déjà enregistré", s.transaction_id ?? undefined);
+    const id = transactionId.toUpperCase().replace(/[^A-Z0-9.]/g, "");
+    if (id.length < 6) throw new ErreurMoteur("transaction ID invalide", "recopiez-le du SMS de l'opérateur");
+    if (this.e.sorties.some((x) => x !== s && x.operateur === s.operateur && x.transaction_id === id)) throw new ErreurMoteur("ce transaction ID prouve déjà une autre sortie");
+    s.transaction_id = id; s.preuve = preuve; s.payee_le = iso(maintenant()); s.payee_par = this.moi(); s.payee_par_moi = true;
+    s.etat = "en_cours"; s.pris_par ??= this.moi(); s.pris_le ??= s.payee_le;
+    s.rapprochement = this.rapprochementDe(s);
+    const seuil = (this.e.parametres.sortie as { seuil_deux_personnes?: number | null } | undefined)?.seuil_deux_personnes ?? null;
+    this.noter("payer_sortie", reference, { transaction_id: id, preuve: Boolean(preuve) });
+    if (seuil !== null && s.montant_xaf >= seuil) { s.a_confirmer = true; this.emettre(); return { etat: s.etat, a_confirmer: true, rapprochement: s.rapprochement }; }
+    this.clore(s); this.emettre();
+    return { etat: s.etat, rapprochement: s.rapprochement };
+  }
+  async confirmerSortie(reference: string) {
+    this.exiger("sorties");
+    const s = this.sortieManuelle(reference);
+    if (s.etat !== "en_cours" || !s.payee_le) throw new ErreurMoteur("aucun paiement à confirmer", s.etat);
+    if (s.payee_par === this.moi()) throw new ErreurMoteur("une autre personne confirme", "celle qui a payé ne confirme pas son propre paiement");
+    s.confirmee_par = this.moi(); this.clore(s);
+    this.noter("confirmer_sortie", reference); this.emettre();
+    return { etat: s.etat, rapprochement: s.rapprochement };
+  }
+  async refuserSortie(reference: string, motif: string) {
+    this.exiger("sorties");
+    if (motif.trim().length < 3) throw new ErreurMoteur("un motif est exigé", "il est montré au client");
+    const s = this.sortieManuelle(reference);
+    if (!["en_attente", "en_cours"].includes(s.etat)) throw new ErreurMoteur("cette sortie est déjà close", s.etat);
+    if (s.payee_le) throw new ErreurMoteur("un paiement est enregistré", "l'argent est parti : la sortie ne se refuse plus");
+    s.etat = "annulee"; s.montant_rendu = s.montant; s.motif = motif.trim(); s.terminee_le = iso(maintenant());
+    this.noter("refuser_sortie", reference, { motif }); this.emettre();
+  }
+  async deposerPreuve(reference: string, fichier: File) {
+    this.exiger("sorties");
+    const ext = verifierPreuve(fichier);
+    const chemin = `${reference}/${Date.now()}.${ext}`;
+    this.e.preuves[chemin] = typeof URL.createObjectURL === "function" ? URL.createObjectURL(fichier) : "";
+    return chemin;
+  }
+  async lienPreuve(chemin: string) {
+    this.exiger("voir");
+    const l = this.e.preuves[chemin];
+    if (!l) throw new ErreurMoteur("capture introuvable");
+    return l;
+  }
+  async sortiesNonExpliquees() { this.exiger("voir"); return copie(this.e.nonExpliquees); }
+  async aTraiter(): Promise<ATraiter> {
+    this.exiger("voir");
+    const m = this.e.sorties.filter((s) => s.mode === "manuel");
+    const aPayer = m.filter((s) => ["en_attente", "en_cours"].includes(s.etat) && !s.payee_le);
+    return { sorties_manuelles: aPayer.length, sorties_a_confirmer: m.filter((s) => s.etat === "en_cours" && s.payee_le).length,
+             montant_a_payer: aPayer.reduce((x, s) => x + s.montant_xaf, 0), sorties_non_expliquees: this.e.nonExpliquees.length };
+  }
+
   async annulerSortie(reference: string, note: string) {
     this.exiger("sorties");
     if (note.trim().length < 3) throw new ErreurMoteur("une note est exigée", "pourquoi la sortie est annulée");
     const s = this.e.sorties.find((x) => x.reference === reference);
     if (!s) throw new ErreurMoteur("sortie inconnue");
+    if (s.mode === "manuel") throw new ErreurMoteur("une sortie manuelle se refuse", "avec un motif, montré au client");
     if (s.transferts.some((t) => t.etat === "en_cours")) throw new ErreurMoteur("un transfert est en cours de composition", "libérez-le d'abord s'il est bloqué");
     let rendu = 0;
     for (const t of s.transferts) if (t.etat === "en_attente") { t.etat = "echouee"; t.resultat = `annulée par l'équipe : ${note}`; rendu += t.montant_xafe; }

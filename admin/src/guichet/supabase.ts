@@ -5,7 +5,8 @@
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { GuichetAdmin } from "./guichet";
-import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, StatsClients, Equipe, Tableau, Terminal, Wallets } from "./types";
+import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets } from "./types";
+import { verifierPreuve } from "./preuve";
 
 export class ErreurMoteur extends Error {
   detail?: string;
@@ -55,6 +56,26 @@ export class GuichetSupabase implements GuichetAdmin {
   sorties(etat?: string | null) { return this.rpc<Sortie[]>("admin_sorties", { p_etat: etat ?? null, p_n: 200 }); }
   async libererCommande(id: number) { await this.rpc("admin_liberer_commande", { p_id: id }); }
   async reaffecterCommande(id: number, terminal: string) { await this.rpc("admin_reaffecter_commande", { p_id: id, p_terminal: terminal }); }
+  async prendreSortie(reference: string) { await this.rpc("admin_prendre_sortie", { p_reference: reference }); }
+  payerSortie(reference: string, transactionId: string, preuve: string | null) {
+    return this.rpc<{ etat: string; a_confirmer?: boolean; rapprochement?: Sortie["rapprochement"] }>("admin_payer_sortie", { p_reference: reference, p_transaction_id: transactionId, p_preuve: preuve });
+  }
+  confirmerSortie(reference: string) { return this.rpc<{ etat: string; rapprochement?: Sortie["rapprochement"] }>("admin_confirmer_sortie", { p_reference: reference }); }
+  async refuserSortie(reference: string, motif: string) { await this.rpc("admin_refuser_sortie", { p_reference: reference, p_motif: motif }); }
+  async deposerPreuve(reference: string, fichier: File) {
+    const ext = verifierPreuve(fichier);
+    const chemin = `${reference}/${Date.now()}.${ext}`;
+    const { error } = await this.sb.storage.from("preuves-sorties").upload(chemin, fichier, { contentType: fichier.type, upsert: false });
+    if (error) throw new ErreurMoteur("la capture n'a pas pu être déposée", error.message);
+    return chemin;
+  }
+  async lienPreuve(chemin: string) {
+    const { data, error } = await this.sb.storage.from("preuves-sorties").createSignedUrl(chemin, 600);
+    if (error || !data) throw new ErreurMoteur("capture introuvable", error?.message);
+    return data.signedUrl;
+  }
+  sortiesNonExpliquees() { return this.rpc<SortieNonExpliquee[]>("admin_sorties_non_expliquees", { p_n: 100 }); }
+  aTraiter() { return this.rpc<ATraiter>("admin_a_traiter"); }
   async annulerSortie(reference: string, note: string) {
     const r = await this.rpc<{ rendu: number; etat: string }>("admin_annuler_sortie", { p_reference: reference, p_note: note });
     return { rendu: Number(r.rendu), etat: String(r.etat) };

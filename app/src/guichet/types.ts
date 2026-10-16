@@ -118,6 +118,16 @@ export type Sortie = {
   creeLe: string;
   termineeLe: string | null;
   transferts: { etat: "en_attente" | "en_cours" | "faite" | "echouee"; montant: number; envoi: number; referenceOperateur: string | null }[];
+  /** « manuel » : l'équipe paie elle-même, puis donne le transaction ID */
+  mode: "totem" | "manuel";
+  nomBeneficiaire: string | null;
+  /** l'équipe a pris la demande en charge */
+  prisLe: string | null;
+  /** l'ID du paiement fait par l'équipe, et quand */
+  transactionId: string | null;
+  payeeLe: string | null;
+  /** le motif d'un refus */
+  motif: string | null;
 };
 
 export type Cote = "achat" | "vente";

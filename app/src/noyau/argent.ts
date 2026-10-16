@@ -31,8 +31,18 @@ export const FRAIS_CRYPTO: Record<"USDT" | "XAFe", number> = { USDT: 1, XAFe: 50
  */
 export const CRYPTO = { retraitsOuverts: true, depotsOuverts: true };
 
-/** Les sorties de XAF vers Mobile Money (« sortie.ouvertes ») : Glisil peut ouvrir par les dépôts seuls. */
-export const SORTIES = { ouvertes: true };
+/**
+ * Les sorties de XAF vers Mobile Money : ouvertes ou pas (« sortie.ouvertes »),
+ * et qui paie (« sortie.mode ») — TOTEM, qui compose le transfert tout seul,
+ * ou l'équipe, à la main, qui donne ensuite le transaction ID.
+ */
+export const SORTIES: { ouvertes: boolean; mode: "totem" | "manuel" } = { ouvertes: true, mode: "totem" };
+
+/** Les frais d'une sortie payée à la main : une seule fois sur le montant (pas de découpage par transfert). */
+export function fraisSortieManuelle(montant: number): { frais: number; envoi: number } {
+  const frais = Math.ceil(montant * FRAIS.sortie);
+  return { frais, envoi: montant - frais };
+}
 
 export const RESEAUX: Record<"bep20" | "trc20", { nom: string; chaine: string; confirmations: number; valide: (a: string) => boolean }> = {
   bep20: { nom: "BEP20", chaine: "BNB Smart Chain", confirmations: 15, valide: (a) => /^0x[0-9a-fA-F]{40}$/.test(a) },
@@ -269,6 +279,7 @@ export function appliquerParametres(p: unknown): boolean {
   if (typeof r.crypto?.retraits_ouverts === "boolean") CRYPTO.retraitsOuverts = r.crypto.retraits_ouverts;
   if (typeof r.crypto?.depots_ouverts === "boolean") CRYPTO.depotsOuverts = r.crypto.depots_ouverts;
   if (typeof r.sortie?.ouvertes === "boolean") SORTIES.ouvertes = r.sortie.ouvertes;
+  if (r.sortie?.mode === "totem" || r.sortie?.mode === "manuel") SORTIES.mode = r.sortie.mode;
   if (typeof r.marche?.ouvert === "boolean") MARCHE.ouvert = r.marche.ouvert;
   poser(RAPIDE, "marge", nombre(r.rapide?.marge, 0, 0.2));
   poser(RAPIDE, "validiteSecondes", nombre(r.rapide?.validite_secondes, 5, 120));

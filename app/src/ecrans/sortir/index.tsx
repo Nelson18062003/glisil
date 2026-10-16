@@ -1,20 +1,28 @@
 /*
  * Sortir des XAF : 1 Montant → 2 Destination → 3 Vérifier → 4 Code → 5 Envoyé.
- * Un numéro vérifié depuis 24 h, TOTEM compose le transfert, le reçu suit.
+ * Un numéro vérifié depuis 24 h. Deux façons de payer, selon « sortie.mode » :
+ * TOTEM compose le transfert tout seul ; ou l'équipe Glisil paie à la main,
+ * au nom que le client a donné, puis lui rend le transaction ID. Les XAFe
+ * sont mis de côté à la confirmation, détruits quand l'argent est parti.
  */
+import CheckCircleRounded from "@mui/icons-material/CheckCircleRounded";
+import UndoRounded from "@mui/icons-material/UndoRounded";
+import RadioButtonUncheckedRounded from "@mui/icons-material/RadioButtonUncheckedRounded";
+import AccountBalanceWalletOutlined from "@mui/icons-material/AccountBalanceWalletOutlined";
 import AddRounded from "@mui/icons-material/AddRounded";
 import ArrowDownwardRounded from "@mui/icons-material/ArrowDownwardRounded";
 import PhoneAndroidRounded from "@mui/icons-material/PhoneAndroidRounded";
 import ScheduleRounded from "@mui/icons-material/ScheduleRounded";
 import LockRounded from "@mui/icons-material/LockRounded";
-import { Box, Button, CircularProgress, Divider, Stack, Typography } from "@mui/material";
+import { Box, Button, CircularProgress, Divider, Stack, TextField, Typography } from "@mui/material";
 import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { useGuichet, useNumeros, useSoldes, useSortie } from "../../guichet";
-import { decouperSortie, FRAIS, montantValide, operateur as opDe } from "../../noyau/argent";
+import { useCompte, useGuichet, useNumeros, useOuvertures, useSoldes, useSortie } from "../../guichet";
+import { decouperSortie, FRAIS, fraisSortieManuelle, montantValide, operateur as opDe } from "../../noyau/argent";
 import { apresFrappe, duree, jourRelatif, montantDepuisSaisie, numeroEnTranches, pourcent, quand, xaf } from "../../noyau/format";
 import { parcours, useParcours } from "../../navigation/parcours";
 import { Amount, Attente, Card, Chips, Dot, EtatVide, FeuilleErreur, Keypad, Line, List, Points, Row, Screen, Squelette, Success } from "../../ui";
+import { tones } from "../../theme";
 import { useGesteUnique } from "../../ui/gestes";
 
 /* --------------------------------------------------------- 1 · montant */
@@ -24,6 +32,7 @@ export function SortirMontant() {
   const { data: soldes } = useSoldes();
   const { data: numeros } = useNumeros();
   const [etat, poser] = useParcours("sortir");
+  const ouvert = useOuvertures();
   const [saisie, setSaisie] = useState(etat.montant ? String(etat.montant) : "");
   const montant = montantDepuisSaisie(saisie);
   const dispo = soldes?.XAFe.disponible ?? 0;
@@ -88,6 +97,8 @@ export function SortirMontant() {
       <Box sx={{ flex: 1 }} />
       <Keypad onKey={(k) => setSaisie(apresFrappe(saisie, k))} />
       <Button variant="contained" disabled={!ok} onClick={() => { poser({ montant }); navigate("/sortir/destination"); }}>Continuer</Button>
+      {/* l'autre façon de sortir ses XAFe : vers son propre wallet, sur la chaîne */}
+      {ouvert.cryptoRetraits && <Button variant="text" startIcon={<AccountBalanceWalletOutlined />} component={Link} to="/crypto/retirer/XAFe/adresse">Ou vers mon wallet · BEP20 ou TRC20</Button>}
     </Screen>
   );
 }
@@ -130,11 +141,47 @@ export function SortirDestination() {
 export function SortirVerifier() {
   const navigate = useNavigate();
   const { data: numeros } = useNumeros();
-  const [etat] = useParcours("sortir");
+  const { data: compte } = useCompte();
+  const { sortieManuelle } = useOuvertures();
+  const [etat, poser] = useParcours("sortir");
   const numero = numeros?.find((n) => n.id === etat.numeroId);
+  /* le nom du compte Glisil d'abord : c'est presque toujours lui, et il doit l'être */
+  useEffect(() => { if (sortieManuelle && !etat.nom && compte?.nom) poser({ nom: compte.nom }); }, [sortieManuelle, etat.nom, compte?.nom, poser]);
   if (!etat.montant || !etat.numeroId) return <Navigate to="/sortir/montant" replace />;
   if (!numero) return <Screen title="Vérifiez" back="/sortir/destination"><Squelette hauteur={220} /></Screen>;
   const op = opDe(numero.operateur);
+
+  if (sortieManuelle) {
+    const { frais, envoi } = fraisSortieManuelle(etat.montant);
+    const nomOk = etat.nom.trim().length >= 2 && etat.nom.trim().length <= 80;
+    return (
+      <Screen title="Vérifiez" back="/sortir/destination">
+        <Card>
+          <Line label="Montant" value={`${xaf(etat.montant)} XAFe`} />
+          <Line label={`Frais (${pourcent(FRAIS.sortie)})`} value={xaf(frais)} />
+          <Divider />
+          <Line label="Vous recevez" value={`${xaf(envoi)} XAF`} strong />
+          <Line label="Vers" value={`${op.nom.split(" ")[0]} · ${numeroEnTranches(numero.numero)}`} />
+          <Line label="Payé par" value={<><Dot tone="amber" />l'équipe Glisil</>} />
+        </Card>
+        <TextField
+          label={`Nom exact du compte ${op.nom}`}
+          value={etat.nom}
+          onChange={(e) => poser({ nom: e.target.value.slice(0, 80) })}
+          fullWidth
+          autoComplete="name"
+          error={etat.nom.length > 0 && !nomOk}
+          helperText="Celui que l'opérateur affiche quand on vous envoie de l'argent. S'il ne correspond pas, la demande est refusée et vos XAFe vous reviennent."
+        />
+        <Typography variant="body2" textAlign="center">
+          Vos XAFe sont mis de côté dès votre confirmation. L'équipe Glisil vous paie, en général dans la journée, puis vous donne le transaction ID.
+        </Typography>
+        <Box sx={{ flex: 1 }} />
+        <Button variant="contained" startIcon={<LockRounded />} disabled={!nomOk} onClick={() => navigate("/sortir/code")}>Confirmer avec mon code</Button>
+      </Screen>
+    );
+  }
+
   const d = decouperSortie(etat.montant, op.plafondParTransfert);
 
   return (
@@ -163,16 +210,17 @@ export function SortirCode() {
   const guichet = useGuichet();
   const navigate = useNavigate();
   const [etat] = useParcours("sortir");
+  const { sortieManuelle } = useOuvertures();
   const [code, setCode] = useState("");
   const [faux, setFaux] = useState<string | null>(null);
-  const { lancer, enCours, erreur, effacerErreur } = useGesteUnique("wd", { montant: etat.montant, numeroId: etat.numeroId });
+  const { lancer, enCours, erreur, effacerErreur } = useGesteUnique("wd", { montant: etat.montant, numeroId: etat.numeroId, nom: etat.nom });
 
   if (!etat.montant || !etat.numeroId) return <Navigate to="/sortir/montant" replace />;
 
   const envoyer = (c: string) =>
     lancer(async (cle) => {
       try {
-        const s = await guichet.demanderSortie({ montant: etat.montant, numeroId: etat.numeroId!, cle, codeSecret: c });
+        const s = await guichet.demanderSortie({ montant: etat.montant, numeroId: etat.numeroId!, cle, codeSecret: c, ...(sortieManuelle ? { nom: etat.nom.trim() } : {}) });
         /* le parcours s'efface à l'arrivée sur « Envoyé », jamais ici : cet écran se redessinerait sans montant et repartirait au début */
         navigate(`/sortir/envoye/${s.reference}`, { replace: true });
       } catch (e) {
@@ -212,6 +260,16 @@ export function SortirEnvoye() {
   const op = opDe(s.operateur);
   const faits = s.transferts.filter((t) => t.etat === "faite").length;
 
+  if (s.etat === "annulee") {
+    return (
+      <Success tone="amber" icone={<UndoRounded sx={{ fontSize: 56 }} />} title="Demande refusée" amount={`${xaf(s.montantRendu || s.montant)} XAFe revenus`}
+        caption={s.motif ? `${s.motif} Vos XAFe sont de nouveau disponibles.` : "Vos XAFe sont de nouveau disponibles."}
+        primary={{ label: "Retour à l'accueil", to: "/" }} secondary={{ label: "Voir le détail", to: `/historique/${s.reference}` }} />
+    );
+  }
+
+  if (s.mode === "manuel" && s.etat !== "envoyee") return <SortieManuelleEnCours s={s} />;
+
   if (s.etat === "envoyee") {
     return (
       <Success title={`${xaf(s.montantEnvoye)} XAF envoyés`} amount={`au ${numeroEnTranches(s.numero)}`} caption={`${op.nom}, ${quand(s.termineeLe ?? s.creeLe)}${s.transferts.length > 1 ? `, en ${s.transferts.length} transferts` : ""}.`}
@@ -221,6 +279,7 @@ export function SortirEnvoye() {
           <Line label="XAFe détruits" value={xaf(s.montantEnvoye)} />
           <Line label="Frais" value={xaf(s.frais)} />
           <Line label="Référence" value={s.reference} mono />
+          {s.transactionId && <Line label={`Transaction ID ${op.nom.split(" ")[0]}`} value={s.transactionId} mono />}
           {s.transferts.filter((t) => t.referenceOperateur).map((t, i) => <Line key={i} label={`Transaction ID ${op.nom.split(" ")[0]}`} value={t.referenceOperateur!} mono />)}
         </Card>
       </Success>
@@ -247,6 +306,43 @@ export function SortirEnvoye() {
         <Typography variant="caption">Demandé {quand(s.creeLe)} · {duree((Date.now() - new Date(s.creeLe).getTime()) / 1000)} écoulées</Typography>
       </Box>
       <Button variant="text" component={Link} to="/" replace>Retour à l'accueil, je serai prévenu</Button>
+    </Screen>
+  );
+}
+
+/* Payée à la main : trois étapes que le client voit avancer — reçue, prise en charge, payée. */
+function SortieManuelleEnCours({ s }: { s: import("../../guichet/types").Sortie }) {
+  const etapes = [
+    { fait: true, titre: "Demande reçue", texte: `${quand(s.creeLe)} · vos XAFe sont mis de côté` },
+    { fait: Boolean(s.prisLe), titre: "Prise en charge", texte: s.prisLe ? `${quand(s.prisLe)} · l'équipe Glisil s'en occupe` : "l'équipe Glisil va s'en occuper" },
+    { fait: Boolean(s.payeeLe), titre: "Payée", texte: s.transactionId ? `Transaction ID ${s.transactionId}` : "vous recevrez le transaction ID" },
+  ];
+  return (
+    <Screen title="Votre sortie" back="/">
+      <Stack alignItems="center" gap={0.5} sx={{ py: 2 }}>
+        <Typography variant="body2">Vous allez recevoir</Typography>
+        <Typography variant="h4" color="primary.main">{xaf(s.montantXaf)} XAF</Typography>
+        <Typography variant="body2">au {numeroEnTranches(s.numero)}{s.nomBeneficiaire ? ` · ${s.nomBeneficiaire}` : ""}</Typography>
+      </Stack>
+      <Card>
+        {etapes.map((e, i) => (
+          <Stack key={e.titre} direction="row" gap={1.5} alignItems="flex-start" sx={{ py: 0.5 }}>
+            {e.fait ? <CheckCircleRounded sx={{ color: tones.green.fg }} /> : <RadioButtonUncheckedRounded sx={{ color: i === etapes.findIndex((x) => !x.fait) ? tones.amber.fg : "text.disabled" }} />}
+            <Stack sx={{ minWidth: 0 }}>
+              <Typography fontWeight={600}>{e.titre}</Typography>
+              <Typography variant="body2" sx={{ wordBreak: "break-word" }}>{e.texte}</Typography>
+            </Stack>
+          </Stack>
+        ))}
+      </Card>
+      <Card>
+        <Line label="XAFe mis de côté" value={xaf(s.montant)} />
+        <Line label="Frais" value={xaf(s.frais)} />
+        <Line label="Référence" value={s.reference} mono />
+      </Card>
+      <Typography variant="body2" textAlign="center">Cet écran avance tout seul. Vous êtes aussi prévenu par une notification.</Typography>
+      <Box sx={{ flex: 1 }} />
+      <Button variant="contained" component={Link} to="/" replace>Retour à l'accueil</Button>
     </Screen>
   );
 }

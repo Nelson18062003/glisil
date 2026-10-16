@@ -1,5 +1,6 @@
 /*
- * Les Sorties : ce que TOTEM compose, transfert par transfert. Une commande
+ * Les Sorties : en haut, les remboursements à payer à la main (0014) ; puis
+ * la liste de toutes les sorties. Une sortie TOTEM se suit transfert par transfert. Une commande
  * réclamée par un boîtier qui s'est tu se libère ; une commande en attente
  * d'un boîtier muet se réaffecte, ou la sortie s'annule (ses XAFe reviennent) ;
  * jamais une commande faite, ni une commande en train d'être composée.
@@ -11,6 +12,7 @@ import { useGuichet, useRafraichir, useSorties, useTerminaux } from "../guichet"
 import { heure, jourRelatif, numeroEnTranches, xaf } from "../noyau/format";
 import { useSession } from "../session/session";
 import { Coquille, Dialogue, Erreur, Etat, Tableau } from "../ui";
+import { APayer, PuceDit } from "./sorties-manuelles";
 
 export function Sorties() {
   const guichet = useGuichet();
@@ -42,11 +44,12 @@ export function Sorties() {
 
   return (
     <Coquille titre="Sorties de XAF">
-      <Stack direction="row" gap={1}>
+      <Stack direction="row" gap={1} flexWrap="wrap">
         {[["Toutes", null], ["En attente", "en_attente"], ["En cours", "en_cours"], ["Envoyées", "envoyee"], ["Partielles", "partielle"], ["Échouées", "echouee"], ["Annulées", "annulee"]].map(([l, v]) => (
           <Chip key={String(v)} label={l as string} onClick={() => setEtat(v as string | null)} color={etat === v ? "primary" : undefined} variant={etat === v ? "filled" : "outlined"} />
         ))}
       </Stack>
+      <APayer />
       <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
       {fait && <Typography variant="body2" sx={{ bgcolor: "#CDEFD9", color: "#06331B", px: 2, py: 1, borderRadius: 3 }} onClick={() => setFait(null)}>{fait}</Typography>}
       <Tableau
@@ -59,7 +62,14 @@ export function Sorties() {
           `${xaf(s.montant_envoye)} XAF`,
           s.montant_rendu > 0 ? `${xaf(s.montant_rendu)} XAFe` : "—",
           <Stack key="t" gap={0.5}>
-            <Stack direction="row" gap={0.5}>{s.transferts.map((t) => <Etat key={t.id} valeur={t.etat} />)}</Stack>
+            {s.mode === "manuel" ? (
+              <Stack gap={0.5}>
+                <Typography variant="caption">à la main{s.payee_par ? ` · payée par ${s.payee_par}` : ""}{s.confirmee_par ? ` · confirmée par ${s.confirmee_par}` : ""}</Typography>
+                {s.transaction_id && <Typography variant="caption" fontFamily="Roboto Mono, monospace">{s.transaction_id}</Typography>}
+                {s.motif && <Typography variant="caption" color="error">{s.motif}</Typography>}
+                <PuceDit r={s.rapprochement} />
+              </Stack>
+            ) : <Stack direction="row" gap={0.5}>{s.transferts.map((t) => <Etat key={t.id} valeur={t.etat} />)}</Stack>}
             <Collapse in={ouverte === s.reference}>
               <Stack gap={0.5} sx={{ mt: 1 }}>
                 {s.transferts.map((t) => (

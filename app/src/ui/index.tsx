@@ -8,6 +8,7 @@ import ArrowBackRounded from "@mui/icons-material/ArrowBackRounded";
 import ArrowDownwardRounded from "@mui/icons-material/ArrowDownwardRounded";
 import BackspaceOutlined from "@mui/icons-material/BackspaceOutlined";
 import CheckRounded from "@mui/icons-material/CheckRounded";
+import PriorityHighRounded from "@mui/icons-material/PriorityHighRounded";
 import ChevronRightRounded from "@mui/icons-material/ChevronRightRounded";
 import CloseRounded from "@mui/icons-material/CloseRounded";
 import HistoryRounded from "@mui/icons-material/HistoryRounded";
@@ -352,16 +353,18 @@ export function Dot({ tone }: { tone: Tone }) {
   return <Box component="span" sx={{ width: 10, height: 10, borderRadius: 5, bgcolor: tones[tone].fg, display: "inline-block", mr: 1 }} />;
 }
 
+/** L'écran de fin d'un geste. La coche ne dit QUE la réussite : un échec ou un refus a son signe, jamais une coche. */
 export function Success({
-  title, amount, caption, children, primary, secondary, tone = "green",
+  title, amount, caption, children, primary, secondary, tone = "green", icone,
 }: {
-  title: string; amount: string; caption: string; children?: ReactNode; primary: { label: string; to: string }; secondary?: { label: string; to: string }; tone?: Tone;
+  title: string; amount: string; caption: string; children?: ReactNode; primary: { label: string; to: string }; secondary?: { label: string; to: string }; tone?: Tone; icone?: ReactNode;
 }) {
+  const signe = icone ?? (tone === "green" ? <CheckRounded sx={{ fontSize: 56 }} /> : tone === "red" ? <CloseRounded sx={{ fontSize: 56 }} /> : <PriorityHighRounded sx={{ fontSize: 56 }} />);
   return (
     <Screen>
       <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, textAlign: "center" }}>
         <Avatar sx={{ width: 96, height: 96, bgcolor: tones[tone].bg, color: tone === "green" ? "primary.main" : tones[tone].fg }}>
-          <CheckRounded sx={{ fontSize: 56 }} />
+          {signe}
         </Avatar>
         <Typography variant="h6">{title}</Typography>
         <Typography variant="h4" color={tone === "green" ? "primary.main" : tones[tone].fg}>{amount}</Typography>

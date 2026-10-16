@@ -472,6 +472,51 @@ try {
   }
   await capturer("reference-introuvable");
 
+  /* --------------------------- rembourser en XAF, payé à la main (0014) */
+  etape("Sortir en XAF quand l'équipe paie à la main : le nom du compte demandé, trois étapes qui avancent, le transaction ID rendu ; un refus rend les XAFe avec son motif");
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem("xafe-sortie-manuelle")) globalThis.__xafeEpreuve = { parametres: { sortie: { ouvertes: true, mode: "manuel" } } };
+  });
+  await page.evaluate(() => sessionStorage.setItem("xafe-sortie-manuelle", "1"));
+  const ouvrirEnManuel = async (adresse) => {
+    await page.goto(`${BASE}${adresse}`);
+    await page.waitForTimeout(300);
+    if (await page.getByText("Votre code secret pour continuer").count()) await taper(["1", "2", "3", "4"]);
+  };
+  const demanderEnManuel = async (nom) => {
+    await ouvrirEnManuel("/sortir/montant");
+    await taper(["5", "0", "000"]);
+    await page.getByRole("button", { name: "Continuer" }).click();
+    await page.getByText("6 77 12 34 56").click();
+    await page.getByRole("button", { name: "Continuer" }).click();
+    const champ = page.getByLabel(/Nom exact du compte/);
+    await champ.waitFor();
+    exiger((await champ.inputValue()).trim().length >= 2, "le nom du compte Glisil est proposé d'avance");
+    exiger(await page.getByText("l'équipe Glisil", { exact: false }).count() >= 1, "l'écran dit qui paie");
+    if (nom !== null) await champ.fill(nom);
+  };
+  await demanderEnManuel(null);
+  await capturer("sortir-manuel-verifier");
+  await page.getByLabel(/Nom exact du compte/).fill(" ");
+  exiger(await page.getByRole("button", { name: "Confirmer avec mon code" }).isDisabled(), "sans nom, on ne confirme pas");
+  await page.getByLabel(/Nom exact du compte/).fill("Nelson Soh");
+  await page.getByRole("button", { name: "Confirmer avec mon code" }).click();
+  await taper(["1", "2", "3", "4"]);
+  await page.waitForURL(/\/sortir\/envoye\/XAFe-WD-\d+$/);
+  await voir("Demande reçue");
+  await voir("vos XAFe sont mis de côté");
+  await capturer("sortir-manuel-en-cours");
+  await voir("XAF envoyés", 25_000);
+  await voir("Transaction ID", 5_000);
+  await capturer("sortir-manuel-payee");
+  await demanderEnManuel("Nelson refus");
+  await page.getByRole("button", { name: "Confirmer avec mon code" }).click();
+  await taper(["1", "2", "3", "4"]);
+  await voir("Demande refusée", 25_000);
+  await voir("ne correspond pas");
+  await capturer("sortir-manuel-refusee");
+  await page.evaluate(() => sessionStorage.removeItem("xafe-sortie-manuelle"));
+
   /* ---------------------------------------- ouvrir par les dépôts seuls */
   etape("Ouvrir par les dépôts seuls : sorties, marché, achat rapide et crypto disent « bientôt » AVANT un montant tapé ; l'entrée reste ouverte");
   /* les paramètres que l'équipe poserait, lus par le guichet de démonstration dès le chargement */

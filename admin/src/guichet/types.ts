@@ -43,8 +43,25 @@ export type Retenue = {
 export type Transfert = { id: number; terminal: string; etat: string; montant_xafe: number; montant_envoye: number; reprises: number; resultat: string | null; reference_operateur: string | null; reclamee_le: string | null };
 export type Sortie = {
   reference: string; etat: string; operateur: string; numero: string; montant: number; frais: number; montant_xaf: number; montant_envoye: number; montant_rendu: number;
-  cree_le: string; terminee_le: string | null; transferts: Transfert[]; compte: { id: string; telephone: string; nom: string | null };
+  cree_le: string; terminee_le: string | null; transferts: Transfert[]; compte: { id: string; telephone: string; nom: string | null; palier?: number };
+  /** « manuel » (0014) : l'équipe paie elle-même, puis donne le transaction ID */
+  mode?: "totem" | "manuel";
+  /** le nom du compte Mobile Money, tel que le client l'a écrit */
+  nom_beneficiaire?: string | null;
+  pris_le?: string | null; pris_par?: string | null;
+  transaction_id?: string | null; preuve?: string | null;
+  payee_le?: string | null; payee_par?: string | null; payee_par_moi?: boolean;
+  confirmee_par?: string | null;
+  /** payée, attend qu'une AUTRE personne confirme (au-delà du seuil) */
+  a_confirmer?: boolean;
+  motif?: string | null;
+  /** le SMS que la puce a reçu pour ce paiement : concorde, écart, ou absent */
+  rapprochement?: Rapprochement | null;
 };
+export type Rapprochement = { etat: "concorde" | "ecart" | "absent"; montant?: number; numero?: string | null; terminal?: string; emis_le?: string | null; texte?: string | null };
+/** Ce que les puces ont vu partir et qu'aucune sortie n'explique. */
+export type SortieNonExpliquee = { id: number; terminal: string; operateur: string; float_numero: string | null; numero: string | null; montant: number | null; transaction_id: string | null; texte: string | null; emis_le: string | null };
+export type ATraiter = { sorties_manuelles: number; sorties_a_confirmer: number; montant_a_payer: number; sorties_non_expliquees: number };
 export type Client = {
   id: string; telephone: string; nom: string | null; entreprise: string | null; palier: number; verification_en_cours: "identite" | "entreprise" | null;
   cree_le: string; desactive_le: string | null; xafe: number; usdt: number;

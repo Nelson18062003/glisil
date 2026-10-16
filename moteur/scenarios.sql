@@ -1857,6 +1857,104 @@ begin
 end $$;
 rollback;
 
+-- 11.36 · le remboursement en XAF, fait à la main (0014). Les XAFe sont mis
+-- de côté à la demande ; l'équipe paie et donne l'ID ; le SMS de la puce le
+-- prouve ; au-delà d'un seuil, une AUTRE personne confirme ; payé, ça ne se
+-- refuse plus ; refusé avant, les XAFe reviennent.
+begin;
+insert into numeros (compte_id, operateur, numero, verifie_le, actif_des)
+values ('11111111-1111-1111-1111-111111111111', 'mtn', '677444001', now() - interval '3 days', now() - interval '2 days');
+do $$
+declare
+  a   uuid := '11111111-1111-1111-1111-111111111111';
+  nid uuid := (select id from numeros where numero = '677444001');
+  r jsonb; ref1 text; ref2 text; ref3 text;
+  dispo0 numeric; bloque0 numeric; detruit0 numeric; taux numeric := (parametre('frais') ->> 'sortie')::numeric;
+begin
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);  -- Nelson, super admin
+  begin perform admin_modifier_parametre('sortie', parametre('sortie') || '{"mode": "a_la_main"}'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
+  perform admin_modifier_parametre('sortie', parametre('sortie') || '{"ouvertes": true, "mode": "manuel", "seuil_deux_personnes": 100000}');
+  update terminaux set vu_le = now() where id = 'akwa-1';
+
+  perform set_config('xafe.compte', a::text, true);
+  assert parametres_publics() -> 'sortie' ->> 'mode' = 'manuel', 'l''écran sait que l''équipe paie';
+  dispo0 := solde(a, 'XAFe', 'dispo'); bloque0 := solde(a, 'XAFe', 'bloque');
+  detruit0 := (select coalesce(sum(montant), 0) from emissions where sens = 'destruction');
+  begin perform demander_sortie(50000, nid, 'm-1', '1234'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'nom du bénéficiaire invalide', sqlerrm; end;
+
+  -- A · demandée : mise de côté tout de suite, aucun transfert pour un boîtier
+  r := demander_sortie(50000, nid, 'm-1', '1234', '  Alice   Mballa ');
+  ref1 := r ->> 'reference';
+  assert r ->> 'mode' = 'manuel' and r ->> 'etat' = 'en_attente' and r ->> 'nom_beneficiaire' = 'Alice Mballa', r;
+  assert solde(a, 'XAFe', 'dispo') = dispo0 - 50000 and solde(a, 'XAFe', 'bloque') = bloque0 + 50000, 'mis de côté à la demande';
+  assert not exists (select 1 from commandes k join sorties s on s.id = k.sortie_id where s.reference = ref1), 'aucune commande pour TOTEM';
+  assert (demander_sortie(50000, nid, 'm-1', '1234', 'Alice Mballa') ->> 'deja')::boolean, 'le même geste rejoué ne demande pas deux fois';
+
+  -- B · le support ne paie pas ; l'opérateur prend, le SMS de la puce arrive, il paie : sous le seuil, c'est clos
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000003', true);
+  begin perform admin_payer_sortie(ref1, 'MP261016.1200.A00001'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'accès non autorisé', sqlerrm; end;
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000002', true);
+  assert admin_prendre_sortie(ref1) ->> 'etat' = 'en_cours';
+  assert (admin_a_traiter() ->> 'sorties_manuelles')::int >= 1;
+  r := totem_sms_sortant('akwa-1', 7001, 'mtn', '677000000', '677444001', 50000 - ceil(50000 * taux), 'MP261016.1200.A00001',
+                         'Transfert de 49 750 FCFA a ALICE MBALLA (677444001) reussi. ID: MP261016.1200.A00001', now());
+  assert r ->> 'resultat' = 'constatee' and not (r ? 'sortie'), 'le SMS arrive avant l''ID tapé : rien encore à quoi le rattacher ' || r::text;
+  assert (totem_sms_sortant('akwa-1', 7001, 'mtn', '677000000', '677444001', 50000 - ceil(50000 * taux), 'MP261016.1200.A00001',
+                            'Transfert de 49 750 FCFA a ALICE MBALLA (677444001) reussi. ID: MP261016.1200.A00001', now()) ->> 'deja')::boolean,
+         'un SMS relu après une coupure n''est compté qu''une fois';
+  begin perform admin_payer_sortie(ref1, 'MP261016.1200.A00001', 'ailleurs/capture.png'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'capture invalide', sqlerrm; end;
+  begin perform admin_payer_sortie(ref1, '12'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'transaction ID invalide', sqlerrm; end;
+  r := admin_payer_sortie(ref1, 'mp261016.1200.a00001', ref1 || '/capture.png');
+  assert r ->> 'etat' = 'envoyee' and r -> 'rapprochement' ->> 'etat' = 'concorde' and not (r ? 'a_confirmer'), r;
+  assert solde(a, 'XAFe', 'bloque') = bloque0, 'les XAFe mis de côté sont partis';
+  assert (select s.reference from sorties_constatees k join sorties s on s.id = k.sortie_id where k.source_id = 7001) = ref1, 'le SMS est rattaché au paiement';
+  assert (select coalesce(sum(montant), 0) from emissions where sens = 'destruction') = detruit0 + 50000 - ceil(50000 * taux), 'détruits : ce qui est parti en XAF';
+  begin perform admin_refuser_sortie(ref1, 'trop tard'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'cette sortie est déjà close', sqlerrm; end;
+
+  -- C · au-dessus du seuil : le même ID ne prouve pas deux sorties ; payé, il attend une AUTRE personne ; il ne se refuse plus
+  perform set_config('xafe.compte', a::text, true);
+  ref2 := demander_sortie(200000, nid, 'm-2', '1234', 'Alice Mballa') ->> 'reference';
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000002', true);
+  begin perform admin_payer_sortie(ref2, 'MP261016.1200.A00001'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'ce transaction ID prouve déjà une autre sortie', sqlerrm; end;
+  r := admin_payer_sortie(ref2, 'MP261016.1300.B00002');
+  assert (r ->> 'a_confirmer')::boolean and r ->> 'etat' = 'en_cours' and r -> 'rapprochement' ->> 'etat' = 'absent', r;
+  assert solde(a, 'XAFe', 'bloque') = bloque0 + 200000, 'pas encore détruits : la preuve n''a vu qu''un œil';
+  begin perform admin_confirmer_sortie(ref2); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'une autre personne confirme', sqlerrm; end;
+  begin perform admin_refuser_sortie(ref2, 'je me ravise'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'un paiement est enregistré', sqlerrm; end;
+  perform totem_sms_sortant('akwa-1', 7002, 'mtn', '677000000', '677444001', 150000, 'MP261016.1300.B00002', 'Transfert de 150 000 FCFA…', now());
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);
+  r := admin_confirmer_sortie(ref2);
+  assert r ->> 'etat' = 'envoyee' and r -> 'rapprochement' ->> 'etat' = 'ecart', 'le SMS dit 150 000 : l''écart se montre ' || r::text;
+
+  -- D · refusée avant paiement : tout revient, avec le motif
+  perform set_config('xafe.compte', a::text, true);
+  ref3 := demander_sortie(10000, nid, 'm-3', '1234', 'Alice Mballa') ->> 'reference';
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000002', true);
+  begin perform admin_refuser_sortie(ref3, ' '); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'un motif est exigé', sqlerrm; end;
+  r := admin_refuser_sortie(ref3, 'le nom MoMo ne correspond pas au compte');
+  assert r ->> 'etat' = 'annulee' and r ->> 'motif' like 'le nom MoMo%', r;
+  assert solde(a, 'XAFe', 'dispo') = dispo0 - 250000 and solde(a, 'XAFe', 'bloque') = bloque0, 'les 10 000 sont revenus';
+
+  -- E · ce que la puce a vu partir et que rien n'explique se voit
+  perform totem_sms_sortant('akwa-1', 7003, 'mtn', '677000000', '677999000', 30000, 'MP261016.1400.C00003', 'Transfert de 30 000 FCFA…', now());
+  r := admin_sorties_non_expliquees();
+  assert jsonb_array_length(r) = 1 and r -> 0 ->> 'transaction_id' = normaliser_transaction_id('MP261016.1400.C00003'), r;
+  assert (admin_a_traiter() ->> 'sorties_non_expliquees')::int = 1;
+  assert total('XAFe') = circulation(), format('XAFe : %s en soldes, %s en circulation', total('XAFe'), circulation());
+  raise notice '✓ 11.36 remboursement manuel : mis de côté à la demande, payé avec un ID qui ne sert qu''une fois, prouvé par le SMS de la puce, confirmé par une seconde personne au-delà du seuil, jamais refusé après paiement ; refusé avant, tout revient';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

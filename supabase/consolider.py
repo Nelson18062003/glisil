@@ -40,6 +40,8 @@ TEMOINS = {
     "0012_garde_fous.sql": ("false", "rejouable telle quelle"),
     # 0013 : colonnes « if not exists », anciennes signatures retirées « if exists », fonctions « or replace ».
     "0013_depot_declare.sql": ("false", "rejouable telle quelle"),
+    # 0014 : colonnes et index « if not exists », fonctions « or replace », seau et politiques re-posés.
+    "0014_sorties_manuelles.sql": ("false", "rejouable telle quelle"),
 }
 
 

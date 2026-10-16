@@ -63,6 +63,8 @@ function sortie(j: J): Sortie {
     reference: s(j.reference), operateur: j.operateur as IdOperateur, numero: s(j.numero), montant: n(j.montant), frais: n(j.frais), montantXaf: n(j.montant_xaf),
     montantEnvoye: n(j.montant_envoye), montantRendu: n(j.montant_rendu), etat: j.etat as Sortie["etat"], creeLe: s(j.cree_le), termineeLe: sn(j.terminee_le),
     transferts: ((Array.isArray(j.transferts) ? j.transferts : []) as J[]).map((t) => ({ etat: t.etat as Sortie["transferts"][number]["etat"], montant: n(t.montant_xafe), envoi: n(t.montant_envoye), referenceOperateur: sn(t.reference_operateur) })),
+    mode: j.mode === "manuel" ? "manuel" : "totem", nomBeneficiaire: sn(j.nom_beneficiaire), prisLe: sn(j.pris_le),
+    transactionId: sn(j.transaction_id), payeeLe: sn(j.payee_le), motif: sn(j.motif),
   };
 }
 function ordre(j: J): Ordre {
@@ -267,8 +269,8 @@ export class GuichetSupabase implements Guichet {
   }
   async renvoyerCodeNumero(id: string) { return numero(await this.rpc<J>("renvoyer_code_numero", { p_id: id })); }
   async retirerNumero({ id, codeSecret }: { id: string; codeSecret: string }) { await this.rpc("retirer_numero", { p_id: id, p_code: codeSecret }); }
-  async demanderSortie({ montant, numeroId, cle, codeSecret }: { montant: number; numeroId: string; cle: string; codeSecret: string }) {
-    return sortie(await this.rpc<J>("demander_sortie", { p_montant: montant, p_numero_id: numeroId, p_cle: cle, p_code: codeSecret }));
+  async demanderSortie({ montant, numeroId, cle, codeSecret, nom }: { montant: number; numeroId: string; cle: string; codeSecret: string; nom?: string }) {
+    return sortie(await this.rpc<J>("demander_sortie", { p_montant: montant, p_numero_id: numeroId, p_cle: cle, p_code: codeSecret, ...(nom ? { p_nom: nom } : {}) }));
   }
   async sortie(reference: string) { return sortie(trouve(await this.rpc<J>("ma_sortie", { p_reference: reference }), "sortie inconnue")); }
 

@@ -60,6 +60,8 @@ export function useOuvertures() {
     /* tant que la première lecture n'est pas revenue, on ne sait pas : ni « ouvert », ni « bientôt » */
     pret: !isPending,
     sorties: SORTIES.ouvertes,
+    /* l'équipe paie à la main : on demande le nom du compte, et on ne promet pas « 40 secondes » */
+    sortieManuelle: SORTIES.mode === "manuel",
     marche: MARCHE.ouvert,
     rapide: RAPIDE.ouvert && MARCHE.ouvert,
     cryptoDepots: CRYPTO.depotsOuverts,

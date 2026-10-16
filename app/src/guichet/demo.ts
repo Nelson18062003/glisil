@@ -7,7 +7,7 @@
  * vit. Il tourne quand l'application n'a pas de projet Supabase configuré.
  * Il n'a aucune valeur comptable : c'est une maquette qui répond.
  */
-import { achatMax, arrondi2, coutAuCarnet, decouperSortie, devisSurLeCarnet, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide, RAPIDE } from "../noyau/argent";
+import { achatMax, arrondi2, coutAuCarnet, decouperSortie, devisSurLeCarnet, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide, RAPIDE, SORTIES, fraisSortieManuelle } from "../noyau/argent";
 import { ErreurMoteur } from "../noyau/erreurs";
 import { emailNormalise, emailValide } from "../noyau/identite";
 import { numeroSaisi, operateurDuNumero, transactionIdNormalise, xaf as xafDe } from "../noyau/format";
@@ -29,6 +29,7 @@ export const EMAIL_VITRINE = "demo@glisil.com";
 type Tache =
   | { quand: number; type: "sms"; reference: string; declarationId: string }
   | { quand: number; type: "transfert"; reference: string; index: number; etape: "en_cours" | "faite" | "echouee" }
+  | { quand: number; type: "manuelle"; reference: string; etape: "prise" | "payee" | "refusee" }
   | { quand: number; type: "retrait"; reference: string }
   | { quand: number; type: "expiration"; reference: string };
 
@@ -275,6 +276,7 @@ export class GuichetDemo implements Guichet {
         bouge = true;
         if (t.type === "sms") this.smsRecu(d, t.reference, t.declarationId);
         else if (t.type === "transfert") this.transfertAvance(d, t.reference, t.index, t.etape);
+        else if (t.type === "manuelle") this.manuelleAvance(d, t.reference, t.etape);
         else if (t.type === "retrait") this.retraitParti(d, t.reference);
         else if (t.type === "expiration") this.expirer(d, t.reference);
       }
@@ -341,6 +343,29 @@ export class GuichetDemo implements Guichet {
         s.etat === "envoyee" ? `${s.montantEnvoye.toLocaleString("fr-FR")} XAF envoyés au ${s.numero}.` : `${s.montantRendu.toLocaleString("fr-FR")} XAFe sont revenus sur votre compte.`,
         `/historique/${reference}`);
     }
+  }
+
+  /* la fausse équipe : elle prend la demande, puis paie — ou refuse, pour un nom qui finit par « refus », qu'on voie aussi ce chemin-là */
+  private manuelleAvance(d: Dossier, reference: string, etape: "prise" | "payee" | "refusee") {
+    const s = d.sorties.find((x) => x.reference === reference);
+    if (!s || !["en_attente", "en_cours"].includes(s.etat)) return;
+    if (etape === "prise") { s.etat = "en_cours"; s.prisLe = iso(); return; }
+    if (etape === "payee") {
+      s.transactionId = `MP${new Date().toISOString().slice(2, 10).replace(/-/g, "")}.${String(Math.floor(1000 + Math.random() * 8999))}.A${String(Math.floor(10000 + Math.random() * 89999))}`;
+      s.payeeLe = iso();
+      this.mouvement(d, "XAFe", 0, -s.montant);
+      s.montantEnvoye = s.montantXaf;
+      s.etat = "envoyee";
+      s.termineeLe = iso();
+      this.notifier(d, "Sortie envoyée", `${s.montantXaf.toLocaleString("fr-FR")} XAF envoyés au ${s.numero}. Transaction ID : ${s.transactionId}.`, `/historique/${reference}`);
+      return;
+    }
+    this.mouvement(d, "XAFe", s.montant, -s.montant);
+    s.montantRendu = s.montant;
+    s.etat = "annulee";
+    s.motif = "Le nom du compte Mobile Money ne correspond pas à celui de votre compte Glisil.";
+    s.termineeLe = iso();
+    this.notifier(d, "Sortie refusée", `${s.montant.toLocaleString("fr-FR")} XAFe sont revenus sur votre compte.`, `/historique/${reference}`);
   }
 
   private retraitParti(d: Dossier, reference: string) {
@@ -687,7 +712,7 @@ export class GuichetDemo implements Guichet {
     this.emettre();
   }
 
-  async demanderSortie({ montant, numeroId, cle, codeSecret }: { montant: number; numeroId: string; cle: string; codeSecret: string }) {
+  async demanderSortie({ montant, numeroId, cle, codeSecret, nom }: { montant: number; numeroId: string; cle: string; codeSecret: string; nom?: string }) {
     const d = this.dossier();
     const deja = d.sorties.find((x) => (x as unknown as { cle?: string }).cle === cle);
     if (deja) return copie(deja);
@@ -702,12 +727,32 @@ export class GuichetDemo implements Guichet {
       if (jour + montant > p.sortieJour) throw new ErreurMoteur("plafond du palier atteint", `${p.sortieJour} XAF par jour`);
     }
     this.exigerCode(d, codeSecret);
+    if (SORTIES.mode === "manuel") {
+      /* comme la base : le nom du compte exigé, mis de côté tout de suite, aucun transfert pour un boîtier */
+      const nomPropre = (nom ?? "").trim().replace(/\s+/g, " ");
+      if (nomPropre.length < 2 || nomPropre.length > 80) throw new ErreurMoteur("nom du bénéficiaire invalide", "le nom exact du compte Mobile Money qui reçoit");
+      const { frais, envoi } = fraisSortieManuelle(montant);
+      if (envoi <= 0) throw new ErreurMoteur("montant trop petit");
+      this.mouvement(d, "XAFe", -montant, montant);
+      const m: Sortie & { cle: string } = {
+        reference: this.reference(d, "XAFe-WD-"), operateur: n.operateur, numero: n.numero, montant, frais, montantXaf: envoi,
+        montantEnvoye: 0, montantRendu: 0, etat: "en_attente", creeLe: iso(), termineeLe: null, transferts: [], cle,
+        mode: "manuel", nomBeneficiaire: nomPropre, prisLe: null, transactionId: null, payeeLe: null, motif: null,
+      };
+      d.sorties.unshift(m);
+      const refus = /refus$/i.test(nomPropre);
+      this.planifier(d, { type: "manuelle", reference: m.reference, etape: "prise", quand: maintenant() + 4000 });
+      this.planifier(d, { type: "manuelle", reference: m.reference, etape: refus ? "refusee" : "payee", quand: maintenant() + 12000 });
+      this.emettre();
+      return copie(m);
+    }
     const dec = decouperSortie(montant, opDe(n.operateur).plafondParTransfert);
     this.mouvement(d, "XAFe", -montant, montant);
     const s: Sortie & { cle: string } = {
       reference: this.reference(d, "XAFe-WD-"), operateur: n.operateur, numero: n.numero, montant, frais: dec.frais, montantXaf: dec.envoi,
       montantEnvoye: 0, montantRendu: 0, etat: "en_attente", creeLe: iso(), termineeLe: null,
       transferts: dec.transferts.map((t) => ({ etat: "en_attente" as const, montant: t.montant, envoi: t.envoi, referenceOperateur: null })), cle,
+      mode: "totem", nomBeneficiaire: null, prisLe: null, transactionId: null, payeeLe: null, motif: null,
     };
     d.sorties.unshift(s);
     /* le faux TOTEM : un numéro qui finit par 99 échoue, pour qu'on voie aussi ce chemin-là */

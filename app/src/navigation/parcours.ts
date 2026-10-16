@@ -9,7 +9,8 @@ import type { Actif, Cote, IdOperateur, Reseau, TypeOrdre } from "../guichet/typ
 export type Parcours = {
   /** montant : ce que le client compte envoyer — une indication, le SMS fait foi */
   entrer: { operateur: IdOperateur | null; montant: number };
-  sortir: { montant: number; numeroId: string | null };
+  /** nom : le nom exact du compte Mobile Money, quand l'équipe paie à la main */
+  sortir: { montant: number; numeroId: string | null; nom: string };
   crypto: { actif: Actif; reseau: Reseau; adresse: string; montant: number };
   marche: { cote: Cote; type: TypeOrdre; prix: string; quantite: string };
   /** où revenir après un sous-parcours (ajouter un numéro depuis Sortir) */
@@ -18,7 +19,7 @@ export type Parcours = {
 
 const INITIAL: Parcours = {
   entrer: { operateur: null, montant: 0 },
-  sortir: { montant: 0, numeroId: null },
+  sortir: { montant: 0, numeroId: null, nom: "" },
   crypto: { actif: "USDT", reseau: "bep20", adresse: "", montant: 0 },
   marche: { cote: "achat", type: "limite", prix: "", quantite: "" },
   retour: null,
