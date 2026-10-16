@@ -58,3 +58,42 @@ de dépôt.
 
 Repris du contrat cXAF de 2025 (`Nelson18062003/cxaf-token`), réécrit en
 français, avec le gel d'adresse en plus et une erreur de syntaxe en moins.
+
+## Le logo et la fiche du jeton
+
+**Le logo n'est pas dans le contrat.** Un ERC-20 ou un TRC-20 ne porte que son
+nom, son symbole et ses décimales. Les explorateurs et les wallets gardent
+chacun leur propre registre de logos, rempli à la demande de l'émetteur. Tant
+que personne ne le demande, ils affichent une pastille grise et « unknown
+token ».
+
+Les fichiers sont produits par `design/marque/jeton.py` et
+`design/marque/jeton-png.mjs` (dans `design/marque/xafe/`). Ils sont publiés,
+avec la fiche `xafe.json` (description, site, e-mail, adresses des contrats),
+sous `https://app.glisil.com/xafe/`. Les registres demandent un lien public :
+c'est celui-là.
+
+| Où | Ce qu'il faut | Le fichier |
+|---|---|---|
+| **BscScan** | 1. code source vérifié ; 2. propriété de l'adresse prouvée (signature depuis le wallet admin) ; 3. formulaire « Token Update » ; e-mail à `@glisil.com`, site en ligne qui explique le jeton ; gratuit | `xafe-jeton.svg` (32×32) ou `xafe-64.png` |
+| **Tronscan** | connecter le wallet **émetteur** (TronLink), page du jeton → mettre à jour ; une signature, sans frais ni transaction | `xafe-100.png` (100×100, 200 Ko au plus) |
+| **Trust Wallet** | demande sur assets.trustwallet.com, frais non remboursables ; au moins 10 000 détenteurs et 15 000 transactions | `xafe-256.png` (256×256) |
+| **MetaMask** | le logo vient des listes de jetons (CoinGecko…) : un jeton coté | `xafe-512.png` |
+
+**Sur les réseaux d'essai**, rien de tout cela ne s'affiche vraiment :
+BscScan et les wallets ne montrent les logos que sur le réseau principal. Les
+étapes se font une fois le jeton déployé sur BNB Smart Chain et Tron
+principaux, depuis le wallet matériel qui l'administre.
+
+Ce qui se prépare dès maintenant, la vérification du code sur le réseau
+d'essai (les arguments sont ceux du déploiement, relus sur la chaîne) :
+
+```sh
+CLE_BSCSCAN=… npx hardhat verify --network bsctestnet \
+  0x750E774368240063BD5CF52b30b91183Efa4dAf3 \
+  0x3d24e52b2Ea0A0cAb50163e494384a7f6027582E 50000000000000
+```
+
+Sur Tron, la vérification passe par le formulaire « Contract Verification »
+de Tronscan : téléverser `contracts/XAFe.sol` et ses imports, compilateur
+0.8.28, optimiseur à 200 exécutions.
