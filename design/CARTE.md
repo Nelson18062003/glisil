@@ -2,7 +2,7 @@
 
 *Tirée du code par `app/scripts/carte.mjs` — ne pas modifier à la main. Relancer `node scripts/carte.mjs` après tout changement de navigation.*
 
-47 écrans · 127 passages (sans compter la barre d'onglets, présente sur les quatre écrans racines).
+47 écrans · 129 passages (sans compter la barre d'onglets, présente sur les quatre écrans racines).
 
 ## Les modules et leurs passages
 
@@ -108,7 +108,6 @@ flowchart LR
   crypto --> rapide
   crypto --> crypto_deposer__actif
   crypto --> crypto_retirer__actif_adresse
-  crypto_retirer__actif_adresse --> marche
   crypto_retirer__actif_adresse --> crypto_retirer__actif_montant
   crypto_retirer__actif_montant --> crypto_retirer__actif_verifier
   crypto_retirer__actif_verifier --> crypto_retirer__actif_adresse
@@ -125,6 +124,7 @@ flowchart LR
   entrer_transaction__ref --> entrer_credite__ref
   entrer_credite__ref --> marche
   entrer_credite__ref --> accueil
+  entrer_credite__ref --> entrer_operateur
   historique --> entrer_operateur
   historique__ref --> marche_ordres__id
   historique__ref --> entrer_transaction__ref
@@ -150,6 +150,7 @@ flowchart LR
   rapide_prix --> rapide_fait
   rapide_fait --> accueil
   rapide_fait --> marche
+  sortir_montant --> crypto_retirer__actif_adresse
   sortir_montant --> marche_ordres
   sortir_montant --> accueil
   sortir_montant --> entrer_operateur
@@ -184,12 +185,12 @@ Les flèches « retour » et les onglets ne sont pas dessinés : chaque écran e
 | `/entrer/montant` | 2 | flèche, lien | `/entrer/operateur` `/entrer/payer/:ref` |
 | `/entrer/payer/:ref` | 3 | flèche, lien | `/entrer/operateur` `/entrer/transaction/:ref` |
 | `/entrer/transaction/:ref` | 1 | flèche, lien | `/entrer/credite/:ref` |
-| `/entrer/credite/:ref` | 2 | lien | `/marche` `/` |
-| `/sortir/montant` | 1 | flèche, lien | `/marche/ordres` `/` `/entrer/operateur` `/compte/numeros` `/compte/numeros/ajouter` `/sortir/destination` |
+| `/entrer/credite/:ref` | 2 | lien | `/marche` `/` `/entrer/operateur` |
+| `/sortir/montant` | 1 | flèche, lien | `/crypto/retirer/:actif/adresse` `/marche/ordres` `/` `/entrer/operateur` `/compte/numeros` `/compte/numeros/ajouter` `/sortir/destination` |
 | `/sortir/destination` | 2 | flèche, lien | `/compte/numeros/ajouter` `/sortir/verifier` |
 | `/sortir/verifier` | 3 | flèche, lien | `/sortir/montant` `/sortir/code` |
 | `/sortir/code` | 4 | flèche, lien | `/sortir/montant` `/sortir/envoye/:ref` |
-| `/sortir/envoye/:ref` | 5 | lien | `/` `/historique/:ref` |
+| `/sortir/envoye/:ref` | 5 | lien, flèche | `/` `/historique/:ref` |
 | `/marche` | 1 | lien, onglets | `/marche/graphique` `/rapide` `/marche/carnet` `/marche/ordres` `/marche/ordres/:id` `/marche/execute/:id` |
 | `/marche/graphique` | 2 | flèche, lien | `/marche` `/marche/carnet` |
 | `/marche/carnet` | 2 | flèche, lien | `/marche` |
@@ -201,7 +202,7 @@ Les flèches « retour » et les onglets ne sont pas dessinés : chaque écran e
 | `/rapide/fait` | 3 | lien | `/` `/marche` |
 | `/crypto` | 1 | flèche, lien | `/rapide` `/crypto/deposer/:actif` `/crypto/retirer/:actif/adresse` |
 | `/crypto/deposer/:actif` | 2 | flèche | — |
-| `/crypto/retirer/:actif/adresse` | 2 | flèche, lien | `/marche` `/crypto/retirer/:actif/montant` |
+| `/crypto/retirer/:actif/adresse` | 2 | flèche, lien | `/crypto/retirer/:actif/montant` |
 | `/crypto/retirer/:actif/montant` | 3 | flèche, lien | `/crypto/retirer/:actif/verifier` |
 | `/crypto/retirer/:actif/verifier` | 4 | flèche, lien | `/crypto/retirer/:actif/adresse` `/crypto/retirer/:actif/code` |
 | `/crypto/retirer/:actif/code` | 5 | flèche, lien | `/crypto/retirer/:actif/adresse` `/crypto/envoye/:ref` |

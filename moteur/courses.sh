@@ -93,9 +93,9 @@ SQL
   ensemble c2-a.sql c2-b.sql
   echo "$(valeur "select etat from depot_declarations where transaction_id = '$2'") $(valeur "select count(*) from entrees_retenues where transaction_id = '$2' and etat = 'retenue'")"
 }
-sans 'declarer_transaction(text,text)' "perform pg_advisory_xact_lock(hashtext('tx:' || v_d.operateur || ':' || v_id));"
+sans 'declarer_transaction(text,text,text,numeric,text)' "perform pg_advisory_xact_lock(hashtext('tx:' || v_d.operateur || ':' || v_id));"
 r=$(course_id 9201 20394992201)
-rendre 'declarer_transaction(text,text)'
+rendre 'declarer_transaction(text,text,text,numeric,text)'
 [ "$r" = "attendu 1" ] || { echo "✗ témoin : sans son verrou, l'ID et le SMS devaient se rater (vu : $r)"; exit 1; }
 r=$(course_id 9202 20394992202)
 [ "$r" = "credite 0" ] || { echo "✗ 12.2 l'ID et le SMS au même instant : $r au lieu de « credite 0 »"; exit 1; }

@@ -38,11 +38,15 @@ function trouve(j: J | null, message: string): J {
 }
 
 function declaration(j: J): Declaration {
-  return { id: s(j.id), transactionId: s(j.transaction_id), etat: j.etat as Declaration["etat"], montant: nn(j.montant), numeroPayeur: sn(j.numero_payeur), motif: sn(j.motif), declareLe: s(j.declare_le), crediteLe: sn(j.credite_le), luLe: sn(j.lu_le) };
+  return {
+    id: s(j.id), transactionId: s(j.transaction_id), etat: j.etat as Declaration["etat"], montant: nn(j.montant), numeroPayeur: sn(j.numero_payeur), motif: sn(j.motif),
+    declareLe: s(j.declare_le), crediteLe: sn(j.credite_le), luLe: sn(j.lu_le),
+    numeroDeclare: sn(j.numero_declare), montantDeclare: nn(j.montant_declare), nomDeclare: sn(j.nom_declare), corrigible: Boolean(j.corrigible),
+  };
 }
 function depot(j: J): Depot {
   return {
-    reference: s(j.reference), operateur: j.operateur as IdOperateur, floatNumero: s(j.float_numero), codeAgent: sn(j.code_agent),
+    reference: s(j.reference), operateur: j.operateur as IdOperateur, floatNumero: s(j.float_numero), titulaire: sn(j.titulaire), codeAgent: sn(j.code_agent),
     reception: j.reception === "retardee" || j.reception === "fermee" ? j.reception : "ouverte", montantRecu: n(j.montant_recu),
     etat: j.etat as Depot["etat"], creeLe: s(j.cree_le), expireLe: s(j.expire_le), crediteLe: sn(j.credite_le),
     declarations: ((j.declarations as J[]) ?? []).map(declaration),
@@ -59,6 +63,8 @@ function sortie(j: J): Sortie {
     reference: s(j.reference), operateur: j.operateur as IdOperateur, numero: s(j.numero), montant: n(j.montant), frais: n(j.frais), montantXaf: n(j.montant_xaf),
     montantEnvoye: n(j.montant_envoye), montantRendu: n(j.montant_rendu), etat: j.etat as Sortie["etat"], creeLe: s(j.cree_le), termineeLe: sn(j.terminee_le),
     transferts: ((Array.isArray(j.transferts) ? j.transferts : []) as J[]).map((t) => ({ etat: t.etat as Sortie["transferts"][number]["etat"], montant: n(t.montant_xafe), envoi: n(t.montant_envoye), referenceOperateur: sn(t.reference_operateur) })),
+    mode: j.mode === "manuel" ? "manuel" : "totem", nomBeneficiaire: sn(j.nom_beneficiaire), prisLe: sn(j.pris_le),
+    transactionId: sn(j.transaction_id), payeeLe: sn(j.payee_le), motif: sn(j.motif),
   };
 }
 function ordre(j: J): Ordre {
@@ -240,8 +246,10 @@ export class GuichetSupabase implements Guichet {
 
   async ouvrirDepot({ operateur, cle }: { operateur: IdOperateur; cle: string }) { return depot(await this.rpc<J>("ouvrir_depot", { p_operateur: operateur, p_cle: cle })); }
   async depot(reference: string) { return depot(trouve(await this.rpc<J>("mon_depot", { p_reference: reference }), "dépôt inconnu")); }
-  async declarerTransaction({ reference, transactionId }: { reference: string; transactionId: string }) {
-    return declaration(await this.rpc<J>("declarer_transaction", { p_reference: reference, p_transaction_id: transactionIdNormalise(transactionId) }));
+  async declarerTransaction({ reference, transactionId, numero, montant, nom }: { reference: string; transactionId: string; numero: string; montant: number; nom: string }) {
+    return declaration(await this.rpc<J>("declarer_transaction", {
+      p_reference: reference, p_transaction_id: transactionIdNormalise(transactionId), p_numero: numeroSaisi(numero), p_montant: montant, p_nom: nom.trim(),
+    }));
   }
   async retirerDeclaration({ reference, transactionId }: { reference: string; transactionId: string }) {
     return depot(await this.rpc<J>("retirer_declaration", { p_reference: reference, p_transaction_id: transactionId }));
@@ -261,8 +269,8 @@ export class GuichetSupabase implements Guichet {
   }
   async renvoyerCodeNumero(id: string) { return numero(await this.rpc<J>("renvoyer_code_numero", { p_id: id })); }
   async retirerNumero({ id, codeSecret }: { id: string; codeSecret: string }) { await this.rpc("retirer_numero", { p_id: id, p_code: codeSecret }); }
-  async demanderSortie({ montant, numeroId, cle, codeSecret }: { montant: number; numeroId: string; cle: string; codeSecret: string }) {
-    return sortie(await this.rpc<J>("demander_sortie", { p_montant: montant, p_numero_id: numeroId, p_cle: cle, p_code: codeSecret }));
+  async demanderSortie({ montant, numeroId, cle, codeSecret, nom }: { montant: number; numeroId: string; cle: string; codeSecret: string; nom?: string }) {
+    return sortie(await this.rpc<J>("demander_sortie", { p_montant: montant, p_numero_id: numeroId, p_cle: cle, p_code: codeSecret, ...(nom ? { p_nom: nom } : {}) }));
   }
   async sortie(reference: string) { return sortie(trouve(await this.rpc<J>("ma_sortie", { p_reference: reference }), "sortie inconnue")); }
 

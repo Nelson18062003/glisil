@@ -93,6 +93,26 @@ try {
   await page.getByRole("button", { name: "Libérer" }).click();
   await voir("en attente");
 
+  etape("Remboursements à la main : confirmer le paiement d'une autre personne ; payer avec l'ID et la capture");
+  await page.goto(`${BASE}/sorties`);
+  await voir("À payer · 2");
+  await voir("SMS de la puce : concorde");
+  await capturer("sorties-a-payer");
+  await page.locator("[data-demande]").filter({ hasText: "à confirmer" }).getByRole("button", { name: "Confirmer le paiement" }).click();
+  await voir("confirmée : les XAFe sont détruits");
+  await page.locator("[data-demande]").filter({ hasText: "à payer" }).getByRole("button", { name: "J'ai payé" }).click();
+  await page.getByLabel("Transaction ID (du SMS de l'opérateur)").fill("MP261016.1530.A77001");
+  /* une vraie image, pas un nom : le contrôle lit le type et la taille */
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+  await page.locator('input[type="file"]').setInputFiles({ name: "capture-momo.png", mimeType: "image/png", buffer: png });
+  await voir("capture-momo.png");
+  await page.waitForFunction(() => { const c = document.querySelector(".MuiDialog-container"); return c && getComputedStyle(c).opacity === "1"; });
+  await capturer("sorties-payer");
+  await page.getByRole("dialog").getByRole("button", { name: "Enregistrer le paiement" }).click();
+  await voir("payée : les XAFe sont détruits");
+  exiger(await page.locator("[data-demande]").count() === 0, "plus rien à payer");
+  await voir("Sorti du float, sans sortie en face");
+
   etape("Terminaux : créer un boîtier, voir sa clé une fois");
   await page.goto(`${BASE}/terminaux`);
   await voir("Akwa 1");

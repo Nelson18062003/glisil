@@ -107,13 +107,22 @@ try {
   await voir("250 000 XAF");
   const refDepot = chemin().split("/").pop();
   await voir("6 77 00 00 00");
+  /* les deux façons de payer du document remis aux clients : le numéro et son titulaire, puis le code de retrait, montant compris */
+  await voir("GLISIL DÉMONSTRATION");
+  await voir("Ne confirmez pas");
+  await voir("*126*14*677000000*250000#");
+  exiger((await page.getByRole("link", { name: "Composer le code" }).getAttribute("href")) === "tel:*126*14*677000000*250000%23", "le code se compose d'un toucher, # écrit %23");
   await capturer("entrer-payer");
   await page.getByRole("button", { name: "J'ai payé" }).click();
   await page.waitForURL(new RegExp(`/entrer/transaction/${refDepot}$`));
   await capturer("entrer-transaction-vide");
+  /* le numéro vérifié, le nom du compte et le montant tapé avant sont déjà là : il reste l'ID du SMS */
+  exiger((await page.getByLabel("Numéro qui a payé").inputValue()).replace(/\D/g, "") === "677123456", "le numéro MTN vérifié du compte est proposé");
+  exiger((await page.getByLabel("Montant exact envoyé").inputValue()).replace(/\D/g, "") === "250000", "le montant tapé avant est proposé");
+  exiger((await page.getByLabel("Nom exact du compte qui a payé").inputValue()) === "Nelson Soh", "le nom du compte est proposé");
   await page.getByLabel("Transaction ID").fill("20394817250");
-  await page.getByRole("button", { name: "Ajouter" }).click();
-  await voir("on cherche le SMS");
+  await page.getByRole("button", { name: "Valider ce paiement" }).click();
+  await voir("On cherche votre paiement");
   await capturer("entrer-transaction-attente");
   await voir("+250 000 XAFe", 10_000);
   exiger(await page.getByText("Crédité", { exact: true }).count() >= 1, "le transaction ID trouvé doit être marqué Crédité");
@@ -283,7 +292,7 @@ try {
   await page.getByRole("button", { name: "J'ai payé" }).click();
   await page.getByLabel("Transaction ID").waitFor();
   await page.getByLabel("Transaction ID").fill("2039X817999");
-  await page.getByRole("button", { name: "Ajouter" }).click();
+  await page.getByRole("button", { name: "Valider ce paiement" }).click();
   await voir("Mal recopié ? Touchez × pour le retirer.");
   await capturer("entrer-retirer");
   await page.getByRole("button", { name: /Retirer l'ID 2039X817999/ }).click();
@@ -327,7 +336,7 @@ try {
   await page.waitForURL(new RegExp(`/entrer/transaction/${refMuet}$`));
   await page.goBack();
   await voir("Ce numéro ne reçoit plus : ne payez pas ici");
-  exiger(await page.getByRole("button", { name: /^Ouvrir MTN/ }).count() === 0, "on ne propose plus d'ouvrir MoMo pour payer un float retiré");
+  exiger(await page.getByText("1 · TRANSFERT VERS NOTRE NUMÉRO").count() === 0 && await page.getByRole("link", { name: "Composer le code" }).count() === 0, "un float retiré ne se propose plus, ni en transfert ni en retrait");
   await capturer("entrer-payer-float-retire");
   await page.evaluate(() => { globalThis.__xafeEpreuve = {}; });
   await page.getByRole("button", { name: "Payer à un autre numéro" }).click();
@@ -462,6 +471,92 @@ try {
     exiger(await page.locator("[data-squelette]").count() === 0, `${adresse} : plus de formes grises`);
   }
   await capturer("reference-introuvable");
+
+  /* --------------------------- rembourser en XAF, payé à la main (0014) */
+  etape("Sortir en XAF quand l'équipe paie à la main : le nom du compte demandé, trois étapes qui avancent, le transaction ID rendu ; un refus rend les XAFe avec son motif");
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem("xafe-sortie-manuelle")) globalThis.__xafeEpreuve = { parametres: { sortie: { ouvertes: true, mode: "manuel" } } };
+  });
+  await page.evaluate(() => sessionStorage.setItem("xafe-sortie-manuelle", "1"));
+  const ouvrirEnManuel = async (adresse) => {
+    await page.goto(`${BASE}${adresse}`);
+    await page.waitForTimeout(300);
+    if (await page.getByText("Votre code secret pour continuer").count()) await taper(["1", "2", "3", "4"]);
+  };
+  const demanderEnManuel = async (nom) => {
+    await ouvrirEnManuel("/sortir/montant");
+    await taper(["5", "0", "000"]);
+    await page.getByRole("button", { name: "Continuer" }).click();
+    await page.getByText("6 77 12 34 56").click();
+    await page.getByRole("button", { name: "Continuer" }).click();
+    const champ = page.getByLabel(/Nom exact du compte/);
+    await champ.waitFor();
+    exiger((await champ.inputValue()).trim().length >= 2, "le nom du compte Glisil est proposé d'avance");
+    exiger(await page.getByText("l'équipe Glisil", { exact: false }).count() >= 1, "l'écran dit qui paie");
+    if (nom !== null) await champ.fill(nom);
+  };
+  await demanderEnManuel(null);
+  await capturer("sortir-manuel-verifier");
+  await page.getByLabel(/Nom exact du compte/).fill(" ");
+  exiger(await page.getByRole("button", { name: "Confirmer avec mon code" }).isDisabled(), "sans nom, on ne confirme pas");
+  await page.getByLabel(/Nom exact du compte/).fill("Nelson Soh");
+  await page.getByRole("button", { name: "Confirmer avec mon code" }).click();
+  await taper(["1", "2", "3", "4"]);
+  await page.waitForURL(/\/sortir\/envoye\/XAFe-WD-\d+$/);
+  await voir("Demande reçue");
+  await voir("vos XAFe sont mis de côté");
+  await capturer("sortir-manuel-en-cours");
+  await voir("XAF envoyés", 25_000);
+  await voir("Transaction ID", 5_000);
+  await capturer("sortir-manuel-payee");
+  await demanderEnManuel("Nelson refus");
+  await page.getByRole("button", { name: "Confirmer avec mon code" }).click();
+  await taper(["1", "2", "3", "4"]);
+  await voir("Demande refusée", 25_000);
+  await voir("ne correspond pas");
+  await capturer("sortir-manuel-refusee");
+  await page.evaluate(() => sessionStorage.removeItem("xafe-sortie-manuelle"));
+
+  /* ---------------------------------------- ouvrir par les dépôts seuls */
+  etape("Ouvrir par les dépôts seuls : sorties, marché, achat rapide et crypto disent « bientôt » AVANT un montant tapé ; l'entrée reste ouverte");
+  /* les paramètres que l'équipe poserait, lus par le guichet de démonstration dès le chargement */
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem("xafe-depots-seuls")) globalThis.__xafeEpreuve = { parametres: { sortie: { ouvertes: false }, marche: { ouvert: false }, rapide: { ouvert: false }, crypto: { depots_ouverts: false, retraits_ouverts: false } } };
+  });
+  await page.evaluate(() => sessionStorage.setItem("xafe-depots-seuls", "1"));
+  const allerA = async (adresse) => {
+    await page.goto(`${BASE}${adresse}`);
+    await page.waitForTimeout(300);
+    if (await page.getByText("Votre code secret pour continuer").count()) await taper(["1", "2", "3", "4"]);
+  };
+  await allerA("/");
+  await voir("Le marché ouvre bientôt");
+  exiger(await page.getByRole("link", { name: "Acheter des USDT" }).count() === 0, "l'achat rapide fermé ne se propose pas sur l'accueil");
+  exiger(await page.getByText("Bientôt", { exact: true }).count() >= 2, "les tuiles Sortir et Crypto disent « Bientôt »");
+  await capturer("accueil-depots-seuls");
+  for (const [adresse, titre, nom] of [
+    ["/sortir/montant", "Les sorties vers Mobile Money arrivent bientôt", "sortir-bientot"],
+    ["/marche", "Le marché ouvre bientôt", null],
+    ["/rapide?sens=achat", "L'achat et la vente d'USDT arrivent bientôt", null],
+    ["/crypto", "La crypto arrive bientôt", null],
+    ["/crypto/deposer/USDT", "Les dépôts crypto arrivent bientôt", null],
+    ["/crypto/retirer/XAFe/adresse", "Les retraits crypto arrivent bientôt", null],
+  ]) {
+    await allerA(adresse);
+    await voir(titre);
+    exiger(await page.getByRole("button", { name: "Continuer" }).count() === 0, `${adresse} : rien à remplir sur un chemin fermé`);
+    if (nom) await capturer(nom);
+  }
+  /* ce qui existe déjà reste lisible : une sortie passée se suit encore */
+  await allerA("/historique");
+  await voir("Sortie MTN MoMo");
+  await page.getByText("Sortie MTN MoMo").first().click();
+  await page.waitForURL(/\/historique\/XAFe-WD-\d+$/);
+  await allerA("/entrer/operateur");
+  await voir("MTN MoMo");
+  await ouvrirUnDepot();
+  await voir("1 · TRANSFERT VERS NOTRE NUMÉRO");
+  await page.evaluate(() => sessionStorage.removeItem("xafe-depots-seuls"));
 
   exiger(erreurs.length === 0, `des erreurs ont été vues dans le navigateur :\n  ${erreurs.join("\n  ")}`);
   console.log(`✓ le parcours tient (${numero} captures dans app/captures/)`);

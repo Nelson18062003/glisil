@@ -108,8 +108,24 @@ export async function traiterSms(rpc: Rpc, terminal: string, charge: unknown): P
     if (l.terminal !== undefined && l.terminal !== terminal) { resultats.push({ resultat: "refuse", motif: "la ligne n'est pas de ce terminal" }); continue; }
     const source_id = nombre(l.source_id);
     if (source_id === null) { resultats.push({ resultat: "refuse", motif: "source_id manquant" }); continue; }
-    if (l.sens !== undefined && l.sens !== "entree") { resultats.push({ source_id, resultat: "ignore", motif: "seules les entrées d'argent comptent" }); continue; }
+    if (l.sens !== undefined && l.sens !== "entree" && l.sens !== "sortie") { resultats.push({ source_id, resultat: "ignore", motif: "seules les entrées et les sorties d'argent comptent" }); continue; }
     try {
+      /* une sortie du float (un paiement fait par l'équipe) : la preuve d'un remboursement, rapprochée par son transaction ID */
+      if (l.sens === "sortie") {
+        const r = await rpc("totem_sms_sortant", {
+          p_terminal: terminal,
+          p_source_id: source_id,
+          p_operateur: texte(l.operateur),
+          p_float_numero: texte(l.float_numero),
+          p_numero: texte(l.numero),
+          p_montant: nombre(l.montant),
+          p_reference: texte(l.reference),
+          p_texte: texte(l.texte),
+          p_emis_le: texte(l.emis_le),
+        });
+        resultats.push({ source_id, ...(r as Record<string, unknown>) });
+        continue;
+      }
       const r = await rpc("totem_sms_recu", {
         p_terminal: terminal,
         p_source_id: source_id,

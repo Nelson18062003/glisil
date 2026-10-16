@@ -101,6 +101,7 @@ function recu(o: Operation, nom: string | null | undefined): string {
   } else if (o.nature === "sortie") {
     lignes.push(`Sortie ${opDe(o.detail.operateur).nom} vers ${numeroEnTranches(o.detail.numero)} : ${xaf(o.detail.montantEnvoye)} XAF envoyés (frais ${xaf(o.detail.frais)})`);
     for (const t of o.detail.transferts.filter((x) => x.referenceOperateur)) lignes.push(`Transaction ID ${t.referenceOperateur} : ${xaf(t.envoi)} XAF`);
+    if (o.detail.transactionId) lignes.push(`Transaction ID ${o.detail.transactionId} : ${xaf(o.detail.montantEnvoye)} XAF`);
   } else if (o.nature === "ordre") {
     lignes.push(`${o.detail.cote === "achat" ? "Achat" : "Vente"} ${fUsdt(o.detail.executee)} USDT pour ${xaf(o.detail.totalXafe)} XAFe`);
   } else {
@@ -173,6 +174,10 @@ export function HistoriqueDetail() {
           <Line label="Envoyé" value={`${xaf(o.detail.montantEnvoye)} XAF`} strong />
           {o.detail.montantRendu > 0 && <Line label="Revenu sur le compte" value={`${xaf(o.detail.montantRendu)} XAFe`} color={tones.amber.fg} />}
           <Line label="Référence" value={o.reference} mono />
+          {o.detail.mode === "manuel" && o.detail.nomBeneficiaire && <Line label="Au nom de" value={o.detail.nomBeneficiaire} />}
+          {o.detail.transactionId && <Line label="Transaction ID" value={o.detail.transactionId} mono />}
+          {o.detail.payeeLe && <Line label="Payé" value={quand(o.detail.payeeLe)} />}
+          {o.detail.motif && <Typography variant="body2" color="error">Refusée : {o.detail.motif} Vos XAFe sont revenus.</Typography>}
           {o.detail.transferts.map((t, i) => (
             <Line key={i} label={`Transfert ${i + 1} · ${ETATS[t.etat] ?? t.etat}`} value={t.referenceOperateur ? `ID ${t.referenceOperateur}` : `${xaf(t.envoi)} XAF`} mono />
           ))}

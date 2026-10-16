@@ -24,8 +24,25 @@ export const FRAIS: { placeur: number; preneur: number; sortie: number } = {
 /** frais d'un retrait vers un wallet externe, par actif (le gaz, à prix fixe) */
 export const FRAIS_CRYPTO: Record<"USDT" | "XAFe", number> = { USDT: 1, XAFe: 500 };
 
-/** Les retraits vers la chaîne : fermés par le moteur tant qu'aucun veilleur de chaîne ne les envoie. */
-export const CRYPTO = { retraitsOuverts: true };
+/**
+ * La crypto : les retraits vers la chaîne sont fermés par le moteur tant
+ * qu'aucun veilleur ne les envoie ; les adresses de dépôt, tant que l'équipe
+ * n'ouvre pas la crypto (« crypto.depots_ouverts »).
+ */
+export const CRYPTO = { retraitsOuverts: true, depotsOuverts: true };
+
+/**
+ * Les sorties de XAF vers Mobile Money : ouvertes ou pas (« sortie.ouvertes »),
+ * et qui paie (« sortie.mode ») — TOTEM, qui compose le transfert tout seul,
+ * ou l'équipe, à la main, qui donne ensuite le transaction ID.
+ */
+export const SORTIES: { ouvertes: boolean; mode: "totem" | "manuel" } = { ouvertes: true, mode: "totem" };
+
+/** Les frais d'une sortie payée à la main : une seule fois sur le montant (pas de découpage par transfert). */
+export function fraisSortieManuelle(montant: number): { frais: number; envoi: number } {
+  const frais = Math.ceil(montant * FRAIS.sortie);
+  return { frais, envoi: montant - frais };
+}
 
 export const RESEAUX: Record<"bep20" | "trc20", { nom: string; chaine: string; confirmations: number; valide: (a: string) => boolean }> = {
   bep20: { nom: "BEP20", chaine: "BNB Smart Chain", confirmations: 15, valide: (a) => /^0x[0-9a-fA-F]{40}$/.test(a) },
@@ -94,8 +111,9 @@ export function coutAuCarnet(enFace: { prix: number; quantite: number }[], quant
   return reste > 0 ? null : cout;
 }
 
-export const MARCHE: { paire: string; pasPrix: number; quantiteMin: number } = {
+export const MARCHE: { paire: string; pasPrix: number; quantiteMin: number; ouvert: boolean } = {
   paire: "USDT/XAFe",
+  ouvert: true,
   pasPrix: 0.05,
   quantiteMin: 10,
 };
@@ -259,6 +277,10 @@ export function appliquerParametres(p: unknown): boolean {
   poser(FRAIS_CRYPTO, "USDT", nombre(r.crypto?.frais?.USDT, 0, 1000));
   poser(FRAIS_CRYPTO, "XAFe", nombre(r.crypto?.frais?.XAFe, 0, 1_000_000));
   if (typeof r.crypto?.retraits_ouverts === "boolean") CRYPTO.retraitsOuverts = r.crypto.retraits_ouverts;
+  if (typeof r.crypto?.depots_ouverts === "boolean") CRYPTO.depotsOuverts = r.crypto.depots_ouverts;
+  if (typeof r.sortie?.ouvertes === "boolean") SORTIES.ouvertes = r.sortie.ouvertes;
+  if (r.sortie?.mode === "totem" || r.sortie?.mode === "manuel") SORTIES.mode = r.sortie.mode;
+  if (typeof r.marche?.ouvert === "boolean") MARCHE.ouvert = r.marche.ouvert;
   poser(RAPIDE, "marge", nombre(r.rapide?.marge, 0, 0.2));
   poser(RAPIDE, "validiteSecondes", nombre(r.rapide?.validite_secondes, 5, 120));
   if (typeof r.rapide?.ouvert === "boolean") RAPIDE.ouvert = r.rapide.ouvert;

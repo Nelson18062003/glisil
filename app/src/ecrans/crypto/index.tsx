@@ -15,9 +15,9 @@ import { Box, Button, CircularProgress, Divider, Paper, Stack, TextField, Toggle
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { useAdresseDepot, useGuichet, useRetraitCrypto, useSoldes } from "../../guichet";
+import { useAdresseDepot, useGuichet, useOuvertures, useRetraitCrypto, useSoldes } from "../../guichet";
 import type { Actif, Reseau } from "../../guichet/types";
-import { arrondi2, CRYPTO, FRAIS_CRYPTO, RESEAUX, reseauDe } from "../../noyau/argent";
+import { arrondi2, FRAIS_CRYPTO, RESEAUX, reseauDe } from "../../noyau/argent";
 import { adresseCourte, enTranches, quand, xaf } from "../../noyau/format";
 import { parcours, useParcours } from "../../navigation/parcours";
 import { Attente, Card, FeuilleErreur, Keypad, Line, List, Points, Row, Screen, Success } from "../../ui";
@@ -27,13 +27,16 @@ const actifDe = (a: string | undefined): Actif => (a === "XAFe" ? "XAFe" : "USDT
 const fmt = (a: Actif, n: number) => (a === "USDT" ? enTranches(n, 2) : xaf(n));
 
 export function Crypto() {
+  const ouvert = useOuvertures();
+  /* ce qui n'est pas encore ouvert reste à sa place, grisé et dit « bientôt » : on sait ce qui vient */
+  const ligne = (ok: boolean, texte: string) => (ok ? { secondary: texte } : { secondary: "Bientôt disponible", disabled: true });
   return (
     <Screen title="Crypto" back="/">
       <List>
-        <Row icon={<BoltRounded />} tone="green" primary="Acheter ou vendre des USDT" secondary="En un geste, au prix du moment" to="/rapide" />
-        <Row icon={<ArrowDownwardRounded />} tone="blue" primary="Déposer des USDT" secondary="BEP20 ou TRC20" to="/crypto/deposer/USDT" />
-        <Row icon={<ArrowUpwardRounded />} tone="blue" primary="Retirer des USDT" secondary="Vers un wallet externe" to="/crypto/retirer/USDT/adresse" />
-        <Row icon={<ArrowOutwardRounded />} tone="green" primary="Retirer des XAFe" secondary="Vers mon propre wallet, BEP20 ou TRC20" to="/crypto/retirer/XAFe/adresse" />
+        <Row icon={<BoltRounded />} tone="green" primary="Acheter ou vendre des USDT" {...ligne(ouvert.rapide, "En un geste, au prix du moment")} to="/rapide" />
+        <Row icon={<ArrowDownwardRounded />} tone="blue" primary="Déposer des USDT" {...ligne(ouvert.cryptoDepots, "BEP20 ou TRC20")} to="/crypto/deposer/USDT" />
+        <Row icon={<ArrowUpwardRounded />} tone="blue" primary="Retirer des USDT" {...ligne(ouvert.cryptoRetraits, "Vers un wallet externe")} to="/crypto/retirer/USDT/adresse" />
+        <Row icon={<ArrowOutwardRounded />} tone="green" primary="Retirer des XAFe" {...ligne(ouvert.cryptoRetraits, "Vers mon propre wallet, BEP20 ou TRC20")} to="/crypto/retirer/XAFe/adresse" />
       </List>
     </Screen>
   );
@@ -102,16 +105,6 @@ export function CryptoRetirerAdresse() {
   const coller = async () => {
     try { const t = await navigator.clipboard.readText(); poser({ adresse: t.trim() }); } catch { /* lecture refusée : on tape */ }
   };
-  if (!CRYPTO.retraitsOuverts) {
-    /* fermé par le moteur : on le dit AVANT l'adresse, le montant et le code, pas après */
-    return (
-      <Screen title={`Retirer des ${actif}`} back="/crypto">
-        <Typography variant="body2">L'envoi vers un wallet externe n'est pas encore ouvert. Vos {actif} restent disponibles : vous pouvez les vendre au marché, ou sortir vos XAFe vers MoMo.</Typography>
-        <Box sx={{ flex: 1 }} />
-        <Button variant="contained" onClick={() => navigate("/marche")}>Aller au marché</Button>
-      </Screen>
-    );
-  }
   const tape = c.adresse.trim().length > 10;
   return (
     <Screen title={`Retirer des ${actif}`} back="/crypto">

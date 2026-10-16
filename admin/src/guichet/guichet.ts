@@ -1,4 +1,4 @@
-import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, StatsClients, Equipe, Tableau, Terminal, Wallets } from "./types";
+import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets } from "./types";
 
 /** LE GUICHET DE L'ADMINISTRATION : tout ce que les écrans demandent au moteur. */
 export interface GuichetAdmin {
@@ -24,11 +24,23 @@ export interface GuichetAdmin {
   reaffecterCommande(id: number, terminal: string): Promise<void>;
   /** Annuler ce qui n'est pas encore parti d'une sortie : ses XAFe reviennent au client. */
   annulerSortie(reference: string, note: string): Promise<{ rendu: number; etat: string }>;
+  /** Les remboursements payés à la main (0014). */
+  prendreSortie(reference: string): Promise<void>;
+  /** L'ID du paiement fait, et la capture déjà déposée. Au-delà du seuil, la sortie attend une autre personne. */
+  payerSortie(reference: string, transactionId: string, preuve: string | null): Promise<{ etat: string; a_confirmer?: boolean; rapprochement?: Sortie["rapprochement"] }>;
+  confirmerSortie(reference: string): Promise<{ etat: string; rapprochement?: Sortie["rapprochement"] }>;
+  refuserSortie(reference: string, motif: string): Promise<void>;
+  /** Déposer la capture d'un paiement : image ou PDF, 10 Mo au plus ; rend son chemin. */
+  deposerPreuve(reference: string, fichier: File): Promise<string>;
+  /** Un lien de dix minutes vers une capture. */
+  lienPreuve(chemin: string): Promise<string>;
+  sortiesNonExpliquees(): Promise<SortieNonExpliquee[]>;
+  aTraiter(): Promise<ATraiter>;
 
   terminaux(): Promise<Terminal[]>;
   creerTerminal(p: { id: string; nom: string; lieu: string }): Promise<{ id: string; cle: string }>;
   renouvelerCle(id: string): Promise<{ cle: string }>;
-  creerFloat(p: { operateur: string; numero: string; terminal: string; codeAgent?: string | null }): Promise<void>;
+  creerFloat(p: { operateur: string; numero: string; terminal: string; codeAgent?: string | null; titulaire?: string | null }): Promise<void>;
   activerFloat(id: number, actif: boolean): Promise<void>;
 
   /** Les chiffres d'ensemble : total, actifs, connectés, nouveaux, inscriptions inachevées… */

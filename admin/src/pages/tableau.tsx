@@ -4,12 +4,13 @@
  */
 import { Chip, Paper, Stack, Typography } from "@mui/material";
 import { Link } from "react-router-dom";
-import { useTableau } from "../guichet";
+import { useATraiter, useTableau } from "../guichet";
 import { enTranches, heure, jourRelatif, numeroEnTranches, prix, xaf } from "../noyau/format";
 import { Coquille, Etat, Section, Tableau as Table, Tuile } from "../ui";
 
 export function Tableau() {
   const { data: t } = useTableau();
+  const { data: a } = useATraiter();
   if (!t) return <Coquille titre="Tableau"><Typography variant="body2">Chargement…</Typography></Coquille>;
   const xafe = t.soldes.XAFe ?? { disponible: 0, bloque: 0 };
   const usdt = t.soldes.USDT ?? { disponible: 0, bloque: 0 };
@@ -30,6 +31,17 @@ export function Tableau() {
 
       <Section titre="Ce qui attend quelqu'un">
         <Stack direction="row" gap={2} flexWrap="wrap">
+          {/* en premier : un client attend son argent */}
+          <Paper component={Link} to="/sorties" data-a-payer={a?.sorties_manuelles ?? 0} sx={{ p: 2.5, borderRadius: 5, flex: 1, minWidth: 220, textDecoration: "none", color: "inherit", bgcolor: (a?.sorties_manuelles ?? 0) + (a?.sorties_a_confirmer ?? 0) > 0 ? "#FFE3B5" : "background.paper" }}>
+            <Typography variant="body2">Remboursements à payer{a && a.sorties_a_confirmer > 0 ? ` · ${a.sorties_a_confirmer} à confirmer` : ""}</Typography>
+            <Typography variant="h5">{a?.sorties_manuelles ?? "—"} · {xaf(a?.montant_a_payer ?? 0)} XAF</Typography>
+          </Paper>
+          {a && a.sorties_non_expliquees > 0 && (
+            <Paper component={Link} to="/sorties" sx={{ p: 2.5, borderRadius: 5, flex: 1, minWidth: 220, textDecoration: "none", color: "inherit", bgcolor: "#F9DEDC" }}>
+              <Typography variant="body2">Sorti du float sans sortie en face</Typography>
+              <Typography variant="h5">{a.sorties_non_expliquees}</Typography>
+            </Paper>
+          )}
           <Paper component={Link} to="/entrees?onglet=retenues" sx={{ p: 2.5, borderRadius: 5, flex: 1, minWidth: 220, textDecoration: "none", color: "inherit", bgcolor: t.retenues.nombre > 0 ? "#FFE3B5" : "background.paper" }}>
             <Typography variant="body2">SMS retenus, à rapprocher ou rembourser</Typography>
             <Typography variant="h5">{t.retenues.nombre} · {xaf(t.retenues.montant)} XAF</Typography>
