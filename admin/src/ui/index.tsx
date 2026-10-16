@@ -4,20 +4,22 @@
  * dialogue d'action, et une erreur qui se dit en français.
  */
 import AccountBalanceRounded from "@mui/icons-material/AccountBalanceRounded";
+import AdminPanelSettingsRounded from "@mui/icons-material/AdminPanelSettingsRounded";
 import AccountBalanceWalletRounded from "@mui/icons-material/AccountBalanceWalletRounded";
 import ArrowDownwardRounded from "@mui/icons-material/ArrowDownwardRounded";
 import ArrowUpwardRounded from "@mui/icons-material/ArrowUpwardRounded";
 import HistoryRounded from "@mui/icons-material/HistoryRounded";
 import LogoutRounded from "@mui/icons-material/LogoutRounded";
+import MenuRounded from "@mui/icons-material/MenuRounded";
 import PeopleRounded from "@mui/icons-material/PeopleRounded";
 import RouterRounded from "@mui/icons-material/RouterRounded";
 import ShowChartRounded from "@mui/icons-material/ShowChartRounded";
 import TuneRounded from "@mui/icons-material/TuneRounded";
 import {
-  Alert, Avatar, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Drawer, List, ListItemButton, ListItemIcon, ListItemText, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography,
+  Alert, AppBar, Avatar, Box, Button, Chip, Dialog, IconButton, Toolbar, useMediaQuery, DialogActions, DialogContent, DialogTitle, Drawer, List, ListItemButton, ListItemIcon, ListItemText, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography,
 } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
-import { useSyncExternalStore, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { NOMS_DES_ROLES, type Droit } from "../noyau/droits";
 import { initiales } from "../noyau/format";
@@ -36,13 +38,33 @@ const SECTIONS: { to: string; label: string; icone: ReactNode; droit: Droit }[] 
   { to: "/marche", label: "Marché", icone: <ShowChartRounded />, droit: "voir" },
   { to: "/parametres", label: "Paramètres", icone: <TuneRounded />, droit: "voir" },
   { to: "/journal", label: "Journal", icone: <HistoryRounded />, droit: "voir" },
+  { to: "/equipe", label: "Équipe", icone: <AdminPanelSettingsRounded />, droit: "administrateurs" },
 ];
 
+/*
+ * Sur un ordinateur, le menu reste ouvert à gauche ; en dessous de 900 px
+ * (une tablette, un téléphone), il se replie derrière un bouton dans une barre
+ * en haut : un menu fixe de 248 px laissait 112 px au contenu sur un 360.
+ */
 export function Coquille({ titre, actions, children }: { titre: string; actions?: ReactNode; children: ReactNode }) {
   const { profil, peut, deconnecter } = useSession();
+  const large = useMediaQuery("(min-width:900px)", { noSsr: true });
+  const [ouvert, setOuvert] = useState(false);
   return (
     <Box sx={{ display: "flex", minHeight: "100dvh", bgcolor: "background.default" }}>
-      <Drawer variant="permanent" sx={{ width: LARGEUR, flexShrink: 0, "& .MuiDrawer-paper": { width: LARGEUR, boxSizing: "border-box", borderRight: 1, borderColor: "divider", bgcolor: "background.paper" } }}>
+      {!large && (
+        <AppBar position="fixed" elevation={0} color="inherit" sx={{ borderBottom: 1, borderColor: "divider", bgcolor: "background.paper", pt: "env(safe-area-inset-top)" }}>
+          <Toolbar sx={{ gap: 1 }}>
+            <IconButton edge="start" aria-label="Ouvrir le menu" onClick={() => setOuvert(true)} size="large"><MenuRounded /></IconButton>
+            <Marque size={32} />
+            {/* le titre de la page est juste dessous : la barre dit où l'on est, pas deux fois la même chose */}
+            <NomGlisil size={20} />
+            <Typography variant="caption" sx={{ flex: 1, mt: 0.5 }}>Administration</Typography>
+          </Toolbar>
+        </AppBar>
+      )}
+      <Drawer variant={large ? "permanent" : "temporary"} open={large || ouvert} onClose={() => setOuvert(false)} ModalProps={{ keepMounted: true }}
+        sx={{ width: large ? LARGEUR : 0, flexShrink: 0, "& .MuiDrawer-paper": { width: LARGEUR, boxSizing: "border-box", borderRight: 1, borderColor: "divider", bgcolor: "background.paper" } }}>
         <Stack direction="row" alignItems="center" gap={1.5} sx={{ px: 2.5, py: 2.5 }}>
           <Marque size={40} />
           <Box>
@@ -52,7 +74,7 @@ export function Coquille({ titre, actions, children }: { titre: string; actions?
         </Stack>
         <List sx={{ px: 1.5 }}>
           {SECTIONS.filter((s) => peut(s.droit)).map((s) => (
-            <ListItemButton key={s.to} component={NavLink} to={s.to} end={s.to === "/"} sx={{ borderRadius: 3, mb: 0.5, "&.active": { bgcolor: tones.green.bg, color: tones.green.fg, "& .MuiListItemIcon-root": { color: tones.green.fg } } }}>
+            <ListItemButton key={s.to} component={NavLink} to={s.to} end={s.to === "/"} onClick={() => setOuvert(false)} sx={{ borderRadius: 3, mb: 0.5, "&.active": { bgcolor: tones.green.bg, color: tones.green.fg, "& .MuiListItemIcon-root": { color: tones.green.fg } } }}>
               <ListItemIcon sx={{ minWidth: 40 }}>{s.icone}</ListItemIcon>
               <ListItemText primary={s.label} primaryTypographyProps={{ fontWeight: 500 }} />
             </ListItemButton>
@@ -70,9 +92,9 @@ export function Coquille({ titre, actions, children }: { titre: string; actions?
           <Button size="small" variant="text" color="inherit" startIcon={<LogoutRounded />} onClick={() => void deconnecter()} sx={{ justifyContent: "flex-start", color: "text.secondary" }}>Se déconnecter</Button>
         </Stack>
       </Drawer>
-      <Box component="main" sx={{ flex: 1, minWidth: 0, px: 4, py: 3, maxWidth: 1280 }}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
-          <Typography variant="h5">{titre}</Typography>
+      <Box component="main" sx={{ flex: 1, minWidth: 0, px: { xs: 2, md: 4 }, py: 3, pt: { xs: "calc(env(safe-area-inset-top) + 80px)", md: 3 }, maxWidth: 1280 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1.5} sx={{ mb: 3 }}>
+          <Typography variant="h5" component="h1">{titre}</Typography>
           {actions}
         </Stack>
         <Stack gap={3}><LecturesEnPanne />{children}</Stack>

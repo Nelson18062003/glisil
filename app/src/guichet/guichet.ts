@@ -14,6 +14,7 @@ import type {
   Notification,
   Numero,
   Operation,
+  ProfilInscription,
   Ordre,
   Reseau,
   ResultatCode,
@@ -34,16 +35,27 @@ import type {
 export interface Guichet {
   readonly mode: "supabase" | "demo";
 
-  /* ---- session */
+  /* ---- session : une adresse e-mail et un code reçu par e-mail, pas de mot de passe */
   session(): Promise<{ compteId: string } | null>;
-  demanderCode(telephone: string): Promise<void>;
-  verifierCodeSms(telephone: string, code: string): Promise<{ compteId: string; nouveau: boolean }>;
+  /** Envoie un code à six chiffres à cette adresse ; une adresse inconnue crée l'utilisateur. */
+  demanderCode(email: string): Promise<void>;
+  /** Le code prouve l'adresse ; `nouveau` : la personne n'a pas encore ouvert son compte. */
+  verifierCode(email: string, code: string): Promise<{ nouveau: boolean }>;
   seDeconnecter(): Promise<void>;
 
   /* ---- compte */
   compte(): Promise<Compte>;
+  /** Le compte de la personne connectée, ou null si elle n'a pas encore fini son inscription. */
+  monCompte(): Promise<Compte | null>;
+  /** Ouvre le compte, une fois, avec le profil complet ; la base vérifie tout. */
+  ouvrirCompte(p: ProfilInscription): Promise<Compte>;
+  /** Le code secret des gestes d'argent ; `nom` est celui que les reçus montrent. */
   completerProfil(p: { nom: string; codeSecret: string }): Promise<Compte>;
   verifierCodeSecret(code: string): Promise<ResultatCode>;
+  /** Accepte la version des conditions en vigueur (quand elle a changé depuis l'inscription). */
+  accepterConditions(version: string): Promise<Compte>;
+  /** Ferme le compte : tout l'argent sorti, rien en cours, avec le code secret. */
+  fermerCompte(p: { codeSecret: string; motif: string }): Promise<Compte>;
   changerCodeSecret(p: { ancien: string; nouveau: string }): Promise<void>;
   /** les pièces d'un passage de palier ; l'équipe vérifie, l'état se lit dans `compte.verificationEnCours` */
   demanderVerification(p: { type: "identite" | "entreprise"; pieces: File[] }): Promise<Compte>;

@@ -16,7 +16,8 @@ export type Tone = keyof typeof tones;
 
 export const brand = {
   mtn: { bg: "#FFCC00", fg: "#1B1B1B" },
-  om: { bg: "#FF7900", fg: "#FFFFFF" },
+  /* du blanc sur l'orange d'Orange ne se lit pas (2,6:1) ; le noir, si (6,6:1) */
+  om: { bg: "#FF7900", fg: "#1B1B1B" },
   usdt: { bg: "#26A17B", fg: "#FFFFFF" },
   xafe: { bg: "#0B6B3A", fg: "#FFFFFF" },
 };
@@ -65,6 +66,7 @@ export const theme = createTheme({
           fontWeight: 600,
           borderRadius: 100,
           minHeight: 44,
+          color: "#5B615E",
           "&.Mui-selected": { backgroundColor: "#CDEFD9", color: "#06331B" },
         },
       },

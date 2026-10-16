@@ -1,6 +1,6 @@
 /*
  * Les Paramètres : les frais, le marché, les délais des dépôts, les reprises
- * des sorties, les paliers, la crypto, le code secret. Chaque bloc se modifie
+ * des sorties, les paliers, la crypto, le code secret, le support, la version des conditions. Chaque bloc se modifie
  * en JSON, tel qu'il est en base ; le moteur le relit à l'appel suivant.
  */
 import { Button, Paper, Stack, TextField, Typography } from "@mui/material";
@@ -19,6 +19,8 @@ const BLOCS: { cle: string; titre: string; aide: string }[] = [
   { cle: "paliers", titre: "Paliers", aide: "plafonds par jour en entrée et en sortie ; null = sans plafond" },
   { cle: "crypto", titre: "Crypto", aide: "frais fixes par actif et confirmations par réseau" },
   { cle: "code_secret", titre: "Code secret", aide: "essais avant verrou, minutes de verrou, longueur" },
+  { cle: "support", titre: "Support", aide: "ce que l'application propose dans Aide : l'e-mail, et le WhatsApp au format +2376XXXXXXXX (ou null)" },
+  { cle: "conditions", titre: "Conditions d'utilisation", aide: "la version en vigueur (AAAA-MM-JJ) ; la changer AVEC le texte de l'application : chaque client la réacceptera" },
 ];
 
 export function Parametres() {

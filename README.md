@@ -2,7 +2,8 @@
 
 Glisil émet le XAFe, son stablecoin, et opère le marché où il s'échange. Le
 nom vient de *glissile*, le mot des physiciens pour ce qui glisse sans
-résistance. Voir `docs/MARQUE.md`.
+résistance. Voir `docs/MARQUE.md`. On entre sans mot de passe, avec un code
+reçu par e-mail : voir `docs/CONNEXION.md`.
 
 Le franc CFA sur la blockchain, et un vrai marché spot USDT/XAFe. 1 XAFe = 1 XAF,
 couvert un pour un par les floats MoMo et les comptes en banque de la plateforme.
@@ -19,20 +20,20 @@ couvert un pour un par les floats MoMo et les comptes en banque de la plateforme
 |---|---|---|
 | `supabase/migrations/` | LE MOTEUR : soldes, grand livre, dépôts, sorties, carnet, compte, administration — tout en SQL, verrouillé | `sh moteur/verifier-le-moteur.sh` |
 | `supabase/functions/` | la porte de TOTEM (SMS lus, transferts et SMS à composer), signée | `node --experimental-strip-types supabase/functions/verifier-la-porte.ts` |
-| `app/` | l'application des clients (Android, Material Design 3) | `cd app && npm test && npm run build && node scripts/parcourir.mjs` |
+| `app/` | l'application des clients (téléphone, tablette, ordinateur ; Material Design 3) | `cd app && npm test && npm run build && node scripts/parcourir.mjs && node scripts/carte.mjs && node scripts/ecrans.mjs` |
 | `admin/` | l'administration (web) | `cd admin && npm test && npm run build && node scripts/parcourir.mjs` |
 | `contracts/` | le jeton XAFe (ERC-20) | `cd contracts && npm test` |
 | `chaine/` | nos wallets, BEP20 et TRC20 : adresses de dépôt dérivées d'une graine, dépôts crédités, balayage, retraits signés par le wallet chaud, surplus au froid ; l'outil de mise en service | `cd chaine && npm test`, puis `sh supabase/epreuve/eprouver.sh` |
 | `design/` | les maquettes et la carte de navigation | `cd design/maquettes && npm run build` |
 | `docs/` | l'architecture, le contrat TOTEM | — |
 
-Lire d'abord `docs/ARCHITECTURE.md`, puis `design/NAVIGATION.md` et
+Lire d'abord `docs/ARCHITECTURE.md`, puis `design/NAVIGATION.md` (et sa carte tirée du code, `design/CARTE.md`), et
 `docs/TOTEM-INTEGRATION.md`. Chaque harnais a été écrit pour prendre en défaut,
 et chacun l'a fait au moins une fois (les commits le racontent).
 
 ### Installer la base d'un coup
 
-`migrations/20261015_consolidated.sql` contient toutes les migrations de
+`migrations/20261016_consolidated.sql` contient toutes les migrations de
 `supabase/migrations`, dans l'ordre, en un seul fichier : Supabase → SQL Editor
 → coller → Run. Chaque partie vérifie d'abord si elle est déjà en place : le
 fichier se rejoue sans danger, sur une base neuve comme sur une base à

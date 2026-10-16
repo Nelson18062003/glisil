@@ -32,6 +32,17 @@ export const RESEAUX: Record<"bep20" | "trc20", { nom: string; chaine: string; c
   trc20: { nom: "TRC20", chaine: "Tron", confirmations: 20, valide: (a) => /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(a) },
 };
 
+/**
+ * Le réseau se LIT dans l'adresse : 0x… (40 signes hexadécimaux) est BEP20,
+ * T… (34 signes base58) est TRC20 — les deux formes ne se recouvrent pas. Le
+ * client n'a donc pas à choisir un réseau qu'il pourrait choisir faux : c'est
+ * l'erreur la plus coûteuse en crypto (des fonds envoyés sur la mauvaise chaîne).
+ */
+export function reseauDe(adresse: string): "bep20" | "trc20" | null {
+  const a = adresse.trim();
+  return RESEAUX.bep20.valide(a) ? "bep20" : RESEAUX.trc20.valide(a) ? "trc20" : null;
+}
+
 /** L'achat rapide : un prix ferme pris au carnet, plus cette marge (posée par l'équipe). */
 export const RAPIDE = { marge: 0.01, ouvert: true, validiteSecondes: 20 };
 
@@ -106,7 +117,7 @@ export function operateur(id: string): Operateur {
 }
 
 export const PALIERS: Record<number, { entreeJour: number | null; sortieJour: number | null; nom: string }> = {
-  0: { entreeJour: 500_000, sortieJour: 500_000, nom: "Palier 0 · numéro vérifié" },
+  0: { entreeJour: 500_000, sortieJour: 500_000, nom: "Palier 0 · e-mail vérifié" },
   1: { entreeJour: 5_000_000, sortieJour: 5_000_000, nom: "Palier 1 · identité vérifiée" },
   2: { entreeJour: null, sortieJour: null, nom: "Palier 2 · entreprise vérifiée" },
 };

@@ -5,6 +5,7 @@
  */
 import AccountBalanceWalletRounded from "@mui/icons-material/AccountBalanceWalletRounded";
 import ArrowBackRounded from "@mui/icons-material/ArrowBackRounded";
+import ArrowDownwardRounded from "@mui/icons-material/ArrowDownwardRounded";
 import BackspaceOutlined from "@mui/icons-material/BackspaceOutlined";
 import CheckRounded from "@mui/icons-material/CheckRounded";
 import ChevronRightRounded from "@mui/icons-material/ChevronRightRounded";
@@ -14,26 +15,112 @@ import PersonRounded from "@mui/icons-material/PersonRounded";
 import ShowChartRounded from "@mui/icons-material/ShowChartRounded";
 import WifiOffRounded from "@mui/icons-material/WifiOffRounded";
 import {
-  Avatar, BottomNavigation, BottomNavigationAction, Box, Button, ButtonBase, Chip, CircularProgress, Drawer, IconButton, ListItemButton, ListItemText, Paper, Skeleton, Stack, Typography,
+  Avatar, BottomNavigation, BottomNavigationAction, Box, Button, ButtonBase, Chip, CircularProgress, Dialog, Drawer, IconButton, ListItemButton, ListItemText, Paper, Skeleton, Stack, Typography, useMediaQuery,
 } from "@mui/material";
-import { useEffect, useState, type ReactNode } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { lisible } from "../noyau/erreurs";
 import { useSession } from "../session/session";
 import { brand, tones, type Tone } from "../theme";
 
 export type Tab = "accueil" | "marche" | "historique" | "compte";
 
-/* Les couleurs de trading, celles que tout le monde connaît : vert achat, rouge vente. */
-export const BUY = "#0B8F4D";
-export const SELL = "#D93025";
-export const BUY_BG = "rgba(11,143,77,0.12)";
-export const SELL_BG = "rgba(217,48,37,0.12)";
+/* Les couleurs de trading, celles que tout le monde connaît : vert achat, rouge vente — assez
+   sombres pour se lire (4,5:1 au moins, sur blanc comme sur le fond) : le vert d'avant (#0B8F4D)
+   tombait à 3,9 sur le fond, et c'est la couleur des prix du carnet. */
+export const BUY = "#087A41";
+export const SELL = "#C5221F";
+/* les fonds des barres du carnet : à 8 %, le prix écrit dessus se lit encore (4,5:1), même sur le fond gris */
+export const BUY_BG = "rgba(8,122,65,0.08)";
+export const SELL_BG = "rgba(197,34,31,0.08)";
 
 /* ------------------------------------------------------------ l'écran */
 
+/*
+ * TROIS FENÊTRES, UNE APPLICATION (les classes de fenêtre de Material 3) :
+ *   compacte  < 600 px   un téléphone, même tenu à l'horizontale s'il est petit :
+ *                        la barre d'onglets en bas, l'écran sur toute la largeur ;
+ *   moyenne   600–1199   une tablette, un téléphone couché : un rail à gauche ;
+ *   étendue   ≥ 1200     un ordinateur : un menu latéral avec la marque.
+ * Dès 600 px, la navigation quitte le bas de l'écran pour le côté : sur un
+ * écran large, un doigt ou une souris la trouve à gauche, et le contenu garde
+ * toute la hauteur — sur un portable de 1366×768, il ne reste que 650 points.
+ * Les parcours d'argent gardent une colonne étroite (560) : un formulaire étiré
+ * sur 1 500 px ne se lit plus. Les écrans racines prennent la place (1 080).
+ */
+export type Fenetre = "compacte" | "moyenne" | "etendue";
+export function useFenetre(): Fenetre {
+  const moyenne = useMediaQuery("(min-width:600px)", { noSsr: true });
+  const etendue = useMediaQuery("(min-width:1200px)", { noSsr: true });
+  return etendue ? "etendue" : moyenne ? "moyenne" : "compacte";
+}
+
+/** Les quatre maisons, dans l'ordre de la barre ; `aussi` : les chemins qu'elles couvrent. */
+export const ONGLETS: { tab: Tab; to: string; label: string; icone: ReactNode; aussi: RegExp }[] = [
+  { tab: "accueil", to: "/", label: "Accueil", icone: <AccountBalanceWalletRounded />, aussi: /^\/($|notifications|entrer|sortir|crypto)/ },
+  { tab: "marche", to: "/marche", label: "Marché", icone: <ShowChartRounded />, aussi: /^\/(marche|rapide)/ },
+  { tab: "historique", to: "/historique", label: "Historique", icone: <HistoryRounded />, aussi: /^\/historique/ },
+  { tab: "compte", to: "/compte", label: "Compte", icone: <PersonRounded />, aussi: /^\/compte/ },
+];
+export const ongletDuChemin = (chemin: string): Tab => ONGLETS.find((o) => o.aussi.test(chemin))?.tab ?? "accueil";
+
+/* Posé par la garde : on est DANS l'application (une session, rien par-dessus). Hors d'elle — Bienvenue,
+   le verrou, les textes publics — il n'y a pas de navigation à montrer. */
+const DansLApplication = createContext(false);
+
+/** Le cadre des écrans connectés : rien sur un téléphone, le rail ou le menu à partir d'une tablette. */
+export function CadreApplication({ children }: { children: ReactNode }) {
+  const fenetre = useFenetre();
+  if (fenetre === "compacte") return <DansLApplication.Provider value>{children}</DansLApplication.Provider>;
+  return (
+    <DansLApplication.Provider value>
+      <Box sx={{ display: "flex", minHeight: "100dvh", bgcolor: "background.default" }}>
+        <NavigationLaterale large={fenetre === "etendue"} />
+        <Box component="main" sx={{ flex: 1, minWidth: 0 }}>{children}</Box>
+      </Box>
+    </DansLApplication.Provider>
+  );
+}
+
+function NavigationLaterale({ large }: { large: boolean }) {
+  const { pathname } = useLocation();
+  const actif = ongletDuChemin(pathname);
+  return (
+    <Box component="nav" aria-label="Navigation principale"
+      sx={{ position: "sticky", top: 0, height: "100dvh", flexShrink: 0, width: large ? 256 : 88, borderRight: 1, borderColor: "divider", bgcolor: "background.paper",
+            display: "flex", flexDirection: "column", alignItems: large ? "stretch" : "center", gap: 1, px: large ? 1.5 : 0,
+            pt: "calc(env(safe-area-inset-top) + 20px)", pb: 2, pl: large ? 1.5 : "env(safe-area-inset-left)", overflowY: "auto" }}>
+      <ButtonBase component={Link} to="/" aria-label="Glisil, accueil" sx={{ borderRadius: 3, alignSelf: large ? "flex-start" : "center", px: large ? 1 : 0, py: 0.5, gap: 1, mb: 2 }}>
+        <Marque size={40} />
+        {large && <NomGlisil size={26} />}
+      </ButtonBase>
+      {/* le geste le plus fréquent, à portée de main sur tous les écrans */}
+      <Button component={Link} to="/entrer/operateur" variant="contained" startIcon={large ? <ArrowDownwardRounded /> : undefined} aria-label="Entrer des XAF"
+        sx={{ mb: 2, ...(large ? { justifyContent: "flex-start" } : { minWidth: 56, width: 56, height: 56, borderRadius: 4, px: 0 }) }}>
+        {large ? "Entrer des XAF" : <ArrowDownwardRounded />}
+      </Button>
+      {ONGLETS.map((o) => {
+        const choisi = o.tab === actif;
+        return large ? (
+          <ButtonBase key={o.tab} component={Link} to={o.to} aria-current={choisi ? "page" : undefined}
+            sx={{ justifyContent: "flex-start", gap: 1.5, px: 2, minHeight: 56, borderRadius: 7, fontSize: 15, fontWeight: choisi ? 700 : 500,
+                  bgcolor: choisi ? tones.green.bg : "transparent", color: choisi ? tones.green.fg : "text.secondary", "&:hover": { bgcolor: choisi ? tones.green.bg : "action.hover" } }}>
+            {o.icone}{o.label}
+          </ButtonBase>
+        ) : (
+          <ButtonBase key={o.tab} component={Link} to={o.to} aria-current={choisi ? "page" : undefined}
+            sx={{ flexDirection: "column", gap: 0.5, width: 80, minHeight: 64, borderRadius: 4, color: choisi ? tones.green.fg : "text.secondary" }}>
+            <Box sx={{ width: 56, height: 32, borderRadius: 4, display: "grid", placeItems: "center", bgcolor: choisi ? tones.green.bg : "transparent" }}>{o.icone}</Box>
+            <Typography sx={{ fontSize: 12, fontWeight: choisi ? 700 : 500, color: "inherit" }}>{o.label}</Typography>
+          </ButtonBase>
+        );
+      })}
+    </Box>
+  );
+}
+
 export function Screen({
-  title, back, onBack, fermer, tab, actions, children, gap = 2,
+  title, back, onBack, fermer, tab, large, actions, children, gap = 2,
 }: {
   title?: string;
   /** où ramène la flèche */
@@ -42,30 +129,41 @@ export function Screen({
   onBack?: () => void;
   /** la croix d'un parcours : quitte sans rien défaire */
   fermer?: string;
+  /** un écran racine : la barre d'onglets (sur un téléphone) */
   tab?: Tab;
+  /** l'écran prend la largeur d'un grand écran (les racines : 1 080, ou la largeur donnée) ; sinon, une colonne lisible */
+  large?: boolean | number;
   actions?: ReactNode;
   children: ReactNode;
   gap?: number;
 }) {
   const navigate = useNavigate();
   const horsLigne = useHorsLigne();
+  const dans = useContext(DansLApplication);
+  const fenetre = useFenetre();
+  const barreEnBas = Boolean(tab) && fenetre === "compacte";
   const flèche = back || onBack;
   return (
-    <Box sx={{ width: "100%", maxWidth: 480, mx: "auto", minHeight: "100dvh", bgcolor: "background.default", display: "flex", flexDirection: "column" }}>
+    /* Un parcours, sur un grand écran, garde sa hauteur naturelle : sans cela, le pavé tombait au pied
+       d'une fenêtre de 960 px, à 500 px du montant qu'il remplit. Sur un téléphone, il reste sous le pouce. */
+    <Box sx={{ width: "100%", maxWidth: { xs: 600, sm: large ? (typeof large === "number" ? large : 1080) : 600 }, mx: "auto", minHeight: { xs: "100dvh", sm: large || !dans ? "100dvh" : "auto" }, pb: { sm: dans && !large ? 4 : 0 },
+               /* hors de l'application (Bienvenue, verrou…), sur un grand écran : une colonne centrée dans la hauteur */
+               justifyContent: { sm: !dans && !large ? "center" : "flex-start" }, bgcolor: "background.default", display: "flex", flexDirection: "column",
+               px: { sm: dans ? 2 : 0 }, pl: "env(safe-area-inset-left)", pr: "env(safe-area-inset-right)" }}>
       {horsLigne && (
-        <Stack direction="row" alignItems="center" gap={1} sx={{ bgcolor: tones.amber.bg, color: tones.amber.fg, px: 2, py: 0.75 }}>
+        <Stack direction="row" alignItems="center" gap={1} sx={{ bgcolor: tones.amber.bg, color: tones.amber.fg, px: 2, py: 0.75, pt: "calc(env(safe-area-inset-top) + 6px)" }} role="status">
           <WifiOffRounded fontSize="small" />
           <Typography variant="body2" sx={{ color: "inherit" }}>Hors ligne : les chiffres datent du dernier relevé.</Typography>
         </Stack>
       )}
       {(title || flèche || fermer) && (
-        <Stack direction="row" alignItems="center" sx={{ minHeight: 64, px: 1 }}>
+        <Stack direction="row" alignItems="center" sx={{ minHeight: 64, px: 1, pt: horsLigne ? 0 : "env(safe-area-inset-top)", mt: { sm: dans ? 1 : 0 } }}>
           {flèche && (
             <IconButton onClick={() => (onBack ? onBack() : navigate(back!))} aria-label="Retour" size="large">
               <ArrowBackRounded />
             </IconButton>
           )}
-          <Typography variant="h6" sx={{ flex: 1, ml: flèche ? 0.5 : 1.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          <Typography variant="h6" component="h1" sx={{ flex: 1, ml: flèche ? 0.5 : 1.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: { sm: dans && !flèche ? 24 : 20 } }}>
             {title}
           </Typography>
           {actions}
@@ -76,20 +174,17 @@ export function Screen({
           )}
         </Stack>
       )}
-      <Box sx={{ flex: 1, px: 2, pt: title || flèche ? 0 : 2, pb: tab ? 2 : 3, display: "flex", flexDirection: "column", gap }}>{children}</Box>
-      {tab && <BottomNav tab={tab} />}
+      <Box sx={{ flex: { xs: 1, sm: !dans && !large ? "none" : 1 }, px: 2, pt: title || flèche ? 0 : "calc(env(safe-area-inset-top) + 16px)", pb: barreEnBas ? 2 : "calc(env(safe-area-inset-bottom) + 24px)", display: "flex", flexDirection: "column", gap }}>{children}</Box>
+      {barreEnBas && <BottomNav tab={tab!} />}
     </Box>
   );
 }
 
 export function BottomNav({ tab }: { tab: Tab }) {
   return (
-    <Paper sx={{ borderRadius: 0, borderTop: 1, borderColor: "divider", position: "sticky", bottom: 0, zIndex: 2, pb: "env(safe-area-inset-bottom)" }}>
+    <Paper component="nav" aria-label="Navigation principale" sx={{ borderRadius: 0, borderTop: 1, borderColor: "divider", position: "sticky", bottom: 0, zIndex: 2, pb: "env(safe-area-inset-bottom)" }}>
       <BottomNavigation value={tab} showLabels sx={{ height: 80 }}>
-        <BottomNavigationAction component={Link} to="/" value="accueil" label="Accueil" icon={<AccountBalanceWalletRounded />} />
-        <BottomNavigationAction component={Link} to="/marche" value="marche" label="Marché" icon={<ShowChartRounded />} />
-        <BottomNavigationAction component={Link} to="/historique" value="historique" label="Historique" icon={<HistoryRounded />} />
-        <BottomNavigationAction component={Link} to="/compte" value="compte" label="Compte" icon={<PersonRounded />} />
+        {ONGLETS.map((o) => <BottomNavigationAction key={o.tab} component={Link} to={o.to} value={o.tab} label={o.label} icon={o.icone} />)}
       </BottomNavigation>
     </Paper>
   );
@@ -194,6 +289,23 @@ export function Chips({ items, selected, onSelect }: { items: string[]; selected
 
 export function Keypad({ onKey, triple = "000" }: { onKey: (k: string) => void; triple?: string | null }) {
   const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", triple ?? "", "0", "⌫"];
+  /* Sur un ordinateur, on tape au clavier : les chiffres, la virgule, l'effacement. Pas quand un vrai
+     champ a le focus (il reçoit déjà ses touches), et pas deux fois si deux pavés sont montés. */
+  const derniere = useRef(onKey);
+  derniere.current = onKey;
+  useEffect(() => {
+    const surTouche = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+      const cible = e.target as HTMLElement | null;
+      if (cible && (cible.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(cible.tagName))) return;
+      const k = /^[0-9]$/.test(e.key) ? e.key : e.key === "Backspace" ? "⌫" : (e.key === "," || e.key === ".") && triple === "," ? "," : null;
+      if (!k) return;
+      e.preventDefault();
+      derniere.current(k);
+    };
+    window.addEventListener("keydown", surTouche);
+    return () => window.removeEventListener("keydown", surTouche);
+  }, [triple]);
   return (
     <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1 }}>
       {keys.map((k, i) => (
@@ -202,6 +314,33 @@ export function Keypad({ onKey, triple = "000" }: { onKey: (k: string) => void; 
           {k === "⌫" ? <BackspaceOutlined /> : k}
         </ButtonBase>
       ))}
+    </Box>
+  );
+}
+
+/**
+ * Un écran qui n'a rien à montrer ne se tait pas : il dit pourquoi, et mène
+ * au geste qui le remplira. Une action principale, au plus une seconde.
+ */
+export function EtatVide({
+  icone, tone = "neutral", titre, texte, action, secondaire,
+}: {
+  icone: ReactNode; tone?: Tone; titre: string; texte: string;
+  action?: { label: string; to?: string; onClick?: () => void }; secondaire?: { label: string; to?: string; onClick?: () => void };
+}) {
+  const bouton = (a: { label: string; to?: string; onClick?: () => void }, variant: "contained" | "text") =>
+    a.to ? <Button variant={variant} component={Link} to={a.to} onClick={a.onClick}>{a.label}</Button> : <Button variant={variant} onClick={a.onClick}>{a.label}</Button>;
+  return (
+    <Box data-etat-vide="1" sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1.5, textAlign: "center", py: 4, px: 1 }}>
+      <Avatar sx={{ width: 72, height: 72, bgcolor: tones[tone].bg, color: tones[tone].fg }}>{icone}</Avatar>
+      <Typography variant="h6" component="h2">{titre}</Typography>
+      <Typography variant="body2" sx={{ maxWidth: 340 }}>{texte}</Typography>
+      {(action || secondaire) && (
+        <Stack gap={1} sx={{ mt: 1.5, width: "100%", maxWidth: 340 }}>
+          {action && bouton(action, "contained")}
+          {secondaire && bouton(secondaire, "text")}
+        </Stack>
+      )}
     </Box>
   );
 }
@@ -250,6 +389,16 @@ export function Sparkline({ points, color = "#0B6B3A" }: { points: number[]; col
 /* ------------------------------------------------------------ feuilles */
 
 export function Feuille({ ouverte, onFermer, titre, children }: { ouverte: boolean; onFermer: () => void; titre?: string; children: ReactNode }) {
+  /* sur un grand écran, une feuille collée en bas, à 1 000 px de l'endroit où l'on a cliqué, ne se voit pas */
+  const fenetre = useFenetre();
+  if (fenetre !== "compacte") {
+    return (
+      <Dialog open={ouverte} onClose={onFermer} fullWidth maxWidth="xs" PaperProps={{ sx: { borderRadius: 6, p: 3 } }}>
+        {titre && <Typography variant="h6" component="h2" sx={{ mb: 1.5 }}>{titre}</Typography>}
+        {children}
+      </Dialog>
+    );
+  }
   return (
     <Drawer anchor="bottom" open={ouverte} onClose={onFermer} PaperProps={{ sx: { borderTopLeftRadius: 24, borderTopRightRadius: 24, maxWidth: 480, mx: "auto", p: 2.5, pb: "calc(20px + env(safe-area-inset-bottom))" } }}>
       <Box sx={{ width: 40, height: 4, borderRadius: 2, bgcolor: "divider", mx: "auto", mb: 2 }} />
@@ -389,9 +538,9 @@ export function Marque({ size = 44, tuile = true }: { size?: number; tuile?: boo
 }
 
 /** Le nom, tel que la marque l'écrit : « glisil », en minuscules, en Sora. */
-export function NomGlisil({ size = 28 }: { size?: number }) {
+export function NomGlisil({ size = 28, couleur = "text.primary" }: { size?: number; couleur?: string }) {
   return (
-    <Box component="span" sx={{ fontFamily: '"Sora", "Roboto", system-ui, sans-serif', fontWeight: 700, fontSize: size, letterSpacing: "-0.04em", lineHeight: 1, color: "text.primary" }}>
+    <Box component="span" sx={{ fontFamily: '"Sora", "Roboto", system-ui, sans-serif', fontWeight: 700, fontSize: size, letterSpacing: "-0.04em", lineHeight: 1, color: couleur }}>
       glisil
     </Box>
   );

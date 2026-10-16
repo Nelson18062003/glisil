@@ -75,7 +75,7 @@ create function auth.uid() returns uuid language sql stable as $$
 $$;
 grant usage on schema auth to anon, authenticated;
 grant execute on function auth.uid() to anon, authenticated;
-create table auth.users (id uuid primary key, phone text, email text, phone_confirmed_at timestamptz);
+create table auth.users (id uuid primary key, phone text, email text, phone_confirmed_at timestamptz, email_confirmed_at timestamptz, last_sign_in_at timestamptz);
 SQL
 $COMME "PATH=$PATH $PSQL -d xafe -f $GRAPPE/auth.sql" >/dev/null
 

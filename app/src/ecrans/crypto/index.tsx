@@ -1,7 +1,7 @@
 /*
  * Crypto : déposer des USDT (une adresse, la même à chaque fois) ; retirer des
- * USDT ou des XAFe vers un wallet externe : Réseau → Adresse → Montant →
- * Vérifier → Code → Envoyé. Mêmes règles que « Sortir des XAF ».
+ * USDT ou des XAFe vers un wallet externe : Adresse (le réseau s'y lit) →
+ * Montant → Vérifier → Code → Envoyé. Mêmes règles que « Sortir des XAF ».
  */
 import ArrowDownwardRounded from "@mui/icons-material/ArrowDownwardRounded";
 import BoltRounded from "@mui/icons-material/BoltRounded";
@@ -17,7 +17,7 @@ import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useAdresseDepot, useGuichet, useRetraitCrypto, useSoldes } from "../../guichet";
 import type { Actif, Reseau } from "../../guichet/types";
-import { arrondi2, CRYPTO, FRAIS_CRYPTO, RESEAUX } from "../../noyau/argent";
+import { arrondi2, CRYPTO, FRAIS_CRYPTO, RESEAUX, reseauDe } from "../../noyau/argent";
 import { adresseCourte, enTranches, quand, xaf } from "../../noyau/format";
 import { parcours, useParcours } from "../../navigation/parcours";
 import { Attente, Card, FeuilleErreur, Keypad, Line, List, Points, Row, Screen, Success } from "../../ui";
@@ -32,8 +32,8 @@ export function Crypto() {
       <List>
         <Row icon={<BoltRounded />} tone="green" primary="Acheter ou vendre des USDT" secondary="En un geste, au prix du moment" to="/rapide" />
         <Row icon={<ArrowDownwardRounded />} tone="blue" primary="Déposer des USDT" secondary="BEP20 ou TRC20" to="/crypto/deposer/USDT" />
-        <Row icon={<ArrowUpwardRounded />} tone="blue" primary="Retirer des USDT" secondary="Vers un wallet externe" to="/crypto/retirer/USDT/reseau" />
-        <Row icon={<ArrowOutwardRounded />} tone="green" primary="Retirer des XAFe" secondary="Vers mon propre wallet, BEP20 ou TRC20" to="/crypto/retirer/XAFe/reseau" />
+        <Row icon={<ArrowUpwardRounded />} tone="blue" primary="Retirer des USDT" secondary="Vers un wallet externe" to="/crypto/retirer/USDT/adresse" />
+        <Row icon={<ArrowOutwardRounded />} tone="green" primary="Retirer des XAFe" secondary="Vers mon propre wallet, BEP20 ou TRC20" to="/crypto/retirer/XAFe/adresse" />
       </List>
     </Screen>
   );
@@ -87,12 +87,21 @@ export function CryptoDeposer() {
 
 /* ----------------------------------------------------------- retirer */
 
-export function CryptoRetirerReseau() {
+/**
+ * 1 · L'adresse. Le réseau ne se choisit pas : il se lit dans l'adresse
+ * (reseauDe), et l'écran le montre avec ses frais avant de continuer.
+ */
+export function CryptoRetirerAdresse() {
   const { actif: a } = useParams();
   const actif = actifDe(a);
   const navigate = useNavigate();
   const [c, poser] = useParcours("crypto");
   useEffect(() => { if (c.actif !== actif) poser({ actif, adresse: "", montant: 0 }); }, [actif, c.actif, poser]);
+  const reseau = reseauDe(c.adresse);
+  useEffect(() => { if (reseau && reseau !== c.reseau) poser({ reseau }); }, [reseau, c.reseau, poser]);
+  const coller = async () => {
+    try { const t = await navigator.clipboard.readText(); poser({ adresse: t.trim() }); } catch { /* lecture refusée : on tape */ }
+  };
   if (!CRYPTO.retraitsOuverts) {
     /* fermé par le moteur : on le dit AVANT l'adresse, le montant et le code, pas après */
     return (
@@ -103,47 +112,32 @@ export function CryptoRetirerReseau() {
       </Screen>
     );
   }
+  const tape = c.adresse.trim().length > 10;
   return (
     <Screen title={`Retirer des ${actif}`} back="/crypto">
-      <Typography variant="body2">Sur quel réseau ?</Typography>
-      <List>
-        {(Object.keys(RESEAUX) as Reseau[]).map((r) => (
-          <Row key={r} icon={<Typography fontWeight={700} fontSize={13}>{RESEAUX[r].nom.slice(0, 3)}</Typography>} tone={r === "bep20" ? "amber" : "red"} primary={RESEAUX[r].nom} secondary={`${RESEAUX[r].chaine} · frais ${fmt(actif, FRAIS_CRYPTO[actif])} ${actif}`} selected={c.reseau === r} onClick={() => poser({ reseau: r })} />
-        ))}
-      </List>
-      <Box sx={{ flex: 1 }} />
-      <Button variant="contained" onClick={() => navigate(`/crypto/retirer/${actif}/adresse`)}>Continuer</Button>
-    </Screen>
-  );
-}
-
-export function CryptoRetirerAdresse() {
-  const { actif: a } = useParams();
-  const actif = actifDe(a);
-  const navigate = useNavigate();
-  const [c, poser] = useParcours("crypto");
-  const valide = RESEAUX[c.reseau].valide(c.adresse.trim());
-  const coller = async () => {
-    try { const t = await navigator.clipboard.readText(); poser({ adresse: t.trim() }); } catch { /* lecture refusée : on tape */ }
-  };
-  return (
-    <Screen title="Adresse du wallet" back={`/crypto/retirer/${actif}/reseau`}>
-      <Typography variant="body2">Une adresse {RESEAUX[c.reseau].nom} ({RESEAUX[c.reseau].chaine}). Vérifiez-la deux fois : un envoi sur une chaîne ne se rappelle pas.</Typography>
+      <Typography variant="body2">L'adresse de votre wallet, sur BNB Smart Chain (BEP20, commence par 0x) ou sur Tron (TRC20, commence par T). Le réseau se reconnaît tout seul.</Typography>
       <TextField
-        label={`Adresse ${RESEAUX[c.reseau].nom}`}
+        label="Adresse du wallet"
         value={c.adresse}
-        onChange={(e) => poser({ adresse: e.target.value })}
+        onChange={(e) => poser({ adresse: e.target.value.replace(/\s/g, "") })}
         fullWidth
         multiline
         minRows={2}
         autoComplete="off"
-        error={c.adresse.length > 10 && !valide}
-        helperText={c.adresse.length > 10 && !valide ? `Ce n'est pas une adresse ${RESEAUX[c.reseau].nom} valide.` : " "}
-        slotProps={{ input: { sx: { fontFamily: "Roboto Mono, monospace", fontSize: 15 } } }}
+        error={tape && !reseau}
+        helperText={tape && !reseau ? "Ce n'est ni une adresse BEP20 (0x…) ni une adresse TRC20 (T…). Copiez-la depuis votre wallet." : " "}
+        slotProps={{ input: { sx: { fontFamily: "Roboto Mono, monospace", fontSize: 16 } }, htmlInput: { spellCheck: false, autoCapitalize: "off", autoCorrect: "off" } }}
       />
       <Button variant="outlined" startIcon={<ContentPasteRounded />} onClick={() => void coller()}>Coller</Button>
+      {reseau && (
+        <Card>
+          <Line label="Réseau" value={`${RESEAUX[reseau].nom} · ${RESEAUX[reseau].chaine}`} strong />
+          <Line label="Frais du retrait" value={`${fmt(actif, FRAIS_CRYPTO[actif])} ${actif}`} />
+          <Typography variant="body2">Vérifiez que votre wallet attend bien des {actif} sur {RESEAUX[reseau].chaine} : un envoi sur une chaîne ne se rappelle pas.</Typography>
+        </Card>
+      )}
       <Box sx={{ flex: 1 }} />
-      <Button variant="contained" disabled={!valide} onClick={() => navigate(`/crypto/retirer/${actif}/montant`)}>Continuer</Button>
+      <Button variant="contained" disabled={!reseau} onClick={() => navigate(`/crypto/retirer/${actif}/montant`)}>Continuer</Button>
     </Screen>
   );
 }
@@ -196,7 +190,7 @@ export function CryptoRetirerVerifier() {
   const actif = actifDe(a);
   const navigate = useNavigate();
   const [c] = useParcours("crypto");
-  if (!c.montant || !c.adresse) return <Navigate to={`/crypto/retirer/${actif}/reseau`} replace />;
+  if (!c.montant || !c.adresse) return <Navigate to={`/crypto/retirer/${actif}/adresse`} replace />;
   const frais = FRAIS_CRYPTO[actif];
   return (
     <Screen title="Vérifiez" back={`/crypto/retirer/${actif}/montant`}>
@@ -226,7 +220,7 @@ export function CryptoRetirerCode() {
   const [code, setCode] = useState("");
   const [faux, setFaux] = useState<string | null>(null);
   const { lancer, enCours, erreur, effacerErreur } = useGesteUnique("cr", { actif, reseau: c.reseau, adresse: c.adresse.trim(), montant: c.montant });
-  if (!c.montant || !c.adresse) return <Navigate to={`/crypto/retirer/${actif}/reseau`} replace />;
+  if (!c.montant || !c.adresse) return <Navigate to={`/crypto/retirer/${actif}/adresse`} replace />;
 
   const envoyer = (k: string) =>
     lancer(async (cle) => {

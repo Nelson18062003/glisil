@@ -13,6 +13,70 @@ export type ErreurLisible = {
 };
 
 const DICTIONNAIRE: Record<string, Omit<ErreurLisible, "recommencer"> & { recommencer?: boolean }> = {
+  /* ---- l'inscription et la connexion */
+  "code incorrect ou expiré": {
+    titre: "Ce code ne marche pas",
+    argent: "Rien n'a bougé.",
+    suite: "Vérifiez les six chiffres, ou demandez un nouveau code : un code reste valable quelques minutes.",
+  },
+  "trop de codes demandés : attendez une minute": {
+    titre: "Trop de codes demandés",
+    argent: "Rien n'a bougé.",
+    suite: "Attendez une minute, puis demandez un nouveau code. Pensez à regarder dans vos courriers indésirables.",
+  },
+  "adresse e-mail invalide": {
+    titre: "Cette adresse e-mail n'est pas valide",
+    argent: "Rien n'a bougé.",
+    suite: "Vérifiez qu'elle est écrite en entier, par exemple awa@exemple.com.",
+  },
+  "adresse e-mail non vérifiée": {
+    titre: "Votre adresse e-mail n'est pas encore vérifiée",
+    argent: "Aucun compte n'a été ouvert.",
+    suite: "Reconnectez-vous avec le code reçu par e-mail.",
+  },
+  "il faut avoir 18 ans": {
+    titre: "Il faut avoir 18 ans",
+    argent: "Aucun compte n'a été ouvert.",
+    suite: "Glisil est un service financier : il est réservé aux personnes majeures.",
+    recommencer: false,
+  },
+  "date de naissance invalide": {
+    titre: "Cette date de naissance n'est pas possible",
+    argent: "Aucun compte n'a été ouvert.",
+    suite: "Vérifiez le jour, le mois et l'année.",
+  },
+  "numéro de téléphone invalide": {
+    titre: "Ce numéro de téléphone n'est pas valide",
+    argent: "Aucun compte n'a été ouvert.",
+    suite: "Choisissez le bon pays, puis tapez le numéro sans l'indicatif. Au Cameroun : 9 chiffres, comme 6 77 12 34 56.",
+  },
+  "ce numéro est déjà utilisé": {
+    titre: "Ce numéro est déjà utilisé",
+    argent: "Aucun compte n'a été ouvert.",
+    suite: "Un numéro ne sert qu'à un seul compte. Si c'est le vôtre, connectez-vous avec l'adresse e-mail de ce compte, ou écrivez au support.",
+    recommencer: false,
+  },
+  "ce numéro ou cette adresse est déjà utilisé": {
+    titre: "Ce numéro ou cette adresse est déjà utilisé",
+    argent: "Aucun compte n'a été ouvert.",
+    suite: "Un numéro et une adresse ne servent qu'à un seul compte. Écrivez au support si c'est une erreur.",
+    recommencer: false,
+  },
+  "prénom invalide": { titre: "Ce prénom n'est pas valide", argent: "Aucun compte n'a été ouvert.", suite: "Des lettres seulement, au moins deux." },
+  "nom invalide": { titre: "Ce nom n'est pas valide", argent: "Aucun compte n'a été ouvert.", suite: "Des lettres seulement, au moins deux." },
+  "ville invalide": { titre: "Cette ville n'est pas valide", argent: "Aucun compte n'a été ouvert.", suite: "Des lettres seulement, au moins deux." },
+  "pays invalide": { titre: "Choisissez votre pays dans la liste", argent: "Aucun compte n'a été ouvert.", suite: "Tapez les premières lettres pour le trouver." },
+  "compte déjà ouvert": {
+    titre: "Votre compte est déjà ouvert",
+    argent: "Rien n'a bougé.",
+    suite: "Rechargez l'application : vous arriverez sur votre compte.",
+    recommencer: false,
+  },
+  "compte pas encore ouvert": {
+    titre: "Votre compte n'est pas encore ouvert",
+    argent: "Rien n'a bougé.",
+    suite: "Terminez votre inscription.",
+  },
   "devis expiré": {
     titre: "Le prix a expiré",
     argent: "Rien n'a bougé.",
@@ -109,8 +173,43 @@ const DICTIONNAIRE: Record<string, Omit<ErreurLisible, "recommencer"> & { recomm
   "compte désactivé": {
     titre: "Votre compte est suspendu",
     argent: "Vos soldes restent à vous ; aucun geste d'argent n'est possible pour l'instant.",
-    suite: "Contactez l'équipe XAFe sur WhatsApp, depuis Compte → Aide.",
+    suite: "Écrivez au support Glisil, depuis Compte → Aide.",
     recommencer: false,
+  },
+  "compte fermé": {
+    titre: "Votre compte est fermé",
+    argent: "Aucune opération n'est possible.",
+    suite: "Pour le rouvrir, écrivez au support depuis l'adresse de ce compte.",
+    recommencer: false,
+  },
+  "compte déjà fermé": {
+    titre: "Votre compte est déjà fermé",
+    argent: "Rien n'a bougé.",
+    suite: "Pour le rouvrir, écrivez au support.",
+    recommencer: false,
+  },
+  "il reste de l'argent sur le compte": {
+    titre: "Il reste de l'argent sur votre compte",
+    argent: "Rien n'a été fermé : votre argent est toujours là.",
+    suite: "Sortez d'abord vos XAF et vos USDT, puis revenez fermer le compte.",
+    recommencer: false,
+  },
+  "une opération est en cours": {
+    titre: "Une opération est encore en cours",
+    argent: "Rien n'a été fermé.",
+    suite: "Attendez qu'elle se termine — ou annulez vos ordres ouverts — puis revenez.",
+    recommencer: false,
+  },
+  "un remboursement vous est dû": {
+    titre: "Un remboursement vous est dû",
+    argent: "Rien n'a été fermé : l'équipe doit d'abord vous rendre cet argent.",
+    suite: "Écrivez au support pour qu'il soit fait, puis revenez fermer le compte.",
+    recommencer: false,
+  },
+  "conditions non acceptées": {
+    titre: "Les conditions n'ont pas été acceptées",
+    argent: "Rien n'a bougé.",
+    suite: "Lisez les conditions d'utilisation en vigueur, cochez la case, puis recommencez. Si l'écran insiste, rechargez l'application : une nouvelle version est peut-être sortie.",
   },
   "transaction id déjà utilisé": {
     titre: "Ce transaction ID a déjà été crédité",

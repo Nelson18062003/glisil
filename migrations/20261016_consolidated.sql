@@ -3457,3 +3457,696 @@ $sql$;
     raise notice '0008_glisil.sql : appliquée';
   end if;
 end $consolide$;
+
+-- ─── 0009_inscription_par_email.sql (md5 02aff708729dc5f8195edb2606586927) ───
+-- déjà en place si : rejouable telle quelle
+do $consolide$
+begin
+  if false then
+    raise notice '0009_inscription_par_email.sql : déjà en place, rien à faire';
+  else
+    execute $sql$
+-- ╔════════════════════════════════════════════════════════════════════════╗
+-- ║  Glisil · 0009 · l'inscription par e-mail, sans mot de passe           ║
+-- ║  On entre avec son adresse e-mail et un code reçu par e-mail (Supabase ║
+-- ║  Auth, OTP). Le compte client s'ouvre ensuite avec un profil complet : ║
+-- ║  prénom, nom, date de naissance, téléphone, ville et pays — tous       ║
+-- ║  vérifiés ICI, pas seulement à l'écran. L'administration entre de la   ║
+-- ║  même façon : une adresse invitée devient administrateur à son premier ║
+-- ║  code.                                                                 ║
+-- ╚════════════════════════════════════════════════════════════════════════╝
+
+-- ─────────────────────────────── le profil ─────────────────────────────────
+alter table comptes add column if not exists email          text;
+alter table comptes add column if not exists prenom         text;
+alter table comptes add column if not exists nom_de_famille text;
+alter table comptes add column if not exists date_naissance date;
+alter table comptes add column if not exists ville          text;
+alter table comptes add column if not exists pays           text check (pays ~ '^[A-Z]{2}$');
+create unique index if not exists comptes_email_unique on comptes (lower(email)) where email is not null;
+
+-- Un nom propre : espaces resserrés, une capitale à chaque mot et après un
+-- trait d'union ou une apostrophe (« jean-paul » → « Jean-Paul »,
+-- « MBALLA » → « Mballa », « d'almeida » → « D'Almeida »). NULL si ce
+-- n'est pas un nom : des lettres, et seulement des espaces, traits d'union,
+-- apostrophes ou points pour les séparer, de 2 à 60 signes.
+create or replace function _nom_propre(p text) returns text language plpgsql immutable as $$
+declare v text := regexp_replace(trim(coalesce(p, '')), '\s+', ' ', 'g');
+begin
+  v := replace(v, '’', '''');
+  if length(v) < 2 or length(v) > 60 then return null; end if;
+  if v !~ '^[[:alpha:]]+([ ''.-]+[[:alpha:]]+)*\.?$' then return null; end if;
+  return initcap(lower(v));
+end $$;
+
+create or replace function _compte_json(c comptes) returns jsonb language sql stable as $$
+  select jsonb_build_object('id', c.id, 'telephone', c.telephone, 'nom', c.nom, 'entreprise', c.entreprise, 'palier', c.palier,
+                            'email', c.email, 'prenom', c.prenom, 'nom_de_famille', c.nom_de_famille,
+                            'date_naissance', c.date_naissance, 'ville', c.ville, 'pays', c.pays,
+                            'a_code', exists (select 1 from codes_secrets k where k.compte_id = c.id), 'verrou_jusqua', c.code_verrou_jusqua,
+                            'verification_en_cours', c.verification_en_cours,
+                            -- ce qui est déjà entré aujourd'hui : l'écran montre ce qui RESTE du plafond, pas le plafond
+                            'entre_du_jour', (select coalesce(sum(montant), 0) from depot_declarations
+                                               where compte_id = c.id and etat = 'credite' and credite_le >= debut_du_jour()))
+$$;
+
+-- L'adresse e-mail de l'utilisateur connecté, si son code l'a PROUVÉE. Une
+-- adresse que personne n'a confirmée n'ouvre rien.
+create or replace function _email_prouve() returns text
+language plpgsql stable security definer set search_path = public as $$
+declare v_email text; v_le timestamptz;
+begin
+  if auth.uid() is null then return null; end if;
+  select lower(trim(email)), email_confirmed_at into v_email, v_le from auth.users where id = auth.uid();
+  if v_le is null or coalesce(v_email, '') = '' then return null; end if;
+  return v_email;
+end $$;
+
+-- ────────────────────────── ouvrir son compte ──────────────────────────────
+-- Une fois, après le premier code. Tout est obligatoire et vérifié ici : un
+-- appel direct à l'API ne contourne rien.
+--   p_telephone  au format international (+237 6 77 12 34 56 → +237677123456) ;
+--                au Cameroun, neuf chiffres commençant par 6 (mobile) ou 2 (fixe)
+--   p_naissance  18 ans révolus (un service financier), au plus 120 ans
+--   p_pays       code ISO à deux lettres (CM, GA, FR…)
+create or replace function ouvrir_mon_compte(p_prenom text, p_nom text, p_naissance date, p_telephone text, p_ville text, p_pays text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_email  text := _email_prouve();
+  v_prenom text := _nom_propre(p_prenom);
+  v_nom    text := _nom_propre(p_nom);
+  v_ville  text := _nom_propre(p_ville);
+  v_pays   text := upper(trim(coalesce(p_pays, '')));
+  v_tel    text := regexp_replace(coalesce(p_telephone, ''), '[^0-9+]', '', 'g');
+  v_age    int;
+  v_c      comptes;
+begin
+  if auth.uid() is null then raise exception 'non connecté'; end if;
+  if v_email is null then raise exception 'adresse e-mail non vérifiée' using detail = 'entrez le code reçu par e-mail'; end if;
+  if exists (select 1 from comptes where id = auth.uid()) then raise exception 'compte déjà ouvert'; end if;
+
+  if v_prenom is null then raise exception 'prénom invalide' using detail = 'des lettres, de 2 à 60'; end if;
+  if v_nom is null then raise exception 'nom invalide' using detail = 'des lettres, de 2 à 60'; end if;
+
+  if p_naissance is null then raise exception 'date de naissance manquante'; end if;
+  v_age := extract(year from age((now() at time zone 'Africa/Douala')::date, p_naissance))::int;
+  if p_naissance > (now() at time zone 'Africa/Douala')::date or v_age > 120 then raise exception 'date de naissance invalide'; end if;
+  if v_age < 18 then raise exception 'il faut avoir 18 ans' using detail = 'Glisil est un service financier'; end if;
+
+  if v_tel !~ '^\+[1-9][0-9]{7,14}$' then raise exception 'numéro de téléphone invalide' using detail = 'au format international, avec l''indicatif'; end if;
+  if v_tel like '+237%' and v_tel !~ '^\+237[62][0-9]{8}$' then
+    raise exception 'numéro de téléphone invalide' using detail = 'au Cameroun : neuf chiffres, commençant par 6 ou 2';
+  end if;
+  if exists (select 1 from comptes where telephone = v_tel) then
+    raise exception 'ce numéro est déjà utilisé' using detail = 'il appartient à un autre compte';
+  end if;
+
+  if v_ville is null then raise exception 'ville invalide' using detail = 'des lettres, de 2 à 60'; end if;
+  if v_pays !~ '^[A-Z]{2}$' then raise exception 'pays invalide'; end if;
+
+  insert into comptes (id, telephone, email, prenom, nom_de_famille, nom, date_naissance, ville, pays)
+  values (auth.uid(), v_tel, v_email, v_prenom, v_nom, v_prenom || ' ' || v_nom, p_naissance, v_ville, v_pays)
+  returning * into v_c;
+  return _compte_json(v_c);
+exception
+  when unique_violation then raise exception 'ce numéro ou cette adresse est déjà utilisé';
+end $$;
+
+-- ───────────────────────── entrer dans l'administration ─────────────────────
+-- Pas de mot de passe ici non plus. Le super administrateur INVITE une
+-- adresse ; la personne entre son adresse, reçoit un code, et à son premier
+-- passage l'invitation devient sa fiche d'administrateur. Le code a prouvé
+-- l'adresse : c'est la seule chose qui lie la personne à l'invitation.
+create table if not exists administrateurs_invites (
+  email     text primary key check (email = lower(trim(email)) and email like '%_@_%._%'),
+  nom       text not null,
+  role      text not null check (role in ('super_admin', 'operateur', 'tresorier', 'support')),
+  invite_le timestamptz not null default now(),
+  invite_par uuid
+);
+alter table administrateurs_invites enable row level security;
+revoke all on table administrateurs_invites from public, anon, authenticated;
+grant all on table administrateurs_invites to service_role;
+
+-- Rend la fiche de l'administrateur connecté (comme mon_profil_admin), après
+-- avoir transformé son invitation s'il en a une. NULL : cette adresse
+-- n'administre pas Glisil.
+create or replace function entrer_administration() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_email text := _email_prouve(); v_inv administrateurs_invites;
+begin
+  if auth.uid() is null or v_email is null then return null; end if;
+  if not exists (select 1 from administrateurs where id = auth.uid()) then
+    delete from administrateurs_invites where email = v_email returning * into v_inv;
+    if found then
+      insert into administrateurs (id, email, nom, role) values (auth.uid(), v_email, v_inv.nom, v_inv.role)
+      on conflict do nothing;
+      insert into journal_admin (admin_id, action, cible, detail)
+      values (auth.uid(), 'invitation_acceptee', v_email, jsonb_build_object('role', v_inv.role, 'invite_par', v_inv.invite_par));
+    end if;
+  end if;
+  return mon_profil_admin();
+end $$;
+
+-- Inviter quelqu'un : le droit « administrateurs » seulement (le super admin).
+create or replace function admin_inviter_administrateur(p_email text, p_nom text, p_role text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_email text := lower(trim(coalesce(p_email, '')));
+begin
+  perform _exiger_droit('administrateurs');
+  if v_email !~ '^[^@\s]+@[^@\s]+\.[a-z]{2,}$' then raise exception 'adresse e-mail invalide'; end if;
+  if length(trim(coalesce(p_nom, ''))) < 2 then raise exception 'nom manquant'; end if;
+  if p_role not in ('super_admin', 'operateur', 'tresorier', 'support') then raise exception 'rôle inconnu'; end if;
+  if exists (select 1 from administrateurs where lower(email) = v_email) then raise exception 'cette adresse administre déjà'; end if;
+  insert into administrateurs_invites (email, nom, role, invite_par) values (v_email, trim(p_nom), p_role, auth.uid())
+  on conflict (email) do update set nom = excluded.nom, role = excluded.role, invite_le = now(), invite_par = excluded.invite_par;
+  perform _journaliser('administrateur_invite', v_email, jsonb_build_object('role', p_role));
+  return jsonb_build_object('email', v_email, 'nom', trim(p_nom), 'role', p_role);
+end $$;
+
+-- ──────────────────────────────── les droits ───────────────────────────────
+-- Chez Supabase, une fonction nouvelle est ouverte à tous par défaut : on
+-- referme d'abord, puis on ouvre aux comptes connectés ce qui leur revient.
+revoke all on function _nom_propre(text), _email_prouve(), ouvrir_mon_compte(text, text, date, text, text, text),
+                       entrer_administration(), admin_inviter_administrateur(text, text, text)
+  from public, anon, authenticated;
+grant execute on function ouvrir_mon_compte(text, text, date, text, text, text), entrer_administration(),
+                          admin_inviter_administrateur(text, text, text)
+  to authenticated;
+grant execute on function _nom_propre(text), _email_prouve(), ouvrir_mon_compte(text, text, date, text, text, text),
+                          entrer_administration(), admin_inviter_administrateur(text, text, text)
+  to service_role;
+$sql$;
+    raise notice '0009_inscription_par_email.sql : appliquée';
+  end if;
+end $consolide$;
+
+-- ─── 0010_vue_clients.sql (md5 e8666fd37bc5719815f11a413ebf79e0) ───
+-- déjà en place si : rejouable telle quelle
+do $consolide$
+begin
+  if false then
+    raise notice '0010_vue_clients.sql : déjà en place, rien à faire';
+  else
+    execute $sql$
+-- ╔════════════════════════════════════════════════════════════════════════╗
+-- ║  Glisil · 0010 · la vue d'ensemble des clients, pour l'équipe          ║
+-- ║  Combien de clients, combien vivent vraiment, qui vient d'arriver ; la ║
+-- ║  liste qui se filtre et se cherche par nom, e-mail ou numéro ; la      ║
+-- ║  fiche complète d'un client, profil, connexions et tout son historique.║
+-- ║  Tout passe par le droit « clients ».                                  ║
+-- ╚════════════════════════════════════════════════════════════════════════╝
+
+-- Un client ACTIF a bougé de l'argent dans les 30 derniers jours (une
+-- écriture sur son compte) : se connecter sans rien faire ne compte pas.
+create or replace function _derniere_operation(p_compte uuid) returns timestamptz language sql stable as $$
+  select max(cree_le) from ecritures where compte_id = p_compte
+$$;
+
+create or replace function _derniere_connexion(p_compte uuid) returns timestamptz
+language plpgsql stable security definer set search_path = public as $$
+declare v timestamptz;
+begin
+  if to_regclass('auth.users') is null then return null; end if;
+  execute 'select last_sign_in_at from auth.users where id = $1' into v using p_compte;
+  return v;
+exception when undefined_column then return null;
+end $$;
+
+-- Les chiffres en tête de la page Clients.
+create or replace function admin_statistiques_clients() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare r jsonb; v_inacheves int := 0;
+begin
+  perform _exiger_droit('clients');
+  -- des personnes ont prouvé leur adresse e-mail, mais n'ont pas fini leur profil
+  if to_regclass('auth.users') is not null then
+    execute $q$select count(*) from auth.users u
+                where u.email_confirmed_at is not null
+                  and not exists (select 1 from comptes c where c.id = u.id)
+                  and not exists (select 1 from administrateurs a where a.id = u.id)$q$ into v_inacheves;
+  end if;
+  select jsonb_build_object(
+    'total',            count(*),
+    'actifs_30j',       count(*) filter (where c.desactive_le is null and exists (select 1 from ecritures e where e.compte_id = c.id and e.cree_le > now() - interval '30 days')),
+    'connectes_7j',     count(*) filter (where _derniere_connexion(c.id) > now() - interval '7 days'),
+    'nouveaux_7j',      count(*) filter (where c.cree_le > now() - interval '7 days'),
+    'nouveaux_30j',     count(*) filter (where c.cree_le > now() - interval '30 days'),
+    'verifies',         count(*) filter (where c.palier >= 1),
+    'en_verification',  count(*) filter (where c.verification_en_cours is not null),
+    'desactives',       count(*) filter (where c.desactive_le is not null),
+    'inscriptions_inachevees', v_inacheves,
+    'par_pays',         (select coalesce(jsonb_object_agg(pays, n), '{}'::jsonb) from (select coalesce(pays, '?') pays, count(*) n from comptes where not maison group by 1) p),
+    'inscriptions_30j', (select coalesce(jsonb_agg(jsonb_build_object('jour', j, 'n', n) order by j), '[]'::jsonb) from (
+                           select d::date j, (select count(*) from comptes x where not x.maison and (x.cree_le at time zone 'Africa/Douala')::date = d::date) n
+                             from generate_series((now() at time zone 'Africa/Douala')::date - 29, (now() at time zone 'Africa/Douala')::date, interval '1 day') d) s))
+    into r from comptes c where not c.maison;
+  return r;
+end $$;
+
+-- La liste : cherchée par nom, e-mail ou numéro ; filtrée par état.
+--   p_filtre : null (tous) · actifs · inactifs · nouveaux · verifications · desactives
+create or replace function admin_clients(p_recherche text default null, p_n int default 100, p_filtre text default null) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare r jsonb; v_q text := nullif(trim(coalesce(p_recherche, '')), ''); v_chiffres text;
+begin
+  perform _exiger_droit('clients');
+  v_chiffres := regexp_replace(coalesce(v_q, ''), '[^0-9]', '', 'g');
+  select coalesce(jsonb_agg(jsonb_build_object('id', c.id, 'telephone', c.telephone, 'nom', c.nom, 'entreprise', c.entreprise, 'palier', c.palier,
+                            'email', c.email, 'ville', c.ville, 'pays', c.pays,
+                            'verification_en_cours', c.verification_en_cours, 'cree_le', c.cree_le, 'desactive_le', c.desactive_le,
+                            'derniere_operation', c.derniere_operation, 'derniere_connexion', _derniere_connexion(c.id),
+                            'xafe', (select coalesce(disponible + bloque, 0) from soldes where compte_id = c.id and actif = 'XAFe'),
+                            'usdt', (select coalesce(disponible + bloque, 0) from soldes where compte_id = c.id and actif = 'USDT')) order by c.cree_le desc), '[]'::jsonb)
+    into r
+    from (select x.*, _derniere_operation(x.id) derniere_operation from comptes x where not x.maison
+             and (p_filtre is null
+                  or (p_filtre = 'verifications' and x.verification_en_cours is not null)
+                  or (p_filtre = 'desactives' and x.desactive_le is not null)
+                  or (p_filtre = 'nouveaux' and x.cree_le > now() - interval '7 days')
+                  or (p_filtre = 'actifs' and x.desactive_le is null and exists (select 1 from ecritures e where e.compte_id = x.id and e.cree_le > now() - interval '30 days'))
+                  or (p_filtre = 'inactifs' and x.desactive_le is null and not exists (select 1 from ecritures e where e.compte_id = x.id and e.cree_le > now() - interval '30 days')))
+             and (v_q is null
+                  or (length(v_chiffres) >= 3 and regexp_replace(coalesce(x.telephone, ''), '[^0-9]', '', 'g') like '%' || v_chiffres || '%')
+                  or x.nom ilike '%' || v_q || '%' or x.entreprise ilike '%' || v_q || '%' or x.email ilike '%' || v_q || '%'
+                  or x.ville ilike '%' || v_q || '%')
+           order by x.cree_le desc limit least(greatest(coalesce(p_n, 100), 1), 500)) c;
+  return r;
+end $$;
+
+-- La fiche : le profil complet, les connexions, et tout l'historique.
+create or replace function admin_client(p_id uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare r jsonb;
+begin
+  perform _exiger_droit('clients');
+  select jsonb_build_object(
+    'compte', _compte_json(c) || jsonb_build_object('cree_le', c.cree_le, 'desactive_le', c.desactive_le, 'verification_pieces', c.verification_pieces,
+                                                    'code_verrou_jusqua', c.code_verrou_jusqua, 'derniere_connexion', _derniere_connexion(c.id),
+                                                    'derniere_operation', _derniere_operation(c.id)),
+    'soldes', (select coalesce(jsonb_object_agg(actif, jsonb_build_object('disponible', disponible, 'bloque', bloque)), '{}'::jsonb) from soldes where compte_id = c.id),
+    'numeros', (select coalesce(jsonb_agg(_numero_json(n) order by n.verifie_le), '[]'::jsonb) from numeros n where n.compte_id = c.id),
+    'totaux', jsonb_build_object(
+       'entre_xaf',   (select coalesce(sum(montant), 0) from depot_declarations where compte_id = c.id and etat = 'credite'),
+       'sorti_xaf',   (select coalesce(sum(montant_envoye), 0) from sorties where compte_id = c.id and etat in ('envoyee', 'partielle')),
+       'ordres',      (select count(*) from ordres where compte_id = c.id),
+       'retraits_crypto', (select count(*) from retraits_crypto where compte_id = c.id)),
+    'depots', (select coalesce(jsonb_agg(_depot_json(d) order by d.cree_le desc), '[]'::jsonb) from (select * from depots where compte_id = c.id order by cree_le desc limit 50) d),
+    'sorties', (select coalesce(jsonb_agg(_sortie_json(s) order by s.cree_le desc), '[]'::jsonb) from (select * from sorties where compte_id = c.id order by cree_le desc limit 50) s),
+    'ordres', (select coalesce(jsonb_agg(_ordre_json(o) order by o.cree_le desc), '[]'::jsonb) from (select * from ordres where compte_id = c.id order by cree_le desc limit 50) o),
+    'retraits_crypto', (select coalesce(jsonb_agg(_retrait_json(x) order by x.cree_le desc), '[]'::jsonb) from (select * from retraits_crypto where compte_id = c.id order by cree_le desc limit 50) x),
+    'transferts_crypto', (select coalesce(jsonb_agg(jsonb_build_object('id', t.id, 'actif', t.actif, 'reseau', t.reseau, 'sens', t.sens, 'montant', t.montant,
+                                                                        'adresse', t.adresse, 'tx_hash', t.tx_hash, 'cree_le', t.cree_le) order by t.cree_le desc), '[]'::jsonb)
+                            from (select * from transferts_crypto where compte_id = c.id order by cree_le desc limit 50) t),
+    'ecritures', (select coalesce(jsonb_agg(jsonb_build_object('actif', e.actif, 'disponible', e.disponible_delta, 'bloque', e.bloque_delta, 'nature', e.nature, 'source', e.source_id, 'quand', e.cree_le) order by e.cree_le desc), '[]'::jsonb)
+                    from (select * from ecritures where compte_id = c.id order by cree_le desc limit 100) e))
+    into r from comptes c where c.id = p_id;
+  return r;
+end $$;
+
+revoke all on function _derniere_operation(uuid), _derniere_connexion(uuid), admin_statistiques_clients() from public, anon, authenticated;
+grant execute on function admin_statistiques_clients() to authenticated;
+grant execute on function _derniere_operation(uuid), _derniere_connexion(uuid), admin_statistiques_clients() to service_role;
+$sql$;
+    raise notice '0010_vue_clients.sql : appliquée';
+  end if;
+end $consolide$;
+
+-- ─── 0011_equipe.sql (md5 d0e4ade586a3608363c5ec34cfeb5577) ───
+-- déjà en place si : rejouable telle quelle
+do $consolide$
+begin
+  if false then
+    raise notice '0011_equipe.sql : déjà en place, rien à faire';
+  else
+    execute $sql$
+-- ╔════════════════════════════════════════════════════════════════════════╗
+-- ║  Glisil · 0011 · l'équipe                                              ║
+-- ║  Le super administrateur voit qui administre, qui est invité, quand    ║
+-- ║  chacun est venu pour la dernière fois ; il invite, retire une         ║
+-- ║  invitation, change un rôle, met en pause. Tout par le droit           ║
+-- ║  « administrateurs », et jamais sur soi-même.                          ║
+-- ╚════════════════════════════════════════════════════════════════════════╝
+
+create or replace function admin_equipe() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  perform _exiger_droit('administrateurs');
+  return jsonb_build_object(
+    'administrateurs', (select coalesce(jsonb_agg(jsonb_build_object(
+                          'id', a.id, 'email', a.email, 'nom', a.nom, 'role', a.role, 'actif', a.actif, 'cree_le', a.cree_le,
+                          'derniere_connexion', _derniere_connexion(a.id), 'moi', a.id = auth.uid())
+                        order by a.actif desc, a.cree_le), '[]'::jsonb) from administrateurs a),
+    'invitations', (select coalesce(jsonb_agg(jsonb_build_object('email', i.email, 'nom', i.nom, 'role', i.role, 'invite_le', i.invite_le)
+                        order by i.invite_le desc), '[]'::jsonb) from administrateurs_invites i));
+end $$;
+
+create or replace function admin_retirer_invitation(p_email text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+begin
+  perform _exiger_droit('administrateurs');
+  delete from administrateurs_invites where email = lower(trim(coalesce(p_email, '')));
+  if not found then raise exception 'invitation inconnue'; end if;
+  perform _journaliser('invitation_retiree', lower(trim(p_email)));
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- Changer le rôle d'un autre : jamais le sien (on ne s'enlève pas ses propres droits
+-- par mégarde, et le dernier super administrateur reste super administrateur).
+create or replace function admin_changer_role(p_id uuid, p_role text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_avant text;
+begin
+  perform _exiger_droit('administrateurs');
+  if p_id = auth.uid() then raise exception 'on ne change pas son propre rôle'; end if;
+  if p_role not in ('super_admin', 'operateur', 'tresorier', 'support') then raise exception 'rôle inconnu'; end if;
+  select role into v_avant from administrateurs where id = p_id for update;
+  if not found then raise exception 'administrateur inconnu'; end if;
+  update administrateurs set role = p_role where id = p_id;
+  perform _journaliser('changer_role', p_id::text, jsonb_build_object('avant', v_avant, 'apres', p_role));
+  return jsonb_build_object('ok', true);
+end $$;
+
+revoke all on function admin_equipe(), admin_retirer_invitation(text), admin_changer_role(uuid, text) from public, anon, authenticated;
+grant execute on function admin_equipe(), admin_retirer_invitation(text), admin_changer_role(uuid, text) to authenticated, service_role;
+$sql$;
+    raise notice '0011_equipe.sql : appliquée';
+  end if;
+end $consolide$;
+
+-- ─── 0012_garde_fous.sql (md5 1be4cb74e3f5645d1e580e74595e7b22) ───
+-- déjà en place si : rejouable telle quelle
+do $consolide$
+begin
+  if false then
+    raise notice '0012_garde_fous.sql : déjà en place, rien à faire';
+  else
+    execute $sql$
+-- ╔════════════════════════════════════════════════════════════════════════╗
+-- ║  Glisil · 0012 · les garde-fous d'avant les premiers clients           ║
+-- ║  · chaque fonction de la base a son chemin de recherche FIGÉ ;         ║
+-- ║  · les tables ne s'exposent plus par GraphQL (on ne s'en sert pas) ;   ║
+-- ║  · les conditions d'utilisation : leur version est acceptée à          ║
+-- ║    l'inscription et gardée avec la date ;                              ║
+-- ║  · le client peut FERMER son compte lui-même, une fois tout son        ║
+-- ║    argent sorti et rien en cours ;                                     ║
+-- ║  · le contact du support est un paramètre que l'équipe règle.          ║
+-- ╚════════════════════════════════════════════════════════════════════════╝
+
+-- ─────────────────────────── le chemin figé ────────────────────────────────
+-- Une fonction sans « set search_path » cherche ses tables et ses fonctions
+-- dans le chemin de CELUI QUI L'APPELLE. Quiconque peut créer un objet dans
+-- un schéma placé avant « public » pourrait lui faire appeler le sien. On
+-- fige donc le chemin de toutes nos fonctions — celles des extensions restent
+-- à leurs propriétaires. Un scénario du moteur (12.1) vérifie qu'il n'en
+-- reste aucune, y compris celles qu'une migration future ajouterait.
+do $$
+declare r record;
+begin
+  for r in
+    select p.oid::regprocedure as f
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.prokind = 'f'
+       and not exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c like 'search_path=%')
+       and not exists (select 1 from pg_depend d where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e')
+  loop
+    execute format('alter function %s set search_path = public, extensions, pg_temp', r.f);
+  end loop;
+end $$;
+
+-- ───────────────────────────── GraphQL ─────────────────────────────────────
+-- Les applications parlent à la base par les fonctions (RPC) et le temps
+-- réel ; GraphQL ne sert à rien ici, et il montre la forme de toutes les
+-- tables à n'importe quel compte connecté. Il se réactive en un clic
+-- (Database → Extensions) si un jour on en a besoin.
+do $$
+begin
+  drop extension if exists pg_graphql;
+exception when insufficient_privilege or dependent_objects_still_exist then
+  raise notice 'pg_graphql n''a pas pu être retiré (%) : le désactiver dans Database → Extensions', sqlerrm;
+end $$;
+
+-- ─────────────────────── le compte : nouvelles colonnes ─────────────────────
+alter table comptes add column if not exists conditions_version      text;
+alter table comptes add column if not exists conditions_acceptees_le timestamptz;
+alter table comptes add column if not exists ferme_le                timestamptz;
+alter table comptes add column if not exists fermeture_motif         text;
+
+-- La version en vigueur des conditions d'utilisation et de la politique de
+-- confidentialité. Le texte vit dans l'application (/conditions,
+-- /confidentialite) ; quand il change, on change AUSSI cette version, et
+-- chaque client la réaccepte à sa prochaine ouverture.
+-- Le support : ce que l'écran d'aide propose (WhatsApp, e-mail).
+insert into parametres (cle, valeur) values
+  ('conditions', '{"version": "2026-10-16"}'),
+  ('support', '{"email": "support@glisil.com", "whatsapp": null}')
+on conflict (cle) do nothing;
+
+create or replace function _compte_json(c comptes) returns jsonb language sql stable
+set search_path = public, extensions, pg_temp as $$
+  select jsonb_build_object('id', c.id, 'telephone', c.telephone, 'nom', c.nom, 'entreprise', c.entreprise, 'palier', c.palier,
+                            'email', c.email, 'prenom', c.prenom, 'nom_de_famille', c.nom_de_famille,
+                            'date_naissance', c.date_naissance, 'ville', c.ville, 'pays', c.pays,
+                            'a_code', exists (select 1 from codes_secrets k where k.compte_id = c.id), 'verrou_jusqua', c.code_verrou_jusqua,
+                            'verification_en_cours', c.verification_en_cours,
+                            'conditions_version', c.conditions_version, 'conditions_acceptees_le', c.conditions_acceptees_le,
+                            'conditions_a_jour', c.maison or c.conditions_version is not distinct from (parametre('conditions') ->> 'version'),
+                            'ferme_le', c.ferme_le, 'desactive', c.desactive_le is not null,
+                            -- ce qui est déjà entré aujourd'hui : l'écran montre ce qui RESTE du plafond, pas le plafond
+                            'entre_du_jour', (select coalesce(sum(montant), 0) from depot_declarations
+                                               where compte_id = c.id and etat = 'credite' and credite_le >= debut_du_jour()))
+$$;
+
+-- Un compte désactivé par l'équipe, ou fermé par son titulaire, ne fait plus
+-- aucun geste. Le message le dit dans les deux cas.
+create or replace function _exiger_compte_actif(p_compte uuid) returns void
+language plpgsql set search_path = public, extensions, pg_temp as $$
+declare v_c comptes;
+begin
+  if p_compte is null then raise exception 'non connecté'; end if;
+  select * into v_c from comptes where id = p_compte;
+  if v_c.ferme_le is not null then
+    raise exception 'compte fermé' using detail = 'contactez le support Glisil pour le rouvrir';
+  end if;
+  if v_c.desactive_le is not null then
+    raise exception 'compte désactivé' using detail = 'contactez le support Glisil';
+  end if;
+end $$;
+
+-- ───────────────────── ouvrir son compte, conditions comprises ──────────────
+-- Même fonction que 0009, avec un septième argument : la version des
+-- conditions que la personne a lues et acceptées. Une autre version — ou
+-- aucune — n'ouvre rien : l'acceptation est une preuve, datée par la base.
+drop function if exists ouvrir_mon_compte(text, text, date, text, text, text);
+create or replace function ouvrir_mon_compte(p_prenom text, p_nom text, p_naissance date, p_telephone text, p_ville text, p_pays text, p_conditions text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_email  text := _email_prouve();
+  v_prenom text := _nom_propre(p_prenom);
+  v_nom    text := _nom_propre(p_nom);
+  v_ville  text := _nom_propre(p_ville);
+  v_pays   text := upper(trim(coalesce(p_pays, '')));
+  v_tel    text := regexp_replace(coalesce(p_telephone, ''), '[^0-9+]', '', 'g');
+  v_age    int;
+  v_c      comptes;
+begin
+  if auth.uid() is null then raise exception 'non connecté'; end if;
+  if v_email is null then raise exception 'adresse e-mail non vérifiée' using detail = 'entrez le code reçu par e-mail'; end if;
+  if exists (select 1 from comptes where id = auth.uid()) then raise exception 'compte déjà ouvert'; end if;
+
+  if v_prenom is null then raise exception 'prénom invalide' using detail = 'des lettres, de 2 à 60'; end if;
+  if v_nom is null then raise exception 'nom invalide' using detail = 'des lettres, de 2 à 60'; end if;
+
+  if p_naissance is null then raise exception 'date de naissance manquante'; end if;
+  v_age := extract(year from age((now() at time zone 'Africa/Douala')::date, p_naissance))::int;
+  if p_naissance > (now() at time zone 'Africa/Douala')::date or v_age > 120 then raise exception 'date de naissance invalide'; end if;
+  if v_age < 18 then raise exception 'il faut avoir 18 ans' using detail = 'Glisil est un service financier'; end if;
+
+  if v_tel !~ '^\+[1-9][0-9]{7,14}$' then raise exception 'numéro de téléphone invalide' using detail = 'au format international, avec l''indicatif'; end if;
+  if v_tel like '+237%' and v_tel !~ '^\+237[62][0-9]{8}$' then
+    raise exception 'numéro de téléphone invalide' using detail = 'au Cameroun : neuf chiffres, commençant par 6 ou 2';
+  end if;
+  if exists (select 1 from comptes where telephone = v_tel) then
+    raise exception 'ce numéro est déjà utilisé' using detail = 'il appartient à un autre compte';
+  end if;
+
+  if v_ville is null then raise exception 'ville invalide' using detail = 'des lettres, de 2 à 60'; end if;
+  if v_pays !~ '^[A-Z]{2}$' then raise exception 'pays invalide'; end if;
+
+  if p_conditions is distinct from (parametre('conditions') ->> 'version') then
+    raise exception 'conditions non acceptées' using detail = 'lisez et acceptez les conditions en vigueur';
+  end if;
+
+  insert into comptes (id, telephone, email, prenom, nom_de_famille, nom, date_naissance, ville, pays, conditions_version, conditions_acceptees_le)
+  values (auth.uid(), v_tel, v_email, v_prenom, v_nom, v_prenom || ' ' || v_nom, p_naissance, v_ville, v_pays, p_conditions, now())
+  returning * into v_c;
+  return _compte_json(v_c);
+exception
+  when unique_violation then raise exception 'ce numéro ou cette adresse est déjà utilisé';
+end $$;
+
+-- Quand les conditions changent : le client relit et accepte la nouvelle
+-- version, une fois. Rien d'autre ne change sur son compte.
+create or replace function accepter_conditions(p_version text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_c comptes;
+begin
+  if auth.uid() is null then raise exception 'non connecté'; end if;
+  if p_version is distinct from (parametre('conditions') ->> 'version') then
+    raise exception 'conditions non acceptées' using detail = 'ce ne sont pas les conditions en vigueur';
+  end if;
+  update comptes set conditions_version = p_version, conditions_acceptees_le = now()
+   where id = auth.uid() returning * into v_c;
+  if not found then raise exception 'compte inconnu'; end if;
+  return _compte_json(v_c);
+end $$;
+
+-- ───────────────────────────── fermer son compte ───────────────────────────
+-- Le client ferme lui-même son compte (exigence du Play Store, et respect
+-- élémentaire). Seulement quand plus rien ne lui appartient chez nous : tout
+-- son argent sorti, aucune opération en cours, rien que l'équipe lui doive.
+-- On ne fait pas disparaître l'argent d'un client parce qu'il a appuyé sur
+-- un bouton.
+--
+-- Fermer n'efface pas : la loi impose de garder les traces des opérations
+-- (lutte contre le blanchiment), et la politique de confidentialité le dit.
+-- Le compte ne peut plus rien faire ; l'équipe peut le rouvrir à sa demande.
+--
+-- Le code secret est exigé, comme pour une sortie. Il est contrôlé APRÈS les
+-- conditions : on ne fait pas taper un code pour s'entendre dire non.
+create or replace function fermer_mon_compte(p_code text, p_motif text default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_c comptes; v jsonb; v_reste text;
+begin
+  if auth.uid() is null then raise exception 'non connecté'; end if;
+  select * into v_c from comptes where id = auth.uid() and not maison for no key update;
+  if not found then raise exception 'compte inconnu'; end if;
+  if v_c.ferme_le is not null then raise exception 'compte déjà fermé'; end if;
+
+  select string_agg(format('%s %s', to_char(disponible + bloque, 'FM999G999G999G990D00'), actif), ', ')
+    into v_reste from soldes where compte_id = v_c.id and disponible + bloque > 0;
+  if v_reste is not null then
+    raise exception 'il reste de l''argent sur le compte' using detail = format('sortez d''abord : %s', v_reste);
+  end if;
+  if exists (select 1 from ordres where compte_id = v_c.id and etat in ('ouvert', 'partiel'))
+     or exists (select 1 from depots where compte_id = v_c.id and etat = 'en_attente')
+     or exists (select 1 from depot_declarations where compte_id = v_c.id and etat = 'attendu')
+     or exists (select 1 from sorties where compte_id = v_c.id and etat in ('en_attente', 'en_cours'))
+     or exists (select 1 from retraits_crypto where compte_id = v_c.id and etat in ('en_attente', 'en_cours')) then
+    raise exception 'une opération est en cours' using detail = 'attendez qu''elle se termine, ou annulez-la';
+  end if;
+  -- un paiement reçu sur un de ses dossiers, retenu (palier, ID partagé) : il est à lui
+  if exists (select 1 from entrees_retenues r join depots d on d.id = r.depot_id
+              where d.compte_id = v_c.id and r.etat = 'retenue') then
+    raise exception 'un remboursement vous est dû' using detail = 'l''équipe doit d''abord vous rembourser';
+  end if;
+
+  v := _controler_code(v_c.id, p_code);
+  if not (v ->> 'ok')::boolean then return v; end if;
+
+  update comptes set ferme_le = now(), desactive_le = coalesce(desactive_le, now()),
+                     fermeture_motif = nullif(left(trim(coalesce(p_motif, '')), 500), '')
+   where id = v_c.id returning * into v_c;
+  return jsonb_build_object('ok', true, 'compte', _compte_json(v_c));
+end $$;
+
+-- L'équipe rouvre un compte fermé comme elle réactive un compte désactivé :
+-- « réactiver » efface aussi la fermeture.
+create or replace function admin_desactiver_compte(p_id uuid, p_actif boolean, p_note text default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+begin
+  perform _exiger_droit('clients');
+  update comptes set desactive_le = case when p_actif then null else now() end,
+                     ferme_le = case when p_actif then null else ferme_le end
+   where id = p_id and not maison;
+  if not found then raise exception 'compte inconnu'; end if;
+  perform _journaliser(case when p_actif then 'reactiver_compte' else 'desactiver_compte' end, p_id::text, jsonb_build_object('note', p_note));
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- ─────────────────────── ce que l'écran peut lire ──────────────────────────
+create or replace function parametres_publics() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'frais', parametre('frais'),
+    'marche', parametre('marche'),
+    'paliers', parametre('paliers'),
+    'rapide', jsonb_build_object('marge', parametre('rapide') -> 'marge', 'ouvert', coalesce((parametre('rapide') ->> 'ouvert')::boolean, false),
+                                 'validite_secondes', parametre('rapide') -> 'validite_secondes'),
+    'crypto', jsonb_build_object('frais', parametre('crypto') -> 'frais',
+                                 'retraits_ouverts', coalesce((parametre('crypto') ->> 'retraits_ouverts')::boolean, false)),
+    'operateurs', (select jsonb_agg(jsonb_build_object('id', id, 'nom', nom, 'plafond_par_transfert', plafond_par_transfert,
+                                                       'plafond_jour', plafond_jour) order by id) from operateurs),
+    'conditions', parametre('conditions'),
+    'support', parametre('support'))
+   where auth.uid() is not null
+$$;
+
+-- ─────────────────── l'équipe règle le support et les conditions ────────────
+create or replace function _verifier_parametre(p_cle text, v jsonb) returns void
+language plpgsql set search_path = public, extensions, pg_temp as $$
+declare k text; p jsonb; ok boolean;
+begin
+  if jsonb_typeof(v) <> 'object' then raise exception 'paramètre invalide' using detail = 'un objet JSON est attendu'; end if;
+  ok := case p_cle
+    when 'frais' then _nombre_entre(v -> 'placeur', 0, 0.05) and _nombre_entre(v -> 'preneur', 0, 0.05) and _nombre_entre(v -> 'sortie', 0, 0.05)
+    when 'marche' then v ->> 'paire' = 'USDT/XAFe' and _nombre_entre(v -> 'pas_prix', 0.01, 100) and _nombre_entre(v -> 'quantite_min', 0.01, 1000000)
+                       and jsonb_typeof(v -> 'ouvert') = 'boolean'
+    when 'depot' then _nombre_entre(v -> 'validite_minutes', 5, 1440, true) and _nombre_entre(v -> 'grace_minutes', 0, 10080, true)
+    when 'sortie' then _nombre_entre(v -> 'reprises_max', 1, 10, true)
+    when 'rapide' then _nombre_entre(v -> 'marge', 0, 0.2) and _nombre_entre(v -> 'validite_secondes', 5, 120, true)
+                       and jsonb_typeof(v -> 'ouvert') = 'boolean'
+    when 'code_secret' then _nombre_entre(v -> 'essais', 1, 10, true) and _nombre_entre(v -> 'verrou_minutes', 1, 1440, true)
+                       and _nombre_entre(v -> 'longueur_min', 4, 6, true) and _nombre_entre(v -> 'longueur_max', 4, 8, true)
+                       and (v ->> 'longueur_min')::int <= (v ->> 'longueur_max')::int
+    when 'crypto' then _nombre_entre(v -> 'frais' -> 'USDT', 0, 1000) and _nombre_entre(v -> 'frais' -> 'XAFe', 0, 1000000)
+                       and _nombre_entre(v -> 'confirmations' -> 'bep20', 1, 1000, true) and _nombre_entre(v -> 'confirmations' -> 'trc20', 1, 1000, true)
+                       and jsonb_typeof(v -> 'retraits_ouverts') = 'boolean'
+    when 'paliers' then (select bool_and(x) from (values (v ? '0'), (v ? '1'), (v ? '2')) t(x))
+    -- une date AAAA-MM-JJ : la version se lit, et se compare
+    when 'conditions' then coalesce(v ->> 'version', '') ~ '^\d{4}-\d{2}-\d{2}$'
+    -- une adresse e-mail, et un numéro WhatsApp au format international ou null
+    when 'support' then coalesce(v ->> 'email', '') ~ '^[^@\s]+@[^@\s]+\.[a-z]{2,}$'
+                        and (jsonb_typeof(v -> 'whatsapp') = 'null' or coalesce(v ->> 'whatsapp', '') ~ '^\+[1-9][0-9]{7,14}$')
+    else false end;
+  if p_cle = 'paliers' and ok then
+    foreach k in array array['0', '1', '2'] loop
+      p := v -> k;
+      if jsonb_typeof(p) = 'null' then continue; end if;
+      if not (jsonb_typeof(p) = 'object' and _nombre_entre(p -> 'entree_jour', 0, 1e12, true) and _nombre_entre(p -> 'sortie_jour', 0, 1e12, true)) then
+        ok := false;
+      end if;
+    end loop;
+  end if;
+  if not coalesce(ok, false) then
+    raise exception 'paramètre invalide' using detail = format('« %s » : une clé manque, ou une valeur sort de ses bornes', p_cle);
+  end if;
+end $$;
+
+create or replace function admin_modifier_parametre(p_cle text, p_valeur jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+begin
+  perform _exiger_droit('parametres');
+  if p_cle not in ('frais', 'marche', 'depot', 'sortie', 'paliers', 'crypto', 'code_secret', 'rapide', 'conditions', 'support') then
+    raise exception 'paramètre inconnu';
+  end if;
+  perform _verifier_parametre(p_cle, p_valeur);
+  update parametres set valeur = p_valeur where cle = p_cle;
+  if not found then raise exception 'paramètre inconnu'; end if;
+  perform _journaliser('modifier_parametre', p_cle, p_valeur);
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- ──────────────────────────────── les droits ───────────────────────────────
+revoke all on function ouvrir_mon_compte(text, text, date, text, text, text, text), accepter_conditions(text),
+                       fermer_mon_compte(text, text)
+  from public, anon, authenticated;
+grant execute on function ouvrir_mon_compte(text, text, date, text, text, text, text), accepter_conditions(text),
+                          fermer_mon_compte(text, text)
+  to authenticated, service_role;
+-- les fonctions internes redéfinies ici gardent leurs droits ; on le redit
+revoke all on function _compte_json(comptes), _exiger_compte_actif(uuid), _verifier_parametre(text, jsonb) from public, anon, authenticated;
+$sql$;
+    raise notice '0012_garde_fous.sql : appliquée';
+  end if;
+end $consolide$;

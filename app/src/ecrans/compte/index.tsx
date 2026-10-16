@@ -1,7 +1,14 @@
 /*
- * Le Compte : mes numéros MoMo, mes paliers, la sécurité, l'accès API, l'aide.
+ * Le Compte : mes informations, mes numéros MoMo, mes paliers, la sécurité,
+ * l'accès API, l'aide, les conditions — et, au bout de « Mes informations »,
+ * fermer son compte.
  */
 import AddRounded from "@mui/icons-material/AddRounded";
+import BadgeOutlined from "@mui/icons-material/BadgeOutlined";
+import CheckCircleRounded from "@mui/icons-material/CheckCircleRounded";
+import DescriptionOutlined from "@mui/icons-material/DescriptionOutlined";
+import ErrorOutlineRounded from "@mui/icons-material/ErrorOutlineRounded";
+import PrivacyTipOutlined from "@mui/icons-material/PrivacyTipOutlined";
 import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
 import HelpOutlineRounded from "@mui/icons-material/HelpOutlineRounded";
 import KeyRounded from "@mui/icons-material/KeyRounded";
@@ -14,21 +21,24 @@ import VerifiedRounded from "@mui/icons-material/VerifiedRounded";
 import WhatsApp from "@mui/icons-material/WhatsApp";
 import { Accordion, AccordionDetails, AccordionSummary, Avatar, Box, Button, Chip, Stack, TextField, Typography } from "@mui/material";
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { useCompte, useGuichet, useNumeros, useRafraichir } from "../../guichet";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useCompte, useDepotsEnAttente, useGuichet, useMesOrdres, useNumeros, useRafraichir, useSoldes } from "../../guichet";
+import { CONDITIONS, CONFIDENTIALITE, lienWhatsapp, VERSION_CONDITIONS, type Document } from "../../noyau/conditions";
+import { Contact, FeuilleLegale } from "../legal";
 import type { IdOperateur } from "../../guichet/types";
 import { CODE_SMS_DEMO } from "../../guichet/demo";
 import { FRAIS, OPERATEURS, PALIERS, operateur as opDe } from "../../noyau/argent";
 import { initiales, jourRelatif, numeroEnTranches, numeroSaisi, numeroValide, operateurDuNumero, pourcent, xaf } from "../../noyau/format";
+import { ageAu, paysDe, telephoneLisible } from "../../noyau/identite";
 import { parcours } from "../../navigation/parcours";
 import { useSession } from "../../session/session";
 import { tones } from "../../theme";
 import { Card, Cases, Feuille, FeuilleErreur, Keypad, Line, List, Points, Row, Screen, Squelette } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
 
-/* Le numéro du support vient de la configuration : un numéro écrit en dur ici
-   était un bouche-trou, et les messages des clients partaient chez un inconnu. */
-const WHATSAPP = /^\d{11,15}$/.test(String(import.meta.env.VITE_SUPPORT_WHATSAPP ?? "")) ? String(import.meta.env.VITE_SUPPORT_WHATSAPP) : null;
+/* Le support vient de l'équipe (paramètre « support ») ou de la configuration :
+   un numéro écrit en dur ici était un bouche-trou, et les messages des clients
+   partaient chez un inconnu. Voir noyau/conditions.ts. */
 
 /** « MTN, Orange · 2 vérifiés » : les opérateurs, puis le nombre */
 function resumeNumeros(numeros: { operateur: string; verifieLe: string | null }[]): string {
@@ -41,23 +51,31 @@ export function Compte() {
   const session = useSession();
   const { data: compte } = useCompte();
   const { data: numeros } = useNumeros();
+  const [lu, setLu] = useState<Document | null>(null);
   const palier = compte ? PALIERS[compte.palier] : null;
   return (
     <Screen tab="compte" title="Compte">
       <Stack alignItems="center" gap={1} py={2}>
         <Avatar sx={{ width: 88, height: 88, bgcolor: "primary.main", fontSize: 32, fontWeight: 600 }}>{initiales(compte?.nom)}</Avatar>
         <Typography variant="h6">{compte?.nom ?? "…"}</Typography>
-        <Typography variant="body2">{compte?.entreprise ?? numeroEnTranches(compte?.telephone ?? "")}</Typography>
+        <Typography variant="body2">{compte?.entreprise ?? telephoneLisible(compte?.telephone ?? "")}</Typography>
+        {compte?.email && <Typography variant="body2" sx={{ overflowWrap: "anywhere", textAlign: "center" }}>{compte.email}</Typography>}
         {palier && <Chip icon={<VerifiedRounded />} label={palier.nom} sx={{ bgcolor: tones.green.bg, color: tones.green.fg, "& .MuiChip-icon": { color: tones.green.fg } }} />}
       </Stack>
       <List>
+        <Row icon={<BadgeOutlined />} tone="neutral" primary="Mes informations" secondary="Identité, adresse e-mail, résidence" to="/compte/informations" />
         <Row icon={<PhoneAndroidRounded />} tone="green" primary="Mes numéros MoMo" secondary={numeros ? resumeNumeros(numeros) : " "} to="/compte/numeros" />
         <Row icon={<VerifiedRounded />} tone="amber" primary="Paliers et limites" secondary={palier && compte ? `Palier ${compte.palier} · ${palier.entreeJour === null ? "sans plafond plateforme" : `${xaf(palier.entreeJour)} XAF par jour`}` : " "} to="/compte/paliers" />
         <Row icon={<ShieldOutlined />} tone="blue" primary="Sécurité" secondary="Code secret, appareils" to="/compte/securite" />
         <Row icon={<KeyRounded />} tone="neutral" primary="Accès API" secondary="Pour les desks" to="/compte/api" />
-        <Row icon={<HelpOutlineRounded />} tone="neutral" primary="Aide" to="/compte/aide" />
+        <Row icon={<HelpOutlineRounded />} tone="neutral" primary="Aide et support" secondary="Questions fréquentes, nous écrire" to="/compte/aide" />
+      </List>
+      <List>
+        <Row icon={<DescriptionOutlined />} tone="neutral" primary="Conditions d'utilisation" onClick={() => setLu(CONDITIONS)} />
+        <Row icon={<PrivacyTipOutlined />} tone="neutral" primary="Politique de confidentialité" onClick={() => setLu(CONFIDENTIALITE)} />
       </List>
       <Button variant="text" color="error" startIcon={<LogoutRounded />} onClick={() => void session.deconnecter()}>Se déconnecter</Button>
+      <FeuilleLegale doc={lu} onFermer={() => setLu(null)} />
       <Typography variant="caption" textAlign="center">Glisil · {import.meta.env.MODE === "production" ? "" : "mode "}{useGuichet().mode === "demo" ? "démonstration" : ""}</Typography>
     </Screen>
   );
@@ -313,7 +331,7 @@ export function CompteSecurite() {
         <Row icon={<ShieldOutlined />} tone="green" primary="Verrouiller maintenant" secondary="Le code sera demandé à la prochaine ouverture" onClick={session.verrouiller} />
         <Row icon={<PhoneAndroidRounded />} tone="neutral" primary="Empreinte ou visage" secondary="Dans l'application Android, à la place du code" chevron={false} />
       </List>
-      <Typography variant="body2">Trois codes faux verrouillent le compte 15 minutes. Un code secret ne se partage avec personne, pas même avec l'équipe XAFe.</Typography>
+      <Typography variant="body2">Trois codes faux verrouillent le compte 15 minutes. Un code secret ne se partage avec personne, pas même avec l'équipe Glisil : elle ne vous le demandera jamais.</Typography>
       <Box sx={{ flex: 1 }} />
       <Button variant="outlined" color="error" startIcon={<LogoutRounded />} onClick={() => void session.deconnecter()}>Déconnecter cet appareil</Button>
       <Feuille ouverte={changer} onFermer={fermer} titre={etape === "ancien" ? "Votre code actuel" : etape === "nouveau" ? "Le nouveau code" : "Confirmez le nouveau code"}>
@@ -341,7 +359,7 @@ export function CompteApi() {
       </Card>
       <Typography variant="body2">Les clés se créeront ici, avec leurs droits (lecture seule, ordres, retraits) et leur adresse IP autorisée. Rien à faire aujourd'hui : dites-nous ce dont vous avez besoin.</Typography>
       <Box sx={{ flex: 1 }} />
-      {WHATSAPP && <Button variant="outlined" startIcon={<WhatsApp />} href={`https://wa.me/${WHATSAPP}?text=${encodeURIComponent("Bonjour, je souhaite un accès API Glisil pour mon desk.")}`} target="_blank" rel="noopener">Nous écrire</Button>}
+      <Contact sujet="Accès API Glisil" texte="Bonjour, je souhaite un accès API pour mon desk." />
     </Screen>
   );
 }
@@ -361,7 +379,8 @@ export function CompteAide() {
   const ref = params.get("ref") ?? "";
   const { data: compte } = useCompte();
   const [texte, setTexte] = useState(ref ? `Référence ${ref} : ` : "");
-  const lien = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(`${compte?.nom ?? ""} (${numeroEnTranches(compte?.telephone ?? "")}) · ${texte}`)}`;
+  const qui = `${compte?.nom ?? ""} (${telephoneLisible(compte?.telephone ?? "")}${compte?.email ? ` · ${compte.email}` : ""})`;
+  const lien = lienWhatsapp(`${qui} · ${texte}`);
   return (
     <Screen title="Aide" back="/compte">
       <Box>
@@ -372,14 +391,134 @@ export function CompteAide() {
           </Accordion>
         ))}
       </Box>
-      {WHATSAPP && (
+      <Typography variant="subtitle1" sx={{ mt: 1 }}>Signaler un problème</Typography>
+      <Typography variant="body2">Dites ce qui s'est passé ; gardez la référence de l'opération (XAFe-…) si vous l'avez. Personne chez Glisil ne vous demandera votre code secret.</Typography>
+      <TextField label="Ce qui s'est passé" value={texte} onChange={(e) => setTexte(e.target.value)} fullWidth multiline minRows={3} />
+      {lien
+        ? <Button variant="contained" startIcon={<WhatsApp />} href={lien} target="_blank" rel="noopener" disabled={texte.trim().length < 5}>Envoyer sur WhatsApp</Button>
+        : null}
+      <Contact sujet={ref ? `Problème · ${ref}` : "Un problème avec Glisil"} texte={`${qui}\n\n${texte}`} />
+      <Typography variant="caption" textAlign="center">L'équipe répond de 8 h à 20 h, sept jours sur sept.</Typography>
+    </Screen>
+  );
+}
+
+/* ------------------------------------------------- mes informations */
+
+const dateLongue = (iso: string) => new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+
+/**
+ * Ce que Glisil sait de vous, tel que la base le garde. En lecture seule :
+ * ce sont les informations qui servent à vérifier votre identité, et une
+ * correction passe par le support (qui peut demander une pièce).
+ */
+export function CompteInformations() {
+  const { data: compte } = useCompte();
+  return (
+    <Screen title="Mes informations" back="/compte">
+      {!compte ? <Squelette hauteur={280} /> : (
         <>
-          <Typography variant="subtitle1" sx={{ mt: 1 }}>Signaler un problème</Typography>
-          <TextField label="Ce qui s'est passé" value={texte} onChange={(e) => setTexte(e.target.value)} fullWidth multiline minRows={3} />
-          <Button variant="contained" startIcon={<WhatsApp />} href={lien} target="_blank" rel="noopener" disabled={texte.trim().length < 5}>Envoyer sur WhatsApp</Button>
-          <Typography variant="caption" textAlign="center">L'équipe répond de 8 h à 20 h, sept jours sur sept.</Typography>
+          <Card>
+            <Line label="Prénom" value={compte.prenom ?? "—"} />
+            <Line label="Nom" value={compte.nomDeFamille ?? "—"} />
+            <Line label="Date de naissance" value={compte.dateNaissance ? `${dateLongue(compte.dateNaissance)} · ${ageAu(compte.dateNaissance)} ans` : "—"} />
+            <Line label="Adresse e-mail" value={<Box component="span" sx={{ overflowWrap: "anywhere" }}>{compte.email ?? "—"}</Box>} />
+            <Line label="Téléphone" value={telephoneLisible(compte.telephone)} />
+            <Line label="Résidence" value={[compte.ville, compte.pays ? paysDe(compte.pays)?.nom ?? compte.pays : null].filter(Boolean).join(", ") || "—"} />
+            {compte.entreprise && <Line label="Entreprise" value={compte.entreprise} />}
+          </Card>
+          <Typography variant="body2">
+            Ces informations servent à vérifier votre identité : elles ne se modifient pas ici. Une erreur, un déménagement, un nouveau numéro ? Écrivez au support, il vous dira quoi envoyer.
+          </Typography>
+          <Contact sujet="Corriger mes informations" texte={compte.email ?? ""} />
+          <Typography variant="caption">Conditions acceptées : version du {dateLongue(VERSION_CONDITIONS)}.</Typography>
+          <Box sx={{ flex: 1 }} />
+          <Button component={Link} to="/compte/fermer" variant="text" color="error">Fermer mon compte</Button>
         </>
       )}
+    </Screen>
+  );
+}
+
+/* ------------------------------------------------- fermer mon compte */
+
+const MOTIFS = ["Je n'en ai plus besoin", "Les frais", "Un problème avec l'application", "Je préfère un autre service", "Autre raison"];
+
+/**
+ * Fermer son compte, en trois temps : ce qu'il faut d'abord (argent sorti,
+ * rien en cours — chaque point dit où aller le régler), ce que fermer veut
+ * dire, puis le code secret. La base revérifie tout (fermer_mon_compte).
+ */
+export function CompteFermer() {
+  const guichet = useGuichet();
+  const rafraichir = useRafraichir();
+  const { data: soldes } = useSoldes();
+  const { data: ordres } = useMesOrdres();
+  const { data: depots } = useDepotsEnAttente();
+  const [motif, setMotif] = useState<string | null>(null);
+  const [demander, setDemander] = useState(false);
+  const [code, setCode] = useState("");
+  const { lancer, enCours, erreur, effacerErreur } = useGesteUnique();
+
+  const charge = Boolean(soldes && ordres && depots);
+  const argent = soldes ? soldes.XAFe.disponible + soldes.XAFe.bloque > 0 || soldes.USDT.disponible + soldes.USDT.bloque > 0 : true;
+  const ordresOuverts = (ordres ?? []).filter((o) => o.etat === "ouvert" || o.etat === "partiel").length;
+  const enAttente = (depots ?? []).length;
+  const points: { ok: boolean; texte: string; vers?: { label: string; to: string } }[] = [
+    { ok: !argent, texte: argent && soldes ? `Il reste ${xaf(soldes.XAFe.disponible + soldes.XAFe.bloque)} XAFe et ${(soldes.USDT.disponible + soldes.USDT.bloque).toFixed(2)} USDT` : "Votre solde est à zéro", vers: argent ? { label: "Sortir", to: soldes && soldes.USDT.disponible + soldes.USDT.bloque > 0 ? "/crypto" : "/sortir/montant" } : undefined },
+    { ok: ordresOuverts === 0, texte: ordresOuverts ? `${ordresOuverts} ordre${ordresOuverts > 1 ? "s" : ""} encore ouvert${ordresOuverts > 1 ? "s" : ""}` : "Aucun ordre ouvert", vers: ordresOuverts ? { label: "Voir", to: "/marche/ordres" } : undefined },
+    { ok: enAttente === 0, texte: enAttente ? "Un dépôt attend encore son paiement" : "Aucun dépôt en attente", vers: enAttente ? { label: "Voir", to: "/historique" } : undefined },
+  ];
+  const pret = charge && points.every((p) => p.ok);
+
+  const fermer = (c: string) =>
+    lancer(async () => {
+      try {
+        await guichet.fermerCompte({ codeSecret: c, motif: motif ?? "" });
+        await rafraichir(); /* la garde voit le compte fermé et montre l'écran qui le dit */
+      } finally { setCode(""); }
+    });
+  const touche = (k: string) => {
+    const suite = k === "⌫" ? code.slice(0, -1) : (code + k).slice(0, 4);
+    setCode(suite);
+    if (suite.length === 4) void fermer(suite);
+  };
+
+  return (
+    <Screen title="Fermer mon compte" back="/compte/informations">
+      <Typography variant="subtitle1">D'abord</Typography>
+      {!charge ? <Squelette hauteur={160} /> : (
+        <List>
+          {points.map((p) => (
+            <Stack key={p.texte} direction="row" alignItems="center" gap={1.5} sx={{ px: 1.5, py: 1.25 }}>
+              {p.ok ? <CheckCircleRounded sx={{ color: "primary.main" }} /> : <ErrorOutlineRounded sx={{ color: "secondary.main" }} />}
+              <Typography sx={{ flex: 1 }}>{p.texte}</Typography>
+              {p.vers && <Button component={Link} to={p.vers.to} size="small" variant="outlined">{p.vers.label}</Button>}
+            </Stack>
+          ))}
+        </List>
+      )}
+      <Typography variant="subtitle1">Ce que fermer veut dire</Typography>
+      <Card>
+        <Typography variant="body2">· Vous ne pourrez plus entrer, sortir ni échanger d'argent avec ce compte.</Typography>
+        <Typography variant="body2">· La loi nous oblige à garder la trace de vos opérations et de votre identité pendant plusieurs années ; elles ne servent plus à rien d'autre.</Typography>
+        <Typography variant="body2">· Pour rouvrir le compte, il suffira d'écrire au support depuis votre adresse e-mail.</Typography>
+      </Card>
+      <Typography variant="subtitle1">Pourquoi partez-vous ? <Typography component="span" variant="body2">(facultatif)</Typography></Typography>
+      <Stack direction="row" gap={1} flexWrap="wrap">
+        {MOTIFS.map((m) => <Chip key={m} label={m} onClick={() => setMotif(motif === m ? null : m)} color={motif === m ? "primary" : "default"} variant={motif === m ? "filled" : "outlined"} />)}
+      </Stack>
+      <Box sx={{ flex: 1 }} />
+      <Button variant="contained" color="error" disabled={!pret || enCours} onClick={() => setDemander(true)}>Fermer mon compte</Button>
+      {charge && !pret && <Typography variant="caption" textAlign="center">Réglez d'abord les points ci-dessus.</Typography>}
+      <Feuille ouverte={demander} onFermer={() => { setDemander(false); setCode(""); }} titre="Votre code secret pour confirmer">
+        <Stack gap={1}>
+          <Typography variant="body2">Le compte sera fermé tout de suite.</Typography>
+          <Points longueur={4} saisis={code.length} />
+          <Keypad onKey={touche} triple={null} />
+        </Stack>
+      </Feuille>
+      <FeuilleErreur erreur={erreur} onFermer={() => { effacerErreur(); setDemander(false); }} />
     </Screen>
   );
 }

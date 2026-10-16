@@ -3,6 +3,9 @@
  * Un numéro vérifié depuis 24 h, TOTEM compose le transfert, le reçu suit.
  */
 import AddRounded from "@mui/icons-material/AddRounded";
+import ArrowDownwardRounded from "@mui/icons-material/ArrowDownwardRounded";
+import PhoneAndroidRounded from "@mui/icons-material/PhoneAndroidRounded";
+import ScheduleRounded from "@mui/icons-material/ScheduleRounded";
 import LockRounded from "@mui/icons-material/LockRounded";
 import { Box, Button, CircularProgress, Divider, Stack, Typography } from "@mui/material";
 import { useEffect, useState } from "react";
@@ -11,7 +14,7 @@ import { useGuichet, useNumeros, useSoldes, useSortie } from "../../guichet";
 import { decouperSortie, FRAIS, montantValide, operateur as opDe } from "../../noyau/argent";
 import { apresFrappe, duree, jourRelatif, montantDepuisSaisie, numeroEnTranches, pourcent, quand, xaf } from "../../noyau/format";
 import { parcours, useParcours } from "../../navigation/parcours";
-import { Amount, Attente, Card, Chips, Dot, FeuilleErreur, Keypad, Line, List, Points, Row, Screen, Squelette, Success } from "../../ui";
+import { Amount, Attente, Card, Chips, Dot, EtatVide, FeuilleErreur, Keypad, Line, List, Points, Row, Screen, Squelette, Success } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
 
 /* --------------------------------------------------------- 1 · montant */
@@ -19,6 +22,7 @@ import { useGesteUnique } from "../../ui/gestes";
 export function SortirMontant() {
   const navigate = useNavigate();
   const { data: soldes } = useSoldes();
+  const { data: numeros } = useNumeros();
   const [etat, poser] = useParcours("sortir");
   const [saisie, setSaisie] = useState(etat.montant ? String(etat.montant) : "");
   const montant = montantDepuisSaisie(saisie);
@@ -30,6 +34,47 @@ export function SortirMontant() {
     if (c === "Tout") setSaisie(String(Math.trunc(dispo)));
     else setSaisie(c.replace(/\D/g, ""));
   };
+
+  /* Avant de taper un montant : y a-t-il quelque chose à sortir, et un numéro où l'envoyer ?
+     Le dire ici, plutôt qu'à l'étape 2 après avoir tapé un montant pour rien. */
+  const vivants = (numeros ?? []).filter((n) => !n.retireLe);
+  const verifies = vivants.filter((n) => n.verifieLe);
+  const prochain = verifies.map((n) => new Date(n.actifDes).getTime()).sort((a, b) => a - b)[0];
+  const bloque = soldes?.XAFe.bloque ?? 0;
+  if (soldes && dispo < 100) {
+    return (
+      <Screen title="Sortir des XAF" back="/">
+        {bloque > 0 ? (
+          <EtatVide icone={<ScheduleRounded sx={{ fontSize: 36 }} />} tone="amber" titre="Vos XAFe sont engagés"
+            texte={`${xaf(bloque)} XAFe sont bloqués dans vos ordres ouverts ou une sortie en cours. Annulez un ordre pour les libérer.`}
+            action={{ label: "Voir mes ordres", to: "/marche/ordres" }} secondaire={{ label: "Retour à l'accueil", to: "/" }} />
+        ) : (
+          <EtatVide icone={<ArrowDownwardRounded sx={{ fontSize: 36 }} />} tone="green" titre="Rien à sortir pour l'instant"
+            texte="Vos XAFe apparaissent ici dès que vous en avez entré par Mobile Money."
+            action={{ label: "Entrer des XAF", to: "/entrer/operateur" }} secondaire={{ label: "Retour à l'accueil", to: "/" }} />
+        )}
+      </Screen>
+    );
+  }
+  if (numeros && verifies.length === 0) {
+    return (
+      <Screen title="Sortir des XAF" back="/">
+        <EtatVide icone={<PhoneAndroidRounded sx={{ fontSize: 36 }} />} tone="green" titre="D'abord, votre numéro MoMo"
+          texte="Vos XAF partent vers un numéro Mobile Money vérifié à votre nom. Il devient actif 24 h après sa vérification : ajoutez-le dès maintenant."
+          action={{ label: "Ajouter un numéro", onClick: () => { parcours.poserRetour("/sortir/montant"); navigate("/compte/numeros/ajouter"); } }}
+          secondaire={{ label: "Retour à l'accueil", to: "/" }} />
+      </Screen>
+    );
+  }
+  if (numeros && prochain && prochain > Date.now() && verifies.every((n) => new Date(n.actifDes).getTime() > Date.now())) {
+    return (
+      <Screen title="Sortir des XAF" back="/">
+        <EtatVide icone={<ScheduleRounded sx={{ fontSize: 36 }} />} tone="amber" titre="Votre numéro sera bientôt prêt"
+          texte={`Pour votre sécurité, un numéro ajouté reçoit des sorties 24 h après sa vérification : ${jourRelatif(new Date(prochain).toISOString()).toLowerCase()} à ${new Date(prochain).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}.`}
+          action={{ label: "Retour à l'accueil", to: "/" }} secondaire={{ label: "Mes numéros", to: "/compte/numeros" }} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen title="Sortir des XAF" back="/" gap={1.5}>

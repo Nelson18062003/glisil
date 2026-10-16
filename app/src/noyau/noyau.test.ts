@@ -163,3 +163,12 @@ test("le devis rapide est celui du moteur, au centime (mêmes chiffres que le sc
   assert.equal(devisSurLeCarnet("vente", 1_000, [{ prix: 590, quantite: 80 }], 0.01, 10), null, "pas assez d'acheteurs : pas de devis");
   assert.equal(devisSurLeCarnet("achat", 5_000, ventes, 0.01, 10), null, "moins que la quantité minimale : pas de devis");
 });
+
+test("le réseau se lit dans l'adresse, sans recouvrement", async () => {
+  const { reseauDe } = await import("./argent");
+  assert.equal(reseauDe("0x7908cf9242fb2018f3487908cf9242fb2018f348"), "bep20");
+  assert.equal(reseauDe(" TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE "), "trc20");
+  assert.equal(reseauDe("0x7908cf9242fb2018f3487908cf9242fb2018f34"), null, "un signe de moins");
+  assert.equal(reseauDe("TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLS0"), null, "le 0 n'est pas en base58");
+  assert.equal(reseauDe("bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh"), null, "une adresse Bitcoin n'est ni l'une ni l'autre");
+});

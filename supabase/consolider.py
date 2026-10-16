@@ -33,6 +33,11 @@ TEMOINS = {
     "0007_configuration_du_veilleur.sql": ("to_regprocedure('public.chaine_configuration()') is not null", "la fonction chaine_configuration"),
     # 0008 renomme et remplace une fonction : rejouable telle quelle.
     "0008_glisil.sql": ("false", "rejouable telle quelle"),
+    # 0009 et 0010 n'ajoutent que des colonnes « if not exists » et des fonctions « or replace ».
+    "0009_inscription_par_email.sql": ("false", "rejouable telle quelle"),
+    "0010_vue_clients.sql": ("false", "rejouable telle quelle"),
+    "0011_equipe.sql": ("false", "rejouable telle quelle"),
+    "0012_garde_fous.sql": ("false", "rejouable telle quelle"),
 }
 
 

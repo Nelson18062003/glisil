@@ -5,6 +5,7 @@
 import ArrowDownwardRounded from "@mui/icons-material/ArrowDownwardRounded";
 import ArrowUpwardRounded from "@mui/icons-material/ArrowUpwardRounded";
 import CurrencyBitcoinRounded from "@mui/icons-material/CurrencyBitcoinRounded";
+import ReceiptLongOutlined from "@mui/icons-material/ReceiptLongOutlined";
 import ReplayRounded from "@mui/icons-material/ReplayRounded";
 import DownloadRounded from "@mui/icons-material/DownloadRounded";
 import SwapHorizRounded from "@mui/icons-material/SwapHorizRounded";
@@ -16,7 +17,7 @@ import type { Operation } from "../../guichet/types";
 import { operateur as opDe, RESEAUX } from "../../noyau/argent";
 import { enTranches, heure, heureSecondes, jourRelatif, numeroEnTranches, prix as fPrix, quand, signe, usdt as fUsdt, xaf } from "../../noyau/format";
 import { tones, type Tone } from "../../theme";
-import { Card, Chips, Line, List, Row, Screen, Squelette } from "../../ui";
+import { Card, Chips, EtatVide, Line, List, Row, Screen, Squelette } from "../../ui";
 
 const FILTRES = ["Tout", "Entrées", "Sorties", "Ordres", "Crypto"] as const;
 type Filtre = (typeof FILTRES)[number];
@@ -63,10 +64,13 @@ export function Historique() {
   return (
     <Screen tab="historique" title="Historique">
       <Chips items={[...FILTRES]} selected={filtre} onSelect={(f) => setFiltre(f as Filtre)} />
-      {!data ? <Squelette hauteur={240} /> : ops.length === 0 ? (
-        <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Typography variant="body2">Rien ici pour l'instant.</Typography>
-        </Box>
+      {!data ? <Squelette hauteur={240} /> : data.length === 0 ? (
+        <EtatVide icone={<ReceiptLongOutlined sx={{ fontSize: 36 }} />} tone="green" titre="Aucune opération pour l'instant"
+          texte="Vos entrées, sorties, achats et ventes s'afficheront ici, avec leur reçu. Tout commence par une entrée de XAF."
+          action={{ label: "Entrer des XAF", to: "/entrer/operateur" }} />
+      ) : ops.length === 0 ? (
+        <EtatVide icone={<ReceiptLongOutlined sx={{ fontSize: 36 }} />} titre={`Aucune opération dans « ${filtre} »`}
+          texte="Les autres filtres en ont peut-être." action={{ label: "Tout voir", onClick: () => setFiltre("Tout") }} />
       ) : (
         <>
           {suspens.length > 0 && (

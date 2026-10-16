@@ -4,7 +4,9 @@
  * ce qu'on reçoit, on confirme. Le prix tient quelques secondes. La plateforme
  * n'a pas de stock : elle prend au carnet pour le client, et garde sa marge.
  */
+import ArrowDownwardRounded from "@mui/icons-material/ArrowDownwardRounded";
 import BoltRounded from "@mui/icons-material/BoltRounded";
+import CurrencyBitcoinRounded from "@mui/icons-material/CurrencyBitcoinRounded";
 import { Box, Button, LinearProgress, Stack, Typography } from "@mui/material";
 import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -13,7 +15,7 @@ import type { DevisRapide, SensRapide } from "../../guichet/types";
 import { RAPIDE } from "../../noyau/argent";
 import { lisible } from "../../noyau/erreurs";
 import { enTranches, pourcent, prix as fPrix, usdt } from "../../noyau/format";
-import { Amount, BUY, Card, Chips, FeuilleErreur, Keypad, Line, Screen, SELL, Success } from "../../ui";
+import { Amount, BUY, Card, Chips, EtatVide, FeuilleErreur, Keypad, Line, Screen, SELL, Success } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
 
 const xafe = (n: number) => enTranches(n, Math.round(n * 100) % 100 ? 2 : 0);
@@ -68,6 +70,17 @@ export function Rapide() {
           </Button>
         ))}
       </Stack>
+      {soldes && dispo <= 0 ? (
+        sens === "achat" ? (
+          <EtatVide icone={<ArrowDownwardRounded sx={{ fontSize: 36 }} />} tone="green" titre="D'abord, des XAFe"
+            texte="On achète des USDT avec des XAFe. Entrez des XAF par Mobile Money : ils deviennent des XAFe sur votre solde, tout de suite."
+            action={{ label: "Entrer des XAF", to: "/entrer/operateur" }} />
+        ) : (
+          <EtatVide icone={<CurrencyBitcoinRounded sx={{ fontSize: 36 }} />} tone="blue" titre="Pas encore d'USDT à vendre"
+            texte="Achetez-en avec vos XAFe, ou déposez des USDT depuis un autre wallet."
+            action={{ label: "Acheter des USDT", onClick: () => changer("achat") }} secondaire={{ label: "Déposer des USDT", to: "/crypto/deposer/USDT" }} />
+        )
+      ) : (<>
       <Amount value={saisie ? (sens === "achat" ? xafe(montant) : saisie.replace(".", ",")) : "0"} unit={unite} hint={aide} hintColor={trop || (montant > 0 && estimation.isError) ? "error.main" : undefined} />
       <Typography variant="caption" textAlign="center" sx={{ mt: -2 }}>
         {e ? `≈ ${fPrix(e.prix)} XAFe par USDT, frais compris` : `Au prix du carnet, frais de ${pourcent(RAPIDE.marge)} compris`}
@@ -76,6 +89,7 @@ export function Rapide() {
       <Box sx={{ flex: 1 }} />
       <Keypad onKey={touche} triple={sens === "achat" ? "000" : ","} />
       <Button variant="contained" disabled={!ok || enCours} onClick={() => void prixFerme()} startIcon={<BoltRounded />}>Voir le prix</Button>
+      </>)}
       <FeuilleErreur erreur={erreur} onFermer={effacerErreur} />
     </Screen>
   );
