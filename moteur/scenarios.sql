@@ -1663,6 +1663,30 @@ begin
 end $$;
 rollback;
 
+-- 11.29 · l'équipe : seul le super admin la voit et la change, jamais sur lui-même.
+begin;
+do $$
+declare e jsonb;
+begin
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000003', true);  -- le support
+  begin perform admin_equipe(); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'accès non autorisé', sqlerrm; end;
+
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);  -- le super admin
+  perform admin_inviter_administrateur('awa@example.com', 'Awa', 'tresorier');
+  e := admin_equipe();
+  assert e -> 'invitations' @> '[{"email": "awa@example.com", "role": "tresorier"}]', e;
+  assert e -> 'administrateurs' @> '[{"id": "dddddddd-0000-0000-0000-000000000001", "moi": true}]', e;
+  perform admin_retirer_invitation('AWA@example.com');
+  assert not (admin_equipe() -> 'invitations' @> '[{"email": "awa@example.com"}]');
+  begin perform admin_changer_role('dddddddd-0000-0000-0000-000000000001', 'support'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'on ne change pas son propre rôle', sqlerrm; end;
+  perform admin_changer_role('dddddddd-0000-0000-0000-000000000003', 'operateur');
+  assert (select role from administrateurs where id = 'dddddddd-0000-0000-0000-000000000003') = 'operateur';
+  raise notice '✓ 11.29 l''équipe : le super admin voit, invite, retire une invitation, change un rôle — jamais le sien ; le support ne voit rien';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

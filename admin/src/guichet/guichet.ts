@@ -1,4 +1,4 @@
-import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, StatsClients, Tableau, Terminal, Wallets } from "./types";
+import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, StatsClients, Equipe, Tableau, Terminal, Wallets } from "./types";
 
 /** LE GUICHET DE L'ADMINISTRATION : tout ce que les écrans demandent au moteur. */
 export interface GuichetAdmin {
@@ -39,6 +39,13 @@ export interface GuichetAdmin {
   changerPalier(id: string, palier: number, note?: string): Promise<void>;
   validerVerification(id: string, ok: boolean, note?: string): Promise<{ palier: number }>;
   desactiverCompte(id: string, actif: boolean, note?: string): Promise<void>;
+
+  /** L'équipe : le droit « administrateurs » seulement (le super admin). */
+  equipe(): Promise<Equipe>;
+  inviterAdministrateur(p: { email: string; nom: string; role: string }): Promise<void>;
+  retirerInvitation(email: string): Promise<void>;
+  changerRole(id: string, role: string): Promise<void>;
+  activerAdministrateur(id: string, actif: boolean): Promise<void>;
 
   marche(): Promise<Marche>;
   parametres(): Promise<Parametres>;

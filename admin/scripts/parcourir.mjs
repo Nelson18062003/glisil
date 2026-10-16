@@ -161,6 +161,19 @@ try {
   await page.getByLabel("marché ouvert").click();
   await voir("Marché ouvert");
 
+  etape("Équipe : inviter une personne, l'invitation attend son premier code, on la retire");
+  await page.goto(`${BASE}/equipe`);
+  await voir("Invitations en attente");
+  await page.getByRole("button", { name: "Inviter quelqu'un" }).click();
+  await page.getByLabel("Adresse e-mail").fill("fatou@glisil.com");
+  await page.getByLabel("Nom", { exact: true }).fill("Fatou Bello");
+  await page.getByRole("button", { name: "Inviter", exact: true }).click();
+  await voir("fatou@glisil.com");
+  await capturer("equipe");
+  exiger((await page.getByLabel("Rôle de Nelson Soh").count()) === 0, "on ne change pas son propre rôle");
+  await page.getByRole("row", { name: /fatou@glisil.com/ }).getByRole("button", { name: "Retirer" }).click();
+  await page.getByText("fatou@glisil.com").waitFor({ state: "detached" });
+
   etape("Paramètres et journal");
   await page.goto(`${BASE}/parametres`);
   await voir("MTN MoMo");

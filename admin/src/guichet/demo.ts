@@ -7,7 +7,7 @@
 import { DROITS } from "../noyau/droits";
 import { ErreurMoteur } from "./supabase";
 import type { GuichetAdmin } from "./guichet";
-import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, StatsClients, Tableau, Terminal, Transfert, Wallets } from "./types";
+import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, StatsClients, Equipe, Tableau, Terminal, Transfert, Wallets } from "./types";
 
 /** le code de démonstration, celui qui « arrive par e-mail » */
 export const CODE_DEMO = "123456";
@@ -29,6 +29,7 @@ const ref = (p: string) => `${p}${String(++compteur).padStart(6, "0")}`;
 
 type Etat = {
   profil: Profil | null;
+  equipe?: Equipe;
   terminaux: Terminal[];
   floats: (Required<Pick<import("./types").Float, "id" | "operateur" | "numero" | "terminal" | "code_agent" | "actif">>)[];
   clients: (Client & { soldes: Record<string, { disponible: number; bloque: number }>; numeros: ClientDetail["numeros"]; a_code: boolean; date_naissance: string })[];
@@ -372,6 +373,46 @@ export class GuichetDemo implements GuichetAdmin {
     if (!c) throw new ErreurMoteur("compte inconnu");
     c.desactive_le = actif ? null : iso(maintenant());
     this.noter(actif ? "reactiver_compte" : "desactiver_compte", id, { note }); this.emettre();
+  }
+
+  private lEquipe(): Equipe {
+    if (!this.e.equipe) {
+      this.e.equipe = {
+        administrateurs: Object.values(COMPTES_DEMO).map(({ profil: p }, i) => ({ id: p.id, email: p.email, nom: p.nom, role: p.role, actif: true, cree_le: iso(maintenant() - (60 - i * 10) * 24 * H), derniere_connexion: iso(maintenant() - (i * 30 + 1) * 60_000), moi: false })),
+        invitations: [{ email: "awa.tresoriere@glisil.com", nom: "Awa Mbarga", role: "tresorier", invite_le: iso(maintenant() - 26 * H) }],
+      };
+    }
+    return this.e.equipe;
+  }
+  async equipe() {
+    this.exiger("administrateurs");
+    const e = this.lEquipe();
+    return copie({ ...e, administrateurs: e.administrateurs.map((a) => ({ ...a, moi: a.id === this.e.profil?.id })) });
+  }
+  async inviterAdministrateur({ email, nom, role }: { email: string; nom: string; role: string }) {
+    this.exiger("administrateurs");
+    const e = this.lEquipe(); const m = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/.test(m)) throw new ErreurMoteur("adresse e-mail invalide");
+    if (nom.trim().length < 2) throw new ErreurMoteur("nom manquant");
+    if (e.administrateurs.some((a) => a.email === m)) throw new ErreurMoteur("cette adresse administre déjà");
+    e.invitations = [{ email: m, nom: nom.trim(), role: role as Equipe["invitations"][number]["role"], invite_le: iso(maintenant()) }, ...e.invitations.filter((i) => i.email !== m)];
+    this.noter("administrateur_invite", m); this.emettre();
+  }
+  async retirerInvitation(email: string) {
+    this.exiger("administrateurs");
+    const e = this.lEquipe(); e.invitations = e.invitations.filter((i) => i.email !== email); this.noter("invitation_retiree", email); this.emettre();
+  }
+  async changerRole(id: string, role: string) {
+    this.exiger("administrateurs");
+    if (id === this.e.profil?.id) throw new ErreurMoteur("on ne change pas son propre rôle");
+    const a = this.lEquipe().administrateurs.find((x) => x.id === id); if (!a) throw new ErreurMoteur("administrateur inconnu");
+    a.role = role as typeof a.role; this.noter("changer_role", id); this.emettre();
+  }
+  async activerAdministrateur(id: string, actif: boolean) {
+    this.exiger("administrateurs");
+    if (id === this.e.profil?.id) throw new ErreurMoteur("on ne se désactive pas soi-même");
+    const a = this.lEquipe().administrateurs.find((x) => x.id === id); if (!a) throw new ErreurMoteur("administrateur inconnu");
+    a.actif = actif; this.noter(actif ? "activer_administrateur" : "desactiver_administrateur", id); this.emettre();
   }
 
   async marche(): Promise<Marche> {

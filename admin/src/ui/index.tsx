@@ -4,6 +4,7 @@
  * dialogue d'action, et une erreur qui se dit en français.
  */
 import AccountBalanceRounded from "@mui/icons-material/AccountBalanceRounded";
+import AdminPanelSettingsRounded from "@mui/icons-material/AdminPanelSettingsRounded";
 import AccountBalanceWalletRounded from "@mui/icons-material/AccountBalanceWalletRounded";
 import ArrowDownwardRounded from "@mui/icons-material/ArrowDownwardRounded";
 import ArrowUpwardRounded from "@mui/icons-material/ArrowUpwardRounded";
@@ -36,6 +37,7 @@ const SECTIONS: { to: string; label: string; icone: ReactNode; droit: Droit }[] 
   { to: "/marche", label: "Marché", icone: <ShowChartRounded />, droit: "voir" },
   { to: "/parametres", label: "Paramètres", icone: <TuneRounded />, droit: "voir" },
   { to: "/journal", label: "Journal", icone: <HistoryRounded />, droit: "voir" },
+  { to: "/equipe", label: "Équipe", icone: <AdminPanelSettingsRounded />, droit: "administrateurs" },
 ];
 
 export function Coquille({ titre, actions, children }: { titre: string; actions?: ReactNode; children: ReactNode }) {

@@ -33,6 +33,7 @@ export function useTerminaux() { const g = useGuichet(); return useQuery({ query
 export function useClients(recherche: string, filtre?: string | null) { const g = useGuichet(); return useQuery({ queryKey: ["clients", recherche, filtre ?? ""], queryFn: () => g.clients(recherche, filtre) }); }
 export function useStatistiquesClients() { const g = useGuichet(); return useQuery({ queryKey: ["clients-stats"], queryFn: () => g.statistiquesClients(), refetchInterval: 30_000 }); }
 export function useClient(id: string | undefined) { const g = useGuichet(); return useQuery({ queryKey: ["client", id], queryFn: () => g.client(id!), enabled: Boolean(id) }); }
+export function useEquipe() { const g = useGuichet(); return useQuery({ queryKey: ["equipe"], queryFn: () => g.equipe() }); }
 export function useMarche() { const g = useGuichet(); return useQuery({ queryKey: ["marche"], queryFn: () => g.marche(), refetchInterval: 5_000 }); }
 export function useParametres() { const g = useGuichet(); return useQuery({ queryKey: ["parametres"], queryFn: () => g.parametres() }); }
 export function useJournal() { const g = useGuichet(); return useQuery({ queryKey: ["journal"], queryFn: () => g.journal(), refetchInterval: 15_000 }); }

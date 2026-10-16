@@ -36,6 +36,7 @@ TEMOINS = {
     # 0009 et 0010 n'ajoutent que des colonnes « if not exists » et des fonctions « or replace ».
     "0009_inscription_par_email.sql": ("false", "rejouable telle quelle"),
     "0010_vue_clients.sql": ("false", "rejouable telle quelle"),
+    "0011_equipe.sql": ("false", "rejouable telle quelle"),
 }
 
 

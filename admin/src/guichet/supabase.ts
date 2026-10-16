@@ -5,7 +5,7 @@
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { GuichetAdmin } from "./guichet";
-import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, StatsClients, Tableau, Terminal, Wallets } from "./types";
+import type { Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, StatsClients, Equipe, Tableau, Terminal, Wallets } from "./types";
 
 export class ErreurMoteur extends Error {
   detail?: string;
@@ -72,6 +72,11 @@ export class GuichetSupabase implements GuichetAdmin {
   async changerPalier(id: string, palier: number, note?: string) { await this.rpc("admin_changer_palier", { p_id: id, p_palier: palier, p_note: note ?? null }); }
   validerVerification(id: string, ok: boolean, note?: string) { return this.rpc<{ palier: number }>("admin_valider_verification", { p_id: id, p_ok: ok, p_note: note ?? null }); }
   async desactiverCompte(id: string, actif: boolean, note?: string) { await this.rpc("admin_desactiver_compte", { p_id: id, p_actif: actif, p_note: note ?? null }); }
+  equipe() { return this.rpc<Equipe>("admin_equipe"); }
+  async inviterAdministrateur({ email, nom, role }: { email: string; nom: string; role: string }) { await this.rpc("admin_inviter_administrateur", { p_email: email, p_nom: nom, p_role: role }); }
+  async retirerInvitation(email: string) { await this.rpc("admin_retirer_invitation", { p_email: email }); }
+  async changerRole(id: string, role: string) { await this.rpc("admin_changer_role", { p_id: id, p_role: role }); }
+  async activerAdministrateur(id: string, actif: boolean) { await this.rpc("admin_desactiver_administrateur", { p_id: id, p_actif: actif }); }
   marche() { return this.rpc<Marche>("admin_marche"); }
   parametres() { return this.rpc<Parametres>("admin_parametres"); }
   async modifierParametre(cle: string, valeur: unknown) { await this.rpc("admin_modifier_parametre", { p_cle: cle, p_valeur: valeur }); }

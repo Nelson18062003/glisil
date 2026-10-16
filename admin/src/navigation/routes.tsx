@@ -10,6 +10,7 @@ import { Sorties } from "../pages/sorties";
 import { Tableau } from "../pages/tableau";
 import { Terminaux } from "../pages/terminaux";
 import { Wallets } from "../pages/wallets";
+import { EquipePage } from "../pages/equipe";
 import { useSession } from "../session/session";
 
 function Attente() {
@@ -47,6 +48,7 @@ export const routeur = createBrowserRouter([
       { path: "/marche", element: <Marche /> },
       { path: "/parametres", element: <Parametres /> },
       { path: "/journal", element: <Journal /> },
+      { path: "/equipe", element: <EquipePage /> },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
   },

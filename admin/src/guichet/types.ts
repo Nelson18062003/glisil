@@ -109,3 +109,9 @@ export type StatsClients = {
   par_pays: Record<string, number>;
   inscriptions_30j: { jour: string; n: number }[];
 };
+
+/** L'équipe (admin_equipe) : qui administre, qui est invité. */
+export type Equipe = {
+  administrateurs: { id: string; email: string; nom: string; role: import("../noyau/droits").Role; actif: boolean; cree_le: string; derniere_connexion: string | null; moi: boolean }[];
+  invitations: { email: string; nom: string; role: import("../noyau/droits").Role; invite_le: string }[];
+};
