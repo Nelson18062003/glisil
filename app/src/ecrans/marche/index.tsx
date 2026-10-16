@@ -11,7 +11,7 @@ import FormatListBulletedRounded from "@mui/icons-material/FormatListBulletedRou
 import InfoOutlined from "@mui/icons-material/InfoOutlined";
 import MoreHorizRounded from "@mui/icons-material/MoreHorizRounded";
 import RemoveRounded from "@mui/icons-material/RemoveRounded";
-import { Box, Button, ButtonBase, Chip, Divider, IconButton, Menu, MenuItem, Paper, Slider, Snackbar, Stack, Tab, Tabs, Typography } from "@mui/material";
+import { Box, Button, ButtonBase, Chip, Divider, IconButton, Menu, MenuItem, Paper, Slider, Snackbar, Stack, Tab, Tabs, Typography, useMediaQuery } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useCarnet, useChandelles, useCotation, useGuichet, useMesOrdres, useOrdre, useRafraichir, useSoldes, useTransactions } from "../../guichet";
@@ -34,7 +34,7 @@ function PairHeader({ chart = true }: { chart?: boolean }) {
   const v = c?.variation24h ?? 0;
   return (
     <Stack direction="row" alignItems="center" sx={{ px: 2, minHeight: 56 }}>
-      <ButtonBase sx={{ gap: 0.25, borderRadius: 2, px: 0.5 }} onClick={() => setPaire(true)}>
+      <ButtonBase sx={{ gap: 0.25, borderRadius: 2, px: 0.5, minHeight: 44 }} onClick={() => setPaire(true)}>
         <Typography variant="h6">{MARCHE.paire}</Typography>
         <ArrowDropDownRounded />
       </ButtonBase>
@@ -149,13 +149,13 @@ function Field({ label, value, unit, onChange, onStep, placeholder }: { label: s
       <Stack sx={{ flex: 1, alignItems: "center", minWidth: 0 }}>
         {onChange ? (
           <Box component="input" value={value} onChange={(e) => onChange((e.target as HTMLInputElement).value)} inputMode="decimal" placeholder={placeholder} aria-label={label}
-            sx={{ width: "100%", textAlign: "center", border: 0, outline: 0, bgcolor: "transparent", fontSize: 15, fontWeight: 600, fontFamily: "inherit", fontVariantNumeric: "tabular-nums", lineHeight: 1.1, p: 0, color: "text.primary" }} />
+            sx={{ width: "100%", height: 26, textAlign: "center", border: 0, outline: 0, bgcolor: "transparent", fontSize: 16, fontWeight: 600, fontFamily: "inherit", fontVariantNumeric: "tabular-nums", lineHeight: 1.1, p: 0, color: "text.primary" }} />
         ) : (
           <Typography sx={{ fontSize: 15, fontWeight: 600, fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>
             {value}{unit && <Typography component="span" sx={{ fontSize: 11, color: "text.secondary", ml: 0.5 }}>{unit}</Typography>}
           </Typography>
         )}
-        <Typography sx={{ fontSize: 10, color: "text.secondary", lineHeight: 1.1 }}>{label}</Typography>
+        <Typography sx={{ fontSize: 11, color: "text.secondary", lineHeight: 1.1 }}>{label}</Typography>
       </Stack>
       {onStep ? <IconButton size="small" aria-label="Plus" onClick={() => onStep(1)}><AddRounded fontSize="small" /></IconButton> : <Box sx={{ width: 8 }} />}
     </Paper>
@@ -268,8 +268,8 @@ function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean; autoNe
       )}
       <Field label="Quantité (USDT)" value={f.quantite} onChange={(v) => poser({ quantite: v })} onStep={(d) => step("quantite", d)} placeholder="0" />
       <Box sx={{ px: 1 }}>
-        <Slider value={pct} onChange={(_, v) => poser({ quantite: String(arrondi2((maxQ * (v as number)) / 100)) })} step={null} marks={[0, 25, 50, 75, 100].map((v) => ({ value: v }))} size="small"
-          sx={{ color: "text.secondary", "& .MuiSlider-mark": { width: 8, height: 8, borderRadius: 4, bgcolor: "background.paper", border: 2, borderColor: "text.secondary" }, "& .MuiSlider-thumb": { width: 16, height: 16, bgcolor: "background.paper", border: 2, borderColor: "text.primary" } }} />
+        <Slider aria-label="Part du disponible" getAriaValueText={(v) => `${v} %`} value={pct} onChange={(_, v) => poser({ quantite: String(arrondi2((maxQ * (v as number)) / 100)) })} step={null} marks={[0, 25, 50, 75, 100].map((v) => ({ value: v }))} size="small"
+          sx={{ color: "text.secondary", "& .MuiSlider-mark": { width: 8, height: 8, borderRadius: 4, bgcolor: "background.paper", border: 2, borderColor: "text.secondary" }, "& .MuiSlider-thumb": { width: 28, height: 28, bgcolor: "background.paper", border: 2, borderColor: "text.primary" } }} />
       </Box>
       <Field label="Total (XAFe)" value={total > 0 ? xaf(total) : "—"} />
       <Stack gap={0.25} sx={{ px: 0.25 }}>
@@ -336,7 +336,7 @@ function OpenOrder({ o, onCancel }: { o: Ordre; onCancel?: (id: string) => void 
     <Stack gap={1} sx={{ py: 1.5, borderTop: 1, borderColor: "divider" }}>
       <Stack direction="row" alignItems="center" gap={1}>
         <Chip label={o.cote === "achat" ? "Achat" : "Vente"} size="small" sx={{ height: 22, fontSize: 12, bgcolor: fond(o.cote), color: couleur(o.cote), fontWeight: 600 }} />
-        <Typography component={Link} to={`/marche/ordres/${o.id}`} sx={{ fontWeight: 600, fontSize: 14, color: "inherit", textDecoration: "none" }}>USDT/XAFe</Typography>
+        <Typography component={Link} to={`/marche/ordres/${o.id}`} sx={{ fontWeight: 600, fontSize: 14, color: "inherit", textDecoration: "none", display: "inline-block", py: "6px" }}>USDT/XAFe</Typography>
         <Typography variant="caption">{o.type === "limite" ? "Limite" : "Marché"}</Typography>
         <Box sx={{ flex: 1 }} />
         <Typography variant="caption">{heure(o.creeLe)}</Typography>
@@ -416,9 +416,15 @@ export function Marche() {
   const { annuler, erreur, effacer } = useAnnuler();
   const [bas, setBas] = useState<"ouverts" | "actifs">("ouverts");
   const ouverts = (ordres ?? []).filter((o) => o.etat === "ouvert" || o.etat === "partiel");
+  const grand = useMediaQuery("(min-width:1200px)", { noSsr: true });
 
   return (
-    <Screen tab="marche" gap={0}>
+    <Screen tab="marche" large gap={0}>
+      {/* Sur un ordinateur, le graphique à gauche et l'ordre à droite, comme sur toutes les places de
+          marché : on regarde le prix ET on agit, sans changer d'écran. Ailleurs, une colonne. */}
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0,1fr)", lg: "minmax(0,1fr) 560px" }, gap: 3, alignItems: "start", width: "100%", maxWidth: { xs: 600, lg: "none" }, mx: "auto" }}>
+      {grand && <PanneauGraphique />}
+      <Box>
       <Box sx={{ mx: -2 }}><PairHeader /></Box>
       <Paper sx={{ p: 1.5, borderRadius: 4 }}>
         <Stack direction="row" gap={1.5}>
@@ -437,6 +443,8 @@ export function Marche() {
         {bas === "actifs" ? <Actifs /> : !ordres ? <Squelette hauteur={80} radius={12} /> : ouverts.length === 0 ? (
           <Typography variant="body2" sx={{ py: 2, textAlign: "center" }}>Aucun ordre en attente.</Typography>
         ) : ouverts.slice(0, 3).map((o) => <OpenOrder key={o.id} o={o} onCancel={(id) => void annuler(id)} />)}
+      </Box>
+      </Box>
       </Box>
       <Snackbar open={Boolean(place)} autoHideDuration={3500} onClose={() => setPlace(null)} message={place} anchorOrigin={{ vertical: "bottom", horizontal: "center" }} sx={{ bottom: { xs: 96 } }} />
       <FeuilleErreur erreur={erreur} onFermer={effacer} />
@@ -497,6 +505,36 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 const INTERVALLES: [string, number][] = [["15 min", 15], ["1 h", 60], ["4 h", 240], ["1 j", 1440], ["1 sem", 10080]];
 const PLUS: [string, number][] = [["5 min", 5], ["30 min", 30], ["1 mois", 43200]];
+
+/** Le graphique, en panneau, à côté du formulaire d'ordre sur un grand écran. */
+function PanneauGraphique() {
+  const { data: c } = useCotation();
+  const [minutes, setMinutes] = useState(60);
+  const { data: chandelles } = useChandelles(minutes, 40);
+  const v = c?.variation24h ?? 0;
+  return (
+    <Paper sx={{ p: 2.5, borderRadius: 6, display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
+      <Stack direction="row" alignItems="flex-end" justifyContent="space-between" flexWrap="wrap" gap={2}>
+        <Stack>
+          <Typography variant="caption">USDT/XAFe · dernier prix</Typography>
+          <Typography sx={{ fontSize: 30, fontWeight: 700, color: v >= 0 ? BUY : SELL, lineHeight: 1.1, fontVariantNumeric: "tabular-nums" }}>{c?.dernier != null ? fPrix(c.dernier) : "—"}</Typography>
+        </Stack>
+        <Stack direction="row" gap={3}>
+          <Stat label="Variation 24 h" value={`${v >= 0 ? "+" : ""}${enTranches(v, 2)} %`} />
+          <Stat label="Haut 24 h" value={c?.haut24h != null ? fPrix(c.haut24h) : "—"} />
+          <Stat label="Bas 24 h" value={c?.bas24h != null ? fPrix(c.bas24h) : "—"} />
+          <Stat label="Volume 24 h (USDT)" value={c ? fUsdt(Math.round(c.volume24hUsdt)) : "—"} />
+        </Stack>
+      </Stack>
+      <Stack direction="row" gap={0.75} flexWrap="wrap">
+        {INTERVALLES.map(([t, m]) => (
+          <Chip key={t} label={t} onClick={() => setMinutes(m)} variant={m === minutes ? "filled" : "outlined"} color={m === minutes ? "primary" : undefined} />
+        ))}
+      </Stack>
+      <Candles chandelles={chandelles ?? []} dernier={c?.dernier ?? null} />
+    </Paper>
+  );
+}
 
 export function MarcheGraphique() {
   const navigate = useNavigate();

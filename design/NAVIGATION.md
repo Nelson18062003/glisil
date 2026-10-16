@@ -4,6 +4,32 @@
 écrans entre eux. C'est la règle que le code suit ; un écran qui n'est pas ici
 n'existe pas.*
 
+*La carte réelle — tous les écrans, tous les passages, la profondeur de chacun
+— est TIRÉE DU CODE dans [`CARTE.md`](CARTE.md) par `app/scripts/carte.mjs`,
+qui échoue sur un lien mort, un écran orphelin, un cul-de-sac ou un écran à
+plus de six touchers de l'Accueil. Ce document-ci dit l'intention ; `CARTE.md`
+dit ce qui est.*
+
+## 0. Un téléphone, une tablette, un ordinateur
+
+Au Cameroun (StatCounter, septembre 2026), 71 % des visites viennent d'un
+téléphone, **28 % d'un ordinateur** et moins de 1 % d'une tablette. Le
+téléphone est Android à 83 %, sa largeur la plus courante 360 points ;
+l'ordinateur est sous Windows à 87 %, son écran le plus courant 1366×768 —
+environ 650 points de haut utiles. L'application suit les classes de fenêtre
+de Material 3 :
+
+| Fenêtre | Largeur | Navigation | Mise en page |
+|---|---|---|---|
+| compacte | < 600 | barre d'onglets en bas | une colonne, toute la largeur |
+| moyenne | 600 – 1 199 | rail à gauche (icônes, « Entrer » en tête) | parcours en colonne de 600 ; racines jusqu'à 1 080 |
+| étendue | ≥ 1 200 | menu latéral avec la marque | Accueil en deux colonnes ; Marché : graphique + ordre côte à côte |
+
+Partout : les feuilles du bas deviennent des fenêtres centrées dès 600 ; le
+pavé numérique obéit aussi au clavier (chiffres, virgule, effacement) ; un
+parcours garde sa hauteur naturelle sur un grand écran (le pavé reste sous le
+montant). `app/scripts/ecrans.mjs` passe chaque écran sur 19 tailles réelles.
+
 ## 1. Les quatre maisons
 
 L'application a **quatre onglets**, toujours visibles sur les écrans racines :
@@ -15,7 +41,7 @@ onglet. On ne peut pas « se perdre » dans un parcours.
 
 ```
                  ┌──────────── Bienvenue ─────────────┐
-                 │  numéro → code SMS → (nom + code)   │
+                 │ e-mail → code → (inscription + code)│
                  └──────────────────┬──────────────────┘
                                     ▼
    ┌──────────┬────────────┬──────────────┬──────────┐
@@ -32,7 +58,7 @@ onglet. On ne peut pas « se perdre » dans un parcours.
 
 | Situation | Ce qui s'ouvre | Ensuite |
 |---|---|---|
-| Première ouverture | **Bienvenue** (numéro) | code SMS → si nouveau compte : nom + choix du code secret → **Accueil** |
+| Première ouverture | **Bienvenue** (adresse e-mail) | code reçu par e-mail → si nouveau compte : inscription en cinq écrans (nom, naissance, téléphone, résidence, vérifier + conditions) → code secret → **Accueil** |
 | Ouverture suivante | **Verrouillage** (code secret ou empreinte) | **Accueil** |
 | Notification « XAFe crédités » | Verrouillage | **Détail de l'opération** (pile Historique) |
 | Notification « ordre exécuté » | Verrouillage | **Mes ordres** (pile Marché) |
@@ -138,9 +164,14 @@ réel sur tous ces écrans.
 
 ```
  Crypto (menu) ─┬─▶ Déposer USDT : Réseau ─▶ Adresse + QR (fin ; crédit automatique, notification)
-                ├─▶ Retirer USDT : Réseau ─▶ Adresse (scan ou coller) ─▶ Montant ─▶ Vérifier ─▶ Code ─▶ Envoyé
-                └─▶ Retirer XAFe : Réseau ─▶ Adresse ─▶ Montant ─▶ Vérifier ─▶ Code ─▶ Envoyé
+                ├─▶ Retirer USDT : Adresse (le réseau s'y lit) ─▶ Montant ─▶ Vérifier ─▶ Code ─▶ Envoyé
+                └─▶ Retirer XAFe : Adresse (le réseau s'y lit) ─▶ Montant ─▶ Vérifier ─▶ Code ─▶ Envoyé
 ```
+
+Le réseau ne se choisit plus : une adresse 0x… est BEP20, une adresse T… est
+TRC20, l'écran le montre avec les frais avant de continuer. Choisir le réseau à
+la main, c'était une étape de plus et la seule erreur qu'aucun support ne
+répare (des fonds sur la mauvaise chaîne).
 
 Mêmes règles que « Sortir des XAF » : flèche = étape précédente, écran de fin
 à sortie unique, un échec ouvre le Détail. L'adresse de dépôt est **la même
@@ -165,10 +196,24 @@ Mêmes règles que « Sortir des XAF » : flèche = étape précédente, écran 
 | Paliers et limites | **Paliers** : où j'en suis, ce que chaque palier permet → **Vérifier mon identité** (pièce + selfie) ou **Entreprise** (RCCM, bénéficiaires) | on dépose des photos ; l'état « en vérification » s'affiche ici et sur l'Accueil |
 | Sécurité | changer le code, empreinte, appareils connectés, « déconnecter partout » | |
 | Accès API | clés et webhooks (desks) | |
-| Aide | questions fréquentes, WhatsApp, « signaler un problème » | |
+| Mes informations | identité, e-mail, téléphone, résidence (lecture seule : une correction passe par le support) → **Fermer mon compte** | |
+| Aide et support | questions fréquentes, WhatsApp et e-mail, « signaler un problème » | |
+| Conditions · Confidentialité | le texte, dans une fenêtre par-dessus | |
 | Se déconnecter | **Bienvenue** | la pile est vidée |
 
+**Fermer mon compte** : d'abord ce qui reste à régler (argent à sortir, ordres
+ouverts, dépôt en attente — chaque point mène où le régler), ce que fermer
+veut dire, puis le code secret. Le compte fermé montre un seul écran : écrire
+au support, se déconnecter.
+
 ## 10. Ce qui est vrai sur tous les écrans
+
+- **Un écran vide dit quoi faire** : Sortir sans argent mène à « Entrer des
+  XAF », Sortir sans numéro à « Ajouter un numéro », Acheter sans XAFe à
+  « Entrer des XAF », l'Historique vide aussi. Un compte neuf voit sur
+  l'Accueil « Pour bien démarrer », une étape à la fois.
+- **Trois écrans de garde** se posent par-dessus l'écran demandé : compte
+  fermé ou suspendu, puis le verrou, puis les conditions à réaccepter.
 
 - **Hors ligne** : un bandeau en haut ; les soldes et le prix affichent
   l'heure de leur dernier relevé ; les boutons d'argent sont désactivés avec
@@ -194,8 +239,9 @@ Mêmes règles que « Sortir des XAF » : flèche = étape précédente, écran 
 /entrer/operateur  /entrer/payer/:ref  /entrer/transaction/:ref  /entrer/credite/:ref
 /sortir/montant  /sortir/destination  /sortir/verifier  /sortir/code  /sortir/envoye/:ref
 /marche  /marche/graphique  /marche/carnet  /marche/ordres  /marche/ordres/:id  /marche/execute/:id
-/crypto  /crypto/deposer/:actif  /crypto/retirer/:actif/{reseau,adresse,montant,verifier,code}  /crypto/envoye/:ref
+/crypto  /crypto/deposer/:actif  /crypto/retirer/:actif/{adresse,montant,verifier,code}  /crypto/envoye/:ref
 /historique  /historique/:ref
 /compte  /compte/numeros  /compte/numeros/ajouter  /compte/paliers  /compte/paliers/identite  /compte/paliers/entreprise
-/compte/securite  /compte/api  /compte/aide
+/compte/securite  /compte/api  /compte/aide  /compte/informations  /compte/fermer
+/conditions  /confidentialite   (publiques, sans compte)
 ```

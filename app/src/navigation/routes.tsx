@@ -10,7 +10,7 @@ import { Accueil, Notifications } from "../ecrans/accueil";
 import { Bienvenue, BienvenueCode, BienvenueProfil, Verrouillage } from "../ecrans/bienvenue";
 import { Inscription } from "../ecrans/bienvenue/inscription";
 import { Compte, CompteAide, CompteApi, CompteFermer, CompteInformations, CompteNumeros, CompteNumerosAjouter, ComptePaliers, ComptePaliersEntreprise, ComptePaliersIdentite, CompteSecurite } from "../ecrans/compte";
-import { Crypto, CryptoDeposer, CryptoEnvoye, CryptoRetirerAdresse, CryptoRetirerCode, CryptoRetirerMontant, CryptoRetirerReseau, CryptoRetirerVerifier } from "../ecrans/crypto";
+import { Crypto, CryptoDeposer, CryptoEnvoye, CryptoRetirerAdresse, CryptoRetirerCode, CryptoRetirerMontant, CryptoRetirerVerifier } from "../ecrans/crypto";
 import { EntrerCredite, EntrerMontant, EntrerOperateur, EntrerPayer, EntrerTransaction } from "../ecrans/entrer";
 import { Historique, HistoriqueDetail } from "../ecrans/historique";
 import { CompteFerme, Conditions, ConditionsAReaccepter, Confidentialite } from "../ecrans/legal";
@@ -18,6 +18,7 @@ import { Marche, MarcheCarnet, MarcheExecute, MarcheGraphique, MarcheOrdreDetail
 import { Rapide, RapideFait, RapidePrix } from "../ecrans/rapide";
 import { SortirCode, SortirDestination, SortirEnvoye, SortirMontant, SortirVerifier } from "../ecrans/sortir";
 import { useCompte } from "../guichet";
+import { CadreApplication } from "../ui";
 import { useSession } from "../session/session";
 
 function Attente() {
@@ -47,7 +48,7 @@ function Garde() {
   if (compte.fermeLe || compte.desactive) return <CompteFerme />;
   if (etat.verrouille) return <Verrouillage />;
   if (!compte.conditionsAJour) return <ConditionsAReaccepter />;
-  return <Outlet />;
+  return <CadreApplication><Outlet /></CadreApplication>;
 }
 
 /** Les écrans d'entrée : une session complète les saute. */
@@ -110,7 +111,6 @@ export const routeur = createBrowserRouter([
 
       { path: "/crypto", element: <Crypto /> },
       { path: "/crypto/deposer/:actif", element: <CryptoDeposer /> },
-      { path: "/crypto/retirer/:actif/reseau", element: <CryptoRetirerReseau /> },
       { path: "/crypto/retirer/:actif/adresse", element: <CryptoRetirerAdresse /> },
       { path: "/crypto/retirer/:actif/montant", element: <CryptoRetirerMontant /> },
       { path: "/crypto/retirer/:actif/verifier", element: <CryptoRetirerVerifier /> },

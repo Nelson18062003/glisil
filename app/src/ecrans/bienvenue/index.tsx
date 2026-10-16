@@ -64,14 +64,18 @@ export function Bienvenue() {
     });
 
   return (
-    <Box sx={{ width: "100%", maxWidth: 480, mx: "auto", minHeight: "100dvh", bgcolor: "background.default", display: "flex", flexDirection: "column" }}>
-      <Box sx={{ bgcolor: "primary.main", color: "#FFFFFF", px: 3, pt: "calc(env(safe-area-inset-top) + 48px)", pb: 5, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 }}>
+    /* Sur un téléphone, la marque en haut et le champ dessous ; sur un ordinateur, côte à côte,
+       la marque sur toute la hauteur à gauche — le champ reste une colonne courte, sous les yeux. */
+    <Box sx={{ width: "100%", maxWidth: { xs: 480, md: "none" }, mx: "auto", minHeight: "100dvh", bgcolor: "background.default",
+               display: { xs: "flex", md: "grid" }, flexDirection: "column", gridTemplateColumns: { md: "minmax(0,1fr) minmax(0,1fr)" } }}>
+      <Box sx={{ bgcolor: "primary.main", color: "#FFFFFF", px: { xs: 3, md: 8 }, pt: { xs: "calc(env(safe-area-inset-top) + 48px)", md: 8 }, pb: { xs: 5, md: 8 },
+                 borderBottomLeftRadius: { xs: 32, md: 0 }, borderBottomRightRadius: { xs: 32, md: 0 }, display: "flex", flexDirection: "column", justifyContent: { md: "center" } }}>
         <Stack gap={2.5}>
           <Stack direction="row" alignItems="center" gap={1.25}>
             <Marque size={52} />
             <NomGlisil size={36} couleur="#FFFFFF" />
           </Stack>
-          <Typography sx={{ fontSize: 26, fontWeight: 600, lineHeight: 1.25, color: "#FFFFFF", textWrap: "balance" }}>
+          <Typography component="h1" sx={{ fontSize: { xs: 26, md: 40 }, fontWeight: 600, lineHeight: 1.2, color: "#FFFFFF", textWrap: "balance", maxWidth: 520 }}>
             Le XAFe, et le marché où il s'échange.
           </Typography>
           <Typography sx={{ fontSize: 15, color: "rgba(255,255,255,0.86)" }}>
@@ -81,7 +85,8 @@ export function Bienvenue() {
       </Box>
 
       <Box component="form" onSubmit={(e) => { e.preventDefault(); if (valide) void continuer(); }}
-        sx={{ flex: 1, px: 2, pt: 3, pb: "calc(env(safe-area-inset-bottom) + 24px)", display: "flex", flexDirection: "column", gap: 2.5 }}>
+        sx={{ flex: 1, px: 2, pt: { xs: 3, md: 0 }, pb: "calc(env(safe-area-inset-bottom) + 24px)", display: "flex", flexDirection: "column", gap: 2.5,
+              justifyContent: { md: "center" }, width: "100%", maxWidth: { md: 440 }, mx: { md: "auto" } }}>
         <Stack gap={0.5}>
           <Typography variant="h5">Entrer ou créer un compte</Typography>
           <Typography variant="body2">Votre adresse e-mail suffit. Pas de mot de passe : nous vous envoyons un code à six chiffres.</Typography>

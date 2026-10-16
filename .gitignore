@@ -9,3 +9,6 @@ supabase/.temp/
 supabase/.branches/
 contracts/crytic-export/
 */captures/echec.png
+
+# les captures du harnais des écrans : refaites à chaque passage
+app/captures/ecrans/

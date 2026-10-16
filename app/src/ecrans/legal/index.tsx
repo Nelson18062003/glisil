@@ -80,7 +80,7 @@ export function CaseConditions({ coche, onChange }: { coche: boolean; onChange: 
   const [lu, setLu] = useState<Document | null>(null);
   const lien = (doc: Document, texte: string) => (
     <LienMui component="button" type="button" variant="body2" onClick={(e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); setLu(doc); }}
-      sx={{ fontWeight: 600, verticalAlign: "baseline", textAlign: "left" }}>{texte}</LienMui>
+      sx={{ fontWeight: 600, verticalAlign: "baseline", textAlign: "left", display: "inline", lineHeight: "inherit", py: "4px" }}>{texte}</LienMui>
   );
   return (
     <>

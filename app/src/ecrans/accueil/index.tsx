@@ -10,7 +10,7 @@ import NotificationsNoneRounded from "@mui/icons-material/NotificationsNoneRound
 import VerifiedUserOutlined from "@mui/icons-material/VerifiedUserOutlined";
 import VisibilityOffOutlined from "@mui/icons-material/VisibilityOffOutlined";
 import VisibilityOutlined from "@mui/icons-material/VisibilityOutlined";
-import { Avatar, Badge as Pastille, Box, Button, ButtonBase, Chip, IconButton, LinearProgress, Stack, Typography } from "@mui/material";
+import { Avatar, Badge as Pastille, Box, Button, ButtonBase, Chip, IconButton, LinearProgress, Stack, Typography, useMediaQuery } from "@mui/material";
 import { useEffect, useState } from "react";
 import type { Compte, Numero, Operation, Soldes } from "../../guichet/types";
 import { Link } from "react-router-dom";
@@ -32,6 +32,7 @@ export function Accueil() {
   const nonLues = notifications?.filter((n) => !n.lue).length ?? 0;
   const { data: historique } = useHistorique();
   const { data: numeros } = useNumeros();
+  const grand = useMediaQuery("(min-width:900px)", { noSsr: true });
   const vide = soldes ? soldes.XAFe.disponible + soldes.XAFe.bloque + soldes.USDT.disponible + soldes.USDT.bloque === 0 : false;
 
   const totalXaf = soldes && cotation?.dernier != null
@@ -41,7 +42,7 @@ export function Accueil() {
   const couleur = variation >= 0 ? BUY : SELL;
 
   return (
-    <Screen tab="accueil" gap={2}>
+    <Screen tab="accueil" large gap={2}>
       <Stack direction="row" alignItems="center" gap={1.5}>
         <ButtonBase component={Link} to="/compte" sx={{ borderRadius: 20 }} aria-label="Mon compte">
           <Avatar sx={{ bgcolor: "primary.main", fontWeight: 600 }}>{initiales(compte?.nom)}</Avatar>
@@ -54,6 +55,8 @@ export function Accueil() {
         </IconButton>
       </Stack>
 
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0,1fr)", md: "minmax(0,1fr) minmax(0,1fr)" }, gap: 2, alignItems: "start" }}>
+      <Stack gap={2}>
       {soldes ? (
         <Card onPrimary>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -103,6 +106,8 @@ export function Accueil() {
         <Tile icon={<ArrowUpwardRounded />} label="Sortir des XAF" to="/sortir/montant" tone="amber" />
         <Tile icon={<CurrencyBitcoinRounded />} label="Crypto" to="/crypto" tone="blue" />
       </Stack>
+      </Stack>
+      <Stack gap={2}>
 
       <ButtonBase component={Link} to="/marche" sx={{ textAlign: "left", borderRadius: 6 }}>
         <Card sx={{ width: "100%" }}>
@@ -124,6 +129,10 @@ export function Accueil() {
         <Button component={Link} to="/rapide?sens=achat" variant="contained" disableElevation sx={{ flex: 1, bgcolor: BUY, "&:hover": { bgcolor: BUY } }}>Acheter des USDT</Button>
         <Button component={Link} to="/rapide?sens=vente" variant="outlined" sx={{ flex: 1, color: SELL, borderColor: SELL }}>Vendre</Button>
       </Stack>}
+      {/* sur un grand écran, la place à droite sert à voir ce qui vient de se passer — sur un téléphone, c'est l'onglet Historique */}
+      {grand && historique && historique.length > 0 && <Recents operations={historique.slice(0, 5)} />}
+      </Stack>
+      </Box>
     </Screen>
   );
 }
@@ -166,14 +175,36 @@ function PremiersPas({ compte, soldes, historique, numeros }: { compte?: Compte;
   );
 }
 
+const ETATS_COURTS: Record<string, string> = { en_attente: "en attente", en_cours: "en cours", ouvert: "ouvert", partiel: "partiel", annule: "annulé", annulee: "annulée", expire: "expiré", echouee: "échouée", echoue: "échoué" };
+
+/** Les cinq dernières opérations, en lignes simples ; le détail est à un clic. */
+function Recents({ operations }: { operations: Operation[] }) {
+  const titre = (o: Operation) => o.nature === "depot" ? "Entrée Mobile Money" : o.nature === "sortie" ? "Sortie Mobile Money" : o.nature === "ordre" ? (o.detail.cote === "achat" ? "Achat d'USDT" : "Vente d'USDT") : `${o.montant > 0 ? "Dépôt" : "Retrait"} ${o.actif}`;
+  return (
+    <Box>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+        <Typography variant="subtitle1" component="h2" fontWeight={600}>Dernières opérations</Typography>
+        <Button component={Link} to="/historique" size="small">Tout voir</Button>
+      </Stack>
+      <List>
+        {operations.map((o) => (
+          <Row key={`${o.nature}-${o.reference}`} icon={o.montant >= 0 ? <ArrowDownwardRounded /> : <ArrowUpwardRounded />} tone={o.montant >= 0 ? "green" : "amber"}
+            primary={titre(o)} secondary={quand(o.quand)} right={o.montant === 0 ? ETATS_COURTS[o.etat] ?? "—" : o.nature === "crypto" && o.actif === "USDT" ? `${o.montant >= 0 ? "+" : ""}${enTranches(o.montant, 2)}` : `${o.montant >= 0 ? "+" : ""}${xaf(o.montant)}`}
+            rightColor={o.montant > 0 ? tones.green.fg : undefined} to={o.nature === "ordre" ? `/marche/ordres/${o.reference}` : `/historique/${o.reference}`} />
+        ))}
+      </List>
+    </Box>
+  );
+}
+
 function Poche({ badge, label, valeur, bloque }: { badge: "xafe" | "usdt"; label: string; valeur: string; bloque?: string }) {
   return (
     <Stack direction="row" alignItems="center" gap={1} sx={{ flex: 1, minWidth: 0, bgcolor: "rgba(255,255,255,0.14)", borderRadius: 3, p: 1.25 }}>
       <Badge kind={badge} size={32} />
       <Stack sx={{ minWidth: 0 }}>
-        <Typography variant="caption" sx={{ color: "inherit", opacity: 0.85 }}>{label}</Typography>
+        <Typography variant="caption" sx={{ color: "inherit" }}>{label}</Typography>
         <Typography fontWeight={600} sx={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}><Masquable>{valeur}</Masquable></Typography>
-        {bloque && <Typography variant="caption" sx={{ color: "inherit", opacity: 0.75 }}><Masquable>{bloque}</Masquable></Typography>}
+        {bloque && <Typography variant="caption" sx={{ color: "inherit" }}><Masquable>{bloque}</Masquable></Typography>}
       </Stack>
     </Stack>
   );
