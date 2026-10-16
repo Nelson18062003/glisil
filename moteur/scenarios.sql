@@ -1687,7 +1687,7 @@ begin
 end $$;
 rollback;
 
--- 12.1 · aucune de nos fonctions ne cherche ses objets dans le chemin de
+-- 11.30 · aucune de nos fonctions ne cherche ses objets dans le chemin de
 -- celui qui l'appelle : toutes ont le leur, figé (0012). Une migration future
 -- qui l'oublierait échoue ici.
 do $$
@@ -1699,10 +1699,10 @@ begin
      and not exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c like 'search_path=%')
      and not exists (select 1 from pg_depend d where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e');
   assert v is null, 'sans chemin figé : ' || v;
-  raise notice '✓ 12.1 chaque fonction a son chemin de recherche figé';
+  raise notice '✓ 11.30 chaque fonction a son chemin de recherche figé';
 end $$;
 
--- 12.2 · les conditions : on n'ouvre pas un compte sans accepter la version
+-- 11.31 · les conditions : on n'ouvre pas un compte sans accepter la version
 -- EN VIGUEUR ; quand elle change, le compte le sait et la réaccepte.
 begin;
 insert into auth.users (id, email, email_confirmed_at) values ('f3000000-0000-0000-0000-000000000001', 'paul@example.com', now());
@@ -1723,11 +1723,11 @@ begin
   exception when others then assert sqlerrm = 'conditions non acceptées', sqlerrm; end;
   r := accepter_conditions('2027-01-01');
   assert (r ->> 'conditions_a_jour')::boolean, r;
-  raise notice '✓ 12.2 les conditions : sans la version en vigueur, pas de compte ; une nouvelle version se réaccepte';
+  raise notice '✓ 11.31 les conditions : sans la version en vigueur, pas de compte ; une nouvelle version se réaccepte';
 end $$;
 rollback;
 
--- 12.3 · fermer son compte : jamais avec de l'argent dessus ni une opération
+-- 11.32 · fermer son compte : jamais avec de l'argent dessus ni une opération
 -- en cours ; avec le code secret ; ensuite plus aucun geste ; l'équipe rouvre.
 begin;
 insert into auth.users (id, email, email_confirmed_at) values ('f3000000-0000-0000-0000-000000000002', 'marie@example.com', now());
@@ -1756,11 +1756,11 @@ begin
   perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);  -- le super admin
   perform admin_desactiver_compte('f3000000-0000-0000-0000-000000000002', true, 'rouvert à sa demande');
   assert (select ferme_le is null and desactive_le is null from comptes where id = 'f3000000-0000-0000-0000-000000000002');
-  raise notice '✓ 12.3 fermer son compte : refusé avec de l''argent dessus ou un code faux ; fermé, plus aucun geste ; l''équipe le rouvre';
+  raise notice '✓ 11.32 fermer son compte : refusé avec de l''argent dessus ou un code faux ; fermé, plus aucun geste ; l''équipe le rouvre';
 end $$;
 rollback;
 
--- 12.4 · le contact du support se règle par l'équipe, et se vérifie.
+-- 11.33 · le contact du support se règle par l'équipe, et se vérifie.
 begin;
 do $$
 begin
@@ -1772,7 +1772,7 @@ begin
   perform admin_modifier_parametre('support', '{"email": "aide@glisil.com", "whatsapp": "+237677123456"}');
   perform set_config('xafe.compte', '22222222-2222-2222-2222-222222222222', true);
   assert parametres_publics() -> 'support' ->> 'whatsapp' = '+237677123456';
-  raise notice '✓ 12.4 le support : l''équipe le règle, une adresse ou un numéro mal formé est refusé, l''écran le lit';
+  raise notice '✓ 11.33 le support : l''équipe le règle, une adresse ou un numéro mal formé est refusé, l''écran le lit';
 end $$;
 rollback;
 
