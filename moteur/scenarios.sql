@@ -1534,6 +1534,135 @@ begin
 end $$;
 rollback;
 
+-- 11.26 · l'inscription par e-mail : une adresse non prouvée n'ouvre rien ;
+-- tout le profil est vérifié et mis en forme par la base, pas par l'écran.
+begin;
+insert into auth.users (id, email, email_confirmed_at) values
+  ('f1000000-0000-0000-0000-000000000001', 'Awa.Ngono@Example.com', now()),
+  ('f1000000-0000-0000-0000-000000000002', 'pas-prouve@example.com', null),
+  ('f1000000-0000-0000-0000-000000000003', 'jules@example.fr', now());
+do $$
+declare r jsonb;
+begin
+  perform set_config('xafe.compte', 'f1000000-0000-0000-0000-000000000002', true);
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'CM'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'adresse e-mail non vérifiée', sqlerrm; end;
+
+  perform set_config('xafe.compte', 'f1000000-0000-0000-0000-000000000001', true);
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', ((now() at time zone 'Africa/Douala')::date - interval '17 years')::date, '+237677123499', 'Douala', 'CM'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'il faut avoir 18 ans', sqlerrm; end;
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+23767712349', 'Douala', 'CM'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'numéro de téléphone invalide', sqlerrm; end;
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237577123499', 'Douala', 'CM'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'numéro de téléphone invalide', sqlerrm; end;
+  begin perform ouvrir_mon_compte('A1', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'CM'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'prénom invalide', sqlerrm; end;
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'Cameroun'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'pays invalide', sqlerrm; end;
+  assert not exists (select 1 from comptes where id = 'f1000000-0000-0000-0000-000000000001'), 'un refus n''ouvre rien';
+
+  r := ouvrir_mon_compte('  awa ', 'NGONO-MBALLA', date '1990-05-14', '+237 6 77 12 34 99', 'douala', 'cm');
+  assert r ->> 'prenom' = 'Awa' and r ->> 'nom_de_famille' = 'Ngono-Mballa' and r ->> 'nom' = 'Awa Ngono-Mballa', r;
+  assert r ->> 'telephone' = '+237677123499' and r ->> 'email' = 'awa.ngono@example.com', r;
+  assert r ->> 'ville' = 'Douala' and r ->> 'pays' = 'CM' and r ->> 'date_naissance' = '1990-05-14' and not (r ->> 'a_code')::boolean, r;
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123400', 'Douala', 'CM'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'compte déjà ouvert', sqlerrm; end;
+  r := completer_profil('Awa Ngono-Mballa', '2580');
+  assert (r ->> 'a_code')::boolean and mon_compte() ->> 'email' = 'awa.ngono@example.com', r;
+
+  perform set_config('xafe.compte', 'f1000000-0000-0000-0000-000000000003', true);
+  begin perform ouvrir_mon_compte('Jules', 'Martin', date '1985-01-02', '+237677123499', 'Paris', 'FR'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'ce numéro est déjà utilisé', sqlerrm; end;
+  r := ouvrir_mon_compte('jules', 'd''almeida', date '1985-01-02', '+33 6 12 34 56 78', 'saint-étienne', 'FR');
+  assert r ->> 'nom' = 'Jules D''Almeida' and r ->> 'ville' = 'Saint-Étienne' and r ->> 'telephone' = '+33612345678', r;
+  raise notice '✓ 11.26 l''inscription par e-mail : une adresse non prouvée n''ouvre rien ; mineur, numéro, nom ou pays faux sont refusés par la base ; le profil est mis en forme ; un numéro ne sert qu''à un compte';
+end $$;
+rollback;
+
+-- 11.27 · l'administration sans mot de passe : une adresse invitée devient
+-- administrateur à son premier code ; une adresse non invitée, ou non
+-- prouvée, n'administre rien ; seul le super admin invite.
+begin;
+insert into auth.users (id, email, email_confirmed_at) values
+  ('f2000000-0000-0000-0000-000000000001', 'fatou@example.com', now()),
+  ('f2000000-0000-0000-0000-000000000002', 'curieux@example.com', now()),
+  ('f2000000-0000-0000-0000-000000000003', 'zoe@example.com', null);
+do $$
+declare r jsonb;
+begin
+  perform set_config('xafe.compte', '22222222-2222-2222-2222-222222222222', true);
+  begin perform admin_inviter_administrateur('pirate@example.com', 'Pirate', 'super_admin'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'accès non autorisé', sqlerrm; end;
+
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);
+  r := admin_inviter_administrateur('  Fatou@Example.com ', 'Fatou Bello', 'support');
+  assert r ->> 'email' = 'fatou@example.com', r;
+  perform admin_inviter_administrateur('zoe@example.com', 'Zoé', 'operateur');
+  begin perform admin_inviter_administrateur('pas-une-adresse', 'X', 'support'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'adresse e-mail invalide', sqlerrm; end;
+
+  perform set_config('xafe.compte', 'f2000000-0000-0000-0000-000000000002', true);
+  assert entrer_administration() is null, 'une adresse non invitée n''administre rien';
+  assert not admin_a_droit('voir');
+
+  perform set_config('xafe.compte', 'f2000000-0000-0000-0000-000000000003', true);
+  assert entrer_administration() is null, 'une adresse non prouvée n''administre rien';
+  assert exists (select 1 from administrateurs_invites where email = 'zoe@example.com'), 'son invitation attend';
+
+  perform set_config('xafe.compte', 'f2000000-0000-0000-0000-000000000001', true);
+  r := entrer_administration();
+  assert r ->> 'role' = 'support' and r ->> 'email' = 'fatou@example.com', r;
+  assert admin_a_droit('voir') and not admin_a_droit('administrateurs');
+  assert not exists (select 1 from administrateurs_invites where email = 'fatou@example.com'), 'l''invitation est consommée';
+  assert (entrer_administration() ->> 'id')::uuid = 'f2000000-0000-0000-0000-000000000001', 'le second passage rend la même fiche';
+  assert not has_table_privilege('authenticated', 'administrateurs_invites', 'select'), 'les invitations ne se lisent pas';
+  raise notice '✓ 11.27 l''administration par code : une adresse invitée devient administrateur à son premier passage ; non invitée ou non prouvée, rien ; seul le super admin invite';
+end $$;
+rollback;
+
+-- 11.28 · la vue clients de l'équipe : les compteurs, la liste qui se
+-- cherche et se filtre, la fiche complète ; rien de tout cela pour un client.
+begin;
+insert into auth.users (id, email, email_confirmed_at, last_sign_in_at) values
+  ('f3000000-0000-0000-0000-000000000001', 'mireille@example.com', now(), now()),
+  ('f3000000-0000-0000-0000-000000000002', 'inacheve@example.com', now(), now());
+do $$
+declare s jsonb; l jsonb; f jsonb;
+begin
+  perform set_config('xafe.compte', 'f3000000-0000-0000-0000-000000000001', true);
+  perform ouvrir_mon_compte('Mireille', 'Essomba', date '1992-03-08', '+237699001122', 'Yaoundé', 'CM');
+
+  perform set_config('xafe.compte', '22222222-2222-2222-2222-222222222222', true);
+  begin perform admin_statistiques_clients(); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'accès non autorisé', sqlerrm; end;
+  begin perform admin_client('f3000000-0000-0000-0000-000000000001'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'accès non autorisé', sqlerrm; end;
+
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000003', true);  -- le support : droit « clients »
+  s := admin_statistiques_clients();
+  assert (s ->> 'total')::int = (select count(*) from comptes where not maison), s;
+  assert (s ->> 'nouveaux_7j')::int >= 1 and (s ->> 'connectes_7j')::int >= 1 and (s ->> 'inscriptions_inachevees')::int >= 1, s;
+  assert (s ->> 'actifs_30j')::int <= (s ->> 'total')::int and jsonb_array_length(s -> 'inscriptions_30j') = 30, s;
+  assert (s -> 'par_pays' ->> 'CM')::int >= 1, s;
+
+  l := admin_clients('mireille@', 50, null);
+  assert jsonb_array_length(l) = 1 and l -> 0 ->> 'ville' = 'Yaoundé' and l -> 0 ->> 'derniere_connexion' is not null, l;
+  l := admin_clients('99 00 11', 50, null);
+  assert l @> '[{"email": "mireille@example.com"}]', l;
+  l := admin_clients(null, 500, 'nouveaux');
+  assert l @> '[{"email": "mireille@example.com"}]', 'une inscription du jour est « nouvelle »';
+  l := admin_clients(null, 500, 'actifs');
+  assert not l @> '[{"email": "mireille@example.com"}]', 'sans opération, pas « actif »';
+  l := admin_clients(null, 500, 'inactifs');
+  assert l @> '[{"email": "mireille@example.com"}]', l;
+
+  f := admin_client('f3000000-0000-0000-0000-000000000001');
+  assert f -> 'compte' ->> 'date_naissance' = '1992-03-08' and f -> 'compte' ->> 'derniere_connexion' is not null, f;
+  assert f ? 'retraits_crypto' and f ? 'transferts_crypto' and (f -> 'totaux' ->> 'ordres')::int = 0, f;
+  raise notice '✓ 11.28 la vue clients : compteurs, inscriptions inachevées, recherche par e-mail ou numéro, filtres actifs/inactifs/nouveaux, fiche complète — et rien pour un client';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

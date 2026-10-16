@@ -32,7 +32,7 @@ et chacun l'a fait au moins une fois (les commits le racontent).
 
 ### Installer la base d'un coup
 
-`migrations/20261015_consolidated.sql` contient toutes les migrations de
+`migrations/20261016_consolidated.sql` contient toutes les migrations de
 `supabase/migrations`, dans l'ordre, en un seul fichier : Supabase → SQL Editor
 → coller → Run. Chaque partie vérifie d'abord si elle est déjà en place : le
 fichier se rejoue sans danger, sur une base neuve comme sur une base à
