@@ -85,6 +85,9 @@ function compte(j: J): Compte {
     email: sn(j.email), prenom: sn(j.prenom), nomDeFamille: sn(j.nom_de_famille), dateNaissance: sn(j.date_naissance), ville: sn(j.ville), pays: sn(j.pays),
     aCode: Boolean(j.a_code), verrouJusqua: sn(j.verrou_jusqua), verificationEnCours: (j.verification_en_cours as Compte["verificationEnCours"]) ?? null,
     entreDuJour: n(j.entre_du_jour),
+    /* une base d'avant 0012 ne dit rien des conditions : on ne bloque personne pour ça */
+    conditionsAJour: j.conditions_a_jour === undefined ? true : Boolean(j.conditions_a_jour),
+    fermeLe: sn(j.ferme_le), desactive: Boolean(j.desactive),
   };
 }
 function retrait(j: J): RetraitCrypto {
@@ -187,7 +190,7 @@ export class GuichetSupabase implements Guichet {
   async compte() { return compte(trouve(await this.rpc<J | null>("mon_compte"), "compte pas encore ouvert")); }
   async monCompte() { const j = await this.rpc<J | null>("mon_compte"); return j ? compte(j) : null; }
   async ouvrirCompte(p: ProfilInscription) {
-    return compte(await this.rpc<J>("ouvrir_mon_compte", { p_prenom: p.prenom, p_nom: p.nom, p_naissance: p.naissance, p_telephone: p.telephone, p_ville: p.ville, p_pays: p.pays }));
+    return compte(await this.rpc<J>("ouvrir_mon_compte", { p_prenom: p.prenom, p_nom: p.nom, p_naissance: p.naissance, p_telephone: p.telephone, p_ville: p.ville, p_pays: p.pays, p_conditions: p.conditions }));
   }
   async completerProfil({ nom, codeSecret }: { nom: string; codeSecret: string }) { return compte(await this.rpc<J>("completer_profil", { p_nom: nom, p_code: codeSecret })); }
   async verifierCodeSecret(code: string): Promise<ResultatCode> {
@@ -198,6 +201,11 @@ export class GuichetSupabase implements Guichet {
     if (error) throw new ErreurMoteur(error.message, error.details || undefined);
     const r = (data ?? {}) as J;
     return { ok: Boolean(r.ok), essaisRestants: nn(r.essais_restants) ?? undefined, verrouJusqua: sn(r.verrou_jusqua) };
+  }
+  async accepterConditions(version: string) { return compte(await this.rpc<J>("accepter_conditions", { p_version: version })); }
+  async fermerCompte({ codeSecret, motif }: { codeSecret: string; motif: string }) {
+    const r = await this.rpc<J>("fermer_mon_compte", { p_code: codeSecret, p_motif: motif });
+    return compte(r.compte as J);
   }
   async changerCodeSecret({ ancien, nouveau }: { ancien: string; nouveau: string }) { await this.rpc("changer_code_secret", { p_ancien: ancien, p_nouveau: nouveau }); }
   async demanderVerification({ type, pieces }: { type: "identite" | "entreprise"; pieces: File[] }) {

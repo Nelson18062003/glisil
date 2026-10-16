@@ -10,14 +10,16 @@ import NotificationsNoneRounded from "@mui/icons-material/NotificationsNoneRound
 import VerifiedUserOutlined from "@mui/icons-material/VerifiedUserOutlined";
 import VisibilityOffOutlined from "@mui/icons-material/VisibilityOffOutlined";
 import VisibilityOutlined from "@mui/icons-material/VisibilityOutlined";
-import { Avatar, Badge as Pastille, Box, Button, ButtonBase, Chip, IconButton, Stack, Typography } from "@mui/material";
-import { useEffect } from "react";
+import { Avatar, Badge as Pastille, Box, Button, ButtonBase, Chip, IconButton, LinearProgress, Stack, Typography } from "@mui/material";
+import { useEffect, useState } from "react";
+import type { Compte, Numero, Operation, Soldes } from "../../guichet/types";
 import { Link } from "react-router-dom";
-import { useChandelles, useCompte, useCotation, useDepotsEnAttente, useGuichet, useNotifications, useSoldes } from "../../guichet";
+import { useChandelles, useCompte, useCotation, useDepotsEnAttente, useGuichet, useHistorique, useNotifications, useNumeros, useSoldes } from "../../guichet";
 import { enTranches, initiales, jourRelatif, prix, quand, xaf } from "../../noyau/format";
 import { useSession } from "../../session/session";
+import { PALIERS } from "../../noyau/argent";
 import { tones } from "../../theme";
-import { Badge, BUY, Card, Icon, List, Masquable, Row, Screen, SELL, Sparkline, Squelette, Tile } from "../../ui";
+import { Badge, BUY, Card, EtatVide, Icon, List, Masquable, Row, Screen, SELL, Sparkline, Squelette, Tile } from "../../ui";
 
 export function Accueil() {
   const session = useSession();
@@ -28,6 +30,9 @@ export function Accueil() {
   const { data: enAttente } = useDepotsEnAttente();
   const { data: notifications } = useNotifications();
   const nonLues = notifications?.filter((n) => !n.lue).length ?? 0;
+  const { data: historique } = useHistorique();
+  const { data: numeros } = useNumeros();
+  const vide = soldes ? soldes.XAFe.disponible + soldes.XAFe.bloque + soldes.USDT.disponible + soldes.USDT.bloque === 0 : false;
 
   const totalXaf = soldes && cotation?.dernier != null
     ? soldes.XAFe.disponible + soldes.XAFe.bloque + (soldes.USDT.disponible + soldes.USDT.bloque) * cotation.dernier
@@ -68,6 +73,8 @@ export function Accueil() {
       ) : (
         <Squelette hauteur={196} />
       )}
+
+      <PremiersPas compte={compte} soldes={soldes} historique={historique} numeros={numeros} />
 
       {compte?.verificationEnCours && (
         <Stack direction="row" alignItems="center" gap={1.5} sx={{ bgcolor: tones.blue.bg, color: tones.blue.fg, borderRadius: 4, px: 2, py: 1.25 }}>
@@ -112,12 +119,50 @@ export function Accueil() {
           <Sparkline points={(chandelles ?? []).map((c) => c.c)} color={couleur} />
         </Card>
       </ButtonBase>
-      {/* l'achat rapide : pour qui ne veut pas poser un ordre au carnet */}
-      <Stack direction="row" gap={1.5}>
+      {/* l'achat rapide : pour qui ne veut pas poser un ordre au carnet — rien à acheter ni à vendre tant que le compte est vide */}
+      {!vide && <Stack direction="row" gap={1.5}>
         <Button component={Link} to="/rapide?sens=achat" variant="contained" disableElevation sx={{ flex: 1, bgcolor: BUY, "&:hover": { bgcolor: BUY } }}>Acheter des USDT</Button>
         <Button component={Link} to="/rapide?sens=vente" variant="outlined" sx={{ flex: 1, color: SELL, borderColor: SELL }}>Vendre</Button>
-      </Stack>
+      </Stack>}
     </Screen>
+  );
+}
+
+/*
+ * Les premiers pas d'un compte neuf, UNE étape à la fois : la suivante seulement,
+ * avec son bouton. Elle disparaît d'elle-même quand tout est fait. La
+ * vérification d'identité est la seule qu'on peut remettre à plus tard.
+ */
+const CLE_PLUS_TARD = "glisil.premiers-pas.identite-plus-tard";
+
+function PremiersPas({ compte, soldes, historique, numeros }: { compte?: Compte; soldes?: Soldes; historique?: Operation[]; numeros?: Numero[] }) {
+  const [plusTard, setPlusTard] = useState(() => { try { return localStorage.getItem(CLE_PLUS_TARD) === "1"; } catch { return false; } });
+  if (!compte || !soldes || !historique || !numeros) return null;
+  const etapes = [
+    { fait: historique.some((o) => o.nature === "depot" && o.etat === "credite") || soldes.XAFe.disponible + soldes.XAFe.bloque + soldes.USDT.disponible + soldes.USDT.bloque > 0,
+      titre: "Entrez vos premiers XAF", texte: "Payez notre numéro MoMo, tapez le transaction ID de votre SMS : vos XAFe arrivent en quelques secondes.", label: "Entrer des XAF", to: "/entrer/operateur" },
+    { fait: numeros.some((n) => n.verifieLe && !n.retireLe),
+      titre: "Ajoutez votre numéro MoMo", texte: "C'est vers lui que vous sortirez vos XAF. Il devient actif 24 h après sa vérification : faites-le dès maintenant.", label: "Ajouter mon numéro", to: "/compte/numeros/ajouter" },
+    { fait: compte.palier >= 1 || Boolean(compte.verificationEnCours) || plusTard,
+      titre: "Vérifiez votre identité", texte: `Votre plafond passe de ${xaf(PALIERS[0].entreeJour ?? 0)} à ${xaf(PALIERS[1].entreeJour ?? 0)} XAF par jour. Une pièce d'identité et un selfie suffisent.`, label: "Vérifier mon identité", to: "/compte/paliers/identite", plusTard: true },
+  ];
+  const faites = etapes.filter((e) => e.fait).length;
+  const suivante = etapes.find((e) => !e.fait);
+  if (!suivante) return null;
+  return (
+    <Card sx={{ border: 1, borderColor: "divider" }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center">
+        <Typography variant="caption" sx={{ fontWeight: 600, color: "primary.main" }}>POUR BIEN DÉMARRER</Typography>
+        <Typography variant="caption">{faites + 1} sur {etapes.length}</Typography>
+      </Stack>
+      <LinearProgress variant="determinate" value={(faites / etapes.length) * 100} sx={{ height: 4, borderRadius: 2, bgcolor: "divider" }} aria-label="Premiers pas" />
+      <Typography variant="subtitle1" fontWeight={600}>{suivante.titre}</Typography>
+      <Typography variant="body2">{suivante.texte}</Typography>
+      <Stack direction="row" gap={1} sx={{ mt: 0.5 }}>
+        <Button component={Link} to={suivante.to} variant="contained" size="small">{suivante.label}</Button>
+        {suivante.plusTard && <Button size="small" color="inherit" sx={{ color: "text.secondary" }} onClick={() => { try { localStorage.setItem(CLE_PLUS_TARD, "1"); } catch { /* sans stockage, l'étape revient à la prochaine ouverture */ } setPlusTard(true); }}>Plus tard</Button>}
+      </Stack>
+    </Card>
   );
 }
 
@@ -150,9 +195,8 @@ export function Notifications() {
   return (
     <Screen title="Notifications" back="/">
       {!data ? <Squelette /> : data.length === 0 ? (
-        <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Typography variant="body2">Rien pour l'instant.</Typography>
-        </Box>
+        <EtatVide icone={<NotificationsNoneRounded sx={{ fontSize: 36 }} />} titre="Aucune notification"
+          texte="Un dépôt crédité, une sortie envoyée, un ordre exécuté : vous serez prévenu ici." />
       ) : (
         [...groupes].map(([jour, ns]) => (
           <Box key={jour}>

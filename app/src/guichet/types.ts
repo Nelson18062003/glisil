@@ -30,6 +30,12 @@ export type Compte = {
   verificationEnCours: "identite" | "entreprise" | null;
   /** XAF déjà crédités aujourd'hui (journée de Douala) : ce qui reste du plafond s'en déduit */
   entreDuJour: number;
+  /** la version des conditions acceptée est celle en vigueur ; sinon, à relire avant de continuer */
+  conditionsAJour: boolean;
+  /** fermé par son titulaire : plus aucun geste, l'équipe peut le rouvrir */
+  fermeLe: string | null;
+  /** suspendu par l'équipe (ou fermé) */
+  desactive: boolean;
 };
 
 /** Ce que la personne donne pour ouvrir son compte : tout est obligatoire. */
@@ -42,6 +48,8 @@ export type ProfilInscription = {
   telephone: string;
   ville: string;
   pays: string;
+  /** la version des conditions lues et acceptées (VERSION_CONDITIONS) */
+  conditions: string;
 };
 
 export type Soldes = Record<Actif, { disponible: number; bloque: number }>;

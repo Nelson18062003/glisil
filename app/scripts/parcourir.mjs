@@ -78,15 +78,15 @@ const ouvrirUnDepot = async () => {
 
 try {
   /* ---------------------------------------------------------- entrer */
-  etape("Bienvenue → code SMS → Accueil");
+  etape("Bienvenue → code par e-mail → Accueil");
   await page.goto(`${BASE}/`);
   await page.waitForURL(/\/bienvenue$/);
   await capturer("bienvenue");
-  await page.getByLabel("Numéro de téléphone").fill("677123456");
-  await page.getByRole("button", { name: "Continuer" }).click();
+  await page.getByLabel("Adresse e-mail").fill("demo@glisil.com");
+  await page.getByRole("button", { name: "Recevoir mon code" }).click();
   await page.waitForURL(/\/bienvenue\/code$/);
   await capturer("bienvenue-code");
-  await taper(["1", "2", "3", "4", "5", "6"]);
+  await page.getByLabel("Code reçu par e-mail").fill("123456");
   await page.waitForURL(`${BASE}/`);
   await voir("Bonjour Nelson");
   await voir("3 250 000");
@@ -378,6 +378,80 @@ try {
     await voir("Prix garanti encore");
   }
   await voir("USDT vendus");
+
+  /* ------------------------------------------- une cliente toute neuve */
+  etape("Une cliente neuve : inscription, conditions acceptées, premiers pas, rien à sortir — puis elle ferme son compte");
+  {
+    const ctx = await navigateur.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2, locale: "fr-FR" });
+    const p2 = await ctx.newPage();
+    p2.on("pageerror", (e) => erreurs.push(`pageerror: ${e.message}`));
+    p2.on("console", (m) => { if (m.type() === "error" && !/favicon|fonts.googleapis|net::ERR/.test(m.text())) erreurs.push(`console: ${m.text()}`); });
+    const shot = async (nom) => { numero += 1; await p2.waitForTimeout(400); await p2.screenshot({ path: `${OUT}${String(numero).padStart(2, "0")}-${nom}.png`, fullPage: true }); };
+    const pave = async (chiffres) => { for (const t of chiffres) await p2.getByRole("button", { name: t, exact: true }).click(); };
+    /* les conditions se lisent sans compte */
+    await p2.goto(`${BASE}/conditions`);
+    await p2.getByRole("heading", { name: "1. Glisil et le XAFe" }).waitFor();
+    await p2.goto(`${BASE}/confidentialite`);
+    await p2.getByText("Ce que nous recueillons").waitFor();
+    await p2.goto(`${BASE}/bienvenue`);
+    await p2.getByLabel("Adresse e-mail").fill("awa@exemple.com");
+    await p2.getByRole("button", { name: "Recevoir mon code" }).click();
+    await p2.getByLabel("Code reçu par e-mail").fill("123456");
+    await p2.waitForURL(/\/bienvenue\/inscription$/);
+    await p2.getByLabel("Prénom").fill("awa");
+    await p2.getByLabel("Nom de famille").fill("ngono");
+    await p2.getByRole("button", { name: "Continuer" }).click();
+    await p2.getByLabel("Jour").fill("12"); await p2.getByLabel("Mois").fill("03"); await p2.getByLabel("Année").fill("1994");
+    await p2.getByRole("button", { name: "Continuer" }).click();
+    await p2.getByLabel("Numéro de téléphone").fill("677998877");
+    await p2.getByRole("button", { name: "Continuer" }).click();
+    await p2.getByLabel("Ville").fill("Douala"); await p2.keyboard.press("Escape");
+    await p2.getByRole("button", { name: "Continuer" }).click();
+    await p2.getByText("Je certifie").click();
+    const ouvrir = p2.getByRole("button", { name: "Ouvrir mon compte" });
+    exiger(await ouvrir.isDisabled(), "sans les conditions acceptées, le compte ne s'ouvre pas");
+    /* lire les conditions dans la feuille ne fait pas perdre l'inscription */
+    await p2.getByRole("button", { name: "conditions d'utilisation" }).click();
+    await p2.getByRole("button", { name: "J'ai lu" }).click();
+    await p2.getByRole("checkbox", { name: /J'accepte les/ }).check();
+    await shot("inscription-conditions");
+    await ouvrir.click();
+    await p2.waitForURL(/\/bienvenue\/profil$/);
+    await pave(["2", "5", "8", "0"]); await p2.waitForTimeout(300); await pave(["2", "5", "8", "0"]);
+    await p2.getByRole("button", { name: "Découvrir mon compte" }).click();
+    await p2.waitForURL(`${BASE}/`);
+    await p2.getByText("POUR BIEN DÉMARRER").waitFor();
+    await p2.getByText("Entrez vos premiers XAF").waitFor();
+    exiger(await p2.getByRole("link", { name: "Acheter des USDT" }).count() === 0, "un compte vide n'a rien à acheter ni à vendre");
+    await shot("accueil-compte-neuf");
+    await p2.getByRole("link", { name: "Sortir des XAF" }).click();
+    await p2.getByText("Rien à sortir pour l'instant").waitFor();
+    await shot("sortir-rien");
+    await p2.getByRole("link", { name: "Entrer des XAF" }).click();
+    await p2.waitForURL(/\/entrer\/operateur$/);
+    await p2.getByRole("link", { name: "Historique" }).count();
+    await p2.goto(`${BASE}/historique`);
+    if (await p2.getByText("Votre code secret pour continuer").count()) await pave(["2", "5", "8", "0"]);
+    await p2.getByText("Aucune opération pour l'instant").waitFor();
+    await shot("historique-vide");
+    await p2.getByRole("link", { name: "Compte" }).click();
+    await p2.getByText("Mes informations").click();
+    await p2.waitForURL(/\/compte\/informations$/);
+    await p2.getByText("12 mars 1994").waitFor();
+    await shot("compte-informations");
+    await p2.getByRole("link", { name: "Fermer mon compte" }).click();
+    await p2.getByText("Votre solde est à zéro").waitFor();
+    await shot("compte-fermer");
+    await p2.getByRole("button", { name: "Fermer mon compte" }).click();
+    await pave(["0", "0", "0", "0"]);
+    await p2.getByText("Ce code n'est pas le bon").or(p2.getByText("Code secret incorrect")).first().waitFor();
+    await p2.getByRole("button", { name: "Compris" }).click();
+    await p2.getByRole("button", { name: "Fermer mon compte" }).click();
+    await pave(["2", "5", "8", "0"]);
+    await p2.getByText("Votre compte est fermé").waitFor();
+    await shot("compte-ferme");
+    await ctx.close();
+  }
 
   /* ------------------------- une référence qui n'est pas sur ce compte */
   etape("Une référence inconnue dit « Introuvable » au lieu de rester grise pour toujours");

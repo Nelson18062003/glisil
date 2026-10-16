@@ -9,13 +9,15 @@ import { createBrowserRouter, Navigate, Outlet, useLocation } from "react-router
 import { Accueil, Notifications } from "../ecrans/accueil";
 import { Bienvenue, BienvenueCode, BienvenueProfil, Verrouillage } from "../ecrans/bienvenue";
 import { Inscription } from "../ecrans/bienvenue/inscription";
-import { Compte, CompteAide, CompteApi, CompteNumeros, CompteNumerosAjouter, ComptePaliers, ComptePaliersEntreprise, ComptePaliersIdentite, CompteSecurite } from "../ecrans/compte";
+import { Compte, CompteAide, CompteApi, CompteFermer, CompteInformations, CompteNumeros, CompteNumerosAjouter, ComptePaliers, ComptePaliersEntreprise, ComptePaliersIdentite, CompteSecurite } from "../ecrans/compte";
 import { Crypto, CryptoDeposer, CryptoEnvoye, CryptoRetirerAdresse, CryptoRetirerCode, CryptoRetirerMontant, CryptoRetirerReseau, CryptoRetirerVerifier } from "../ecrans/crypto";
 import { EntrerCredite, EntrerMontant, EntrerOperateur, EntrerPayer, EntrerTransaction } from "../ecrans/entrer";
 import { Historique, HistoriqueDetail } from "../ecrans/historique";
+import { CompteFerme, Conditions, ConditionsAReaccepter, Confidentialite } from "../ecrans/legal";
 import { Marche, MarcheCarnet, MarcheExecute, MarcheGraphique, MarcheOrdreDetail, MarcheOrdres } from "../ecrans/marche";
 import { Rapide, RapideFait, RapidePrix } from "../ecrans/rapide";
 import { SortirCode, SortirDestination, SortirEnvoye, SortirMontant, SortirVerifier } from "../ecrans/sortir";
+import { useCompte } from "../guichet";
 import { useSession } from "../session/session";
 
 function Attente() {
@@ -26,15 +28,25 @@ function Attente() {
   );
 }
 
-/** Les écrans qui demandent une session complète. */
+/**
+ * Les écrans qui demandent une session complète. Par-dessus l'écran demandé,
+ * dans cet ordre : le compte fermé ou suspendu (rien d'autre n'est possible),
+ * le verrou du code secret, puis les conditions à réaccepter quand leur
+ * version a changé. Le compte se relit en direct : accepter, ou être rouvert
+ * par l'équipe, rend l'écran demandé sans recharger.
+ */
 function Garde() {
   const { etat } = useSession();
   const location = useLocation();
+  const { data } = useCompte();
   if (etat.phase === "chargement") return <Attente />;
   if (etat.phase === "anonyme") return <Navigate to="/bienvenue" replace state={{ apres: location.pathname + location.search }} />;
   if (etat.phase === "inscription") return <Navigate to="/bienvenue/inscription" replace />;
   if (etat.phase === "profil") return <Navigate to="/bienvenue/profil" replace />;
+  const compte = data ?? etat.compte;
+  if (compte.fermeLe || compte.desactive) return <CompteFerme />;
   if (etat.verrouille) return <Verrouillage />;
+  if (!compte.conditionsAJour) return <ConditionsAReaccepter />;
   return <Outlet />;
 }
 
@@ -54,6 +66,9 @@ function Porte() {
 }
 
 export const routeur = createBrowserRouter([
+  /* les textes qui engagent se lisent sans compte : les magasins d'applications demandent une adresse publique */
+  { path: "/conditions", element: <Conditions /> },
+  { path: "/confidentialite", element: <Confidentialite /> },
   {
     element: <Porte />,
     children: [
@@ -114,6 +129,8 @@ export const routeur = createBrowserRouter([
       { path: "/compte/securite", element: <CompteSecurite /> },
       { path: "/compte/api", element: <CompteApi /> },
       { path: "/compte/aide", element: <CompteAide /> },
+      { path: "/compte/informations", element: <CompteInformations /> },
+      { path: "/compte/fermer", element: <CompteFermer /> },
 
       { path: "*", element: <Navigate to="/" replace /> },
     ],

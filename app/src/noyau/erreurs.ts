@@ -173,8 +173,43 @@ const DICTIONNAIRE: Record<string, Omit<ErreurLisible, "recommencer"> & { recomm
   "compte désactivé": {
     titre: "Votre compte est suspendu",
     argent: "Vos soldes restent à vous ; aucun geste d'argent n'est possible pour l'instant.",
-    suite: "Contactez l'équipe XAFe sur WhatsApp, depuis Compte → Aide.",
+    suite: "Écrivez au support Glisil, depuis Compte → Aide.",
     recommencer: false,
+  },
+  "compte fermé": {
+    titre: "Votre compte est fermé",
+    argent: "Aucune opération n'est possible.",
+    suite: "Pour le rouvrir, écrivez au support depuis l'adresse de ce compte.",
+    recommencer: false,
+  },
+  "compte déjà fermé": {
+    titre: "Votre compte est déjà fermé",
+    argent: "Rien n'a bougé.",
+    suite: "Pour le rouvrir, écrivez au support.",
+    recommencer: false,
+  },
+  "il reste de l'argent sur le compte": {
+    titre: "Il reste de l'argent sur votre compte",
+    argent: "Rien n'a été fermé : votre argent est toujours là.",
+    suite: "Sortez d'abord vos XAF et vos USDT, puis revenez fermer le compte.",
+    recommencer: false,
+  },
+  "une opération est en cours": {
+    titre: "Une opération est encore en cours",
+    argent: "Rien n'a été fermé.",
+    suite: "Attendez qu'elle se termine — ou annulez vos ordres ouverts — puis revenez.",
+    recommencer: false,
+  },
+  "un remboursement vous est dû": {
+    titre: "Un remboursement vous est dû",
+    argent: "Rien n'a été fermé : l'équipe doit d'abord vous rendre cet argent.",
+    suite: "Écrivez au support pour qu'il soit fait, puis revenez fermer le compte.",
+    recommencer: false,
+  },
+  "conditions non acceptées": {
+    titre: "Les conditions n'ont pas été acceptées",
+    argent: "Rien n'a bougé.",
+    suite: "Lisez les conditions d'utilisation en vigueur, cochez la case, puis recommencez. Si l'écran insiste, rechargez l'application : une nouvelle version est peut-être sortie.",
   },
   "transaction id déjà utilisé": {
     titre: "Ce transaction ID a déjà été crédité",

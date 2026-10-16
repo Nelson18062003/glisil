@@ -3,6 +3,7 @@
  * des lectures en cache (TanStack Query) qui se rafraîchissent d'elles-mêmes
  * quand le moteur dit que quelque chose a bougé.
  */
+import { appliquerSupport } from "../noyau/conditions";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { appliquerParametres } from "../noyau/argent";
@@ -38,7 +39,7 @@ function Parametres() {
   const g = useGuichet();
   useQuery({
     queryKey: ["parametres"],
-    queryFn: async () => { const p = await g.parametres().catch(() => null); appliquerParametres(p); return p ?? false; },
+    queryFn: async () => { const p = await g.parametres().catch(() => null); appliquerParametres(p); appliquerSupport(p); return p ?? false; },
     refetchInterval: 5 * 60_000,
   });
   return null;

@@ -16,6 +16,8 @@ import type { CountryCode } from "libphonenumber-js/min";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGuichet } from "../../guichet";
+import { VERSION_CONDITIONS } from "../../noyau/conditions";
+import { CaseConditions } from "../legal";
 import { lisible } from "../../noyau/erreurs";
 import { dateDepuis, nomPropre, nomValide, PAYS, paysDe, telephoneE164, telephoneEnDirect, telephoneLisible, verdictNaissance, VILLES, type Pays } from "../../noyau/identite";
 import { useSession } from "../../session/session";
@@ -95,6 +97,7 @@ export function Inscription() {
   const [etape, setEtape] = useState<Etape>("identite");
   const [vu, setVu] = useState<Record<string, boolean>>({});
   const [certifie, setCertifie] = useState(false);
+  const [accepte, setAccepte] = useState(false);
   const { lancer, enCours, erreur, effacerErreur } = useGesteUnique();
   const refMois = useRef<HTMLInputElement>(null);
   const refAnnee = useRef<HTMLInputElement>(null);
@@ -113,7 +116,7 @@ export function Inscription() {
     naissance: naissance.ok,
     telephone: Boolean(e164),
     residence: villeOk && Boolean(paysDe(b.pays)),
-    verifier: certifie,
+    verifier: certifie && accepte,
   };
 
   const index = ETAPES.indexOf(etape);
@@ -126,7 +129,7 @@ export function Inscription() {
       try {
         const compte = await guichet.ouvrirCompte({
           prenom: nomPropre(b.prenom).trim(), nom: nomPropre(b.nom).trim(), naissance: dateDepuis(b.jour, b.mois, b.annee)!,
-          telephone: e164!, ville: nomPropre(b.ville).trim(), pays: b.pays,
+          telephone: e164!, ville: nomPropre(b.ville).trim(), pays: b.pays, conditions: VERSION_CONDITIONS,
         });
         oublier();
         session.compteOuvert(compte);
@@ -254,6 +257,7 @@ export function Inscription() {
           label={<Typography variant="body2" sx={{ color: "text.primary" }}>Je certifie que ces informations sont exactes et qu'elles sont les miennes.</Typography>}
           sx={{ alignItems: "flex-start", "& .MuiCheckbox-root": { pt: 0.5 } }}
         />
+        <CaseConditions coche={accepte} onChange={setAccepte} />
       </>
     );
   }
@@ -267,7 +271,7 @@ export function Inscription() {
         </Stack>
         <LinearProgress variant="determinate" value={((index + 1) / ETAPES.length) * 100} sx={{ height: 6, borderRadius: 3, bgcolor: "divider" }} aria-label="Avancement de l'inscription" />
       </Stack>
-      <Box key={etape} component="form" onSubmit={(e) => { e.preventDefault(); if (etape === "verifier") { if (certifie) void ouvrir(); } else suivant(); }}
+      <Box key={etape} component="form" onSubmit={(e) => { e.preventDefault(); if (etape === "verifier") { if (certifie && accepte) void ouvrir(); } else suivant(); }}
         sx={{ flex: 1, display: "flex", flexDirection: "column", gap: 2.5,
               "@media (prefers-reduced-motion: no-preference)": { animation: "glisil-glisse 260ms cubic-bezier(.2,.8,.2,1)" },
               "@keyframes glisil-glisse": { from: { opacity: 0, transform: "translateX(24px)" }, to: { opacity: 1, transform: "none" } } }}>

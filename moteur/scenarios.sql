@@ -18,10 +18,10 @@ insert into numeros (id, compte_id, operateur, numero, verifie_le, actif_des) va
   ('cccccccc-0000-0000-0000-000000000001', '33333333-3333-3333-3333-333333333333', 'mtn', '655111111', now() - interval '2 days', now() - interval '1 day');
 update floats set code_agent = '480213' where operateur = 'mtn';
 
-create function solde(p_compte uuid, p_actif text, p_quoi text) returns numeric language sql as $$
+create function solde(p_compte uuid, p_actif text, p_quoi text) returns numeric language sql set search_path = public as $$
   select case p_quoi when 'dispo' then disponible else bloque end from soldes where compte_id = p_compte and actif = p_actif
 $$;
-create function total(p_actif text) returns numeric language sql as $$
+create function total(p_actif text) returns numeric language sql set search_path = public as $$
   select coalesce(sum(disponible + bloque), 0) from soldes where actif = p_actif
 $$;
 
@@ -1545,35 +1545,35 @@ do $$
 declare r jsonb;
 begin
   perform set_config('xafe.compte', 'f1000000-0000-0000-0000-000000000002', true);
-  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'CM'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'CM', '2026-10-16'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'adresse e-mail non vérifiée', sqlerrm; end;
 
   perform set_config('xafe.compte', 'f1000000-0000-0000-0000-000000000001', true);
-  begin perform ouvrir_mon_compte('Awa', 'Ngono', ((now() at time zone 'Africa/Douala')::date - interval '17 years')::date, '+237677123499', 'Douala', 'CM'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', ((now() at time zone 'Africa/Douala')::date - interval '17 years')::date, '+237677123499', 'Douala', 'CM', '2026-10-16'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'il faut avoir 18 ans', sqlerrm; end;
-  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+23767712349', 'Douala', 'CM'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+23767712349', 'Douala', 'CM', '2026-10-16'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'numéro de téléphone invalide', sqlerrm; end;
-  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237577123499', 'Douala', 'CM'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237577123499', 'Douala', 'CM', '2026-10-16'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'numéro de téléphone invalide', sqlerrm; end;
-  begin perform ouvrir_mon_compte('A1', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'CM'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('A1', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'CM', '2026-10-16'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'prénom invalide', sqlerrm; end;
-  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'Cameroun'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'Cameroun', '2026-10-16'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'pays invalide', sqlerrm; end;
   assert not exists (select 1 from comptes where id = 'f1000000-0000-0000-0000-000000000001'), 'un refus n''ouvre rien';
 
-  r := ouvrir_mon_compte('  awa ', 'NGONO-MBALLA', date '1990-05-14', '+237 6 77 12 34 99', 'douala', 'cm');
+  r := ouvrir_mon_compte('  awa ', 'NGONO-MBALLA', date '1990-05-14', '+237 6 77 12 34 99', 'douala', 'cm', '2026-10-16');
   assert r ->> 'prenom' = 'Awa' and r ->> 'nom_de_famille' = 'Ngono-Mballa' and r ->> 'nom' = 'Awa Ngono-Mballa', r;
   assert r ->> 'telephone' = '+237677123499' and r ->> 'email' = 'awa.ngono@example.com', r;
   assert r ->> 'ville' = 'Douala' and r ->> 'pays' = 'CM' and r ->> 'date_naissance' = '1990-05-14' and not (r ->> 'a_code')::boolean, r;
-  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123400', 'Douala', 'CM'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123400', 'Douala', 'CM', '2026-10-16'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'compte déjà ouvert', sqlerrm; end;
   r := completer_profil('Awa Ngono-Mballa', '2580');
   assert (r ->> 'a_code')::boolean and mon_compte() ->> 'email' = 'awa.ngono@example.com', r;
 
   perform set_config('xafe.compte', 'f1000000-0000-0000-0000-000000000003', true);
-  begin perform ouvrir_mon_compte('Jules', 'Martin', date '1985-01-02', '+237677123499', 'Paris', 'FR'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Jules', 'Martin', date '1985-01-02', '+237677123499', 'Paris', 'FR', '2026-10-16'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'ce numéro est déjà utilisé', sqlerrm; end;
-  r := ouvrir_mon_compte('jules', 'd''almeida', date '1985-01-02', '+33 6 12 34 56 78', 'saint-étienne', 'FR');
+  r := ouvrir_mon_compte('jules', 'd''almeida', date '1985-01-02', '+33 6 12 34 56 78', 'saint-étienne', 'FR', '2026-10-16');
   assert r ->> 'nom' = 'Jules D''Almeida' and r ->> 'ville' = 'Saint-Étienne' and r ->> 'telephone' = '+33612345678', r;
   raise notice '✓ 11.26 l''inscription par e-mail : une adresse non prouvée n''ouvre rien ; mineur, numéro, nom ou pays faux sont refusés par la base ; le profil est mis en forme ; un numéro ne sert qu''à un compte';
 end $$;
@@ -1630,7 +1630,7 @@ do $$
 declare s jsonb; l jsonb; f jsonb;
 begin
   perform set_config('xafe.compte', 'f3000000-0000-0000-0000-000000000001', true);
-  perform ouvrir_mon_compte('Mireille', 'Essomba', date '1992-03-08', '+237699001122', 'Yaoundé', 'CM');
+  perform ouvrir_mon_compte('Mireille', 'Essomba', date '1992-03-08', '+237699001122', 'Yaoundé', 'CM', '2026-10-16');
 
   perform set_config('xafe.compte', '22222222-2222-2222-2222-222222222222', true);
   begin perform admin_statistiques_clients(); raise exception 'aurait dû refuser';
@@ -1684,6 +1684,95 @@ begin
   perform admin_changer_role('dddddddd-0000-0000-0000-000000000003', 'operateur');
   assert (select role from administrateurs where id = 'dddddddd-0000-0000-0000-000000000003') = 'operateur';
   raise notice '✓ 11.29 l''équipe : le super admin voit, invite, retire une invitation, change un rôle — jamais le sien ; le support ne voit rien';
+end $$;
+rollback;
+
+-- 12.1 · aucune de nos fonctions ne cherche ses objets dans le chemin de
+-- celui qui l'appelle : toutes ont le leur, figé (0012). Une migration future
+-- qui l'oublierait échoue ici.
+do $$
+declare v text;
+begin
+  select string_agg(p.proname, ', ') into v
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.prokind = 'f'
+     and not exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c like 'search_path=%')
+     and not exists (select 1 from pg_depend d where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e');
+  assert v is null, 'sans chemin figé : ' || v;
+  raise notice '✓ 12.1 chaque fonction a son chemin de recherche figé';
+end $$;
+
+-- 12.2 · les conditions : on n'ouvre pas un compte sans accepter la version
+-- EN VIGUEUR ; quand elle change, le compte le sait et la réaccepte.
+begin;
+insert into auth.users (id, email, email_confirmed_at) values ('f3000000-0000-0000-0000-000000000001', 'paul@example.com', now());
+do $$
+declare r jsonb;
+begin
+  perform set_config('xafe.compte', 'f3000000-0000-0000-0000-000000000001', true);
+  begin perform ouvrir_mon_compte('Paul', 'Biya', date '1990-01-01', '+237677000111', 'Douala', 'CM', null); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'conditions non acceptées', sqlerrm; end;
+  begin perform ouvrir_mon_compte('Paul', 'Biya', date '1990-01-01', '+237677000111', 'Douala', 'CM', '2020-01-01'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'conditions non acceptées', sqlerrm; end;
+  r := ouvrir_mon_compte('Paul', 'Biya', date '1990-01-01', '+237677000111', 'Douala', 'CM', '2026-10-16');
+  assert r ->> 'conditions_version' = '2026-10-16' and (r ->> 'conditions_a_jour')::boolean and r ->> 'conditions_acceptees_le' is not null, r;
+  update parametres set valeur = '{"version": "2027-01-01"}' where cle = 'conditions';
+  assert not (mon_compte() ->> 'conditions_a_jour')::boolean, 'une nouvelle version : à relire';
+  assert parametres_publics() -> 'conditions' ->> 'version' = '2027-01-01';
+  begin perform accepter_conditions('2026-10-16'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'conditions non acceptées', sqlerrm; end;
+  r := accepter_conditions('2027-01-01');
+  assert (r ->> 'conditions_a_jour')::boolean, r;
+  raise notice '✓ 12.2 les conditions : sans la version en vigueur, pas de compte ; une nouvelle version se réaccepte';
+end $$;
+rollback;
+
+-- 12.3 · fermer son compte : jamais avec de l'argent dessus ni une opération
+-- en cours ; avec le code secret ; ensuite plus aucun geste ; l'équipe rouvre.
+begin;
+insert into auth.users (id, email, email_confirmed_at) values ('f3000000-0000-0000-0000-000000000002', 'marie@example.com', now());
+do $$
+declare r jsonb;
+begin
+  perform set_config('xafe.compte', 'f3000000-0000-0000-0000-000000000002', true);
+  perform ouvrir_mon_compte('Marie', 'Ekane', date '1991-02-02', '+237677000222', 'Douala', 'CM', '2026-10-16');
+  perform completer_profil('Marie Ekane', '4826');
+  insert into soldes (compte_id, actif, disponible, bloque) values ('f3000000-0000-0000-0000-000000000002', 'XAFe', 1500, 0);
+  begin perform fermer_mon_compte('4826'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'il reste de l''argent sur le compte', sqlerrm; end;
+  update soldes set disponible = 0 where compte_id = 'f3000000-0000-0000-0000-000000000002';
+  r := fermer_mon_compte('0000', 'je n''en ai plus besoin');
+  assert not (r ->> 'ok')::boolean and r ->> 'erreur' = 'code secret incorrect', r;
+  assert (select ferme_le from comptes where id = 'f3000000-0000-0000-0000-000000000002') is null, 'un code faux ne ferme rien';
+  r := fermer_mon_compte('4826', 'je n''en ai plus besoin');
+  assert (r ->> 'ok')::boolean and r -> 'compte' ->> 'ferme_le' is not null and (r -> 'compte' ->> 'desactive')::boolean, r;
+  assert (select fermeture_motif from comptes where id = 'f3000000-0000-0000-0000-000000000002') = 'je n''en ai plus besoin';
+  begin perform ouvrir_depot('mtn'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'compte fermé', sqlerrm; end;
+  begin perform fermer_mon_compte('4826'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'compte déjà fermé', sqlerrm; end;
+  assert mon_compte() ->> 'ferme_le' is not null, 'le client voit que son compte est fermé';
+
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);  -- le super admin
+  perform admin_desactiver_compte('f3000000-0000-0000-0000-000000000002', true, 'rouvert à sa demande');
+  assert (select ferme_le is null and desactive_le is null from comptes where id = 'f3000000-0000-0000-0000-000000000002');
+  raise notice '✓ 12.3 fermer son compte : refusé avec de l''argent dessus ou un code faux ; fermé, plus aucun geste ; l''équipe le rouvre';
+end $$;
+rollback;
+
+-- 12.4 · le contact du support se règle par l'équipe, et se vérifie.
+begin;
+do $$
+begin
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);
+  begin perform admin_modifier_parametre('support', '{"email": "pas-une-adresse", "whatsapp": null}'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
+  begin perform admin_modifier_parametre('support', '{"email": "aide@glisil.com", "whatsapp": "677123456"}'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
+  perform admin_modifier_parametre('support', '{"email": "aide@glisil.com", "whatsapp": "+237677123456"}');
+  perform set_config('xafe.compte', '22222222-2222-2222-2222-222222222222', true);
+  assert parametres_publics() -> 'support' ->> 'whatsapp' = '+237677123456';
+  raise notice '✓ 12.4 le support : l''équipe le règle, une adresse ou un numéro mal formé est refusé, l''écran le lit';
 end $$;
 rollback;
 

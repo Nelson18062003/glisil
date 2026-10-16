@@ -206,6 +206,33 @@ export function Keypad({ onKey, triple = "000" }: { onKey: (k: string) => void; 
   );
 }
 
+/**
+ * Un écran qui n'a rien à montrer ne se tait pas : il dit pourquoi, et mène
+ * au geste qui le remplira. Une action principale, au plus une seconde.
+ */
+export function EtatVide({
+  icone, tone = "neutral", titre, texte, action, secondaire,
+}: {
+  icone: ReactNode; tone?: Tone; titre: string; texte: string;
+  action?: { label: string; to?: string; onClick?: () => void }; secondaire?: { label: string; to?: string; onClick?: () => void };
+}) {
+  const bouton = (a: { label: string; to?: string; onClick?: () => void }, variant: "contained" | "text") =>
+    a.to ? <Button variant={variant} component={Link} to={a.to} onClick={a.onClick}>{a.label}</Button> : <Button variant={variant} onClick={a.onClick}>{a.label}</Button>;
+  return (
+    <Box data-etat-vide="1" sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1.5, textAlign: "center", py: 4, px: 1 }}>
+      <Avatar sx={{ width: 72, height: 72, bgcolor: tones[tone].bg, color: tones[tone].fg }}>{icone}</Avatar>
+      <Typography variant="h6" component="h2">{titre}</Typography>
+      <Typography variant="body2" sx={{ maxWidth: 340 }}>{texte}</Typography>
+      {(action || secondaire) && (
+        <Stack gap={1} sx={{ mt: 1.5, width: "100%", maxWidth: 340 }}>
+          {action && bouton(action, "contained")}
+          {secondaire && bouton(secondaire, "text")}
+        </Stack>
+      )}
+    </Box>
+  );
+}
+
 export function Dot({ tone }: { tone: Tone }) {
   return <Box component="span" sx={{ width: 10, height: 10, borderRadius: 5, bgcolor: tones[tone].fg, display: "inline-block", mr: 1 }} />;
 }

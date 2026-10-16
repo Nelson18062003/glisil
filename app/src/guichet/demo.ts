@@ -10,14 +10,15 @@
 import { achatMax, arrondi2, coutAuCarnet, decouperSortie, devisSurLeCarnet, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide, RAPIDE } from "../noyau/argent";
 import { ErreurMoteur } from "../noyau/erreurs";
 import { emailNormalise, emailValide } from "../noyau/identite";
-import { numeroSaisi, operateurDuNumero, transactionIdNormalise } from "../noyau/format";
+import { numeroSaisi, operateurDuNumero, transactionIdNormalise, xaf as xafDe } from "../noyau/format";
+import { VERSION_CONDITIONS } from "../noyau/conditions";
 import type { Guichet } from "./guichet";
 import type {
   Actif, Carnet, Chandelle, Compte, Cote, Cotation, Declaration, Depot, DevisRapide, Execution, IdOperateur, Niveau, Notification, Numero, Operation, Ordre, ProfilInscription, SensRapide,
   Reseau, ResultatCode, ResultatOrdre, RetraitCrypto, Soldes, Sortie, Transaction, TransfertCrypto, TypeOrdre,
 } from "./types";
 
-const CLE_STOCKAGE = "xafe.demo.v4";
+const CLE_STOCKAGE = "xafe.demo.v5";
 /** le code de démonstration : celui qui arrive « par SMS » pour un numéro, et « par e-mail » pour se connecter */
 export const CODE_SMS_DEMO = "123456";
 export const CODE_DEMO = CODE_SMS_DEMO;
@@ -31,7 +32,7 @@ type Tache =
   | { quand: number; type: "retrait"; reference: string }
   | { quand: number; type: "expiration"; reference: string };
 
-type CompteDemo = Omit<Compte, "entreDuJour"> & { codeSecret: string | null; echecs: number };
+type CompteDemo = Omit<Compte, "entreDuJour" | "conditionsAJour"> & { codeSecret: string | null; echecs: number; conditionsVersion: string | null };
 
 type Dossier = {
   compte: CompteDemo;
@@ -123,6 +124,7 @@ function dossierVide(email: string, p: ProfilInscription, numeroDejaVerifie = fa
   return {
     compte: {
       id, telephone: p.telephone, nom: `${p.prenom} ${p.nom}`, entreprise: null, palier: 0, aCode: false, verrouJusqua: null, verificationEnCours: null, codeSecret: null, echecs: 0,
+      conditionsVersion: p.conditions, fermeLe: null, desactive: false,
       email, prenom: p.prenom, nomDeFamille: p.nom, dateNaissance: p.naissance, ville: p.ville, pays: p.pays,
     },
     soldes: { XAFe: { disponible: 0, bloque: 0 }, USDT: { disponible: 0, bloque: 0 } },
@@ -139,7 +141,7 @@ function entreDuJour(d: Dossier): number {
 
 /** La vitrine : demo@glisil.com arrive avec une vie déjà écrite. */
 function dossierVitrine(): Dossier {
-  const d = dossierVide(EMAIL_VITRINE, { prenom: "Nelson", nom: "Soh", naissance: "1988-06-21", telephone: `+237${NUMERO_VITRINE}`, ville: "Douala", pays: "CM" }, true);
+  const d = dossierVide(EMAIL_VITRINE, { prenom: "Nelson", nom: "Soh", naissance: "1988-06-21", telephone: `+237${NUMERO_VITRINE}`, ville: "Douala", pays: "CM", conditions: VERSION_CONDITIONS }, true);
   const hier = maintenant() - 20 * 3600_000;
   d.compte = { ...d.compte, entreprise: "NORTON GAUSS BONZINI SARL", palier: 2, aCode: true, codeSecret: "1234" };
   d.soldes = { XAFe: { disponible: 3_250_000, bloque: 0 }, USDT: { disponible: 2_608.05, bloque: 0 } };
@@ -215,8 +217,8 @@ export class GuichetDemo implements Guichet {
 
   private compteParId(): Compte {
     const d = this.dossier();
-    const { codeSecret: _c, echecs: _e, ...compte } = d.compte;
-    return { ...compte, entreDuJour: entreDuJour(d) };
+    const { codeSecret: _c, echecs: _e, conditionsVersion, ...compte } = d.compte;
+    return { ...compte, entreDuJour: entreDuJour(d), conditionsAJour: conditionsVersion === VERSION_CONDITIONS, fermeLe: compte.fermeLe ?? null, desactive: Boolean(compte.desactive) };
   }
 
   private reference(d: Dossier, prefixe: string): string {
@@ -465,6 +467,7 @@ export class GuichetDemo implements Guichet {
     if (!email) throw new ErreurMoteur("non connecté");
     if (this.etat.dossiers[email]) throw new ErreurMoteur("compte déjà ouvert");
     if (Object.values(this.etat.dossiers).some((d) => d.compte.telephone === p.telephone)) throw new ErreurMoteur("ce numéro est déjà utilisé", "il appartient à un autre compte");
+    if (p.conditions !== VERSION_CONDITIONS) throw new ErreurMoteur("conditions non acceptées", "lisez et acceptez les conditions en vigueur");
     this.etat.dossiers[email] = dossierVide(email, p);
     this.emettre();
     return copie(this.compteParId());
@@ -484,6 +487,33 @@ export class GuichetDemo implements Guichet {
   async verifierCodeSecret(code: string) {
     const d = this.dossier();
     return this.controlerCode(d, code);
+  }
+
+  async accepterConditions(version: string) {
+    const d = this.dossier();
+    if (version !== VERSION_CONDITIONS) throw new ErreurMoteur("conditions non acceptées", "ce ne sont pas les conditions en vigueur");
+    d.compte.conditionsVersion = version;
+    this.emettre();
+    return copie(this.compteParId());
+  }
+
+  /** Comme la base : jamais avec de l'argent dessus ni une opération en cours ; le code d'abord compté. */
+  async fermerCompte({ codeSecret, motif }: { codeSecret: string; motif: string }) {
+    const d = this.dossier();
+    if (d.compte.fermeLe) throw new ErreurMoteur("compte déjà fermé");
+    const reste = (["XAFe", "USDT"] as const).filter((a) => d.soldes[a].disponible + d.soldes[a].bloque > 0)
+      .map((a) => `${a === "XAFe" ? xafDe(d.soldes[a].disponible + d.soldes[a].bloque) : (d.soldes[a].disponible + d.soldes[a].bloque).toFixed(2)} ${a}`);
+    if (reste.length) throw new ErreurMoteur("il reste de l'argent sur le compte", `sortez d'abord : ${reste.join(", ")}`);
+    if (d.ordres.some((o) => o.etat === "ouvert" || o.etat === "partiel") || d.depots.some((x) => x.etat === "en_attente")
+        || d.sorties.some((s) => s.etat === "en_attente" || s.etat === "en_cours") || d.retraits.some((r) => r.etat === "en_attente")) {
+      throw new ErreurMoteur("une opération est en cours", "attendez qu'elle se termine, ou annulez-la");
+    }
+    this.exigerCode(d, codeSecret);
+    d.compte.fermeLe = iso();
+    d.compte.desactive = true;
+    void motif;
+    this.emettre();
+    return copie(this.compteParId());
   }
 
   async changerCodeSecret({ ancien, nouveau }: { ancien: string; nouveau: string }) {

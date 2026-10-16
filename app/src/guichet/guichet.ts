@@ -52,6 +52,10 @@ export interface Guichet {
   /** Le code secret des gestes d'argent ; `nom` est celui que les reçus montrent. */
   completerProfil(p: { nom: string; codeSecret: string }): Promise<Compte>;
   verifierCodeSecret(code: string): Promise<ResultatCode>;
+  /** Accepte la version des conditions en vigueur (quand elle a changé depuis l'inscription). */
+  accepterConditions(version: string): Promise<Compte>;
+  /** Ferme le compte : tout l'argent sorti, rien en cours, avec le code secret. */
+  fermerCompte(p: { codeSecret: string; motif: string }): Promise<Compte>;
   changerCodeSecret(p: { ancien: string; nouveau: string }): Promise<void>;
   /** les pièces d'un passage de palier ; l'équipe vérifie, l'état se lit dans `compte.verificationEnCours` */
   demanderVerification(p: { type: "identite" | "entreprise"; pieces: File[] }): Promise<Compte>;
