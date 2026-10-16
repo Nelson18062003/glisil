@@ -147,7 +147,7 @@ function dossierVitrine(): Dossier {
   d.soldes = { XAFe: { disponible: 3_250_000, bloque: 0 }, USDT: { disponible: 2_608.05, bloque: 0 } };
   d.numeros.push({ id: uuid(), operateur: "om", numero: "699876543", verifieLe: iso(hier - 86400_000), actifDes: iso(hier), retireLe: null });
   d.depots.push({
-    reference: "XAFe-DP-000401", operateur: "mtn", floatNumero: "677000000", codeAgent: "480213", reception: "ouverte", montantRecu: 3_000_000,
+    reference: "XAFe-DP-000401", operateur: "mtn", floatNumero: "677000000", titulaire: "GLISIL DÉMONSTRATION", codeAgent: null, reception: "ouverte", montantRecu: 3_000_000,
     etat: "credite", creeLe: iso(hier), expireLe: iso(hier + 1800_000), crediteLe: iso(hier + 240_000),
     declarations: [1, 2, 3].map((i) => ({ id: uuid(), transactionId: `2039481${i}04`, etat: "credite" as const, montant: 1_000_000, numeroPayeur: NUMERO_VITRINE, motif: null, declareLe: iso(hier + i * 80_000 - 20_000), crediteLe: iso(hier + i * 80_000), luLe: iso(hier + i * 80_000 - 2_000) })),
   });
@@ -293,8 +293,9 @@ export class GuichetDemo implements Guichet {
     const decl = dep?.declarations.find((x) => x.id === declarationId);
     if (!dep || !decl || decl.etat !== "attendu") return;
     if (decl.transactionId.includes("X")) return;
+    /* le faux SMS dit ce que le client a déclaré : dans la démonstration, il a toujours bien recopié */
     const chiffres = decl.transactionId.replace(/\D/g, "");
-    const montant = Math.max(5_000, Number(chiffres.slice(-3) || "250") * 1_000);
+    const montant = decl.montantDeclare ?? Math.max(5_000, Number(chiffres.slice(-3) || "250") * 1_000);
     const p = PALIERS[d.compte.palier];
     if (p.entreeJour !== null) {
       if (entreDuJour(d) + montant > p.entreeJour) {
@@ -556,7 +557,7 @@ export class GuichetDemo implements Guichet {
     const deja = d.depots.find((x) => (x as unknown as { cle?: string }).cle === cle);
     if (deja) return deja;
     const dep: Depot & { cle: string } = {
-      reference: this.reference(d, "XAFe-DP-"), operateur, floatNumero: operateur === "mtn" ? "677000000" : "699000000", codeAgent: operateur === "mtn" ? "480213" : null, reception: "ouverte",
+      reference: this.reference(d, "XAFe-DP-"), operateur, floatNumero: operateur === "mtn" ? "677000000" : "699000000", titulaire: "GLISIL DÉMONSTRATION", codeAgent: operateur === "om" ? "480213" : null, reception: "ouverte",
       montantRecu: 0, etat: "en_attente", creeLe: iso(), expireLe: iso(maintenant() + 30 * 60_000), crediteLe: null, declarations: [], cle,
     };
     d.depots.unshift(dep);
@@ -585,19 +586,24 @@ export class GuichetDemo implements Guichet {
     return copie(dep);
   }
 
-  async declarerTransaction({ reference, transactionId }: { reference: string; transactionId: string }): Promise<Declaration> {
+  async declarerTransaction({ reference, transactionId, numero, montant, nom }: { reference: string; transactionId: string; numero: string; montant: number; nom: string }): Promise<Declaration> {
     const d = this.dossier();
     const dep = d.depots.find((x) => x.reference === reference);
     if (!dep) throw new ErreurMoteur("dépôt inconnu");
     if (dep.etat === "annule") throw new ErreurMoteur("ce dépôt est annulé");
     const id = transactionIdNormalise(transactionId);
     if (id.length < 6) throw new ErreurMoteur("transaction ID invalide", "au moins six caractères, tel qu'il est écrit dans le SMS");
+    const num = numeroSaisi(numero);
+    if (!/^6\d{8}$/.test(num) || operateurDuNumero(num) !== dep.operateur) throw new ErreurMoteur("numéro du payeur invalide", "le numéro qui a payé, neuf chiffres, du même opérateur");
+    if (!Number.isSafeInteger(montant) || montant <= 0) throw new ErreurMoteur("montant invalide", "le montant exact envoyé, en francs");
+    if (nom.trim().length < 2) throw new ErreurMoteur("nom du payeur invalide", "le nom du titulaire du compte qui a payé");
     const partout = d.depots.flatMap((x) => x.declarations).find((x) => x.transactionId === id);
     if (partout) {
       if (dep.declarations.includes(partout)) return copie(partout);
       throw new ErreurMoteur("transaction ID déjà utilisé", "ce paiement a déjà été crédité");
     }
-    const decl: Declaration = { id: uuid(), transactionId: id, etat: "attendu", montant: null, numeroPayeur: null, motif: null, declareLe: iso(), crediteLe: null };
+    const decl: Declaration = { id: uuid(), transactionId: id, etat: "attendu", montant: null, numeroPayeur: null, motif: null, declareLe: iso(), crediteLe: null,
+      numeroDeclare: num, montantDeclare: montant, nomDeclare: nom.trim(), corrigible: false };
     dep.declarations.push(decl);
     this.planifier(d, { type: "sms", reference, declarationId: decl.id, quand: maintenant() + 3000 });
     this.emettre();
@@ -660,7 +666,8 @@ export class GuichetDemo implements Guichet {
   }
 
   /** la démonstration garde les valeurs de la migration, écrites dans noyau/argent.ts */
-  async parametres() { return null; }
+  /* la démonstration a tout ouvert ; une épreuve peut poser les paramètres que l'équipe poserait (« seulement les dépôts ») */
+  async parametres() { return (globalThis as { __xafeEpreuve?: { parametres?: unknown } }).__xafeEpreuve?.parametres ?? null; }
 
   async renvoyerCodeNumero(id: string) {
     const d = this.dossier();

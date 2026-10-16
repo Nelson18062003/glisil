@@ -62,8 +62,8 @@ export class GuichetSupabase implements GuichetAdmin {
   terminaux() { return this.rpc<Terminal[]>("admin_terminaux"); }
   creerTerminal({ id, nom, lieu }: { id: string; nom: string; lieu: string }) { return this.rpc<{ id: string; cle: string }>("admin_creer_terminal", { p_id: id, p_nom: nom, p_lieu: lieu }); }
   renouvelerCle(id: string) { return this.rpc<{ cle: string }>("admin_renouveler_cle", { p_id: id }); }
-  async creerFloat({ operateur, numero, terminal, codeAgent }: { operateur: string; numero: string; terminal: string; codeAgent?: string | null }) {
-    await this.rpc("admin_creer_float", { p_operateur: operateur, p_numero: numero, p_terminal: terminal, p_code_agent: codeAgent ?? null });
+  async creerFloat({ operateur, numero, terminal, codeAgent, titulaire }: { operateur: string; numero: string; terminal: string; codeAgent?: string | null; titulaire?: string | null }) {
+    await this.rpc("admin_creer_float", { p_operateur: operateur, p_numero: numero, p_terminal: terminal, p_code_agent: codeAgent ?? null, p_titulaire: titulaire ?? null });
   }
   async activerFloat(id: number, actif: boolean) { await this.rpc("admin_activer_float", { p_id: id, p_actif: actif }); }
   statistiquesClients() { return this.rpc<StatsClients>("admin_statistiques_clients"); }

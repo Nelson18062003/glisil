@@ -6,7 +6,7 @@
 import { appliquerSupport } from "../noyau/conditions";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
-import { appliquerParametres } from "../noyau/argent";
+import { appliquerParametres, CRYPTO, MARCHE, RAPIDE, SORTIES } from "../noyau/argent";
 import { GuichetDemo } from "./demo";
 import type { Guichet } from "./guichet";
 import { GuichetSupabase } from "./supabase";
@@ -35,14 +35,38 @@ export function GuichetProvider({ guichet, children }: { guichet: Guichet; child
 }
 
 /** Les frais et plafonds que l'équipe a posés, lus au démarrage puis toutes les cinq minutes, appliqués en place. */
-function Parametres() {
+function useParametres() {
   const g = useGuichet();
-  useQuery({
+  return useQuery({
     queryKey: ["parametres"],
     queryFn: async () => { const p = await g.parametres().catch(() => null); appliquerParametres(p); appliquerSupport(p); return p ?? false; },
     refetchInterval: 5 * 60_000,
   });
+}
+function Parametres() {
+  useParametres();
   return null;
+}
+
+/**
+ * Ce que l'équipe a ouvert. Glisil peut ouvrir par les dépôts seuls : les
+ * sorties, le marché, l'achat rapide et la crypto ont chacun leur
+ * interrupteur, que la base fait respecter et que l'écran lit ici — l'écran
+ * se redessine quand les paramètres arrivent ou changent.
+ */
+export function useOuvertures() {
+  const { dataUpdatedAt, isPending } = useParametres();
+  return useMemo(() => ({
+    /* tant que la première lecture n'est pas revenue, on ne sait pas : ni « ouvert », ni « bientôt » */
+    pret: !isPending,
+    sorties: SORTIES.ouvertes,
+    marche: MARCHE.ouvert,
+    rapide: RAPIDE.ouvert && MARCHE.ouvert,
+    cryptoDepots: CRYPTO.depotsOuverts,
+    cryptoRetraits: CRYPTO.retraitsOuverts,
+    /* l'entrée « Crypto » mène à l'un de ces trois : fermée s'ils le sont tous */
+    crypto: CRYPTO.depotsOuverts || CRYPTO.retraitsOuverts || (RAPIDE.ouvert && MARCHE.ouvert),
+  }), [dataUpdatedAt, isPending]); // les valeurs vivent hors de React : la date de la lecture suffit à les relire
 }
 
 export function useGuichet(): Guichet {

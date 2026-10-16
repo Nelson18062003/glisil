@@ -68,7 +68,9 @@ export interface Guichet {
   /* ---- entrer des XAF : on paie le float, puis on tape le transaction ID du SMS */
   ouvrirDepot(p: { operateur: IdOperateur; cle: string }): Promise<Depot>;
   depot(reference: string): Promise<Depot>;
-  declarerTransaction(p: { reference: string; transactionId: string }): Promise<Declaration>;
+  /** Un paiement fait : son transaction ID, le numéro qui a payé, le montant exact, le nom du titulaire.
+   *  Redéclarer le même ID corrige une déclaration refusée pour un écart. */
+  declarerTransaction(p: { reference: string; transactionId: string; numero: string; montant: number; nom: string }): Promise<Declaration>;
   /** Retirer un ID mal recopié, tant qu'il attend son SMS. */
   retirerDeclaration(p: { reference: string; transactionId: string }): Promise<Depot>;
   terminerDepot(reference: string): Promise<Depot>;

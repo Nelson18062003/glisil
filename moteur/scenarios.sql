@@ -1776,6 +1776,87 @@ begin
 end $$;
 rollback;
 
+-- 11.34 · un dépôt se déclare en entier (0013) : numéro qui a payé, montant
+-- exact, nom, transaction ID. Le crédit n'est automatique que si le SMS dit la
+-- même chose ; un écart se corrige deux fois, la troisième va à l'équipe.
+begin;
+update parametres set valeur = valeur || '{"declaration_complete": true}' where cle = 'depot';
+update terminaux set vu_le = now() where id = 'akwa-1';
+insert into auth.users (id, email, email_confirmed_at) values ('f4000000-0000-0000-0000-000000000001', 'depot@example.com', now());
+do $$
+declare r jsonb; ref text; c uuid := 'f4000000-0000-0000-0000-000000000001';
+begin
+  perform set_config('xafe.compte', c::text, true);
+  perform ouvrir_mon_compte('Awa', 'Ngono', date '1994-03-12', '+237677555111', 'Douala', 'CM', '2026-10-16');
+  perform completer_profil('Awa Ngono', '2580');
+  ref := ouvrir_depot('mtn') ->> 'reference';
+  assert (mon_depot(ref) ? 'titulaire'), 'l''écran reçoit le titulaire du float';
+
+  begin perform declarer_transaction(ref, '50000000001'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'numéro du payeur invalide', sqlerrm; end;
+  begin perform declarer_transaction(ref, '50000000001', '699111222', 25000, 'Awa Ngono'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'numéro du payeur invalide', sqlerrm; end;  -- un numéro Orange pour un dépôt MTN
+  begin perform declarer_transaction(ref, '50000000001', '677555111', 0, 'Awa Ngono'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'montant invalide', sqlerrm; end;
+  begin perform declarer_transaction(ref, '50000000001', '677555111', 25000.5, 'Awa Ngono'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'montant invalide', sqlerrm; end;
+  begin perform declarer_transaction(ref, '50000000001', '677555111', 25000, ' '); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'nom du payeur invalide', sqlerrm; end;
+
+  -- A · le SMS d'abord, la déclaration juste : crédité tout de suite
+  r := totem_sms_recu('akwa-1', 9001, 'mtn', '677000000', '677555111', 25000, '50000000001', 'Vous avez recu 25,000 FCFA de AWA NGONO (677555111). ID: 50000000001', now());
+  assert r ->> 'resultat' = 'retenue', r;
+  r := declarer_transaction(ref, '5000 0000 001', '+237 6 77 55 51 11', 25000, '  awa   NGONO ');
+  assert r ->> 'etat' = 'credite' and (r ->> 'montant')::numeric = 25000 and r ->> 'nom_declare' = 'awa NGONO', r;
+  assert solde(c, 'XAFe', 'dispo') = 25000, 'crédité au franc près';
+
+  -- B · la déclaration d'abord, un montant faux : refusée mais corrigible, rien n'est crédité ; corrigée, créditée
+  r := declarer_transaction(ref, '50000000002', '677555111', 30000, 'Awa Ngono');
+  assert r ->> 'etat' = 'attendu', r;
+  r := totem_sms_recu('akwa-1', 9002, 'mtn', '677000000', '677555111', 20000, '50000000002', '…', now());
+  assert r ->> 'resultat' = 'retenue' and coalesce(r ->> 'motif', '') like 'le montant déclaré%', r;
+  r := (select _declaration_json(x) from depot_declarations x where transaction_id = '50000000002');
+  assert r ->> 'etat' = 'refuse' and (r ->> 'corrigible')::boolean and r ->> 'motif' not like '%20%', 'le motif ne dit pas le vrai montant : ' || r::text;
+  assert solde(c, 'XAFe', 'dispo') = 25000, 'un écart ne crédite rien';
+  assert not (select bloquee from entrees_retenues where transaction_id = '50000000002'), 'l''argent attend la correction, il n''est pas bloqué';
+  r := declarer_transaction(ref, '50000000002', '677555111', 20000, 'Awa Ngono');
+  assert r ->> 'etat' = 'credite' and solde(c, 'XAFe', 'dispo') = 45000, r;
+
+  -- C · trois numéros faux : la troisième fois, l'équipe tranche, et une quatrième ne rouvre rien
+  perform declarer_transaction(ref, '50000000003', '677555222', 15000, 'Awa Ngono');
+  perform totem_sms_recu('akwa-1', 9003, 'mtn', '677000000', '677555111', 15000, '50000000003', '…', now());
+  r := declarer_transaction(ref, '50000000003', '677555333', 15000, 'Awa Ngono');
+  assert r ->> 'etat' = 'refuse' and (r ->> 'corrigible')::boolean, 'deuxième essai, encore faux : encore corrigible ' || r::text;
+  r := declarer_transaction(ref, '50000000003', '677555444', 15000, 'Awa Ngono');
+  assert r ->> 'etat' = 'refuse' and not (r ->> 'corrigible')::boolean and r ->> 'motif' like 'trois déclarations%', r;
+  r := declarer_transaction(ref, '50000000003', '677555111', 15000, 'Awa Ngono');
+  assert r ->> 'etat' = 'refuse' and solde(c, 'XAFe', 'dispo') = 45000, 'après trois essais, plus de correction : ' || r::text;
+  raise notice '✓ 11.34 un dépôt se déclare en entier : numéro, montant et nom exigés ; le SMS qui concorde crédite tout de suite ; un écart se corrige deux fois et ne crédite jamais ; le motif ne trahit pas le SMS';
+end $$;
+rollback;
+
+-- 11.35 · ouvrir par les dépôts : les sorties et les adresses crypto se ferment
+-- d'un paramètre, et le refus vient de la base, pas seulement de l'écran.
+begin;
+do $$
+declare r jsonb;
+begin
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);  -- le super admin
+  perform admin_modifier_parametre('sortie', parametre('sortie') || '{"ouvertes": false}');
+  perform admin_modifier_parametre('crypto', parametre('crypto') || '{"depots_ouverts": false}');
+  begin perform admin_modifier_parametre('sortie', parametre('sortie') || '{"ouvertes": "non"}'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
+
+  perform set_config('xafe.compte', '11111111-1111-1111-1111-111111111111', true);  -- Alice, qui a de l'argent et un numéro
+  begin perform demander_sortie(1000, (select id from numeros where compte_id = '11111111-1111-1111-1111-111111111111' limit 1), 'k-fermee', '1234'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'sorties pas encore ouvertes', sqlerrm; end;
+  assert adresse_depot('USDT', 'bep20') is null, 'dépôts crypto fermés : aucune adresse, même déjà attribuée';
+  r := parametres_publics();
+  assert not (r -> 'sortie' ->> 'ouvertes')::boolean and not (r -> 'crypto' ->> 'depots_ouverts')::boolean, r;
+  raise notice '✓ 11.35 ouvrir par les dépôts : sorties et adresses crypto se ferment d''un paramètre, la base refuse, l''écran le lit';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

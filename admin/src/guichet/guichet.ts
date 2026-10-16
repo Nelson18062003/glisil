@@ -28,7 +28,7 @@ export interface GuichetAdmin {
   terminaux(): Promise<Terminal[]>;
   creerTerminal(p: { id: string; nom: string; lieu: string }): Promise<{ id: string; cle: string }>;
   renouvelerCle(id: string): Promise<{ cle: string }>;
-  creerFloat(p: { operateur: string; numero: string; terminal: string; codeAgent?: string | null }): Promise<void>;
+  creerFloat(p: { operateur: string; numero: string; terminal: string; codeAgent?: string | null; titulaire?: string | null }): Promise<void>;
   activerFloat(id: number, actif: boolean): Promise<void>;
 
   /** Les chiffres d'ensemble : total, actifs, connectés, nouveaux, inscriptions inachevées… */

@@ -31,7 +31,7 @@ type Etat = {
   profil: Profil | null;
   equipe?: Equipe;
   terminaux: Terminal[];
-  floats: (Required<Pick<import("./types").Float, "id" | "operateur" | "numero" | "terminal" | "code_agent" | "actif">>)[];
+  floats: (Required<Pick<import("./types").Float, "id" | "operateur" | "numero" | "terminal" | "code_agent" | "actif">> & { titulaire?: string | null })[];
   clients: (Client & { soldes: Record<string, { disponible: number; bloque: number }>; numeros: ClientDetail["numeros"]; a_code: boolean; date_naissance: string })[];
   entrees: Entree[];
   retenues: Retenue[];
@@ -280,12 +280,12 @@ export class GuichetDemo implements GuichetAdmin {
     this.noter("renouveler_cle", id); this.emettre();
     return { cle: Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join("") };
   }
-  async creerFloat({ operateur, numero, terminal, codeAgent }: { operateur: string; numero: string; terminal: string; codeAgent?: string | null }) {
+  async creerFloat({ operateur, numero, terminal, codeAgent, titulaire }: { operateur: string; numero: string; terminal: string; codeAgent?: string | null; titulaire?: string | null }) {
     this.exiger("terminaux");
     const n = numero.replace(/\D/g, "").slice(-9);
     if (this.e.floats.some((f) => f.operateur === operateur && f.numero === n)) throw new ErreurMoteur("ce float existe déjà");
     const id = Math.max(...this.e.floats.map((f) => f.id)) + 1;
-    this.e.floats.push({ id, operateur, numero: n, terminal, code_agent: codeAgent ?? null, actif: true });
+    this.e.floats.push({ id, operateur, numero: n, terminal, code_agent: codeAgent ?? null, titulaire: titulaire ?? null, actif: true });
     this.noter("creer_float", String(id), { operateur, numero: n, terminal }); this.emettre();
   }
   async activerFloat(id: number, actif: boolean) {

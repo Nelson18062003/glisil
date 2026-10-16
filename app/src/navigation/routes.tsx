@@ -13,6 +13,7 @@ import { Compte, CompteAide, CompteApi, CompteFermer, CompteInformations, Compte
 import { Crypto, CryptoDeposer, CryptoEnvoye, CryptoRetirerAdresse, CryptoRetirerCode, CryptoRetirerMontant, CryptoRetirerVerifier } from "../ecrans/crypto";
 import { EntrerCredite, EntrerMontant, EntrerOperateur, EntrerPayer, EntrerTransaction } from "../ecrans/entrer";
 import { Historique, HistoriqueDetail } from "../ecrans/historique";
+import { SiOuvert } from "../ecrans/bientot";
 import { CompteFerme, Conditions, ConditionsAReaccepter, Confidentialite } from "../ecrans/legal";
 import { Marche, MarcheCarnet, MarcheExecute, MarcheGraphique, MarcheOrdreDetail, MarcheOrdres } from "../ecrans/marche";
 import { Rapide, RapideFait, RapidePrix } from "../ecrans/rapide";
@@ -92,29 +93,37 @@ export const routeur = createBrowserRouter([
       { path: "/entrer/transaction/:ref", element: <EntrerTransaction /> },
       { path: "/entrer/credite/:ref", element: <EntrerCredite /> },
 
-      { path: "/sortir/montant", element: <SortirMontant /> },
-      { path: "/sortir/destination", element: <SortirDestination /> },
-      { path: "/sortir/verifier", element: <SortirVerifier /> },
-      { path: "/sortir/code", element: <SortirCode /> },
+      { element: <SiOuvert porte="sorties" />, children: [
+        { path: "/sortir/montant", element: <SortirMontant /> },
+        { path: "/sortir/destination", element: <SortirDestination /> },
+        { path: "/sortir/verifier", element: <SortirVerifier /> },
+        { path: "/sortir/code", element: <SortirCode /> },
+      ] },
       { path: "/sortir/envoye/:ref", element: <SortirEnvoye /> },
 
-      { path: "/marche", element: <Marche /> },
-      { path: "/marche/graphique", element: <MarcheGraphique /> },
-      { path: "/marche/carnet", element: <MarcheCarnet /> },
+      { element: <SiOuvert porte="marche" />, children: [
+        { path: "/marche", element: <Marche /> },
+        { path: "/marche/graphique", element: <MarcheGraphique /> },
+        { path: "/marche/carnet", element: <MarcheCarnet /> },
+      ] },
       { path: "/marche/ordres", element: <MarcheOrdres /> },
       { path: "/marche/ordres/:id", element: <MarcheOrdreDetail /> },
       { path: "/marche/execute/:id", element: <MarcheExecute /> },
 
-      { path: "/rapide", element: <Rapide /> },
-      { path: "/rapide/prix", element: <RapidePrix /> },
+      { element: <SiOuvert porte="rapide" />, children: [
+        { path: "/rapide", element: <Rapide /> },
+        { path: "/rapide/prix", element: <RapidePrix /> },
+      ] },
       { path: "/rapide/fait", element: <RapideFait /> },
 
-      { path: "/crypto", element: <Crypto /> },
-      { path: "/crypto/deposer/:actif", element: <CryptoDeposer /> },
-      { path: "/crypto/retirer/:actif/adresse", element: <CryptoRetirerAdresse /> },
-      { path: "/crypto/retirer/:actif/montant", element: <CryptoRetirerMontant /> },
-      { path: "/crypto/retirer/:actif/verifier", element: <CryptoRetirerVerifier /> },
-      { path: "/crypto/retirer/:actif/code", element: <CryptoRetirerCode /> },
+      { element: <SiOuvert porte="crypto" />, children: [{ path: "/crypto", element: <Crypto /> }] },
+      { element: <SiOuvert porte="cryptoDepots" />, children: [{ path: "/crypto/deposer/:actif", element: <CryptoDeposer /> }] },
+      { element: <SiOuvert porte="cryptoRetraits" />, children: [
+        { path: "/crypto/retirer/:actif/adresse", element: <CryptoRetirerAdresse /> },
+        { path: "/crypto/retirer/:actif/montant", element: <CryptoRetirerMontant /> },
+        { path: "/crypto/retirer/:actif/verifier", element: <CryptoRetirerVerifier /> },
+        { path: "/crypto/retirer/:actif/code", element: <CryptoRetirerCode /> },
+      ] },
       { path: "/crypto/envoye/:ref", element: <CryptoEnvoye /> },
 
       { path: "/historique", element: <Historique /> },

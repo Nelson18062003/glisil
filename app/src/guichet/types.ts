@@ -78,11 +78,19 @@ export type Declaration = {
   crediteLe: string | null;
   /** quand TOTEM a lu le SMS qui a payé */
   luLe?: string | null;
+  /** ce que le client a déclaré : le numéro qui a payé, le montant exact, le nom */
+  numeroDeclare?: string | null;
+  montantDeclare?: number | null;
+  nomDeclare?: string | null;
+  /** refusée pour un écart (numéro ou montant) : le client peut corriger */
+  corrigible?: boolean;
 };
 export type Depot = {
   reference: string;
   operateur: IdOperateur;
   floatNumero: string;
+  /** le nom que le client lit sur son téléphone avant de confirmer : s'il en lit un autre, il ne paie pas */
+  titulaire: string | null;
   codeAgent: string | null;
   /** Le numéro reçoit-il ENCORE ? « retardee » : son boîtier se tait, le
    *  crédit attendra son retour ; « fermee » : l'équipe a retiré ce float,

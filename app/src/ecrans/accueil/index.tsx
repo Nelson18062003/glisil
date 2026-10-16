@@ -14,7 +14,7 @@ import { Avatar, Badge as Pastille, Box, Button, ButtonBase, Chip, IconButton, L
 import { useEffect, useState } from "react";
 import type { Compte, Numero, Operation, Soldes } from "../../guichet/types";
 import { Link } from "react-router-dom";
-import { useChandelles, useCompte, useCotation, useDepotsEnAttente, useGuichet, useHistorique, useNotifications, useNumeros, useSoldes } from "../../guichet";
+import { useChandelles, useCompte, useCotation, useDepotsEnAttente, useGuichet, useHistorique, useNotifications, useNumeros, useOuvertures, useSoldes } from "../../guichet";
 import { enTranches, initiales, jourRelatif, prix, quand, xaf } from "../../noyau/format";
 import { useSession } from "../../session/session";
 import { PALIERS } from "../../noyau/argent";
@@ -32,6 +32,7 @@ export function Accueil() {
   const nonLues = notifications?.filter((n) => !n.lue).length ?? 0;
   const { data: historique } = useHistorique();
   const { data: numeros } = useNumeros();
+  const ouvert = useOuvertures();
   const grand = useMediaQuery("(min-width:900px)", { noSsr: true });
   const vide = soldes ? soldes.XAFe.disponible + soldes.XAFe.bloque + soldes.USDT.disponible + soldes.USDT.bloque === 0 : false;
 
@@ -77,7 +78,7 @@ export function Accueil() {
         <Squelette hauteur={196} />
       )}
 
-      <PremiersPas compte={compte} soldes={soldes} historique={historique} numeros={numeros} />
+      <PremiersPas compte={compte} soldes={soldes} historique={historique} numeros={numeros} sorties={ouvert.sorties} />
 
       {compte?.verificationEnCours && (
         <Stack direction="row" alignItems="center" gap={1.5} sx={{ bgcolor: tones.blue.bg, color: tones.blue.fg, borderRadius: 4, px: 2, py: 1.25 }}>
@@ -103,12 +104,23 @@ export function Accueil() {
 
       <Stack direction="row" gap={1.5}>
         <Tile icon={<ArrowDownwardRounded />} label="Entrer des XAF" to="/entrer/operateur" tone="green" />
-        <Tile icon={<ArrowUpwardRounded />} label="Sortir des XAF" to="/sortir/montant" tone="amber" />
-        <Tile icon={<CurrencyBitcoinRounded />} label="Crypto" to="/crypto" tone="blue" />
+        <Tile icon={<ArrowUpwardRounded />} label="Sortir des XAF" to="/sortir/montant" tone="amber" note={ouvert.pret && !ouvert.sorties ? "Bientôt" : undefined} />
+        <Tile icon={<CurrencyBitcoinRounded />} label="Crypto" to="/crypto" tone="blue" note={ouvert.pret && !ouvert.crypto ? "Bientôt" : undefined} />
       </Stack>
       </Stack>
       <Stack gap={2}>
 
+      {ouvert.pret && !ouvert.marche ? (
+        /* le marché n'est pas encore ouvert : pas de cours qui bouge sur un marché où l'on ne peut rien faire */
+        <Card sx={{ width: "100%" }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography variant="body2">USDT/XAFe</Typography>
+            <Chip label="Bientôt" size="small" sx={{ bgcolor: tones.amber.bg, color: tones.amber.fg, height: 28 }} />
+          </Stack>
+          <Typography variant="subtitle1" fontWeight={600}>Le marché ouvre bientôt</Typography>
+          <Typography variant="body2">Acheter et vendre des USDT sera possible très prochainement. Pour l'instant, ajoutez des XAFe à votre compte.</Typography>
+        </Card>
+      ) : (
       <ButtonBase component={Link} to="/marche" sx={{ textAlign: "left", borderRadius: 6 }}>
         <Card sx={{ width: "100%" }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -124,8 +136,9 @@ export function Accueil() {
           <Sparkline points={(chandelles ?? []).map((c) => c.c)} color={couleur} />
         </Card>
       </ButtonBase>
+      )}
       {/* l'achat rapide : pour qui ne veut pas poser un ordre au carnet — rien à acheter ni à vendre tant que le compte est vide */}
-      {!vide && <Stack direction="row" gap={1.5}>
+      {!vide && ouvert.rapide && <Stack direction="row" gap={1.5}>
         <Button component={Link} to="/rapide?sens=achat" variant="contained" disableElevation sx={{ flex: 1, bgcolor: BUY, "&:hover": { bgcolor: BUY } }}>Acheter des USDT</Button>
         <Button component={Link} to="/rapide?sens=vente" variant="outlined" sx={{ flex: 1, color: SELL, borderColor: SELL }}>Vendre</Button>
       </Stack>}
@@ -144,14 +157,15 @@ export function Accueil() {
  */
 const CLE_PLUS_TARD = "glisil.premiers-pas.identite-plus-tard";
 
-function PremiersPas({ compte, soldes, historique, numeros }: { compte?: Compte; soldes?: Soldes; historique?: Operation[]; numeros?: Numero[] }) {
+function PremiersPas({ compte, soldes, historique, numeros, sorties }: { compte?: Compte; soldes?: Soldes; historique?: Operation[]; numeros?: Numero[]; sorties: boolean }) {
   const [plusTard, setPlusTard] = useState(() => { try { return localStorage.getItem(CLE_PLUS_TARD) === "1"; } catch { return false; } });
   if (!compte || !soldes || !historique || !numeros) return null;
   const etapes = [
     { fait: historique.some((o) => o.nature === "depot" && o.etat === "credite") || soldes.XAFe.disponible + soldes.XAFe.bloque + soldes.USDT.disponible + soldes.USDT.bloque > 0,
-      titre: "Entrez vos premiers XAF", texte: "Payez notre numéro MoMo, tapez le transaction ID de votre SMS : vos XAFe arrivent en quelques secondes.", label: "Entrer des XAF", to: "/entrer/operateur" },
-    { fait: numeros.some((n) => n.verifieLe && !n.retireLe),
-      titre: "Ajoutez votre numéro MoMo", texte: "C'est vers lui que vous sortirez vos XAF. Il devient actif 24 h après sa vérification : faites-le dès maintenant.", label: "Ajouter mon numéro", to: "/compte/numeros/ajouter" },
+      titre: "Entrez vos premiers XAF", texte: "Payez notre numéro MTN MoMo ou Orange Money, puis donnez-nous le transaction ID de votre SMS : vos XAFe arrivent en quelques instants.", label: "Entrer des XAF", to: "/entrer/operateur" },
+    /* tant que les sorties ne sont pas ouvertes, le numéro de sortie n'est pas une étape */
+    ...(sorties ? [{ fait: numeros.some((n) => n.verifieLe && !n.retireLe),
+      titre: "Ajoutez votre numéro MoMo", texte: "C'est vers lui que vous sortirez vos XAF. Il devient actif 24 h après sa vérification : faites-le dès maintenant.", label: "Ajouter mon numéro", to: "/compte/numeros/ajouter" }] : []),
     { fait: compte.palier >= 1 || Boolean(compte.verificationEnCours) || plusTard,
       titre: "Vérifiez votre identité", texte: `Votre plafond passe de ${xaf(PALIERS[0].entreeJour ?? 0)} à ${xaf(PALIERS[1].entreeJour ?? 0)} XAF par jour. Une pièce d'identité et un selfie suffisent.`, label: "Vérifier mon identité", to: "/compte/paliers/identite", plusTard: true },
   ];

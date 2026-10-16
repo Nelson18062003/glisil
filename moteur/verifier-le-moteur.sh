@@ -84,6 +84,11 @@ for m in "${MIGRATIONS:-$ICI/supabase/migrations}"/*.sql; do
   $COMME "PATH=$PATH $PSQL -d xafe -f $m" >"$GRAPPE/migration.log" 2>&1 || { cat "$GRAPPE/migration.log"; echo "✗ la migration $(basename "$m") ne passe pas"; exit 1; }
 done
 
+# Les scénarios, les courses, le hasard et la charge ont été écrits avant 0013 : ils déclarent
+# l'ID seul. La règle stricte (numéro, montant, nom) est éprouvée à part, par le scénario 11.34,
+# qui la rallume dans sa transaction ; ailleurs, on l'éteint ici — et SEULEMENT ici.
+$COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = valeur || '{\\\"declaration_complete\\\": false}' where cle = 'depot'\"" >/dev/null
+
 # ATTAQUES=1 : les migrations, puis les attaques de la revue seules (moteur/rouge-puis-vert).
 if [ "${ATTAQUES:-0}" = "1" ]; then
   $COMME "PATH=$PATH $PSQL -d xafe -f $ICI/moteur/rouge-puis-vert/attaques.sql" 2>&1 | grep -E '^#|ERROR|CONTEXT'

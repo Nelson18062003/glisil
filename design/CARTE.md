@@ -2,7 +2,7 @@
 
 *Tirée du code par `app/scripts/carte.mjs` — ne pas modifier à la main. Relancer `node scripts/carte.mjs` après tout changement de navigation.*
 
-47 écrans · 127 passages (sans compter la barre d'onglets, présente sur les quatre écrans racines).
+47 écrans · 126 passages (sans compter la barre d'onglets, présente sur les quatre écrans racines).
 
 ## Les modules et leurs passages
 
@@ -108,7 +108,6 @@ flowchart LR
   crypto --> rapide
   crypto --> crypto_deposer__actif
   crypto --> crypto_retirer__actif_adresse
-  crypto_retirer__actif_adresse --> marche
   crypto_retirer__actif_adresse --> crypto_retirer__actif_montant
   crypto_retirer__actif_montant --> crypto_retirer__actif_verifier
   crypto_retirer__actif_verifier --> crypto_retirer__actif_adresse
@@ -201,7 +200,7 @@ Les flèches « retour » et les onglets ne sont pas dessinés : chaque écran e
 | `/rapide/fait` | 3 | lien | `/` `/marche` |
 | `/crypto` | 1 | flèche, lien | `/rapide` `/crypto/deposer/:actif` `/crypto/retirer/:actif/adresse` |
 | `/crypto/deposer/:actif` | 2 | flèche | — |
-| `/crypto/retirer/:actif/adresse` | 2 | flèche, lien | `/marche` `/crypto/retirer/:actif/montant` |
+| `/crypto/retirer/:actif/adresse` | 2 | flèche, lien | `/crypto/retirer/:actif/montant` |
 | `/crypto/retirer/:actif/montant` | 3 | flèche, lien | `/crypto/retirer/:actif/verifier` |
 | `/crypto/retirer/:actif/verifier` | 4 | flèche, lien | `/crypto/retirer/:actif/adresse` `/crypto/retirer/:actif/code` |
 | `/crypto/retirer/:actif/code` | 5 | flèche, lien | `/crypto/retirer/:actif/adresse` `/crypto/envoye/:ref` |

@@ -19,7 +19,7 @@ export function Terminaux() {
   const [float, setFloat] = useState<string | null>(null);
   const [cle, setCle] = useState<{ id: string; cle: string } | null>(null);
   const [f, setF] = useState({ id: "", nom: "", lieu: "" });
-  const [g, setG] = useState({ operateur: "mtn", numero: "", code_agent: "" });
+  const [g, setG] = useState({ operateur: "mtn", numero: "", code_agent: "", titulaire: "" });
   const [erreur, setErreur] = useState<unknown>(null);
   const [enCours, setEnCours] = useState(false);
   const [copie, setCopie] = useState(false);
@@ -37,7 +37,7 @@ export function Terminaux() {
   const ajouterFloat = async () => {
     if (!float) return;
     setEnCours(true); setErreur(null);
-    try { await guichet.creerFloat({ operateur: g.operateur, numero: g.numero, terminal: float, codeAgent: g.code_agent || null }); setFloat(null); setG({ operateur: "mtn", numero: "", code_agent: "" }); await rafraichir(); } catch (e) { setErreur(e); } finally { setEnCours(false); }
+    try { await guichet.creerFloat({ operateur: g.operateur, numero: g.numero, terminal: float, codeAgent: g.code_agent || null, titulaire: g.titulaire || null }); setFloat(null); setG({ operateur: "mtn", numero: "", code_agent: "", titulaire: "" }); await rafraichir(); } catch (e) { setErreur(e); } finally { setEnCours(false); }
   };
   const basculer = async (id: number, actif: boolean) => {
     setEnCours(true);
@@ -57,7 +57,7 @@ export function Terminaux() {
           <Stack key="f" gap={0.5}>
             {(t.floats ?? []).map((x) => (
               <Stack key={x.id} direction="row" alignItems="center" gap={1}>
-                <Chip size="small" label={`${x.operateur.toUpperCase()} ${numeroEnTranches(x.numero)}${x.code_agent ? ` · agent ${x.code_agent}` : ""}`} sx={{ height: 24, opacity: x.actif ? 1 : 0.5 }} />
+                <Chip size="small" label={`${x.operateur.toUpperCase()} ${numeroEnTranches(x.numero)}${x.titulaire ? ` · ${x.titulaire}` : " · sans titulaire"}${x.code_agent ? ` · agent ${x.code_agent}` : ""}`} sx={{ height: 24, opacity: x.actif ? 1 : 0.5 }} />
                 {peut("terminaux") && <Switch size="small" checked={x.actif} onChange={(e) => (e.target.checked || !x.dossiers_ouverts ? void basculer(x.id, e.target.checked) : setARetirer({ id: x.id, numero: x.numero, dossiers: x.dossiers_ouverts }))} inputProps={{ "aria-label": `float ${x.numero} actif` }} />}
               </Stack>
             ))}
@@ -108,7 +108,8 @@ export function Terminaux() {
           <MenuItem value="om">Orange Money</MenuItem>
         </TextField>
         <TextField label="Numéro du float" value={g.numero} onChange={(e) => setG({ ...g, numero: e.target.value })} fullWidth autoFocus placeholder="6 77 00 00 00" />
-        <TextField label="Code agent (si retrait possible)" value={g.code_agent} onChange={(e) => setG({ ...g, code_agent: e.target.value })} fullWidth />
+        <TextField label="Titulaire, tel que le client le lit en payant" value={g.titulaire} onChange={(e) => setG({ ...g, titulaire: e.target.value })} fullWidth placeholder="NORTON GAUSS BONZINI SARL 1" helperText="L'application le montre : « votre téléphone affiche un autre nom ? ne confirmez pas »." />
+        <TextField label="Code agent (Orange : pour le retrait #150*14*…)" value={g.code_agent} onChange={(e) => setG({ ...g, code_agent: e.target.value.replace(/\D/g, "") })} fullWidth inputMode="numeric" />
         <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
       </Dialogue>
     </Coquille>
