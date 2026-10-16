@@ -166,7 +166,7 @@ export function ClientDetail() {
       <Stack direction="row" gap={1}>
         {peut("paliers") && c.verification_en_cours && <Button variant="contained" onClick={() => setDialogue("verification")}>Examiner les pièces</Button>}
         {peut("paliers") && <Button variant="outlined" onClick={() => { setPalier(c.palier); setDialogue("palier"); }}>Changer le palier</Button>}
-        {peut("clients") && <Button variant="text" color="error" onClick={() => setDialogue("desactiver")}>{c.desactive_le ? "Réactiver" : "Désactiver"}</Button>}
+        {peut("clients") && <Button variant="text" color="error" onClick={() => setDialogue("desactiver")}>{c.ferme_le ? "Rouvrir" : c.desactive_le ? "Réactiver" : "Désactiver"}</Button>}
       </Stack>
     }>
       <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
@@ -174,7 +174,8 @@ export function ClientDetail() {
         <Tuile label="XAFe" valeur={xaf(data.soldes.XAFe?.disponible ?? 0)} tone="green" aide={`${xaf(data.soldes.XAFe?.bloque ?? 0)} bloqués`} />
         <Tuile label="USDT" valeur={enTranches(data.soldes.USDT?.disponible ?? 0, 2)} tone="blue" aide={`${enTranches(data.soldes.USDT?.bloque ?? 0, 2)} bloqués`} />
         <Tuile label="Palier" valeur={String(c.palier)} tone="amber" aide={PALIERS[c.palier]} />
-        <Tuile label="Compte" valeur={c.desactive_le ? "désactivé" : "actif"} tone={c.desactive_le ? "red" : "neutral"} aide={`depuis ${jourRelatif(c.cree_le)} · ${c.entreprise ?? "particulier"}${c.a_code ? "" : " · sans code secret"}`} />
+        <Tuile label="Compte" valeur={c.ferme_le ? "fermé" : c.desactive_le ? "désactivé" : "actif"} tone={c.desactive_le ? "red" : "neutral"}
+          aide={c.ferme_le ? `fermé par le client ${jourRelatif(c.ferme_le).toLowerCase()}` : `depuis ${jourRelatif(c.cree_le)} · ${c.entreprise ?? "particulier"}${c.a_code ? "" : " · sans code secret"}`} />
       </Stack>
       <Section titre="Identité et connexions">
         <Paper sx={{ p: 2.5, borderRadius: 5 }}>
@@ -189,6 +190,8 @@ export function ClientDetail() {
             ["Dernière connexion", c.derniere_connexion ? quand(c.derniere_connexion) : "—"],
             ["Dernière opération", c.derniere_operation ? quand(c.derniere_operation) : "jamais"],
             ["Code secret", c.a_code ? "choisi" : "pas encore choisi"],
+            ["Conditions", c.conditions_version ? `version du ${c.conditions_version}, acceptée ${c.conditions_acceptees_le ? quand(c.conditions_acceptees_le) : ""}${c.conditions_a_jour === false ? " · à réaccepter" : ""}` : "jamais acceptées (compte d'avant les conditions)"],
+            ...(c.ferme_le ? [["Fermé", quand(c.ferme_le)] as [string, string]] : []),
           ]} />
         </Paper>
       </Section>
@@ -255,7 +258,7 @@ export function ClientDetail() {
         <Button variant="outlined" color="error" onClick={() => void agir(() => guichet.validerVerification(c.id, false, note || "Pièces illisibles ou incomplètes."))}>Refuser les pièces</Button>
         <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
       </Dialogue>
-      <Dialogue ouvert={dialogue === "desactiver"} titre={c.desactive_le ? "Réactiver ce compte" : "Désactiver ce compte"} onFermer={() => setDialogue(null)} onValider={() => void agir(() => guichet.desactiverCompte(c.id, Boolean(c.desactive_le), note))} libelle={c.desactive_le ? "Réactiver" : "Désactiver"} couleur={c.desactive_le ? "primary" : "error"} enCours={enCours} desactive={!c.desactive_le && note.trim().length < 3}>
+      <Dialogue ouvert={dialogue === "desactiver"} titre={c.ferme_le ? "Rouvrir ce compte fermé par le client" : c.desactive_le ? "Réactiver ce compte" : "Désactiver ce compte"} onFermer={() => setDialogue(null)} onValider={() => void agir(() => guichet.desactiverCompte(c.id, Boolean(c.desactive_le), note))} libelle={c.desactive_le ? "Réactiver" : "Désactiver"} couleur={c.desactive_le ? "primary" : "error"} enCours={enCours} desactive={!c.desactive_le && note.trim().length < 3}>
         <Typography variant="body2">{c.desactive_le ? "Le client pourra de nouveau se connecter et bouger son argent." : "Le client ne pourra plus rien faire ; ses soldes restent. À réserver aux cas de fraude ou de demande du client."}</Typography>
         <TextField label="Pourquoi" value={note} onChange={(e) => setNote(e.target.value)} fullWidth autoFocus />
         <Erreur erreur={erreur} onFermer={() => setErreur(null)} />

@@ -57,6 +57,9 @@ export type ClientDetail = {
   compte: Client & {
     a_code: boolean; verrou_jusqua: string | null; verification_pieces: string[] | null; code_verrou_jusqua: string | null;
     prenom: string | null; nom_de_famille: string | null; date_naissance: string | null;
+    /** fermé par le client lui-même (0012) ; desactive_le est posé en même temps */
+    ferme_le?: string | null;
+    conditions_version?: string | null; conditions_acceptees_le?: string | null; conditions_a_jour?: boolean;
   };
   totaux?: { entre_xaf: number; sorti_xaf: number; ordres: number; retraits_crypto: number };
   retraits_crypto?: { reference: string; actif: string; reseau: string; adresse: string; montant: number; frais: number; etat: string; tx_hash: string | null; cree_le: string }[];
