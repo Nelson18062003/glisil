@@ -131,8 +131,8 @@ export function Screen({
   fermer?: string;
   /** un écran racine : la barre d'onglets (sur un téléphone) */
   tab?: Tab;
-  /** l'écran prend la largeur d'un grand écran (les racines) ; sinon, une colonne lisible */
-  large?: boolean;
+  /** l'écran prend la largeur d'un grand écran (les racines : 1 080, ou la largeur donnée) ; sinon, une colonne lisible */
+  large?: boolean | number;
   actions?: ReactNode;
   children: ReactNode;
   gap?: number;
@@ -146,7 +146,7 @@ export function Screen({
   return (
     /* Un parcours, sur un grand écran, garde sa hauteur naturelle : sans cela, le pavé tombait au pied
        d'une fenêtre de 960 px, à 500 px du montant qu'il remplit. Sur un téléphone, il reste sous le pouce. */
-    <Box sx={{ width: "100%", maxWidth: { xs: 600, sm: large ? 1080 : 600 }, mx: "auto", minHeight: { xs: "100dvh", sm: large || !dans ? "100dvh" : "auto" }, pb: { sm: dans && !large ? 4 : 0 },
+    <Box sx={{ width: "100%", maxWidth: { xs: 600, sm: large ? (typeof large === "number" ? large : 1080) : 600 }, mx: "auto", minHeight: { xs: "100dvh", sm: large || !dans ? "100dvh" : "auto" }, pb: { sm: dans && !large ? 4 : 0 },
                /* hors de l'application (Bienvenue, verrou…), sur un grand écran : une colonne centrée dans la hauteur */
                justifyContent: { sm: !dans && !large ? "center" : "flex-start" }, bgcolor: "background.default", display: "flex", flexDirection: "column",
                px: { sm: dans ? 2 : 0 }, pl: "env(safe-area-inset-left)", pr: "env(safe-area-inset-right)" }}>

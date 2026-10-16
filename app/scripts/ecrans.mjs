@@ -24,6 +24,11 @@
 //   · aucun champ sous 16 px : l'iPhone zoome alors toute la page au toucher ;
 //   · axe-core ne trouve aucune faute grave d'accessibilité ;
 //   · sur un grand écran, aucune ligne de texte n'est trop longue pour se lire.
+// Ce qu'il ne voit PAS : le moteur de l'iPhone. Ici, seul Chromium est installé ;
+// les iPhone de la grille ont la taille et l'identité d'un iPhone, pas son
+// moteur (WebKit). Ce qui ne dépend que de la mise en page est donc vérifié ;
+// une différence propre à Safari ne se verra que sur un vrai iPhone — c'est
+// la raison de l'iPhone dans l'essai avec cinq clients (docs/TEST-UTILISATEURS.md).
 // Il commence par un TÉMOIN : une page fabriquée avec chacune de ces fautes.
 // S'il n'en voit pas une, c'est lui qui est faux, et il s'arrête.
 import { spawn } from "node:child_process";
@@ -136,10 +141,13 @@ function controlerLaPage(options) {
     const t = (el.getAttribute("aria-label") || el.textContent || el.getAttribute("placeholder") || "").trim().replace(/\s+/g, " ").slice(0, 40);
     return `<${el.tagName.toLowerCase()}${t ? ` « ${t} »` : ""}>`;
   };
+  /* dans un conteneur qui défile, ou qui ROGNE (une onde de toucher qui grandit dans son bouton) :
+     ce qui dépasse ne se voit pas ; si le conteneur déborde lui-même, il est pris pour lui */
   const dansUnDefilant = (el) => {
     for (let e = el.parentElement; e && e !== document.body; e = e.parentElement) {
       const s = getComputedStyle(e);
       if (/(auto|scroll)/.test(s.overflowX) && e.scrollWidth > e.clientWidth) return true;
+      if (/(hidden|clip)/.test(s.overflowX)) return true;
     }
     return false;
   };

@@ -80,8 +80,8 @@ function BookRow({ n, max, side, onPick, align = "right" }: { n: Niveau; max: nu
   return (
     <ButtonBase onClick={onPick ? () => onPick(n.prix) : undefined} sx={{ position: "relative", display: "flex", justifyContent: "space-between", height: 24, alignItems: "center", px: 0.5, width: "100%", borderRadius: 1 }}>
       <Box sx={{ position: "absolute", top: 1, bottom: 1, [align]: 0, width: `${w}%`, bgcolor: fond(side) }} />
-      <Typography sx={{ position: "relative", fontSize: 13, fontWeight: 500, color: couleur(side), fontVariantNumeric: "tabular-nums" }}>{fPrix(n.prix)}</Typography>
-      <Typography sx={{ position: "relative", fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{fUsdt(n.quantite)}</Typography>
+      <Typography sx={{ position: "relative", fontSize: 12, "@media (min-width:360px)": { fontSize: 13 }, fontWeight: 500, color: couleur(side), fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{fPrix(n.prix)}</Typography>
+      <Typography sx={{ position: "relative", fontSize: 12, "@media (min-width:360px)": { fontSize: 13 }, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", ml: 0.5 }}>{fUsdt(n.quantite)}</Typography>
     </ButtonBase>
   );
 }
@@ -114,8 +114,9 @@ function CompactBook({ onPick }: { onPick: (p: number) => void }) {
   return (
     <Stack sx={{ flex: 1, minWidth: 0 }}>
       <Stack direction="row" justifyContent="space-between" sx={{ px: 0.5, mb: 0.5 }}>
-        <Typography variant="caption">Prix (XAFe)</Typography>
-        <Typography variant="caption">Qté (USDT)</Typography>
+        {/* « Prix (XAFe) » et « Qté (USDT) » ne tenaient pas sur un écran de 320 : l'unité passe dessous */}
+        <Typography variant="caption" sx={{ lineHeight: 1.2 }}>Prix<br />XAFe</Typography>
+        <Typography variant="caption" sx={{ lineHeight: 1.2, textAlign: "right" }}>Qté<br />USDT</Typography>
       </Stack>
       {!carnet ? <Squelette hauteur={360} radius={8} /> : (
         <>
@@ -252,7 +253,8 @@ function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean; autoNe
     });
 
   return (
-    <Stack gap={1} sx={{ width: 212, flexShrink: 0 }}>
+    /* 212 px de formulaire laissaient 40 px au carnet sur un écran de 320 : en dessous de 360, il prend 56 % */
+    <Stack gap={1} sx={{ width: 212, flexShrink: 0, "@media (max-width:359px)": { width: "56%" } }}>
       <SideToggle side={f.cote} onChange={(c) => poser({ cote: c, prix: "" })} />
       <ButtonBase onClick={() => setTypeOuvert(true)} sx={{ borderRadius: 2 }}>
         <Paper sx={{ bgcolor: "background.default", borderRadius: 2, height: 40, display: "flex", alignItems: "center", px: 1.25, gap: 0.5, width: "100%" }}>
@@ -337,7 +339,7 @@ function OpenOrder({ o, onCancel }: { o: Ordre; onCancel?: (id: string) => void 
       <Stack direction="row" alignItems="center" gap={1}>
         <Chip label={o.cote === "achat" ? "Achat" : "Vente"} size="small" sx={{ height: 22, fontSize: 12, bgcolor: fond(o.cote), color: couleur(o.cote), fontWeight: 600 }} />
         <Typography component={Link} to={`/marche/ordres/${o.id}`} sx={{ fontWeight: 600, fontSize: 14, color: "inherit", textDecoration: "none", display: "inline-block", py: "6px" }}>USDT/XAFe</Typography>
-        <Typography variant="caption">{o.type === "limite" ? "Limite" : "Marché"}</Typography>
+        <Typography variant="caption" sx={{ "@media (max-width:359px)": { display: "none" } }}>{o.type === "limite" ? "Limite" : "Marché"}</Typography>
         <Box sx={{ flex: 1 }} />
         <Typography variant="caption">{heure(o.creeLe)}</Typography>
         {ouvert && onCancel ? (
@@ -417,9 +419,11 @@ export function Marche() {
   const [bas, setBas] = useState<"ouverts" | "actifs">("ouverts");
   const ouverts = (ordres ?? []).filter((o) => o.etat === "ouvert" || o.etat === "partiel");
   const grand = useMediaQuery("(min-width:1200px)", { noSsr: true });
+  /* sous 360, « Ordres ouverts » poussait « Actifs » sous « Tout voir » */
+  const etroit = useMediaQuery("(max-width:359px)", { noSsr: true });
 
   return (
-    <Screen tab="marche" large gap={0}>
+    <Screen tab="marche" large={1440} gap={0}>
       {/* Sur un ordinateur, le graphique à gauche et l'ordre à droite, comme sur toutes les places de
           marché : on regarde le prix ET on agit, sans changer d'écran. Ailleurs, une colonne. */}
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0,1fr)", lg: "minmax(0,1fr) 560px" }, gap: 3, alignItems: "start", width: "100%", maxWidth: { xs: 600, lg: "none" }, mx: "auto" }}>
@@ -434,8 +438,8 @@ export function Marche() {
       </Paper>
       <Box sx={{ mt: 1.5 }}>
         <Stack direction="row" alignItems="center">
-          <Tabs value={bas} onChange={(_, v) => setBas(v)} sx={{ minHeight: 40, flex: 1 }}>
-            <Tab value="ouverts" label={`Ordres ouverts (${ouverts.length})`} sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
+          <Tabs value={bas} onChange={(_, v) => setBas(v)} variant="scrollable" scrollButtons={false} sx={{ minHeight: 40, flex: 1, minWidth: 0 }}>
+            <Tab value="ouverts" label={`${etroit ? "Ouverts" : "Ordres ouverts"} (${ouverts.length})`} sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
             <Tab value="actifs" label="Actifs" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
           </Tabs>
           <Button size="small" variant="text" component={Link} to="/marche/ordres" sx={{ minHeight: 32, fontSize: 13 }}>Tout voir</Button>
@@ -578,7 +582,7 @@ export function MarcheGraphique() {
       <Paper sx={{ p: 1, borderRadius: 3 }}>
         <Candles chandelles={chandelles ?? []} dernier={c?.dernier ?? null} />
       </Paper>
-      <Tabs value={onglet} onChange={(_, val) => (val === "trades" ? navigate("/marche/carnet") : setOnglet(val))} sx={{ minHeight: 40 }}>
+      <Tabs value={onglet} onChange={(_, val) => (val === "trades" ? navigate("/marche/carnet") : setOnglet(val))} variant="fullWidth" sx={{ minHeight: 40, "& .MuiTab-root": { minWidth: 0, px: 1, "@media (max-width:359px)": { fontSize: 13, px: 0.5 } } }}>
         <Tab value="carnet" label="Carnet" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
         <Tab value="trades" label="Transactions" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
         <Tab value="infos" label="Infos" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
@@ -672,7 +676,7 @@ export function MarcheCarnet() {
 
   return (
     <Screen back="/marche" title="USDT/XAFe" gap={1}>
-      <Tabs value={onglet} onChange={(_, v) => setOnglet(v)} sx={{ minHeight: 40 }}>
+      <Tabs value={onglet} onChange={(_, v) => setOnglet(v)} variant="fullWidth" sx={{ minHeight: 40, "& .MuiTab-root": { minWidth: 0, px: 1, "@media (max-width:359px)": { fontSize: 13, px: 0.5 } } }}>
         <Tab value="carnet" label="Carnet d'ordres" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
         <Tab value="trades" label="Transactions" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
       </Tabs>
@@ -745,7 +749,7 @@ export function MarcheOrdres() {
 
   return (
     <Screen back="/marche" title="Ordres" gap={1}>
-      <Tabs value={onglet} onChange={(_, v) => setOnglet(v)} sx={{ minHeight: 40 }}>
+      <Tabs value={onglet} onChange={(_, v) => setOnglet(v)} variant="fullWidth" sx={{ minHeight: 40, "& .MuiTab-root": { minWidth: 0, px: 1, "@media (max-width:359px)": { fontSize: 13, px: 0.5 } } }}>
         <Tab value="ouverts" label={`Ouverts (${ouverts.length})`} sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
         <Tab value="historique" label="Historique" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
         <Tab value="executions" label="Exécutions" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
