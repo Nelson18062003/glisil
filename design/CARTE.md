@@ -2,7 +2,7 @@
 
 *Tirée du code par `app/scripts/carte.mjs` — ne pas modifier à la main. Relancer `node scripts/carte.mjs` après tout changement de navigation.*
 
-47 écrans · 128 passages (sans compter la barre d'onglets, présente sur les quatre écrans racines).
+47 écrans · 129 passages (sans compter la barre d'onglets, présente sur les quatre écrans racines).
 
 ## Les modules et leurs passages
 
@@ -124,6 +124,7 @@ flowchart LR
   entrer_transaction__ref --> entrer_credite__ref
   entrer_credite__ref --> marche
   entrer_credite__ref --> accueil
+  entrer_credite__ref --> entrer_operateur
   historique --> entrer_operateur
   historique__ref --> marche_ordres__id
   historique__ref --> entrer_transaction__ref
@@ -184,7 +185,7 @@ Les flèches « retour » et les onglets ne sont pas dessinés : chaque écran e
 | `/entrer/montant` | 2 | flèche, lien | `/entrer/operateur` `/entrer/payer/:ref` |
 | `/entrer/payer/:ref` | 3 | flèche, lien | `/entrer/operateur` `/entrer/transaction/:ref` |
 | `/entrer/transaction/:ref` | 1 | flèche, lien | `/entrer/credite/:ref` |
-| `/entrer/credite/:ref` | 2 | lien | `/marche` `/` |
+| `/entrer/credite/:ref` | 2 | lien | `/marche` `/` `/entrer/operateur` |
 | `/sortir/montant` | 1 | flèche, lien | `/crypto/retirer/:actif/adresse` `/marche/ordres` `/` `/entrer/operateur` `/compte/numeros` `/compte/numeros/ajouter` `/sortir/destination` |
 | `/sortir/destination` | 2 | flèche, lien | `/compte/numeros/ajouter` `/sortir/verifier` |
 | `/sortir/verifier` | 3 | flèche, lien | `/sortir/montant` `/sortir/code` |

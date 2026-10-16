@@ -16,7 +16,7 @@ import HourglassTopRounded from "@mui/icons-material/HourglassTopRounded";
 import { Box, Button, Chip, CircularProgress, IconButton, InputAdornment, Paper, Stack, TextField, Typography } from "@mui/material";
 import { useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
-import { useCompte, useDepot, useGuichet, useNumeros, useRafraichir } from "../../guichet";
+import { useCompte, useDepot, useGuichet, useNumeros, useOuvertures, useRafraichir } from "../../guichet";
 import type { Declaration, IdOperateur } from "../../guichet/types";
 import { montantValide, OPERATEURS, PALIERS, operateur as opDe } from "../../noyau/argent";
 import { codeDeRetrait, lienUssd } from "../../noyau/depot";
@@ -402,6 +402,7 @@ function LigneDeclaration({ d, onRetirer, onCorriger }: { d: Declaration; onReti
 export function EntrerCredite() {
   const { ref } = useParams();
   const { data: depot, error: erreurDepot } = useDepot(ref);
+  const ouvert = useOuvertures();
   if (!depot) return <Attente erreur={erreurDepot} />;
   const credites = depot.declarations.filter((d) => d.etat === "credite");
   const dernier = depot.crediteLe ?? depot.creeLe;
@@ -410,8 +411,9 @@ export function EntrerCredite() {
       title="XAFe crédités"
       amount={`+${xaf(depot.montantRecu)} XAFe`}
       caption={`${credites.length > 1 ? `${credites.length} transferts, ` : ""}${quand(dernier)}, par ${opDe(depot.operateur).nom}.`}
-      primary={{ label: "Aller au marché", to: "/marche" }}
-      secondary={{ label: "Retour à l'accueil", to: "/" }}
+      /* le marché fermé, la suite naturelle est un autre dépôt — pas un écran « bientôt » */
+      primary={ouvert.marche ? { label: "Aller au marché", to: "/marche" } : { label: "Retour à l'accueil", to: "/" }}
+      secondary={ouvert.marche ? { label: "Retour à l'accueil", to: "/" } : { label: "Ajouter d'autres XAFe", to: "/entrer/operateur" }}
     >
       <Card>
         <Line label="Dossier XAFe" value={depot.reference} mono />
