@@ -2086,6 +2086,95 @@ begin
 end $$;
 rollback;
 
+-- 11.39 · les règles du marché (0017). Chaque garde-fou refuse avec SA règle et
+-- SA borne : bande de prix par côté, taille maximale, plafond au marché, ordres
+-- ouverts par compte ; un ordre au marché ne s'exécute pas hors de la bande
+-- d'exécution ; le prix de référence est une moyenne de cinq minutes, puis le
+-- dernier échange, puis celui de l'équipe, puis rien (le premier ordre fait le
+-- marché).
+begin;
+do $$
+declare r jsonb; a uuid := 'a1700000-0000-0000-0000-000000000001'; b uuid := 'a1700000-0000-0000-0000-000000000002';
+        ref numeric;
+begin
+  insert into comptes (id, telephone, nom, palier) values (a, '670170001', 'Règle A', 2), (b, '670170002', 'Règle B', 2);
+  perform _mouvement(a, 'XAFe', 50000000, 0, 'essai', 'essai', 'r1');
+  perform _mouvement(b, 'USDT', 50000, 0, 'essai', 'essai', 'r2');
+  -- un carnet propre : les ordres des scénarios précédents sortent (la transaction est annulée à la fin)
+  update ordres set etat = 'annule', restant = 0, bloque = 0 where etat in ('ouvert', 'partiel');
+  delete from executions;
+  update parametres set valeur = valeur || '{"prix_reference": null}' where cle = 'marche';
+  assert _prix_reference() is null, 'sans échange ni référence posée : pas de référence';
+
+  -- 1. sans référence, pas de bande : le premier ordre fait le marché
+  perform set_config('xafe.compte', b::text, true);
+  r := placer_ordre('vente', 'limite', 100, 600, 'v-600');
+  perform set_config('xafe.compte', a::text, true);
+  r := placer_ordre('achat', 'limite', 100, 600, 'a-600');
+  assert jsonb_array_length(r -> 'executions') = 1, r;
+  assert _prix_reference() = 600, format('la référence est l''échange : %s', _prix_reference());
+
+  -- 2. la moyenne pondérée de cinq minutes : un échange minuscule au bord ne déplace pas la bande d'un coup
+  perform set_config('xafe.compte', b::text, true);
+  r := placer_ordre('vente', 'limite', 10, 650, 'v-650');
+  perform set_config('xafe.compte', a::text, true);
+  r := placer_ordre('achat', 'limite', 10, 650, 'a-650');
+  ref := _prix_reference();
+  assert ref = round((60000 + 6500) / 110.0, 2), format('moyenne pondérée attendue (604,55, pas 650), lu %s', ref);
+
+  -- 3. la bande de prix, par côté (achat 80 %–110 %, vente 90 %–120 %)
+  begin perform placer_ordre('achat', 'limite', 10, round(ref * 1.15 / 0.05) * 0.05, 'a-haut'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'prix hors de la bande', sqlerrm; end;
+  begin perform placer_ordre('achat', 'limite', 10, round(ref * 0.75 / 0.05) * 0.05, 'a-bas'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'prix hors de la bande', sqlerrm; end;
+  r := placer_ordre('achat', 'limite', 10, round(ref * 0.85 / 0.05) * 0.05, 'a-dans');
+  assert r -> 'ordre' ->> 'etat' = 'ouvert', r;
+  perform set_config('xafe.compte', b::text, true);
+  begin perform placer_ordre('vente', 'limite', 10, round(ref * 0.85 / 0.05) * 0.05, 'v-bas'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'prix hors de la bande', sqlerrm; end;
+  -- une vente à 108 % de la référence est permise au carnet…
+  r := placer_ordre('vente', 'limite', 50, round(ref * 1.08 / 0.05) * 0.05, 'v-loin');
+  assert r -> 'ordre' ->> 'etat' = 'ouvert', r;
+
+  -- 4. …mais un achat AU MARCHÉ ne la prend pas : elle est au-delà de la bande d'exécution (5 %)
+  perform set_config('xafe.compte', a::text, true);
+  r := placer_ordre('achat', 'marche', 10, null, 'a-marche');
+  assert jsonb_array_length(r -> 'executions') = 0 and r -> 'ordre' ->> 'etat' = 'annule', format('rien dans la bande : %s', r);
+  assert (select quantite from _parcourir_carnet(a, 'achat', 10, null)) = 0, 'le devis de l''achat rapide suit la même bande';
+
+  -- 5. la taille maximale, le plafond au marché, les ordres ouverts
+  update parametres set valeur = valeur || '{"quantite_max": 5000, "marche_quantite_max": 1000, "ordres_ouverts_max": 2}' where cle = 'marche';
+  begin perform placer_ordre('achat', 'limite', 6000, round(ref / 0.05) * 0.05, 'a-gros'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'quantité trop grande', sqlerrm; end;
+  begin perform placer_ordre('achat', 'marche', 2000, null, 'a-gros-marche'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'ordre au marché trop grand', sqlerrm; end;
+  r := placer_ordre('achat', 'limite', 10, round(ref * 0.9 / 0.05) * 0.05, 'a-deux');   -- le second ouvert d'A
+  begin perform placer_ordre('achat', 'limite', 10, round(ref * 0.9 / 0.05) * 0.05, 'a-trois'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'trop d''ordres ouverts', sqlerrm; end;
+  r := placer_ordre('achat', 'marche', 10, null, 'a-marche-2');   -- un ordre au marché ne reste pas ouvert : il ne compte pas
+
+  -- 6. la référence posée par l'équipe, quand aucun échange n'existe
+  delete from executions;
+  update parametres set valeur = valeur || '{"prix_reference": 600}' where cle = 'marche';
+  assert _prix_reference() = 600;
+  perform set_config('xafe.compte', b::text, true);
+  begin perform placer_ordre('vente', 'limite', 10, 500, 'v-500'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'prix hors de la bande', sqlerrm; end;
+
+  -- 7. la règle se lit : l'écran reçoit la référence et les bornes
+  perform set_config('xafe.compte', a::text, true);
+  assert (parametres_publics() -> 'marche' ->> 'reference')::numeric = 600 and parametres_publics() -> 'marche' ? 'bande_achat', parametres_publics() -> 'marche';
+  assert (cotation() ->> 'reference')::numeric = 600, cotation();
+  -- un paramètre réécrit en entier, sans les clés des règles, ne fait disparaître aucun garde-fou
+  update parametres set valeur = '{"paire": "USDT/XAFe", "pas_prix": 0.05, "quantite_min": 10, "ouvert": true}' where cle = 'marche';
+  assert (_marche() ->> 'ordres_ouverts_max')::int = 200 and _marche() -> 'bande_achat' = '[0.8, 1.1]'::jsonb, _marche();
+  -- et un paramètre abîmé ne s'écrit pas
+  begin perform _verifier_parametre('marche', parametre('marche') || '{"bande_achat": [1.2, 1.1]}'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
+  raise notice '✓ 11.39 les règles du marché : bande de prix par côté, bande d''exécution au marché (devis compris), taille maximale, plafond au marché, ordres ouverts ; la référence est une moyenne de cinq minutes, puis l''échange, puis celle de l''équipe, puis aucune';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

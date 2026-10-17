@@ -296,7 +296,7 @@ export class GuichetSupabase implements Guichet {
     const avant = nn(r.il_y_a_24h);
     return {
       dernier, variation24h: dernier !== null && avant ? Math.round(((dernier - avant) / avant) * 10000) / 100 : null,
-      haut24h: nn(r.haut), bas24h: nn(r.bas), volume24hUsdt: n(r.volume_usdt), meilleurAchat: nn(r.meilleur_achat), meilleureVente: nn(r.meilleure_vente), releveLe: new Date().toISOString(),
+      haut24h: nn(r.haut), bas24h: nn(r.bas), volume24hUsdt: n(r.volume_usdt), meilleurAchat: nn(r.meilleur_achat), meilleureVente: nn(r.meilleure_vente), reference: nn(r.reference), releveLe: new Date().toISOString(),
     };
   }
   async carnet(profondeur: number): Promise<Carnet> {

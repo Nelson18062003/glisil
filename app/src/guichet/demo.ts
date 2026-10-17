@@ -7,7 +7,7 @@
  * vit. Il tourne quand l'application n'a pas de projet Supabase configuré.
  * Il n'a aucune valeur comptable : c'est une maquette qui répond.
  */
-import { achatMax, arrondi2, coutAuCarnet, decouperSortie, devisSurLeCarnet, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide, RAPIDE, SORTIES, fraisSortieManuelle } from "../noyau/argent";
+import { achatMax, arrondi2, bandeDePrix, coutAuCarnet, decouperSortie, devisSurLeCarnet, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide, RAPIDE, SORTIES, fraisSortieManuelle } from "../noyau/argent";
 import { ErreurMoteur } from "../noyau/erreurs";
 import { emailNormalise, emailValide } from "../noyau/identite";
 import { numeroSaisi, operateurDuNumero, transactionIdNormalise, xaf as xafDe } from "../noyau/format";
@@ -857,7 +857,7 @@ export class GuichetDemo implements Guichet {
       dernier: m.mid, variation24h: arrondi2(((m.mid - ilYa24h) / ilYa24h) * 100),
       haut24h: Math.max(...dernieres.map((c) => c.h)), bas24h: Math.min(...dernieres.map((c) => c.l)),
       volume24hUsdt: dernieres.reduce((s, c) => s + c.v, 0),
-      meilleurAchat: livre.achats[0]?.prix ?? null, meilleureVente: livre.ventes[0]?.prix ?? null, releveLe: iso(),
+      meilleurAchat: livre.achats[0]?.prix ?? null, meilleureVente: livre.ventes[0]?.prix ?? null, reference: m.mid, releveLe: iso(),
     };
   }
 
@@ -900,6 +900,14 @@ export class GuichetDemo implements Guichet {
     if (deja) return copie({ ordre: deja, executions: d.executions.filter((e) => e.ordreId === deja.id), autoNegociation: false, deja: true });
     if (!quantiteValide(quantite)) throw new ErreurMoteur("quantité invalide", `au moins ${MARCHE.quantiteMin} USDT, deux décimales`);
     if (type === "limite" && (prix === undefined || !prixValide(prix))) throw new ErreurMoteur("prix invalide", `un multiple de ${MARCHE.pasPrix}`);
+    /* les règles du marché (0017), avec les mêmes phrases que le moteur */
+    if (quantite > MARCHE.quantiteMax) throw new ErreurMoteur("quantité trop grande", `au plus ${MARCHE.quantiteMax} USDT par ordre`);
+    if (type === "marche" && quantite > MARCHE.marcheQuantiteMax) throw new ErreurMoteur("ordre au marché trop grand", `au plus ${MARCHE.marcheQuantiteMax} USDT au marché`);
+    const bande = type === "limite" ? bandeDePrix(cote, this.etat.marche.mid) : null;
+    if (bande && (prix! < bande.min || prix! > bande.max)) throw new ErreurMoteur("prix hors de la bande", `entre ${bande.min} et ${bande.max} XAFe`);
+    if (type === "limite" && d.ordres.filter((x) => x.etat === "ouvert" || x.etat === "partiel").length >= MARCHE.ordresOuvertsMax) {
+      throw new ErreurMoteur("trop d'ordres ouverts", `au plus ${MARCHE.ordresOuvertsMax}`);
+    }
     const px = type === "limite" ? prix! : null;
 
     const o: Ordre & { cle: string } = {

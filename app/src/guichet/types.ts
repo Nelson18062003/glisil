@@ -211,6 +211,8 @@ export type Cotation = {
   volume24hUsdt: number;
   meilleurAchat: number | null;
   meilleureVente: number | null;
+  /** le prix de référence du moteur : la bande de prix se calcule autour de lui (0017) */
+  reference: number | null;
   releveLe: string;
 };
 

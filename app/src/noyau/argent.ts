@@ -111,11 +111,29 @@ export function coutAuCarnet(enFace: { prix: number; quantite: number }[], quant
   return reste > 0 ? null : cout;
 }
 
-export const MARCHE: { paire: string; pasPrix: number; quantiteMin: number; ouvert: boolean } = {
+/**
+ * Les règles du marché (docs/REGLES-DU-MARCHE.md, migration 0017) : les mêmes
+ * que le moteur fait respecter. L'écran les lit pour dire AVANT l'envoi
+ * pourquoi un ordre serait refusé — le moteur reste seul juge.
+ */
+export const MARCHE: {
+  paire: string; pasPrix: number; quantiteMin: number; ouvert: boolean;
+  quantiteMax: number; marcheQuantiteMax: number; ordresOuvertsMax: number;
+  bandeAchat: [number, number]; bandeVente: [number, number]; bandeExecution: number;
+  /** le prix autour duquel la bande se calcule (moyenne des échanges récents, ou celle posée par l'équipe) */
+  reference: number | null;
+} = {
   paire: "USDT/XAFe",
   ouvert: true,
   pasPrix: 0.05,
   quantiteMin: 10,
+  quantiteMax: 1_000_000,
+  marcheQuantiteMax: 100_000,
+  ordresOuvertsMax: 200,
+  bandeAchat: [0.8, 1.1],
+  bandeVente: [0.9, 1.2],
+  bandeExecution: 0.05,
+  reference: null,
 };
 
 export type Operateur = {
@@ -210,6 +228,48 @@ export function arrondi2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/**
+ * La bande de prix d'un ordre limite, comme le moteur la calcule : la
+ * référence multipliée par les bornes du côté, ramenée au pas VERS
+ * L'INTÉRIEUR. Null sans référence : le premier ordre fait le marché.
+ */
+export function bandeDePrix(cote: "achat" | "vente", reference: number | null | undefined): { min: number; max: number } | null {
+  if (!reference || !(reference > 0)) return null;
+  const [bas, haut] = cote === "achat" ? MARCHE.bandeAchat : MARCHE.bandeVente;
+  const pas = MARCHE.pasPrix;
+  return { min: arrondi2(Math.ceil(arrondi2(reference * bas) / pas - 1e-9) * pas), max: arrondi2(Math.floor(arrondi2(reference * haut) / pas + 1e-9) * pas) };
+}
+
+/**
+ * Pourquoi le moteur refuserait cet ordre — dans l'ordre où il vérifie, en
+ * une phrase qui dit la règle ET la borne. Null : rien ne s'y oppose.
+ */
+export function raisonDuRefus(o: {
+  cote: "achat" | "vente"; type: "limite" | "marche"; prix: number; quantite: number;
+  dispoXafe: number; dispoUsdt: number; reference: number | null | undefined; ouverts: number;
+}): string | null {
+  if (!(o.quantite > 0)) return null;
+  if (o.type === "limite" && !(o.prix > 0)) return "Fixez votre prix.";
+  if (!quantiteValide(o.quantite)) {
+    return `Au moins ${MARCHE.quantiteMin} USDT par ordre${o.prix > 0 ? ` (≈ ${Math.ceil(MARCHE.quantiteMin * o.prix).toLocaleString("fr-FR")} XAFe)` : ""}, deux décimales au plus.`;
+  }
+  if (o.type === "limite" && !prixValide(o.prix)) return `Le prix va de ${String(MARCHE.pasPrix).replace(".", ",")} en ${String(MARCHE.pasPrix).replace(".", ",")} XAFe.`;
+  if (o.quantite > MARCHE.quantiteMax) return `Au plus ${MARCHE.quantiteMax.toLocaleString("fr-FR")} USDT par ordre.`;
+  if (o.type === "marche" && o.quantite > MARCHE.marcheQuantiteMax) {
+    return `Au plus ${MARCHE.marcheQuantiteMax.toLocaleString("fr-FR")} USDT au marché : au-delà, posez un ordre limite.`;
+  }
+  const bande = o.type === "limite" ? bandeDePrix(o.cote, o.reference) : null;
+  if (bande && (o.prix < bande.min || o.prix > bande.max)) {
+    return `${o.cote === "achat" ? "Un achat" : "Une vente"} se place entre ${bande.min.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} et ${bande.max.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} XAFe (prix de référence ${o.reference!.toLocaleString("fr-FR", { minimumFractionDigits: 2 })}).`;
+  }
+  if (o.type === "limite" && o.ouverts >= MARCHE.ordresOuvertsMax) return `Vous avez déjà ${o.ouverts} ordres ouverts, le maximum : annulez-en un.`;
+  if (o.type === "limite" && o.cote === "achat" && arrondi2(o.prix * o.quantite) > o.dispoXafe) {
+    return `Il faut ${Math.ceil(arrondi2(o.prix * o.quantite)).toLocaleString("fr-FR")} XAFe ; vous en avez ${Math.floor(o.dispoXafe).toLocaleString("fr-FR")}.`;
+  }
+  if (o.cote === "vente" && o.quantite > o.dispoUsdt) return `Vous avez ${o.dispoUsdt.toLocaleString("fr-FR")} USDT disponibles.`;
+  return null;
+}
+
 /** Ce qu'un acheteur peut prendre au plus avec ses XAFe à ce prix (comme le moteur : trunc à 2 déc.). */
 export function achatMax(dispoXafe: number, prix: number): number {
   if (prix <= 0) return 0;
@@ -281,6 +341,15 @@ export function appliquerParametres(p: unknown): boolean {
   if (typeof r.sortie?.ouvertes === "boolean") SORTIES.ouvertes = r.sortie.ouvertes;
   if (r.sortie?.mode === "totem" || r.sortie?.mode === "manuel") SORTIES.mode = r.sortie.mode;
   if (typeof r.marche?.ouvert === "boolean") MARCHE.ouvert = r.marche.ouvert;
+  poser(MARCHE, "quantiteMax", nombre(r.marche?.quantite_max, 0.01, 1e9));
+  poser(MARCHE, "marcheQuantiteMax", nombre(r.marche?.marche_quantite_max, 0.01, 1e9));
+  poser(MARCHE, "ordresOuvertsMax", nombre(r.marche?.ordres_ouverts_max, 1, 10000));
+  poser(MARCHE, "bandeExecution", nombre(r.marche?.bande_execution, 0.001, 0.5));
+  for (const [cle, champ] of [["bande_achat", "bandeAchat"], ["bande_vente", "bandeVente"]] as const) {
+    const b = r.marche?.[cle];
+    if (Array.isArray(b) && b.length === 2 && b.every((x: unknown) => typeof x === "number" && x > 0)) MARCHE[champ] = [b[0], b[1]];
+  }
+  if (r.marche && "reference" in r.marche) MARCHE.reference = nombre(r.marche.reference, 0.01, 1e9);
   poser(RAPIDE, "marge", nombre(r.rapide?.marge, 0, 0.2));
   poser(RAPIDE, "validiteSecondes", nombre(r.rapide?.validite_secondes, 5, 120));
   if (typeof r.rapide?.ouvert === "boolean") RAPIDE.ouvert = r.rapide.ouvert;

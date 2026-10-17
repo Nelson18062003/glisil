@@ -175,6 +175,33 @@ try {
   await page.getByText("Prix (XAFe)").first().waitFor();
   await page.waitForTimeout(800);
   await capturer("marche");
+  /* le prix est un VRAI prix, pré-rempli (le meilleur en face), pas un exemple gris dans une case vide */
+  const prixPose = await page.getByLabel("Prix (XAFe)").inputValue();
+  exiger(/^\d{3},\d{2}$/.test(prixPose), `le prix est pré-rempli : « ${prixPose} »`);
+  /* le bouton gris dit pourquoi, la règle et sa borne : 1 USDT est sous le minimum */
+  await page.getByLabel("Quantité (USDT)").fill("1");
+  await voir("Au moins 10 USDT");
+  exiger(await page.getByRole("button", { name: "Acheter USDT" }).isDisabled(), "sous le minimum, le bouton ne part pas");
+  await capturer("marche-raison");
+  /* le total d'abord : 61 840 XAFe au prix posé donnent la quantité, au centime inférieur */
+  await page.getByLabel("Total (XAFe)").fill("61840");
+  const qDuTotal = Number((await page.getByLabel("Quantité (USDT)").inputValue()).replace(",", "."));
+  exiger(qDuTotal > 0 && Math.abs(qDuTotal * Number(prixPose.replace(",", ".")) - 61840) < Number(prixPose.replace(",", ".")), `le total donne la quantité : ${qDuTotal}`);
+  /* un prix loin du marché : la bande le dit avant l'envoi */
+  await page.getByLabel("Prix (XAFe)").fill("900");
+  await voir("se place entre");
+  await page.getByRole("button", { name: "Meilleur prix en face" }).click();
+  /* la démonstration fait vivre son carnet : le meilleur prix a pu bouger d'un pas depuis, mais il revient près du marché */
+  const prixBbo = await page.getByLabel("Prix (XAFe)").inputValue();
+  exiger(/^\d{3},\d{2}$/.test(prixBbo) && Math.abs(Number(prixBbo.replace(",", ".")) - Number(prixPose.replace(",", "."))) < 5, `BBO remet le meilleur prix en face : ${prixBbo}`);
+  exiger(await page.getByText("se place entre").count() === 0, "revenu dans la bande, plus de raison affichée");
+  await page.getByLabel("Quantité (USDT)").fill("");
+  await page.getByRole("link", { name: "Règles du marché" }).click();
+  await page.waitForURL(/\/marche\/regles$/);
+  for (const t of ["Comment un échange se fait", "Prix de référence", "Bande d'un achat", "Protection d'un ordre au marché", "Ordres ouverts, au plus"]) await voir(t);
+  await capturer("marche-regles");
+  await page.goBack();
+  await page.waitForURL(/\/marche$/);
   await page.getByText("Limite", { exact: true }).first().click();
   await page.getByText("Marché", { exact: true }).last().click();
   await page.getByLabel("Quantité (USDT)").fill("10");

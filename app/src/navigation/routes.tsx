@@ -16,7 +16,7 @@ import { Historique, HistoriqueDetail } from "../ecrans/historique";
 import { SiOuvert } from "../ecrans/bientot";
 import { CompteFerme, Conditions, ConditionsAReaccepter, Confidentialite } from "../ecrans/legal";
 import { Preuve } from "../ecrans/preuve";
-import { Marche, MarcheCarnet, MarcheExecute, MarcheGraphique, MarcheOrdreDetail, MarcheOrdres } from "../ecrans/marche";
+import { Marche, MarcheCarnet, MarcheExecute, MarcheGraphique, MarcheOrdreDetail, MarcheOrdres, MarcheRegles } from "../ecrans/marche";
 import { Rapide, RapideFait, RapidePrix } from "../ecrans/rapide";
 import { SortirCode, SortirDestination, SortirEnvoye, SortirMontant, SortirVerifier } from "../ecrans/sortir";
 import { useCompte } from "../guichet";
@@ -108,6 +108,7 @@ export const routeur = createBrowserRouter([
         { path: "/marche", element: <Marche /> },
         { path: "/marche/graphique", element: <MarcheGraphique /> },
         { path: "/marche/carnet", element: <MarcheCarnet /> },
+        { path: "/marche/regles", element: <MarcheRegles /> },
       ] },
       { path: "/marche/ordres", element: <MarcheOrdres /> },
       { path: "/marche/ordres/:id", element: <MarcheOrdreDetail /> },
