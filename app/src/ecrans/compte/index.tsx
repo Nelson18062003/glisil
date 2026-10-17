@@ -27,7 +27,7 @@ import { CONDITIONS, CONFIDENTIALITE, lienWhatsapp, VERSION_CONDITIONS, type Doc
 import { Contact, FeuilleLegale } from "../legal";
 import type { IdOperateur } from "../../guichet/types";
 import { CODE_SMS_DEMO } from "../../guichet/demo";
-import { FRAIS, OPERATEURS, PALIERS, operateur as opDe } from "../../noyau/argent";
+import { delaiDuNumero, FRAIS, NUMEROS, OPERATEURS, PALIERS, operateur as opDe } from "../../noyau/argent";
 import { initiales, jourRelatif, numeroEnTranches, numeroSaisi, numeroValide, operateurDuNumero, pourcent, xaf } from "../../noyau/format";
 import { ageAu, paysDe, telephoneLisible } from "../../noyau/identite";
 import { parcours } from "../../navigation/parcours";
@@ -147,7 +147,9 @@ export function CompteNumerosAjouter() {
   const ajouter = () =>
     lancer(async () => {
       const n = await guichet.ajouterNumero({ operateur: op!, numero: numeroSaisi(numero) });
-      setId(n.id); setEtape("code");
+      setId(n.id);
+      /* sans code SMS (0020), le moteur rend le numéro déjà retenu : pas d'écran de code */
+      if (n.verifieLe) { await rafraichir(); setEtape("fait"); } else setEtape("code");
     });
   const confirmer = (c: string) =>
     lancer(async () => {
@@ -180,9 +182,9 @@ export function CompteNumerosAjouter() {
         <Card>
           <Line label="Numéro" value={numeroEnTranches(numero)} />
           <Line label="Opérateur" value={op ? opDe(op).nom : ""} />
-          <Line label="Actif" value="dans 24 h" strong />
+          <Line label="Actif" value={delaiDuNumero()} strong />
         </Card>
-        <Typography variant="body2" textAlign="center">Les 24 heures protègent votre argent : un numéro ajouté par quelqu'un d'autre ne peut pas recevoir une sortie tout de suite.</Typography>
+        {NUMEROS.delaiHeures > 0 && <Typography variant="body2" textAlign="center">Ce délai protège votre argent : un numéro ajouté par quelqu'un d'autre ne peut pas recevoir une sortie tout de suite.</Typography>}
         <Box sx={{ flex: 1 }} />
         <Button variant="contained" onClick={() => { parcours.poserRetour(null); navigate(retour, { replace: true }); }}>Compris</Button>
       </Screen>
@@ -214,7 +216,7 @@ export function CompteNumerosAjouter() {
         {OPERATEURS.map((o) => <Row key={o.id} badge={o.id} primary={o.nom} secondary={op === o.id ? "d'après le numéro" : undefined} selected={op === o.id} chevron={false} />)}
       </List>
       <Box sx={{ flex: 1 }} />
-      <Button variant="contained" disabled={!numeroValide(numero) || !op || enCours} onClick={() => void ajouter()}>{enCours ? "Envoi du SMS…" : "Recevoir le code"}</Button>
+      <Button variant="contained" disabled={!numeroValide(numero) || !op || enCours} onClick={() => void ajouter()}>{NUMEROS.verificationSms ? (enCours ? "Envoi du SMS…" : "Recevoir le code") : (enCours ? "…" : "Ajouter ce numéro")}</Button>
       <FeuilleErreur erreur={erreur} onFermer={effacerErreur} />
     </Screen>
   );
