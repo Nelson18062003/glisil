@@ -20,6 +20,7 @@ const BLOCS: { cle: string; titre: string; aide: string }[] = [
   { cle: "crypto", titre: "Crypto", aide: "frais fixes par actif et confirmations par réseau" },
   { cle: "code_secret", titre: "Code secret", aide: "essais avant verrou, minutes de verrou, longueur" },
   { cle: "support", titre: "Support", aide: "ce que l'application propose dans Aide : l'e-mail, et le WhatsApp au format +2376XXXXXXXX (ou null)" },
+  { cle: "parite", titre: "Parité", aide: "alerte_numero : le numéro qui reçoit l'alarme par SMS (null = aucun) ; alerte_operateur : \"mtn\" ou \"om\" ; fraicheur_heures : au-delà, le solde d'un float n'est plus « connu » ; delai_minutes : au-delà, une opération absente de la chaîne est une anomalie ; publier_floats : la page publique montre le total des floats" },
   { cle: "conditions", titre: "Conditions d'utilisation", aide: "la version en vigueur (AAAA-MM-JJ) ; la changer AVEC le texte de l'application : chaque client la réacceptera" },
 ];
 

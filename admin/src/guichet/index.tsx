@@ -41,4 +41,6 @@ export function useMarche() { const g = useGuichet(); return useQuery({ queryKey
 export function useParametres() { const g = useGuichet(); return useQuery({ queryKey: ["parametres"], queryFn: () => g.parametres() }); }
 export function useJournal() { const g = useGuichet(); return useQuery({ queryKey: ["journal"], queryFn: () => g.journal(), refetchInterval: 15_000 }); }
 export function useWallets() { const g = useGuichet(); return useQuery({ queryKey: ["wallets"], queryFn: () => g.wallets(), refetchInterval: 15_000 }); }
+/** La parité à trois colonnes : relue souvent, c'est la question qui compte. */
+export function useParite() { const g = useGuichet(); return useQuery({ queryKey: ["parite"], queryFn: () => g.parite(), refetchInterval: 20_000 }); }
 export function useRafraichir() { const qc = useQueryClient(); return () => qc.invalidateQueries(); }

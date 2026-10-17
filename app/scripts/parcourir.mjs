@@ -131,6 +131,10 @@ try {
   await page.waitForURL(new RegExp(`/entrer/credite/${refDepot}$`));
   await voir("XAFe crédités");
   await voir("20394817250");
+  /* le XAFe est un jeton : le crédit se double d'une frappe sur la blockchain, montrée tout de suite */
+  await voir("Sur la blockchain");
+  await voir("En route vers la blockchain");
+  exiger(await page.locator('[data-chaine="envoye"]').count() === 1, "une frappe qui part n'est pas dite confirmée");
   await capturer("entrer-credite");
   await page.getByRole("link", { name: "Retour à l'accueil" }).click();
   await page.waitForURL(`${BASE}/`);
@@ -227,9 +231,32 @@ try {
   await voir("20394817250");
   await voir("Lu par TOTEM");
   await capturer("historique-detail");
-  /* le reçu se télécharge comme un fichier */
-  const [fichier] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Télécharger le reçu" }).click()]);
-  exiger(fichier.suggestedFilename().startsWith("Recu-XAFe-DP-"), `le reçu porte sa référence : ${fichier.suggestedFilename()}`);
+  await voir("Sur la blockchain");
+  exiger(await page.getByRole("link", { name: /Voir sur BscScan/ }).count() === 1, "la transaction s'ouvre dans l'explorateur");
+  const lienTx = await page.getByRole("link", { name: /Voir sur BscScan/ }).getAttribute("href");
+  exiger(/^https:\/\/testnet\.bscscan\.com\/tx\/0x[0-9a-f]{64}$/.test(lienTx ?? ""), `le lien vise une transaction : ${lienTx}`);
+  /* le reçu se télécharge comme un fichier PDF, qui porte la transaction */
+  const [fichier] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: /Télécharger le reçu/ }).click()]);
+  exiger(/^Recu-XAFe-DP-.*\.pdf$/.test(fichier.suggestedFilename()), `le reçu est un PDF qui porte sa référence : ${fichier.suggestedFilename()}`);
+  {
+    const { readFileSync } = await import("node:fs");
+    const octets = readFileSync(await fichier.path());
+    exiger(octets.subarray(0, 5).toString() === "%PDF-" && octets.length > 4000, "le reçu est un vrai PDF, pas un fichier vide");
+  }
+
+  etape("La preuve de réserve : publique, sans compte — floats, registre, blockchain, chaque transaction");
+  {
+    const p3 = await navigateur.newPage({ viewport: { width: 390, height: 844 } });
+    p3.on("pageerror", (e) => erreurs.push(`preuve : ${e.message}`));
+    await p3.goto(`${BASE}/preuve`);
+    await p3.getByText("Preuve de réserve").first().waitFor();
+    for (const t of ["1 · Les floats", "2 · Le registre", "3 · La blockchain", "Écart avec le registre", "Le vérifier vous-même", "XAFe-DP-000401"]) await p3.getByText(t).first().waitFor();
+    exiger(await p3.locator("[data-statut]").count() === 1, "l'état de la parité est dit en tête");
+    exiger(await p3.locator('[data-ligne="en_route"]').count() >= 1 && await p3.locator('[data-ligne="concorde"]').count() >= 1, "chaque transaction a son verdict");
+    exiger(!/677 ?12|NUMERO|@/.test(await p3.locator("body").innerText()), "aucun numéro ni adresse e-mail de client sur la page publique");
+    await p3.screenshot({ path: `${OUT}preuve.png`, fullPage: true });
+    await p3.close();
+  }
 
   /* --------------------------------------------------------- crypto */
   etape("Crypto : l'adresse de dépôt et son code QR");

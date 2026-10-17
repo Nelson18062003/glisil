@@ -6,6 +6,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { GuichetAdmin } from "./guichet";
 import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets } from "./types";
+import type { Parite } from "./types";
 import { verifierPreuve } from "./preuve";
 
 export class ErreurMoteur extends Error {
@@ -103,6 +104,23 @@ export class GuichetSupabase implements GuichetAdmin {
   async modifierParametre(cle: string, valeur: unknown) { await this.rpc("admin_modifier_parametre", { p_cle: cle, p_valeur: valeur }); }
   journal() { return this.rpc<LigneJournal[]>("admin_journal", { p_n: 200 }); }
   wallets() { return this.rpc<Wallets>("admin_wallets"); }
+  parite() { return this.rpc<Parite>("admin_parite"); }
+  async rapprocherMaintenant() { await this.rpc("admin_rapprocher_maintenant"); }
+  async saisirReleve(floatId: number, solde: number, annonceLe: string, preuve: string, note?: string) {
+    await this.rpc("admin_saisir_releve", { p_float: floatId, p_solde: solde, p_annonce_le: annonceLe, p_preuve: preuve, p_note: note ?? null });
+  }
+  async deposerReleve(floatId: number, fichier: File) {
+    const ext = verifierPreuve(fichier);
+    const chemin = `${floatId}/${Date.now()}.${ext}`;
+    const { error } = await this.sb.storage.from("releves-floats").upload(chemin, fichier, { contentType: fichier.type, upsert: false });
+    if (error) throw new ErreurMoteur("le relevé n'a pas pu être déposé", error.message);
+    return chemin;
+  }
+  async lienReleve(chemin: string) {
+    const { data, error } = await this.sb.storage.from("releves-floats").createSignedUrl(chemin, 600);
+    if (error || !data) throw new ErreurMoteur("relevé introuvable", error?.message);
+    return data.signedUrl;
+  }
 
   surChangement(cb: () => void) { this.auditeurs.add(cb); return () => { this.auditeurs.delete(cb); }; }
 }

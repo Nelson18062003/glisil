@@ -102,6 +102,32 @@ export type Depot = {
   expireLe: string;
   crediteLe: string | null;
   declarations: Declaration[];
+  /** Ses XAFe sur la blockchain : chaque crédit frappé dans la réserve Glisil, sous la référence du dossier (0015, 0016). */
+  chaine?: TraceChaine[];
+};
+
+/** Une frappe (ou une destruction) du contrat XAFe, rattachée à un mouvement de compte. */
+export type TraceChaine = {
+  reseau: Reseau;
+  operation: "frapper" | "detruire";
+  montant: number;
+  /** la référence scellée dans la transaction (son empreinte keccak256 est sur la chaîne) */
+  reference: string;
+  /** a_faire : pas encore signée ; envoye : diffusée, attend son bloc ; confirme : dans un bloc assez confirmé ; echoue : refusée */
+  etat: "a_faire" | "envoye" | "confirme" | "echoue";
+  txHash: string | null;
+  bloc: number | null;
+  /** réseau d'essai : les jetons n'ont pas de valeur */
+  essai: boolean;
+  contrat: string | null;
+  /** le wallet de la réserve Glisil sur ce réseau */
+  reserve: string | null;
+  /** https://testnet.bscscan.com, https://nile.tronscan.org/# … */
+  explorateur: string | null;
+  empreinte: string | null;
+  /** le veilleur l'a relue sur la chaîne, indépendamment de ses propres notes */
+  relue: boolean;
+  confirmeLe: string | null;
 };
 
 export type EtatSortie = "en_attente" | "en_cours" | "envoyee" | "partielle" | "echouee" | "annulee";
@@ -247,4 +273,30 @@ export type DevisRapide = {
   etat: "estimation" | "propose" | "execute";
   expireLe: string | null;
   ordre: string | null;
+};
+
+/* ───────────────────── la preuve de réserve (publique, 0016) ───────────────────── */
+export type StatutParite = "juste" | "en_cours" | "ecart" | "incomplet";
+/** Une opération du registre, rapprochée de sa transaction sur la chaîne. */
+export type LignePreuve = {
+  reference: string | null; nature: "reserve" | "retrait" | "retour" | "inconnue"; reseau: Reseau; genre: "frappe" | "destruction";
+  montant: number | null; depuis: string; empreinte: string | null; tx_vu: string | null; bloc_vu: number | null; montant_vu: number | null;
+  verdict: "concorde" | "en_route" | "en_retard" | "refusee" | "ecart" | "inconnue";
+};
+/** Ce que n'importe qui peut lire, sans compte : trois colonnes, et chaque transaction. */
+export type PreuveDeReserve = {
+  releve: {
+    fait_le: string; statut: StatutParite; registre: number; dans_comptes: number; sur_wallets: number;
+    chaine: number | null; offre_lue: number | null; en_route: number; ecart: number | null;
+    floats: number | null; couverture: number | null; anomalies: number;
+    reseaux: { reseau: Reseau; offre: number | null; reserve: number | null; bloc: number | null; a_jour: boolean; lu_le: string | null }[];
+    /** null si l'équipe ne publie pas le détail des floats */
+    floats_detail: { operateur: IdOperateur; solde: number | null; annonce_le: string | null; connu: boolean }[] | null;
+  } | null;
+  historique: { fait_le: string; statut: StatutParite; registre: number; chaine: number | null; ecart: number | null; floats: number | null }[];
+  contrats: { reseau: Reseau; contrat: string | null; explorateur: string; reserve: string | null }[];
+  essai: boolean;
+  lignes: LignePreuve[];
+  /** le nombre d'alarmes ouvertes (hors simples avis) */
+  alertes: number;
 };

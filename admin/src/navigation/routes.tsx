@@ -6,6 +6,7 @@ import { Entrees } from "../pages/entrees";
 import { Journal } from "../pages/journal";
 import { Marche } from "../pages/marche";
 import { Parametres } from "../pages/parametres";
+import { Parite } from "../pages/parite";
 import { Sorties } from "../pages/sorties";
 import { Tableau } from "../pages/tableau";
 import { Terminaux } from "../pages/terminaux";
@@ -43,6 +44,7 @@ export const routeur = createBrowserRouter([
       { path: "/sorties", element: <Sorties /> },
       { path: "/terminaux", element: <Terminaux /> },
       { path: "/wallets", element: <Wallets /> },
+      { path: "/parite", element: <Parite /> },
       { path: "/clients", element: <Clients /> },
       { path: "/clients/:id", element: <ClientDetail /> },
       { path: "/marche", element: <Marche /> },

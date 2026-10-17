@@ -152,6 +152,8 @@ export function useEstimationRapide(sens: SensRapide, montant: number) {
 }
 
 /** Après une écriture : tout se relit. Le moteur a le dernier mot. */
+/** La preuve de réserve : publique, relue toutes les trente secondes. */
+export function usePreuve() { const g = useGuichet(); return useQuery({ queryKey: ["preuve"], queryFn: () => g.preuveDeReserve(), refetchInterval: 30_000 }); }
 export function useRafraichir() {
   const qc = useQueryClient();
   return () => qc.invalidateQueries();

@@ -29,6 +29,18 @@ export function Tableau() {
         <Tuile label="Frais du jour" valeur={xaf(t.jour.frais_xafe)} unite="XAFe" />
       </Stack>
 
+      {a?.parite && (
+        <Paper component={Link} to="/parite" data-parite={a.parite.statut} sx={{ p: 2.5, borderRadius: 5, textDecoration: "none", color: "inherit",
+          bgcolor: a.parite.statut === "ecart" ? "#F9DEDC" : a.parite.statut === "incomplet" ? "#FFE3B5" : "#D7F2E0" }}>
+          <Typography variant="body2">Parité · floats, registre, chaîne</Typography>
+          <Typography variant="h5">
+            {a.parite.statut === "ecart" ? `Écart${a.parite.ecart ? ` de ${xaf(a.parite.ecart)} XAFe` : ""} · ${a.parite.alertes} alarme${a.parite.alertes > 1 ? "s" : ""}`
+              : a.parite.statut === "incomplet" ? "Pas encore conclue : une colonne manque"
+              : `Elle tient, au franc près${a.parite.couverture != null ? ` · floats +${xaf(a.parite.couverture)} XAF` : ""}`}
+          </Typography>
+        </Paper>
+      )}
+
       <Section titre="Ce qui attend quelqu'un">
         <Stack direction="row" gap={2} flexWrap="wrap">
           {/* en premier : un client attend son argent */}

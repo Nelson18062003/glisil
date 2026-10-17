@@ -15,6 +15,7 @@ import { EntrerCredite, EntrerMontant, EntrerOperateur, EntrerPayer, EntrerTrans
 import { Historique, HistoriqueDetail } from "../ecrans/historique";
 import { SiOuvert } from "../ecrans/bientot";
 import { CompteFerme, Conditions, ConditionsAReaccepter, Confidentialite } from "../ecrans/legal";
+import { Preuve } from "../ecrans/preuve";
 import { Marche, MarcheCarnet, MarcheExecute, MarcheGraphique, MarcheOrdreDetail, MarcheOrdres } from "../ecrans/marche";
 import { Rapide, RapideFait, RapidePrix } from "../ecrans/rapide";
 import { SortirCode, SortirDestination, SortirEnvoye, SortirMontant, SortirVerifier } from "../ecrans/sortir";
@@ -71,6 +72,8 @@ export const routeur = createBrowserRouter([
   /* les textes qui engagent se lisent sans compte : les magasins d'applications demandent une adresse publique */
   { path: "/conditions", element: <Conditions /> },
   { path: "/confidentialite", element: <Confidentialite /> },
+  /* la preuve de réserve : publique, sans compte — n'importe qui vérifie 1 XAFe = 1 XAF */
+  { path: "/preuve", element: <Preuve /> },
   {
     element: <Porte />,
     children: [

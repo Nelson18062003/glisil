@@ -1,3 +1,4 @@
+import type { Parite } from "./types";
 import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets } from "./types";
 
 /** LE GUICHET DE L'ADMINISTRATION : tout ce que les écrans demandent au moteur. */
@@ -65,6 +66,16 @@ export interface GuichetAdmin {
   journal(): Promise<LigneJournal[]>;
   /** Les wallets de la plateforme : ce que le veilleur de chaîne voit, et ce qu'on doit en face. */
   wallets(): Promise<Wallets>;
+
+  /** La parité à trois colonnes (0016) : floats, registre, chaîne — et chaque ligne rapprochée. */
+  parite(): Promise<Parite>;
+  /** Refaire le relevé tout de suite (il se fait seul toutes les cinq minutes). */
+  rapprocherMaintenant(): Promise<void>;
+  /** Le solde du relevé officiel de l'opérateur, avec son fichier déjà déposé. */
+  saisirReleve(floatId: number, solde: number, annonceLe: string, preuve: string, note?: string): Promise<void>;
+  /** Déposer le relevé d'un opérateur : image ou PDF, 10 Mo au plus ; rend son chemin. */
+  deposerReleve(floatId: number, fichier: File): Promise<string>;
+  lienReleve(chemin: string): Promise<string>;
 
   surChangement(cb: () => void): () => void;
 }

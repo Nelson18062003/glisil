@@ -1,3 +1,4 @@
+import type { PreuveDeReserve } from "./types";
 import type {
   DevisRapide,
   SensRapide,
@@ -85,6 +86,8 @@ export interface Guichet {
   renvoyerCodeNumero(id: string): Promise<Numero>;
   /** Les frais, pas et plafonds posés par l'équipe (parametres_publics) ; null s'ils ne se lisent pas. */
   parametres(): Promise<unknown>;
+  /** La preuve de réserve : floats, registre, chaîne — publique, elle se lit SANS compte. */
+  preuveDeReserve(): Promise<PreuveDeReserve>;
   retirerNumero(p: { id: string; codeSecret: string }): Promise<void>;
   demanderSortie(p: { montant: number; numeroId: string; cle: string; codeSecret: string; nom?: string }): Promise<Sortie>;
   sortie(reference: string): Promise<Sortie>;
