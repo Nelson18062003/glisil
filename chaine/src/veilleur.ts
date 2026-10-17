@@ -20,7 +20,7 @@
 import { formatUnits, keccak256, parseUnits, toUtf8Bytes } from "ethers";
 import type { Actif, Appel, Chaine, MouvementJeton } from "./chaine.ts";
 import { versMoteur } from "./chaine.ts";
-import { CHAUD, deriver } from "./cles.ts";
+import { CHAUD, deriver, fiche } from "./cles.ts";
 import type { Rpc } from "./moteur.ts";
 
 export type ConfigVeilleur = {
@@ -354,8 +354,9 @@ export class Veilleur {
     const usdt = await ch.solde("USDT", ch.chaud);
     const natif = await ch.solde("natif", ch.chaud);
     const dec = ch.decimales.USDT;
-    if (this.c.natifMinimum != null && natif < parseUnits(String(this.c.natifMinimum), ch.reseau === "trc20" ? 6 : 18)) {
-      this.alerte(`le wallet chaud ${ch.chaud} manque de ${ch.reseau === "trc20" ? "TRX" : "BNB"} pour les frais : il en reste ${formatUnits(natif, ch.reseau === "trc20" ? 6 : 18)}`);
+    const { natif: nomNatif, decimalesNatif } = fiche(ch.reseau);
+    if (this.c.natifMinimum != null && natif < parseUnits(String(this.c.natifMinimum), decimalesNatif)) {
+      this.alerte(`le wallet chaud ${ch.chaud} manque de ${nomNatif} pour les frais : il en reste ${formatUnits(natif, decimalesNatif)}`);
     }
     const attente: Retrait[] = await rpc("chaine_retraits_en_attente", { p_reseau: ch.reseau }).catch(() => []);
     const du = attente.filter((r) => r.actif === "USDT").reduce((s, r) => s + parseUnits(String(r.montant), dec), 0n);
@@ -403,7 +404,7 @@ export class Veilleur {
       p_etat: {
         chaud: ch.chaud,
         usdt_chaud: Number(formatUnits(await ch.solde("USDT", ch.chaud), ch.decimales.USDT)),
-        natif_chaud: Number(formatUnits(await ch.solde("natif", ch.chaud), ch.reseau === "trc20" ? 6 : 18)),
+        natif_chaud: Number(formatUnits(await ch.solde("natif", ch.chaud), fiche(ch.reseau).decimalesNatif)),
         froid: this.c.froid?.adresse ?? null,
         usdt_froid: this.c.froid && ch.adresseValable(this.c.froid.adresse) ? Number(formatUnits(await ch.solde("USDT", ch.adresseValable(this.c.froid.adresse)!), ch.decimales.USDT)) : null,
         plafond_chaud: this.c.froid?.plafondChaud ?? null,

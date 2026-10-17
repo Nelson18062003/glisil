@@ -1,5 +1,5 @@
 import type { Parite } from "./types";
-import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets } from "./types";
+import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets, ReseauRegistre } from "./types";
 
 /** LE GUICHET DE L'ADMINISTRATION : tout ce que les écrans demandent au moteur. */
 export interface GuichetAdmin {
@@ -66,6 +66,10 @@ export interface GuichetAdmin {
   journal(): Promise<LigneJournal[]>;
   /** Les wallets de la plateforme : ce que le veilleur de chaîne voit, et ce qu'on doit en face. */
   wallets(): Promise<Wallets>;
+  /** Le registre des réseaux : lesquels sont ouverts aux clients, lesquels pourraient l'être. */
+  reseaux(): Promise<ReseauRegistre[]>;
+  /** Ouvrir ou fermer un réseau aux clients (droit « parametres ») : le moteur refuse ce qui n'est pas prêt. */
+  activerReseau(id: string, actif: boolean): Promise<void>;
 
   /** La parité à trois colonnes (0016) : floats, registre, chaîne — et chaque ligne rapprochée. */
   parite(): Promise<Parite>;

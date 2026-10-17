@@ -14,7 +14,7 @@
 import { AbiCoder, decodeBase58, getBytes, hexlify, sha256, SigningKey, toBeHex, zeroPadValue } from "ethers";
 import type { Actif, Appel, Chaine, JournalBrut, MouvementJeton, Transfert } from "./chaine.ts";
 import { mouvementsDepuisJournaux, SUJETS } from "./chaine.ts";
-import { adresseTron, CHAUD, deriver } from "./cles.ts";
+import { adresseTron, CHAUD, deriver, type Reseau } from "./cles.ts";
 
 export const ABI = AbiCoder.defaultAbiCoder();
 const TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
@@ -151,6 +151,8 @@ export class NoeudTron {
 /* --------------------------------------------------------------- la chaîne */
 export type ConfigTron = {
   noeud: string; usdt: string; xafe: string; confirmations: number; graine: string; cleApi?: string;
+  /** trc20 par défaut : le réseau décide du compte de dérivation */
+  reseau?: Reseau;
   /** le TRX qu'une transaction de contrat peut brûler au plus, en sun (défaut 100 TRX) */
   plafondFraisSun?: number;
   /** durée de vie d'une transaction signée, en secondes (défaut 120) : la NÔTRE, pas celle du nœud */
@@ -158,7 +160,7 @@ export type ConfigTron = {
 };
 
 export class ChaineTron implements Chaine {
-  readonly reseau = "trc20" as const;
+  readonly reseau: Reseau;
   readonly confirmations: number;
   readonly chaud: string;
   readonly noeud: NoeudTron;
@@ -168,10 +170,11 @@ export class ChaineTron implements Chaine {
 
   constructor(c: ConfigTron) {
     this.c = c;
+    this.reseau = c.reseau ?? "trc20";
     this.confirmations = c.confirmations;
     this.graine = c.graine;
     this.noeud = new NoeudTron(c.noeud, c.cleApi);
-    this.chaud = deriver(c.graine, "trc20", CHAUD).adresse;
+    this.chaud = deriver(c.graine, this.reseau, CHAUD).adresse;
   }
 
   private contrat(actif: Actif) { return actif === "USDT" ? this.c.usdt : this.c.xafe; }

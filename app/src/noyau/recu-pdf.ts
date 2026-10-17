@@ -13,7 +13,7 @@
 import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
 import QRCode from "qrcode";
 import type { TraceChaine } from "../guichet/types";
-import { etatDeTrace, lienContrat, lienTransaction, NOMS_RESEAUX } from "./chaine";
+import { etatDeTrace, lienContrat, lienTransaction, nomsReseau } from "./chaine";
 
 export type RecuDonnees = {
   reference: string;
@@ -135,7 +135,7 @@ export async function fabriquerRecu(d: RecuDonnees): Promise<Uint8Array> {
     const largeurValeur = L - 2 * M - 140 - 96;
     const champs: { label: string; morceaux: string[]; police: PDFFont; taille: number }[] = [];
     const champ = (label: string, valeur: string, police = mono, taille = 9) => champs.push({ label, morceaux: couper(valeur, police, taille, largeurValeur), police, taille });
-    champ("Réseau", `${NOMS_RESEAUX[t.reseau].nom}${t.essai ? " (réseau d'essai)" : ""}`, normal, 10);
+    champ("Réseau", `${nomsReseau(t.reseau).nom}${t.essai ? " (réseau d'essai)" : ""}`, normal, 10);
     champ("Opération", `${t.operation === "frapper" ? "Frappe" : "Destruction"} de ${t.montant.toLocaleString("fr-FR")} XAFe`, normal, 10);
     champ("Transaction", t.txHash ?? "pas encore signée");
     if (t.bloc != null) champ("Bloc", t.bloc.toLocaleString("fr-FR"), normal, 10);
@@ -159,7 +159,7 @@ export async function fabriquerRecu(d: RecuDonnees): Promise<Uint8Array> {
     }
     if (lien) {
       qr(page, lien, L - M - 112, debutChamps - 104, 112);
-      aDroite(`Scannez : la transaction sur ${NOMS_RESEAUX[t.reseau].explorateur}`, L - M, debutChamps - 116, 7.5, normal, GRIS);
+      aDroite(`Scannez : la transaction sur ${nomsReseau(t.reseau).explorateur}`, L - M, debutChamps - 116, 7.5, normal, GRIS);
     }
     y = haut - hauteur - 8;
   }

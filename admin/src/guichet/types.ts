@@ -141,8 +141,14 @@ export type EtatChaine = {
   froid: string | null; usdt_froid: number | null; plafond_chaud: number | null; garder_chaud: number | null;
   a_inscrire: string[]; alertes: string[];
 };
+/** Un réseau du registre (0018) : ouvert aux clients ou non, configuré, lisible par un veilleur. */
+export type ReseauRegistre = {
+  id: string; nom: string; norme: string; famille: "evm" | "tron" | "solana"; chain_id: number | null; natif: string;
+  actif: boolean; maison: boolean; configure: boolean; lisible: boolean; explorateur: string | null; contrat: string | null; note: string | null;
+  adresses_attribuees: number; retraits_en_cours: number;
+};
 export type ReseauWallets = {
-  reseau: "bep20" | "trc20"; etat: EtatChaine | null; maj_le: string | null; muet: boolean;
+  reseau: string; nom?: string; actif?: boolean; etat: EtatChaine | null; maj_le: string | null; muet: boolean;
   adresses_attribuees: number; adresses_libres: number; retraits_en_cours: number; retraits_remplaces: number; curseur: number | null;
 };
 export type Orphelin = { reseau: string; actif: string; adresse: string; montant: number; preuve: string; raison: string; vu_le: string };

@@ -7,7 +7,7 @@
  * vit. Il tourne quand l'application n'a pas de projet Supabase configuré.
  * Il n'a aucune valeur comptable : c'est une maquette qui répond.
  */
-import { achatMax, arrondi2, bandeDePrix, coutAuCarnet, decouperSortie, devisSurLeCarnet, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide, RAPIDE, SORTIES, fraisSortieManuelle } from "../noyau/argent";
+import { achatMax, adresseValide, arrondi2, bandeDePrix, coutAuCarnet, decouperSortie, devisSurLeCarnet, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide, RAPIDE, SORTIES, fraisSortieManuelle, infoReseau, RESEAUX, RESEAUX_OUVERTS } from "../noyau/argent";
 import { ErreurMoteur } from "../noyau/erreurs";
 import { emailNormalise, emailValide } from "../noyau/identite";
 import { numeroSaisi, operateurDuNumero, transactionIdNormalise, xaf as xafDe } from "../noyau/format";
@@ -1017,7 +1017,8 @@ export class GuichetDemo implements Guichet {
     let h = 0;
     for (const c of graine) h = (h * 31 + c.charCodeAt(0)) >>> 0;
     const hex = (n: number) => Array.from({ length: n }, (_, i) => ((h >> ((i * 5) % 28)) & 15).toString(16)).join("");
-    return reseau === "bep20" ? `0x${hex(20)}${hex(20)}` : `T${hex(16).toUpperCase()}${hex(17)}`;
+    if (!RESEAUX_OUVERTS.includes(reseau)) return null;   // comme le moteur : un réseau fermé ne montre pas d'adresse
+    return infoReseau(reseau).famille === "tron" ? `T${hex(16).toUpperCase()}${hex(17)}` : `0x${hex(20)}${hex(20)}`;
   }
 
   async demanderRetraitCrypto({ actif, reseau, adresse, montant, cle, codeSecret }: { actif: Actif; reseau: Reseau; adresse: string; montant: number; cle: string; codeSecret: string }) {
@@ -1025,7 +1026,8 @@ export class GuichetDemo implements Guichet {
     const deja = d.retraits.find((x) => (x as unknown as { cle?: string }).cle === cle);
     if (deja) return copie(deja);
     if (!(montant > 0)) throw new ErreurMoteur("montant invalide");
-    if (!(reseau === "bep20" ? /^0x[0-9a-fA-F]{40}$/.test(adresse) : /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(adresse))) throw new ErreurMoteur("adresse invalide");
+    if (!RESEAUX_OUVERTS.includes(reseau)) throw new ErreurMoteur(RESEAUX[reseau] ? "réseau pas encore ouvert" : "réseau inconnu");
+    if (!adresseValide(infoReseau(reseau).famille, adresse)) throw new ErreurMoteur("adresse invalide");
     this.exigerCode(d, codeSecret);
     const frais = actif === "USDT" ? 1 : 500;
     this.mouvement(d, actif, -(montant + frais), montant + frais);

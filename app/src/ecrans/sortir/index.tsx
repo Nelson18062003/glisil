@@ -18,7 +18,7 @@ import { Box, Button, CircularProgress, Divider, Stack, TextField, Typography } 
 import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useCompte, useGuichet, useNumeros, useOuvertures, useSoldes, useSortie } from "../../guichet";
-import { decouperSortie, FRAIS, fraisSortieManuelle, montantValide, operateur as opDe } from "../../noyau/argent";
+import { decouperSortie, FRAIS, fraisSortieManuelle, montantValide, nomsDesReseaux, operateur as opDe } from "../../noyau/argent";
 import { apresFrappe, duree, jourRelatif, montantDepuisSaisie, numeroEnTranches, pourcent, quand, xaf } from "../../noyau/format";
 import { parcours, useParcours } from "../../navigation/parcours";
 import { Amount, Attente, Card, Chips, Dot, EtatVide, FeuilleErreur, Keypad, Line, List, Points, Row, Screen, Squelette, Success } from "../../ui";
@@ -98,7 +98,7 @@ export function SortirMontant() {
       <Keypad onKey={(k) => setSaisie(apresFrappe(saisie, k))} />
       <Button variant="contained" disabled={!ok} onClick={() => { poser({ montant }); navigate("/sortir/destination"); }}>Continuer</Button>
       {/* l'autre façon de sortir ses XAFe : vers son propre wallet, sur la chaîne */}
-      {ouvert.cryptoRetraits && <Button variant="text" startIcon={<AccountBalanceWalletOutlined />} component={Link} to="/crypto/retirer/XAFe/adresse">Ou vers mon wallet · BEP20 ou TRC20</Button>}
+      {ouvert.cryptoRetraits && <Button variant="text" startIcon={<AccountBalanceWalletOutlined />} component={Link} to="/crypto/retirer/XAFe/adresse">{`Ou vers mon wallet · ${nomsDesReseaux()}`}</Button>}
     </Screen>
   );
 }

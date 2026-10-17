@@ -10,7 +10,7 @@ import { Box, Button, Chip, Collapse, IconButton, Link as LienMui, Stack, Typogr
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { TraceChaine } from "../guichet/types";
-import { etatDeTrace, hashCourt, lienTransaction, NOMS_RESEAUX } from "../noyau/chaine";
+import { etatDeTrace, hashCourt, lienTransaction, nomsReseau } from "../noyau/chaine";
 import { tones } from "../theme";
 import { Card, JetonXafe, Line } from "./index";
 
@@ -39,13 +39,13 @@ export function SurLaChaine({ traces }: { traces: TraceChaine[] | undefined }) {
               </Typography>
             </Collapse>
             <Typography variant="body2">{e.phrase}</Typography>
-            <Line label="Réseau" value={`${NOMS_RESEAUX[t.reseau].nom}${t.essai ? " · essai" : ""}`} />
+            <Line label="Réseau" value={`${nomsReseau(t.reseau).nom}${t.essai ? " · essai" : ""}`} />
             <Line label="Transaction" value={t.txHash ? hashCourt(t.txHash) : "pas encore signée"} mono />
             {t.bloc != null && <Line label="Bloc" value={t.bloc.toLocaleString("fr-FR")} />}
             <Line label="Référence scellée" value={t.reference} mono />
             {lien && (
               <Button variant="outlined" href={lien} target="_blank" rel="noreferrer" endIcon={<OpenInNewRounded />}>
-                Voir sur {NOMS_RESEAUX[t.reseau].explorateur}
+                Voir sur {nomsReseau(t.reseau).explorateur}
               </Button>
             )}
             {t.essai && <Typography variant="caption">Réseau d'essai : sur la blockchain, ces jetons n'ont pas encore de valeur ; votre solde Glisil, lui, est réel.</Typography>}

@@ -8,10 +8,10 @@
  *       deux lieux différents. Rien n'est écrit sur le disque.
  *
  *   npm run mise-en-service -- adresses             (XAFE_GRAINE)
- *       Les wallets chauds d'une graine existante (indice 0), BEP20 et TRC20.
+ *       Les wallets chauds d'une graine existante (indice 0), un par réseau.
  *
- *   npm run mise-en-service -- deployer --reseau bep20|trc20 --chaud <adresse> [--usdt-essai] [--natif 0.05]
- *       (ADMIN_CLE, BEP20_RPC ou TRC20_NOEUD) Sur un réseau d'ESSAI : déploie
+ *   npm run mise-en-service -- deployer --reseau bep20|trc20|erc20|base|polygon --chaud <adresse> [--usdt-essai] [--natif 0.05]
+ *       (ADMIN_CLE, et le nœud du réseau : BEP20_RPC, TRC20_NOEUD, BASE_RPC…) Sur un réseau d'ESSAI : déploie
  *       le contrat XAFe (l'admin est la clé ADMIN_CLE), un USDT d'essai si
  *       demandé, donne au wallet chaud les rôles FRAPPEUR et DESTRUCTEUR, lui
  *       envoie de quoi payer les frais, et écrit la configuration du veilleur.
@@ -36,18 +36,19 @@ import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { formatUnits, Mnemonic, parseUnits } from "ethers";
 import type { Actif, Chaine } from "./chaine.ts";
-import { CHAUD, deriver, graineValide, type Reseau } from "./cles.ts";
+import { CHAUD, deriver, estReseau, fiche, graineValide, prefixe, RESEAUX, variableDuNoeud, type Reseau } from "./cles.ts";
 import { ChaineEvm } from "./evm.ts";
 import { moteur } from "./moteur.ts";
 import { aLeRole, donnerLesRoles, inscrire, ROLES, signataireEvm, signataireTron, type Artefact, type Signataire } from "./signataire.ts";
 import { ChaineTron, vingtOctets } from "./tron.ts";
 
 const env = process.env;
-const NATIF: Record<Reseau, { nom: string; decimales: number; defaut: string; minimum: string }> = {
-  bep20: { nom: "BNB", decimales: 18, defaut: "0.05", minimum: "0.01" },
-  trc20: { nom: "TRX", decimales: 6, defaut: "200", minimum: "50" },
+const NATIF = (r: Reseau) => {
+  const f = fiche(r);
+  return { nom: f.natif, decimales: f.decimalesNatif, defaut: f.natifEssai, minimum: String(f.natifMinimum) };
 };
-const PREFIXE: Record<Reseau, string> = { bep20: "BEP20", trc20: "TRC20" };
+const PREFIXE = prefixe;
+const TOUS = Object.keys(RESEAUX) as Reseau[];
 
 function options(args: string[]) {
   const o: Record<string, string | true> = {};
@@ -64,16 +65,22 @@ function options(args: string[]) {
 const arreter = (texte: string): never => { console.error(`✗ ${texte}`); process.exit(1); };
 const reseauDe = (o: Record<string, string | true>): Reseau => {
   const r = o.reseau;
-  if (r !== "bep20" && r !== "trc20") arreter("--reseau bep20 ou --reseau trc20");
+  if (!estReseau(r)) arreter(`--reseau ${TOUS.join(" | ")}`);
   return r as Reseau;
 };
-const valable = (r: Reseau, a: string) => r === "bep20" ? /^0x[0-9a-fA-F]{40}$/.test(a) : vingtOctets(a) !== null;
+const valable = (r: Reseau, a: string) => fiche(r).famille === "evm" ? /^0x[0-9a-fA-F]{40}$/.test(a) : vingtOctets(a) !== null;
 
 function signataire(r: Reseau): Signataire {
   const cle = env.ADMIN_CLE ?? arreter("ADMIN_CLE manque (la clé de l'admin d'ESSAI — en production, un wallet matériel)");
-  if (r === "bep20") return signataireEvm(env.BEP20_RPC ?? arreter("BEP20_RPC manque (BSC testnet : https://bsc-testnet-rpc.publicnode.com)"), cle);
-  return signataireTron(env.TRC20_NOEUD ?? arreter("TRC20_NOEUD manque (Nile : https://nile.trongrid.io)"), cle, env.TRC20_CLE_API);
+  const noeud = env[variableDuNoeud(r)] ?? arreter(`${variableDuNoeud(r)} manque${ESSAIS[r] ? ` (réseau d'essai : ${ESSAIS[r]})` : ""}`);
+  if (fiche(r).famille === "evm") return signataireEvm(noeud, cle, r);
+  return signataireTron(noeud, cle, env.TRC20_CLE_API);
 }
+/** un nœud public du réseau d'ESSAI, pour commencer */
+const ESSAIS: Partial<Record<Reseau, string>> = {
+  bep20: "https://bsc-testnet-rpc.publicnode.com", trc20: "https://nile.trongrid.io",
+  erc20: "https://ethereum-sepolia-rpc.publicnode.com", base: "https://sepolia.base.org", polygon: "https://rpc-amoy.polygon.technology",
+};
 function artefact(chemin: string): Artefact {
   const f = new URL(`../../contracts/artifacts/contracts/${chemin}`, import.meta.url);
   try { return JSON.parse(readFileSync(f, "utf8")); } catch { return arreter(`contrat non compilé (${chemin}) : cd contracts && npx hardhat compile`); }
@@ -90,25 +97,23 @@ function graine() {
   console.log("  que dans la configuration du veilleur. Qui a ces mots peut vider tous les wallets.\n");
   for (let i = 0; i < 24; i += 4) console.log("  " + liste.slice(i, i + 4).map((m, j) => `${String(i + j + 1).padStart(2)}. ${m.padEnd(10)}`).join("  "));
   console.log("\n  Les wallets chauds de cette graine (à donner pour les rôles et les frais) :");
-  console.log(`    BEP20 : ${deriver(mots, "bep20", CHAUD).adresse}`);
-  console.log(`    TRC20 : ${deriver(mots, "trc20", CHAUD).adresse}`);
+  for (const r of TOUS) console.log(`    ${PREFIXE(r).padEnd(7)} : ${deriver(mots, r, CHAUD).adresse}`);
   console.log("\n  Effacez ensuite l'écran (clear) et l'historique du terminal.\n");
 }
 
 function adresses() {
   const g = env.XAFE_GRAINE ?? "";
   if (!graineValide(g)) arreter("XAFE_GRAINE manque ou n'est pas une graine valide");
-  console.log(`BEP20 chaud : ${deriver(g, "bep20", CHAUD).adresse}`);
-  console.log(`TRC20 chaud : ${deriver(g, "trc20", CHAUD).adresse}`);
+  for (const r of TOUS) console.log(`${PREFIXE(r).padEnd(7)} chaud : ${deriver(g, r, CHAUD).adresse}`);
 }
 
 /* -------------------------------------------------------------- deployer */
 async function deployer(o: Record<string, string | true>) {
   const r = reseauDe(o);
   const chaud = String(o.chaud ?? "");
-  if (!valable(r, chaud)) arreter(`--chaud : l'adresse du wallet chaud ${PREFIXE[r]} (donnée par « graine » ou « adresses »)`);
+  if (!valable(r, chaud)) arreter(`--chaud : l'adresse du wallet chaud ${PREFIXE(r)} (donnée par « graine » ou « adresses »)`);
   const s = signataire(r);
-  const n = NATIF[r];
+  const n = NATIF(r);
   const natif = parseUnits(String(o.natif === undefined || o.natif === true ? n.defaut : o.natif), n.decimales);
   const solde = await s.soldeNatif();
   console.log(`· admin ${s.adresse} : ${formatUnits(solde, n.decimales)} ${n.nom}`);
@@ -119,14 +124,16 @@ async function deployer(o: Record<string, string | true>) {
   console.log(`✓ contrat XAFe déployé : ${xafe} (admin ${s.adresse}, plafond ${formatUnits(plafond, 6)} XAFe)`);
   let usdt = String(o.usdt ?? "");
   if (o["usdt-essai"]) {
-    usdt = await s.deployer(artefact("essai/UsdtEssai.sol/UsdtEssai.json"), ["uint8"], [r === "bep20" ? 18 : 6]);
-    console.log(`✓ USDT d'essai déployé : ${usdt} (${r === "bep20" ? 18 : 6} décimales ; « frapper(adresse, montant) » en donne à qui veut)`);
+    usdt = await s.deployer(artefact("essai/UsdtEssai.sol/UsdtEssai.json"), ["uint8"], [Math.max(...fiche(r).decimalesUsdt)]);
+    console.log(`✓ USDT d'essai déployé : ${usdt} (${Math.max(...fiche(r).decimalesUsdt)} décimales ; « frapper(adresse, montant) » en donne à qui veut)`);
   }
   const donnes = await donnerLesRoles(s, xafe, chaud);
   console.log(`✓ wallet chaud ${chaud} : rôles ${donnes.join(" et ") || "déjà donnés"}`);
   await s.envoyerNatif(chaud, natif);
   console.log(`✓ ${formatUnits(natif, n.decimales)} ${n.nom} envoyés au chaud pour les frais`);
-  console.log(`\nConfiguration du veilleur :\n  ${PREFIXE[r]}_${r === "bep20" ? "RPC" : "NOEUD"}=${r === "bep20" ? env.BEP20_RPC : env.TRC20_NOEUD}\n  ${PREFIXE[r]}_XAFE=${xafe}\n  ${PREFIXE[r]}_USDT=${usdt || "<le contrat USDT du réseau>"}`);
+  console.log(`\nConfiguration du veilleur :\n  ${variableDuNoeud(r)}=${env[variableDuNoeud(r)]}\n  ${PREFIXE(r)}_XAFE=${xafe}\n  ${PREFIXE(r)}_USDT=${usdt || "<le contrat USDT du réseau>"}`);
+  console.log(`\nDans la base : le paramètre « chaine » reçoit { "${r}": { "noeud", "xafe", "usdt" } } ; le veilleur s'y met tout seul.`);
+  console.log(`Le réseau reste FERMÉ aux clients jusqu'à ce que l'équipe l'ouvre (admin_activer_reseau('${r}', true)).`);
 }
 
 async function roles(o: Record<string, string | true>) {
@@ -168,21 +175,19 @@ async function verifier() {
   if (!graineValide(g)) { console.log(`✗ ${echecs} point(s) à reprendre`); process.exit(1); }
 
   const reseaux: { r: Reseau; ch: () => Chaine; s: () => Signataire }[] = [];
-  if (env.BEP20_RPC) reseaux.push({
-    r: "bep20",
-    ch: () => new ChaineEvm({ rpcUrl: env.BEP20_RPC!, usdt: env.BEP20_USDT ?? "", xafe: env.BEP20_XAFE ?? "", graine: g, confirmations: Number(env.BEP20_CONFIRMATIONS ?? 15) }),
-    // une clé jetable : on ne fait que LIRE (rôles), rien n'est signé
-    s: () => signataireEvm(env.BEP20_RPC!, "0x" + "11".repeat(32)),
-  });
-  if (env.TRC20_NOEUD) reseaux.push({
-    r: "trc20",
-    ch: () => new ChaineTron({ noeud: env.TRC20_NOEUD!, usdt: env.TRC20_USDT ?? "", xafe: env.TRC20_XAFE ?? "", graine: g, confirmations: Number(env.TRC20_CONFIRMATIONS ?? 20), cleApi: env.TRC20_CLE_API }),
-    s: () => signataireTron(env.TRC20_NOEUD!, "11".repeat(32), env.TRC20_CLE_API),
-  });
-  v(reseaux.length > 0, "au moins un réseau configuré (BEP20_RPC, TRC20_NOEUD)");
+  for (const r of TOUS) {
+    const noeud = env[variableDuNoeud(r)], P = PREFIXE(r), f = fiche(r);
+    if (!noeud) continue;
+    const c = { reseau: r, usdt: env[`${P}_USDT`] ?? "", xafe: env[`${P}_XAFE`] ?? "", graine: g, confirmations: Number(env[`${P}_CONFIRMATIONS`] ?? f.confirmations) };
+    reseaux.push(f.famille === "evm"
+      // une clé jetable : on ne fait que LIRE (rôles), rien n'est signé
+      ? { r, ch: () => new ChaineEvm({ ...c, rpcUrl: noeud }), s: () => signataireEvm(noeud, "0x" + "11".repeat(32), r) }
+      : { r, ch: () => new ChaineTron({ ...c, noeud, cleApi: env.TRC20_CLE_API }), s: () => signataireTron(noeud, "11".repeat(32), env.TRC20_CLE_API) });
+  }
+  v(reseaux.length > 0, `au moins un réseau configuré (${TOUS.map(variableDuNoeud).join(", ")})`);
 
   for (const { r, ch, s } of reseaux) {
-    const P = PREFIXE[r], n = NATIF[r];
+    const P = PREFIXE(r), n = NATIF(r);
     console.log(`· ${P}`);
     const contrats = [env[`${P}_USDT`] ?? "", env[`${P}_XAFE`] ?? ""];
     v(contrats.every((c) => valable(r, c)), `${P}_USDT et ${P}_XAFE sont des adresses ${P}`, contrats.join(" "));
@@ -195,7 +200,7 @@ async function verifier() {
     v(dem === true, `les contrats répondent : USDT ${chaine.decimales.USDT} décimales, XAFe ${chaine.decimales.XAFe}`, String(dem));
     if (dem !== true) continue;
     v(chaine.decimales.XAFe === 6, "XAFe a 6 décimales");
-    v(r === "trc20" ? chaine.decimales.USDT === 6 : [6, 18].includes(chaine.decimales.USDT), `l'USDT a les décimales du réseau (${r === "trc20" ? "6" : "18 pour le BSC-USD"})`);
+    v(fiche(r).decimalesUsdt.includes(chaine.decimales.USDT), `l'USDT a les décimales du réseau (${fiche(r).decimalesUsdt.join(" ou ")})`);
     const lecteur = s();
     for (const role of Object.values(ROLES)) {
       const a = await aLeRole(lecteur, contrats[1], role, chaine.chaud).catch(() => false);

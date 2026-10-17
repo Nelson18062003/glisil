@@ -20,7 +20,7 @@ export type Parcours = {
 const INITIAL: Parcours = {
   entrer: { operateur: null, montant: 0 },
   sortir: { montant: 0, numeroId: null, nom: "" },
-  crypto: { actif: "USDT", reseau: "bep20", adresse: "", montant: 0 },
+  crypto: { actif: "USDT", reseau: "", adresse: "", montant: 0 },
   marche: { cote: "achat", type: "limite", prix: "", quantite: "" },
   retour: null,
 };

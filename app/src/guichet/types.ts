@@ -6,7 +6,8 @@
 
 export type Actif = "XAFe" | "USDT";
 export type IdOperateur = "mtn" | "om";
-export type Reseau = "bep20" | "trc20";
+/** L'identifiant d'un réseau du registre (bep20, trc20, base…) : la liste vient du moteur (0018). */
+export type Reseau = string;
 
 export type Compte = {
   id: string;

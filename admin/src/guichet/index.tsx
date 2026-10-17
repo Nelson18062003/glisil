@@ -40,6 +40,7 @@ export function useEquipe() { const g = useGuichet(); return useQuery({ queryKey
 export function useMarche() { const g = useGuichet(); return useQuery({ queryKey: ["marche"], queryFn: () => g.marche(), refetchInterval: 5_000 }); }
 export function useParametres() { const g = useGuichet(); return useQuery({ queryKey: ["parametres"], queryFn: () => g.parametres() }); }
 export function useJournal() { const g = useGuichet(); return useQuery({ queryKey: ["journal"], queryFn: () => g.journal(), refetchInterval: 15_000 }); }
+export function useReseaux() { const g = useGuichet(); return useQuery({ queryKey: ["reseaux"], queryFn: () => g.reseaux() }); }
 export function useWallets() { const g = useGuichet(); return useQuery({ queryKey: ["wallets"], queryFn: () => g.wallets(), refetchInterval: 15_000 }); }
 /** La parité à trois colonnes : relue souvent, c'est la question qui compte. */
 export function useParite() { const g = useGuichet(); return useQuery({ queryKey: ["parite"], queryFn: () => g.parite(), refetchInterval: 20_000 }); }

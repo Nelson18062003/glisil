@@ -30,13 +30,13 @@ export interface Signataire {
 }
 
 /* ------------------------------------------------------------------ EVM */
-export function signataireEvm(rpcUrl: string, cle: string): Signataire {
+export function signataireEvm(rpcUrl: string, cle: string, reseau: Reseau = "bep20"): Signataire {
   const fournisseur = new JsonRpcProvider(rpcUrl, undefined, { staticNetwork: true, pollingInterval: 300, cacheTimeout: -1 });
   const w = new Wallet(cle, fournisseur);
   const iface = (signature: string) => new Interface([`function ${signature}`]);
   const nom = (signature: string) => signature.slice(0, signature.indexOf("("));
   return {
-    reseau: "bep20",
+    reseau,
     adresse: w.address,
     pourAbi: (a) => a,
     async deployer(artefact, _types, valeurs) {

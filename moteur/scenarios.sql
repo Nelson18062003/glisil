@@ -2175,6 +2175,94 @@ begin
 end $$;
 rollback;
 
+-- 11.40 · le registre des réseaux (0018). Un réseau du registre, et lui seul,
+-- entre dans une adresse, un retrait, la réserve. Un réseau FERMÉ ne montre pas
+-- d'adresse et refuse un retrait ; une adresse a la forme de SA famille (une
+-- adresse 0x vaut pour Base comme pour BSC, jamais pour Tron). Ouvrir un réseau
+-- exige qu'un veilleur sache le lire et que le contrat XAFe y soit posé ; le
+-- réseau maison ne se ferme pas. Le veilleur reçoit chaque réseau configuré.
+begin;
+select _mouvement('22222222-2222-2222-2222-222222222222', 'USDT', 500, 0, 'essai', 'essai', '11.40');
+update parametres set valeur = jsonb_set(valeur, '{retraits_ouverts}', 'true') where cle = 'crypto';
+do $$
+declare r jsonb; c jsonb;
+begin
+  -- un réseau que le registre ne connaît pas n'entre nulle part, même écrit à la main
+  begin
+    insert into adresses_libres (actif, reseau, adresse, indice) values ('USDT', 'dogecoin', 'D' || md5('x'), 1);
+    raise exception 'aurait dû refuser';
+  exception when foreign_key_violation then null; end;
+
+  -- l'écran ne propose que les réseaux ouverts, le maison en premier
+  perform set_config('xafe.compte', '22222222-2222-2222-2222-222222222222', true);
+  r := parametres_publics() -> 'crypto' -> 'reseaux';
+  assert (select array_agg(x ->> 'id' order by o) from jsonb_array_elements(r) with ordinality t(x, o)) = array['bep20', 'trc20'], r;
+  assert (r -> 0 ->> 'maison')::boolean and not (r -> 1 ->> 'maison')::boolean, r;
+
+  -- Base est au registre, mais fermé : pas d'adresse, pas de retrait
+  insert into adresses_libres (actif, reseau, adresse, indice) values ('USDT', 'base', '0xbA5e00000000000000000000000000000000ba5e', 0);
+  assert adresse_depot('USDT', 'base') is null, 'réseau fermé : aucune adresse';
+  begin
+    perform demander_retrait_crypto('USDT', 'base', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 10, null, '1357');
+    raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'réseau pas encore ouvert', sqlerrm; end;
+  begin
+    perform demander_retrait_crypto('USDT', 'dogecoin', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 10, null, '1357');
+    raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'réseau inconnu', sqlerrm; end;
+
+  -- l'équipe ouvre Base : refusé tant que le contrat XAFe n'y est pas posé
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000003', true);   -- le support : voit, ne règle pas
+  begin perform admin_activer_reseau('base', true); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'accès non autorisé', sqlerrm; end;
+  assert jsonb_array_length(admin_reseaux()) = 6, 'le support voit le registre';
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);   -- le super admin
+  begin perform admin_activer_reseau('base', true); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'réseau pas configuré', sqlerrm; end;
+  -- Solana ne s'ouvre pas, même configuré : aucun veilleur ne sait le lire
+  update parametres set valeur = valeur || '{"solana": {"xafe": "So1anaXafe1111111111111111111111111111111"}, "base": {"xafe": "0xbase", "noeud": "https://base.example"}}' where cle = 'chaine';
+  begin perform admin_activer_reseau('solana', true); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'réseau pas encore lisible', sqlerrm; end;
+  -- le réseau maison ne se ferme pas
+  begin perform admin_activer_reseau('bep20', false); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'le réseau maison ne se ferme pas', sqlerrm; end;
+  r := admin_activer_reseau('base', true);
+  assert (r ->> 'actif')::boolean, r;
+  assert exists (select 1 from journal_admin where action = 'ouvrir_reseau' and cible = 'base'), 'l''ouverture se journalise';
+
+  -- le veilleur reçoit Base, avec sa famille et son compte de dérivation ; pas Solana
+  c := chaine_configuration() -> 'reseaux';
+  assert c -> 'base' ->> 'famille' = 'evm' and (c -> 'base' ->> 'compte_hd')::int = 2 and c -> 'base' ->> 'noeud' = 'https://base.example', c;
+  assert not (c ? 'solana'), 'un réseau qu''aucun veilleur ne lit ne lui est pas donné';
+  assert (planifier_veilleurs() -> 'reseaux') ? 'base' and not ((planifier_veilleurs() -> 'reseaux') ? 'solana'), planifier_veilleurs();
+
+  -- ouvert, Base donne son adresse et accepte un retrait — une adresse 0x, pas une adresse Tron
+  perform set_config('xafe.compte', '22222222-2222-2222-2222-222222222222', true);
+  assert adresse_depot('USDT', 'base') = '0xbA5e00000000000000000000000000000000ba5e', 'Base ouvert : l''adresse préparée';
+  begin
+    perform demander_retrait_crypto('USDT', 'base', 'TPL66VK2gCXNCD7EJg9pgJRfqcRazjhUZY', 10, null, '1357');
+    raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'adresse invalide', sqlerrm; end;
+  r := demander_retrait_crypto('USDT', 'base', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 10, 'k-11.40', '1357');
+  assert r ->> 'reseau' = 'base' and r ->> 'etat' = 'en_attente', r;
+  assert jsonb_array_length(chaine_retraits_a_envoyer('base')) = 1, 'le veilleur de Base le voit';
+  assert (select array_agg(x ->> 'id' order by o) from jsonb_array_elements(parametres_publics() -> 'crypto' -> 'reseaux') with ordinality t(x, o))
+         = array['bep20', 'trc20', 'base'], parametres_publics() -> 'crypto' -> 'reseaux';
+  assert _explorateur('base') = 'https://sepolia.basescan.org', 'réseau d''essai : l''explorateur d''essai';
+
+  -- la parité compte chaque réseau où le contrat est posé
+  assert (select array_agg(x ->> 'reseau') from jsonb_array_elements(_parite_json(false) -> 'contrats') x) @> array['base'], _parite_json(false) -> 'contrats';
+
+  -- fermé à nouveau : plus d'adresse ni de retrait neuf, mais le retrait déjà demandé part toujours
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);
+  perform admin_activer_reseau('base', false);
+  perform set_config('xafe.compte', '22222222-2222-2222-2222-222222222222', true);
+  assert adresse_depot('USDT', 'base') is null, 'fermé : l''adresse ne se montre plus';
+  assert jsonb_array_length(chaine_retraits_a_envoyer('base')) = 1, 'fermer n''abandonne pas un retrait en route';
+  raise notice '✓ 11.40 le registre des réseaux : un réseau inconnu n''entre nulle part ; fermé, pas d''adresse ni de retrait ; une adresse a la forme de sa famille ; ouvrir exige un veilleur et un contrat ; le maison ne se ferme pas ; le veilleur et la parité suivent le registre';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

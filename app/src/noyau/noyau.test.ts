@@ -173,6 +173,38 @@ test("le réseau se lit dans l'adresse, sans recouvrement", async () => {
   assert.equal(reseauDe("bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh"), null, "une adresse Bitcoin n'est ni l'une ni l'autre");
 });
 
+test("les réseaux viennent du moteur : une adresse 0x vaut pour chaque réseau EVM ouvert, et l'écran ne choisit pas", async () => {
+  const { appliquerParametres, reseauDe, reseauxPour, reseauxOuverts, infoReseau, nomsDesReseaux } = await import("./argent");
+  const { lienTransaction, lienContrat, nomsReseau } = await import("./chaine");
+  const bep20 = { id: "bep20", nom: "BNB Smart Chain", norme: "BEP20", famille: "evm", natif: "BNB", confirmations: 15, maison: true };
+  const trc20 = { id: "trc20", nom: "Tron", norme: "TRC20", famille: "tron", natif: "TRX", confirmations: 20, maison: false };
+  const base = { id: "base", nom: "Base", norme: "Base", famille: "evm", natif: "ETH", confirmations: 30, maison: false };
+  const evm = "0x7908cf9242fb2018f3487908cf9242fb2018f348";
+  try {
+    appliquerParametres({ crypto: { reseaux: [bep20, trc20, base] } });
+    assert.deepEqual(reseauxOuverts().map((r) => r.id), ["bep20", "trc20", "base"]);
+    assert.deepEqual(reseauxPour(evm).map((r) => r.id), ["bep20", "base"], "0x : BSC et Base");
+    assert.equal(reseauDe(evm), null, "deux possibles : au client de choisir, jamais l'écran");
+    assert.equal(reseauDe("TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE"), "trc20", "T… : Tron seul, pris d'office");
+    assert.equal(nomsDesReseaux(), "BEP20, TRC20 ou Base");
+    assert.equal(infoReseau("base").confirmations, 30);
+    assert.equal(nomsReseau("base").explorateur, "BaseScan");
+    assert.equal(lienTransaction("https://basescan.org", "base", "0xab"), "https://basescan.org/tx/0xab");
+    assert.equal(lienTransaction("https://tronscan.org/#", "trc20", "ab"), "https://tronscan.org/#/transaction/ab");
+    assert.equal(lienContrat("https://tronscan.org/#", "trc20", "T1"), "https://tronscan.org/#/token20/T1");
+    // une liste abîmée laisse celle d'avant, plutôt qu'un écran sans réseau
+    appliquerParametres({ crypto: { reseaux: [bep20, { id: "../x", famille: "evm" }] } });
+    assert.deepEqual(reseauxOuverts().map((r) => r.id), ["bep20", "trc20", "base"]);
+    // Base fermé : il sort de la liste, mais l'historique sait encore le nommer
+    appliquerParametres({ crypto: { reseaux: [bep20, trc20] } });
+    assert.equal(reseauDe(evm), "bep20", "un seul réseau EVM ouvert : la lecture redevient sûre");
+    assert.equal(infoReseau("base").nom, "Base");
+    assert.equal(infoReseau("inconnu").nom, "INCONNU", "un réseau jamais vu ne fait pas tomber l'écran");
+  } finally {
+    appliquerParametres({ crypto: { reseaux: [bep20, trc20] } });
+  }
+});
+
 test("la bande de prix est celle du moteur : au pas, vers l'intérieur", () => {
   assert.deepEqual(bandeDePrix("achat", 604.55), { min: 483.65, max: 665 });
   assert.deepEqual(bandeDePrix("vente", 600), { min: 540, max: 720 });

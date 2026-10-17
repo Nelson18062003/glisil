@@ -254,6 +254,23 @@ try {
   exiger(await page.locator('[data-tuile="Couverture"]').count() === 1, "la couverture des USDT dus est dite");
   await capturer("wallets");
 
+  etape("Réseaux : BSC maison ne se ferme pas, Solana ne s'ouvre pas, Base (contrat posé) s'ouvre après confirmation");
+  await voir("maison · la réserve");
+  await voir("pas encore de veilleur");
+  const ligneReseau = (nom) => page.locator("tr", { has: page.getByText(nom, { exact: true }) });
+  exiger(await ligneReseau("BNB Smart Chain").getByRole("button", { name: /^(Ouvrir|Fermer)$/ }).count() === 0, "le réseau maison n'a pas de bouton « Fermer »");
+  exiger(await ligneReseau("Solana").getByRole("button", { name: /^(Ouvrir|Fermer)$/ }).count() === 0, "Solana n'a pas de bouton « Ouvrir »");
+  exiger(await ligneReseau("Ethereum").getByRole("button", { name: /^(Ouvrir|Fermer)$/ }).count() === 0, "Ethereum, sans contrat, n'a pas de bouton « Ouvrir »");
+  await ligneReseau("Base").getByRole("button", { name: "Ouvrir" }).click();
+  await voir("Ouvrir Base aux clients ?");
+  await capturer("reseaux-ouvrir");
+  await page.getByRole("button", { name: "Ouvrir le réseau" }).click();
+  await ligneReseau("Base").getByRole("button", { name: "Fermer" }).waitFor();
+  await voir("ouvert aux clients");
+  await ligneReseau("Base").getByRole("button", { name: "Fermer" }).click();
+  await page.getByRole("button", { name: "Fermer le réseau" }).click();
+  await ligneReseau("Base").getByRole("button", { name: "Ouvrir" }).waitFor();
+
   etape("Parité : floats, registre, chaîne — et un relevé d'opérateur saisi");
   await page.goto(`${BASE}/parite`);
   await voir("La parité tient");

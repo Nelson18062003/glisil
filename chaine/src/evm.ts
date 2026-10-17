@@ -2,7 +2,7 @@
 import { Contract, getAddress, Interface, JsonRpcProvider, Transaction, zeroPadValue, type TransactionRequest } from "ethers";
 import type { Actif, Appel, Chaine, MouvementJeton, Transfert } from "./chaine.ts";
 import { mouvementsDepuisJournaux, SUJETS } from "./chaine.ts";
-import { CHAUD, deriver } from "./cles.ts";
+import { CHAUD, deriver, type Reseau } from "./cles.ts";
 
 export const ABI_JETON = [
   "event Transfer(address indexed from, address indexed to, uint256 value)",
@@ -19,10 +19,12 @@ export const ABI_JETON = [
 const IFACE = new Interface(ABI_JETON);
 const TRANSFER = IFACE.getEvent("Transfer")!.topicHash;
 
-export type ConfigEvm = { rpcUrl: string; usdt: string; xafe: string; confirmations: number; graine: string };
+export type ConfigEvm = { rpcUrl: string; usdt: string; xafe: string; confirmations: number; graine: string;
+  /** le réseau EVM : BSC par défaut, Ethereum, Base, Polygon… — il décide du compte de dérivation */
+  reseau?: Reseau };
 
 export class ChaineEvm implements Chaine {
-  readonly reseau = "bep20" as const;
+  readonly reseau: Reseau;
   readonly confirmations: number;
   readonly fournisseur: JsonRpcProvider;
   readonly chaud: string;
@@ -31,12 +33,13 @@ export class ChaineEvm implements Chaine {
   private graine: string;
 
   constructor(c: ConfigEvm) {
+    this.reseau = c.reseau ?? "bep20";
     this.confirmations = c.confirmations;
     this.graine = c.graine;
     // cacheTimeout -1 : ethers garde sinon 250 ms la réponse « pas de reçu », et un tour qui suit de près croit
     // jamais partie une transaction déjà minée — sur de l'argent, une réponse d'avant ne vaut rien
     this.fournisseur = new JsonRpcProvider(c.rpcUrl, undefined, { staticNetwork: true, pollingInterval: 500, cacheTimeout: -1 });
-    this.chaud = deriver(c.graine, "bep20", CHAUD).adresse;
+    this.chaud = deriver(c.graine, this.reseau, CHAUD).adresse;
     this.jetons = { USDT: new Contract(c.usdt, ABI_JETON, this.fournisseur), XAFe: new Contract(c.xafe, ABI_JETON, this.fournisseur) };
   }
 

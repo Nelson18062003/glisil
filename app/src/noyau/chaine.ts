@@ -4,22 +4,27 @@
  * reçu PDF et la page publique de la preuve.
  */
 import type { Reseau, TraceChaine } from "../guichet/types";
+import { infoReseau } from "./argent";
 
-export const NOMS_RESEAUX: Record<Reseau, { nom: string; explorateur: string }> = {
-  bep20: { nom: "BNB Smart Chain", explorateur: "BscScan" },
-  trc20: { nom: "Tron", explorateur: "Tronscan" },
+const EXPLORATEURS: Record<string, string> = {
+  bep20: "BscScan", trc20: "Tronscan", erc20: "Etherscan", base: "BaseScan", polygon: "PolygonScan", solana: "Solscan",
 };
 
-/** L'adresse d'une transaction dans l'explorateur du réseau (BscScan : /tx/, Tronscan : /transaction/). */
+/** Le nom d'un réseau pour un client (« BNB Smart Chain ») et celui de son explorateur (« BscScan »). */
+export function nomsReseau(reseau: Reseau): { nom: string; explorateur: string } {
+  return { nom: infoReseau(reseau).chaine, explorateur: EXPLORATEURS[reseau] ?? "l'explorateur" };
+}
+
+/** L'adresse d'une transaction dans l'explorateur du réseau (Tronscan : /transaction/, les autres : /tx/). */
 export function lienTransaction(explorateur: string | null | undefined, reseau: Reseau, tx: string | null | undefined): string | null {
   if (!explorateur || !tx) return null;
-  return `${explorateur.replace(/\/$/, "")}/${reseau === "trc20" ? "transaction" : "tx"}/${tx}`;
+  return `${explorateur.replace(/\/$/, "")}/${infoReseau(reseau).famille === "tron" ? "transaction" : "tx"}/${tx}`;
 }
 
 /** L'adresse du contrat XAFe dans l'explorateur : son offre totale s'y lit. */
 export function lienContrat(explorateur: string | null | undefined, reseau: Reseau, contrat: string | null | undefined): string | null {
   if (!explorateur || !contrat) return null;
-  return `${explorateur.replace(/\/$/, "")}/${reseau === "trc20" ? "token20" : "token"}/${contrat}`;
+  return `${explorateur.replace(/\/$/, "")}/${infoReseau(reseau).famille === "tron" ? "token20" : "token"}/${contrat}`;
 }
 
 /** « 0xbe6acf4f…57c917 » : assez pour reconnaître, pas assez pour encombrer. */
@@ -36,7 +41,7 @@ export function etatDeTrace(t: TraceChaine): EtatDeTrace {
   switch (t.etat) {
     case "confirme":
       return { titre: `XAFe ${verbe} sur la blockchain`, ton: "green",
-               phrase: `${t.bloc != null ? `Inscrit au bloc ${t.bloc.toLocaleString("fr-FR")}` : "Inscrit"} de ${NOMS_RESEAUX[t.reseau].nom}, sous la référence ${t.reference}.` };
+               phrase: `${t.bloc != null ? `Inscrit au bloc ${t.bloc.toLocaleString("fr-FR")}` : "Inscrit"} de ${nomsReseau(t.reseau).nom}, sous la référence ${t.reference}.` };
     case "envoye":
       return { titre: "En route vers la blockchain", ton: "blue", phrase: "La transaction est partie ; elle attend d'être confirmée par le réseau (moins d'une minute en général)." };
     case "echoue":

@@ -15,7 +15,7 @@ import { Link, Navigate, useParams } from "react-router-dom";
 import { useCompte, useHistorique, useOperation } from "../../guichet";
 import type { Operation } from "../../guichet/types";
 import type { RecuDonnees } from "../../noyau/recu-pdf";
-import { operateur as opDe, RESEAUX } from "../../noyau/argent";
+import { infoReseau, libelleReseau, operateur as opDe } from "../../noyau/argent";
 import { enTranches, heure, heureSecondes, jourRelatif, numeroEnTranches, prix as fPrix, quand, signe, usdt as fUsdt, xaf } from "../../noyau/format";
 import { tones, type Tone } from "../../theme";
 import { Card, Chips, EtatVide, Line, List, Row, Screen, Squelette } from "../../ui";
@@ -43,7 +43,7 @@ function apparence(o: Operation): { icone: JSX.Element; tone: Tone; titre: strin
       return { icone: <SwapHorizRounded />, tone: "blue", titre: `${d.cote === "achat" ? "Achat" : "Vente"}${d.rapide ? " rapide" : ""} ${fUsdt(d.executee || d.quantite)} USDT`, sousTitre: d.rapide ? `${heureOuEtat} · frais compris` : d.prixMoyen != null ? `${heureOuEtat} · à ${fPrix(d.prixMoyen)}` : d.prix != null ? `${heureOuEtat} · limite ${fPrix(d.prix)}` : heureOuEtat, droite: d.totalXafe > 0 ? signe(o.montant) : "—", couleur: o.montant > 0 && d.totalXafe > 0 ? tones.green.fg : undefined };
     }
     case "crypto":
-      return { icone: <CurrencyBitcoinRounded />, tone: "neutral", titre: `${o.montant > 0 ? "Dépôt" : "Retrait"} ${o.actif} · ${RESEAUX[o.detail.reseau].nom}`, sousTitre: heureOuEtat, droite: `${signe(o.montant, o.actif === "USDT" ? 2 : 0)} ${o.actif}`, couleur: o.montant > 0 ? tones.green.fg : undefined };
+      return { icone: <CurrencyBitcoinRounded />, tone: "neutral", titre: `${o.montant > 0 ? "Dépôt" : "Retrait"} ${o.actif} · ${infoReseau(o.detail.reseau).nom}`, sousTitre: heureOuEtat, droite: `${signe(o.montant, o.actif === "USDT" ? 2 : 0)} ${o.actif}`, couleur: o.montant > 0 ? tones.green.fg : undefined };
   }
 }
 
@@ -124,7 +124,7 @@ function donneesDuRecu(o: Operation, nom: string | null | undefined): Omit<RecuD
     montant = `${fUsdt(o.detail.executee)} USDT`;
     lignes.push(["Pour", `${xaf(o.detail.totalXafe)} XAFe`]);
   } else {
-    titre = `${o.montant > 0 ? "Dépôt" : "Retrait"} ${o.actif} · ${RESEAUX[o.detail.reseau].nom}`;
+    titre = `${o.montant > 0 ? "Dépôt" : "Retrait"} ${o.actif} · ${infoReseau(o.detail.reseau).nom}`;
     montant = `${o.montant > 0 ? "+" : ""}${enTranches(o.montant, o.actif === "USDT" ? 2 : 0)} ${o.actif}`;
     lignes.push(["Adresse", o.detail.adresse]);
     if ("txHash" in o.detail && o.detail.txHash) lignes.push(["Transaction", o.detail.txHash]);
@@ -210,7 +210,7 @@ export function HistoriqueDetail() {
 
       {o.nature === "crypto" && (
         <Card>
-          <Line label="Réseau" value={`${RESEAUX[o.detail.reseau].nom} · ${RESEAUX[o.detail.reseau].chaine}`} />
+          <Line label="Réseau" value={libelleReseau(infoReseau(o.detail.reseau))} />
           <Line label="Adresse" value={o.detail.adresse} mono />
           {"frais" in o.detail && <Line label="Frais" value={`${enTranches(o.detail.frais, o.actif === "USDT" ? 2 : 0)} ${o.actif}`} />}
           <Line label="Transaction" value={("txHash" in o.detail && o.detail.txHash) || "en attente"} mono />

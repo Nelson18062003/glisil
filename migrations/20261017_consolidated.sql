@@ -5927,3 +5927,851 @@ $sql$;
     raise notice '0016_parite.sql : appliquée';
   end if;
 end $consolide$;
+
+-- ─── 0017_regles_du_marche.sql (md5 ec04d3751f0e5f21aa922a7c93f5f895) ───
+-- déjà en place si : rejouable telle quelle
+do $consolide$
+begin
+  if false then
+    raise notice '0017_regles_du_marche.sql : déjà en place, rien à faire';
+  else
+    execute $sql$
+-- ╔════════════════════════════════════════════════════════════════════════╗
+-- ║  Glisil · 0017 · les règles du marché USDT/XAFe                         ║
+-- ║                                                                        ║
+-- ║  Le moteur apparie déjà au meilleur prix puis au premier arrivé, au    ║
+-- ║  prix de l'ordre qui attendait, un ordre entrant à la fois, les fonds  ║
+-- ║  bloqués à la pose. Il lui manquait les garde-fous qu'une bourse       ║
+-- ║  publie (la fiche « Trading Parameters » de Binance) :                 ║
+-- ║    · une TAILLE MAXIMALE par ordre, et un plafond pour un ordre au      ║
+-- ║      marché ;                                                          ║
+-- ║    · une BANDE DE PRIX : un ordre limite reste entre 80 % et 110 %     ║
+-- ║      (achat) / 90 % et 120 % (vente) du prix de référence — un doigt   ║
+-- ║      qui glisse ne vend pas à 10 XAFe ;                                ║
+-- ║    · une BANDE D'EXÉCUTION : un ordre au marché ne s'exécute pas à     ║
+-- ║      plus de 5 % de la référence ; le reste est annulé ;                ║
+-- ║    · un NOMBRE D'ORDRES OUVERTS par compte (200) ;                     ║
+-- ║    · un PRIX DE RÉFÉRENCE : la moyenne des échanges des 5 dernières    ║
+-- ║      minutes, sinon le dernier échange, sinon celui que l'équipe pose   ║
+-- ║      (le marché qui démarre, carnet vide). Sans aucun des trois, pas    ║
+-- ║      de bande : le premier ordre fait le marché.                       ║
+-- ║  Le règlement complet, en clair : docs/REGLES-DU-MARCHE.md.             ║
+-- ╚════════════════════════════════════════════════════════════════════════╝
+
+-- Les règles en vigueur : les valeurs de départ, et ce que l'équipe a posé
+-- par-dessus. Les valeurs de départ vivent ICI et non dans la ligne du
+-- paramètre : un paramètre réécrit en entier par l'équipe (sans ces clés)
+-- ne fait jamais disparaître un garde-fou en silence.
+create or replace function _marche() returns jsonb
+language sql stable set search_path = public as $$
+  select jsonb_build_object(
+    'quantite_max', 1000000, 'marche_quantite_max', 100000, 'ordres_ouverts_max', 200,
+    'bande_achat', jsonb_build_array(0.8, 1.1), 'bande_vente', jsonb_build_array(0.9, 1.2),
+    'bande_execution', 0.05, 'prix_reference', null) || coalesce(parametre('marche'), '{}'::jsonb)
+$$;
+
+-- LE PRIX DE RÉFÉRENCE. Une moyenne pondérée sur cinq minutes, pas le seul
+-- dernier échange : un échange minuscule au bord de la bande ne déplace pas la
+-- bande de 20 % d'un coup (on ne « marche » pas le prix à petits pas).
+create or replace function _prix_reference() returns numeric
+language sql stable set search_path = public as $$
+  select coalesce(
+    (select round(sum(montant_xafe) / nullif(sum(quantite), 0), 2) from executions
+      where paire = parametre('marche') ->> 'paire' and cree_le > now() - interval '5 minutes'),
+    (select prix from executions where paire = parametre('marche') ->> 'paire' order by cree_le desc, id desc limit 1),
+    (_marche() ->> 'prix_reference')::numeric)
+$$;
+
+-- Un ordre au marché ne prend pas une offre au-delà de la bande d'exécution.
+create or replace function _dans_la_bande_d_execution(p_cote text, p_prix numeric, p_ref numeric) returns boolean
+language sql stable set search_path = public as $$
+  select p_ref is null
+      or case when p_cote = 'achat' then p_prix <= p_ref * (1 + (_marche() ->> 'bande_execution')::numeric)
+              else p_prix >= p_ref * (1 - (_marche() ->> 'bande_execution')::numeric) end
+$$;
+
+-- ───────────────── l'appariement, avec ses garde-fous ──────────────────────
+create or replace function _placer_ordre(p_compte uuid, p_cote text, p_type text, p_quantite numeric, p_prix numeric, p_cle text, p_t_preneur numeric)
+returns jsonb language plpgsql set search_path = public as $$
+declare
+  v_compte  uuid := p_compte;
+  v_frais   jsonb := parametre('frais');
+  v_marche  jsonb := _marche();
+  v_paire   text := v_marche ->> 'paire';
+  v_pas     numeric := (v_marche ->> 'pas_prix')::numeric;
+  v_qmin    numeric := (v_marche ->> 'quantite_min')::numeric;
+  v_t_pren  numeric := coalesce(p_t_preneur, (v_frais ->> 'preneur')::numeric);
+  v_t_plac  numeric := (v_frais ->> 'placeur')::numeric;
+  v_o       ordres;
+  v_c       ordres;
+  v_e       executions;
+  v_q       numeric;
+  v_px      numeric;
+  v_xafe    numeric;
+  v_fa      numeric;   -- frais de l'acheteur, en USDT
+  v_fv      numeric;   -- frais du vendeur, en XAFe
+  v_diff    numeric;
+  v_cible   numeric;   -- ce que l'achat limite doit garder bloqué après la tranche
+  v_frais_usdt numeric := 0;   -- les frais de toutes les tranches, encaissés par la maison À LA FIN
+  v_frais_xafe numeric := 0;
+  v_dispo   numeric;
+  v_auto    boolean := false;
+  v_execs   jsonb := '[]'::jsonb;
+  v_achet   uuid;
+  v_vend    uuid;
+  v_id      text;
+  v_ref     numeric;   -- le prix de référence au moment où l'ordre arrive (_prix_reference)
+  v_bande   jsonb;
+  v_lo      numeric;
+  v_hi      numeric;
+begin
+  perform _exiger_compte_actif(v_compte);
+  if not coalesce((v_marche ->> 'ouvert')::boolean, true) then raise exception 'marché fermé'; end if;
+  if p_cle is not null then
+    select * into v_o from ordres where compte_id = v_compte and cle = p_cle;
+    if found then return jsonb_build_object('ordre', _ordre_json(v_o), 'executions', '[]'::jsonb, 'deja', true); end if;
+  end if;
+  if p_cote not in ('achat', 'vente') then raise exception 'côté invalide'; end if;
+  if p_type not in ('limite', 'marche') then raise exception 'type invalide'; end if;
+  if p_quantite is null or p_quantite < v_qmin or p_quantite <> round(p_quantite, 2) then
+    raise exception 'quantité invalide' using detail = format('au moins %s USDT, deux décimales', v_qmin);
+  end if;
+  if p_type = 'limite' then
+    if p_prix is null or p_prix <= 0 or mod(p_prix, v_pas) <> 0 then
+      raise exception 'prix invalide' using detail = format('un multiple de %s', v_pas);
+    end if;
+  else
+    p_prix := null;
+  end if;
+
+  -- LES RÈGLES DU MARCHÉ (0017), comme la fiche « Trading Parameters » d'une
+  -- bourse : une taille maximale par ordre, un plafond pour un ordre au marché,
+  -- une bande de prix autour du prix de référence (un doigt qui glisse ne vend
+  -- pas à 10 XAFe), un nombre d'ordres ouverts par compte. Chaque refus dit la
+  -- règle et la borne.
+  if p_quantite > coalesce((v_marche ->> 'quantite_max')::numeric, 1e12) then
+    raise exception 'quantité trop grande' using detail = format('au plus %s USDT par ordre', v_marche ->> 'quantite_max');
+  end if;
+  if p_type = 'marche' and p_quantite > coalesce((v_marche ->> 'marche_quantite_max')::numeric, 1e12) then
+    raise exception 'ordre au marché trop grand' using detail = format('au plus %s USDT au marché : au-delà, posez un ordre limite', v_marche ->> 'marche_quantite_max');
+  end if;
+  v_ref := _prix_reference();
+  if p_type = 'limite' and v_ref is not null then
+    v_bande := coalesce(v_marche -> case when p_cote = 'achat' then 'bande_achat' else 'bande_vente' end, '[0, 1e9]'::jsonb);
+    v_lo := ceil(v_ref * (v_bande ->> 0)::numeric / v_pas) * v_pas;
+    v_hi := floor(v_ref * (v_bande ->> 1)::numeric / v_pas) * v_pas;
+    if p_prix < v_lo or p_prix > v_hi then
+      raise exception 'prix hors de la bande' using detail = format('%s : entre %s et %s XAFe (référence %s)',
+        case when p_cote = 'achat' then 'un achat' else 'une vente' end, v_lo, v_hi, v_ref);
+    end if;
+  end if;
+  if p_type = 'limite' and (select count(*) from ordres where compte_id = v_compte and etat in ('ouvert', 'partiel'))
+                           >= coalesce((v_marche ->> 'ordres_ouverts_max')::int, 1000000) then
+    raise exception 'trop d''ordres ouverts' using detail = format('au plus %s : annulez-en un', v_marche ->> 'ordres_ouverts_max');
+  end if;
+
+  -- Une paire s'apparie en file : un seul ordre entrant à la fois. Toute écriture
+  -- au carnet (placer, annuler, l'achat rapide) prend ce même verrou ; la ligne en
+  -- face se lit donc « for update » SANS « skip locked » : un chemin qui oublierait
+  -- le verrou ferait ATTENDRE l'ordre, jamais sauter un meilleur prix.
+  perform pg_advisory_xact_lock(hashtext(v_paire));
+  -- relu sous le verrou : la référence est celle du carnet que l'ordre va parcourir
+  v_ref := _prix_reference();
+
+  insert into ordres (compte_id, paire, cote, type, prix, quantite, restant, cle)
+  values (v_compte, v_paire, p_cote, p_type, p_prix, p_quantite, p_quantite, p_cle)
+  returning * into v_o;
+  v_id := v_o.numero::text;
+
+  -- Tout ce qui est au carnet est déjà déposé : un ordre limite bloque avant d'être inscrit.
+  if p_type = 'limite' then
+    if p_cote = 'achat' then
+      v_o.bloque := round(p_prix * p_quantite, 2);
+      perform _mouvement(v_compte, 'XAFe', -v_o.bloque, v_o.bloque, 'ordre_bloque', 'ordres', v_id);
+    else
+      v_o.bloque := p_quantite;
+      perform _mouvement(v_compte, 'USDT', -p_quantite, p_quantite, 'ordre_bloque', 'ordres', v_id);
+    end if;
+    update ordres set bloque = v_o.bloque where id = v_o.id;
+  end if;
+
+  -- Appariement prix-temps : le meilleur prix d'abord, puis le plus ancien.
+  -- Le prix d'exécution est celui de l'ordre qui attendait.
+  loop
+    exit when v_o.restant <= 0;
+    if p_cote = 'achat' then
+      select * into v_c from ordres
+       where paire = v_paire and cote = 'vente' and etat in ('ouvert', 'partiel') and (p_type = 'marche' or prix <= p_prix)
+       order by prix asc, cree_le asc, numero asc for update limit 1;
+    else
+      select * into v_c from ordres
+       where paire = v_paire and cote = 'achat' and etat in ('ouvert', 'partiel') and (p_type = 'marche' or prix >= p_prix)
+       order by prix desc, cree_le asc, numero asc for update limit 1;
+    end if;
+    exit when not found;
+    if v_c.compte_id = v_compte then v_auto := true; exit; end if;
+    -- Un ordre au marché ne s'exécute pas au-delà de la bande d'exécution autour
+    -- de la référence lue À SON ARRIVÉE : le reste est annulé, jamais servi à
+    -- n'importe quel prix dans un carnet mince.
+    exit when p_type = 'marche' and not _dans_la_bande_d_execution(p_cote, v_c.prix, v_ref);
+
+    v_q := least(v_o.restant, v_c.restant);
+    v_px := v_c.prix;
+    -- Un acheteur au marché ne dépense que ce qu'il a.
+    if p_type = 'marche' and p_cote = 'achat' then
+      select disponible into v_dispo from soldes where compte_id = v_compte and actif = 'XAFe' for update;
+      v_dispo := coalesce(v_dispo, 0);
+      if v_dispo < round(v_q * v_px, 2) then v_q := trunc(v_dispo / v_px, 2); end if;
+      exit when v_q <= 0;
+    end if;
+
+    -- Ce que paie l'acheteur. Un achat LIMITE a bloqué round(restant × limite) ;
+    -- après cette tranche il doit garder exactement round(reste × limite), et
+    -- tout le reste quand il n'en reste rien (v_cible). On ne soustrait jamais
+    -- un arrondi de tranche d'un arrondi de total : la somme des arrondis n'est
+    -- pas l'arrondi de la somme, et l'écart d'un centime finissait en bloqué
+    -- négatif — « solde insuffisant » pour tout vendeur qui l'atteignait.
+    --   · L'acheteur limite au repos est payé à SA limite : il donne ce que son
+    --     bloqué dit (bloqué − cible), au centime près de round(q × prix).
+    --   · L'acheteur limite qui prend paie round(q × prix du vendeur), jamais
+    --     plus que ce que son bloqué peut donner, et récupère le reste.
+    if p_cote = 'achat' and p_type = 'limite' then
+      v_cible := case when v_o.restant - v_q = 0 then 0 else round((v_o.restant - v_q) * p_prix, 2) end;
+      v_xafe := case when v_px = p_prix then v_o.bloque - v_cible
+                     else least(round(v_q * v_px, 2), v_o.bloque - v_cible) end;
+    elsif p_cote = 'vente' then
+      v_cible := case when v_c.restant - v_q = 0 then 0 else round((v_c.restant - v_q) * v_c.prix, 2) end;
+      v_xafe := v_c.bloque - v_cible;
+    else
+      v_xafe := round(v_q * v_px, 2);
+    end if;
+
+    if p_cote = 'achat' then
+      v_achet := v_compte; v_vend := v_c.compte_id;
+      v_fa := round(v_q * v_t_pren, 2);  v_fv := round(v_xafe * v_t_plac, 0);
+    else
+      v_achet := v_c.compte_id; v_vend := v_compte;
+      v_fa := round(v_q * v_t_plac, 2);  v_fv := round(v_xafe * v_t_pren, 0);
+    end if;
+
+    -- L'acheteur paie v_xafe (de son bloqué s'il est limite, de son disponible au marché) et reçoit v_q moins ses frais.
+    if (p_cote = 'achat' and p_type = 'limite') or p_cote = 'vente' then
+      perform _mouvement(v_achet, 'XAFe', 0, -v_xafe, 'achat_regle', 'ordres', v_id);
+    else
+      perform _mouvement(v_achet, 'XAFe', -v_xafe, 0, 'achat_regle', 'ordres', v_id);
+    end if;
+    perform _mouvement(v_achet, 'USDT', v_q - v_fa, 0, 'achat_recu', 'ordres', v_id);
+    -- Le vendeur donne v_q (de son bloqué s'il est limite) et reçoit v_xafe moins ses frais.
+    if (p_cote = 'vente' and p_type = 'limite') or p_cote = 'achat' then
+      perform _mouvement(v_vend, 'USDT', 0, -v_q, 'vente_reglee', 'ordres', v_id);
+    else
+      perform _mouvement(v_vend, 'USDT', -v_q, 0, 'vente_reglee', 'ordres', v_id);
+    end if;
+    perform _mouvement(v_vend, 'XAFe', v_xafe - v_fv, 0, 'vente_recue', 'ordres', v_id);
+    v_frais_usdt := v_frais_usdt + v_fa;
+    v_frais_xafe := v_frais_xafe + v_fv;
+
+    -- L'acheteur limite qui prend : ce que son bloqué gardait au-delà de la cible et du prix payé lui revient.
+    if p_cote = 'achat' and p_type = 'limite' then
+      v_diff := v_o.bloque - v_cible - v_xafe;
+      if v_diff > 0 then
+        perform _mouvement(v_compte, 'XAFe', v_diff, -v_diff, 'ordre_libere', 'ordres', v_id);
+      end if;
+      v_o.bloque := v_cible;
+    elsif p_type = 'limite' then
+      v_o.bloque := v_o.bloque - v_q;
+    end if;
+
+    v_o.restant := v_o.restant - v_q;
+    v_o.executee := v_o.executee + v_q;
+    v_o.total_xafe := v_o.total_xafe + v_xafe;
+    update ordres
+       set restant = v_o.restant, executee = v_o.executee, total_xafe = v_o.total_xafe, bloque = v_o.bloque,
+           etat = case when v_o.restant = 0 then 'execute' else 'partiel' end, maj_le = now()
+     where id = v_o.id;
+    update ordres
+       set restant = restant - v_q, executee = executee + v_q, total_xafe = total_xafe + v_xafe,
+           bloque = case when cote = 'achat' then v_cible else bloque - v_q end,
+           etat = case when restant - v_q = 0 then 'execute' else 'partiel' end, maj_le = now()
+     where id = v_c.id;
+    if v_c.restant - v_q = 0 then
+      perform _notifier(v_c.compte_id, 'Ordre exécuté',
+        format('%s de %s USDT à %s.', case when v_c.cote = 'achat' then 'Achat' else 'Vente' end, v_c.quantite, v_px), '/marche/ordres/' || v_c.id);
+    end if;
+
+    insert into executions (paire, ordre_achat, ordre_vente, preneur, prix, quantite, montant_xafe, frais_acheteur, frais_vendeur)
+    values (v_paire,
+            case when p_cote = 'achat' then v_o.id else v_c.id end,
+            case when p_cote = 'achat' then v_c.id else v_o.id end,
+            p_cote, v_px, v_q, v_xafe, v_fa, v_fv)
+    returning * into v_e;
+    v_execs := v_execs || _execution_json(v_e);
+  end loop;
+
+  -- La maison en dernier : voir « l'ordre des verrous », au-dessus de _mouvement.
+  if v_frais_usdt > 0 then perform _mouvement(compte_maison(), 'USDT', v_frais_usdt, 0, 'frais_achat', 'ordres', v_id); end if;
+  if v_frais_xafe > 0 then perform _mouvement(compte_maison(), 'XAFe', v_frais_xafe, 0, 'frais_vente', 'ordres', v_id); end if;
+
+  -- Ce qui reste d'un ordre marché, ou d'un ordre arrêté par l'auto-négociation, est annulé.
+  if v_o.restant > 0 and (p_type = 'marche' or v_auto) then
+    if p_type = 'limite' and v_o.bloque > 0 then
+      if p_cote = 'achat' then
+        perform _mouvement(v_compte, 'XAFe', v_o.bloque, -v_o.bloque, 'ordre_libere', 'ordres', v_id);
+      else
+        perform _mouvement(v_compte, 'USDT', v_o.bloque, -v_o.bloque, 'ordre_libere', 'ordres', v_id);
+      end if;
+    end if;
+    update ordres
+       set etat = case when v_o.executee > 0 then 'execute' else 'annule' end, restant = 0, bloque = 0, maj_le = now()
+     where id = v_o.id;
+  end if;
+
+  select * into v_o from ordres where id = v_o.id;
+  return jsonb_build_object('ordre', _ordre_json(v_o), 'executions', v_execs, 'auto_negociation', v_auto);
+end $$;
+
+-- Le parcours du carnet (le devis de l'achat rapide) suit la même bande : un
+-- devis ne promet jamais ce que l'appariement refuserait.
+create or replace function _parcourir_carnet(p_compte uuid, p_sens text, p_quantite numeric, p_budget numeric,
+                                  out quantite numeric, out montant numeric)
+language plpgsql stable set search_path = public as $$
+declare
+  v_paire text := parametre('marche') ->> 'paire';
+  v_c ordres; v_q numeric; v_x numeric; v_cible numeric;
+  v_ref numeric := _prix_reference();
+begin
+  quantite := 0; montant := 0;
+  for v_c in
+    select * from ordres
+     where paire = v_paire and etat in ('ouvert', 'partiel')
+       and cote = case when p_sens = 'achat' then 'vente' else 'achat' end
+     order by case when p_sens = 'achat' then prix else -prix end, cree_le, numero
+  loop
+    exit when v_c.compte_id = p_compte;
+    -- comme l'appariement d'un ordre au marché : pas au-delà de la bande d'exécution
+    exit when not _dans_la_bande_d_execution(p_sens, v_c.prix, v_ref);
+    if p_budget is not null then
+      v_q := least(v_c.restant, trunc((p_budget - montant) / v_c.prix, 2));
+    else
+      v_q := least(v_c.restant, p_quantite - quantite);
+    end if;
+    exit when v_q <= 0;
+    if p_sens = 'achat' then
+      v_x := round(v_q * v_c.prix, 2);
+    else
+      v_cible := case when v_c.restant - v_q = 0 then 0 else round((v_c.restant - v_q) * v_c.prix, 2) end;
+      v_x := v_c.bloque - v_cible;
+    end if;
+    quantite := quantite + v_q;
+    montant := montant + v_x;
+  end loop;
+end $$;
+
+-- ───────────────── ce que l'écran lit : les règles, et la référence ────────
+create or replace function parametres_publics() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'frais', parametre('frais'),
+    'marche', _marche() || jsonb_build_object('reference', _prix_reference()),
+    'paliers', parametre('paliers'),
+    'rapide', jsonb_build_object('marge', parametre('rapide') -> 'marge', 'ouvert', coalesce((parametre('rapide') ->> 'ouvert')::boolean, false),
+                                 'validite_secondes', parametre('rapide') -> 'validite_secondes'),
+    'crypto', jsonb_build_object('frais', parametre('crypto') -> 'frais',
+                                 'retraits_ouverts', coalesce((parametre('crypto') ->> 'retraits_ouverts')::boolean, false),
+                                 'depots_ouverts', coalesce((parametre('crypto') ->> 'depots_ouverts')::boolean, true)),
+    'sortie', jsonb_build_object('ouvertes', coalesce((parametre('sortie') ->> 'ouvertes')::boolean, true),
+                                 'mode', coalesce(parametre('sortie') ->> 'mode', 'totem')),
+    'operateurs', (select jsonb_agg(jsonb_build_object('id', id, 'nom', nom, 'plafond_par_transfert', plafond_par_transfert,
+                                                       'plafond_jour', plafond_jour) order by id) from operateurs),
+    'conditions', parametre('conditions'),
+    'support', parametre('support'))
+   where auth.uid() is not null
+$$;
+
+create or replace function cotation() returns jsonb
+language sql stable security definer set search_path = public as $$
+  with e as (select * from executions where cree_le > now() - interval '24 hours'),
+       d as (select prix from executions order by cree_le desc, id desc limit 1),
+       p as (select prix from executions where cree_le <= now() - interval '24 hours' order by cree_le desc, id desc limit 1)
+  select jsonb_build_object(
+    'paire', parametre('marche') ->> 'paire',
+    'dernier', (select prix from d),
+    'il_y_a_24h', (select prix from p),
+    'haut', (select max(prix) from e), 'bas', (select min(prix) from e),
+    'volume_usdt', (select coalesce(sum(quantite), 0) from e),
+    'volume_xafe', (select coalesce(sum(montant_xafe), 0) from e),
+    'meilleur_achat', (select max(prix) from ordres where etat in ('ouvert', 'partiel') and cote = 'achat'),
+    'meilleure_vente', (select min(prix) from ordres where etat in ('ouvert', 'partiel') and cote = 'vente'),
+    -- le prix autour duquel la bande se calcule : l'écran pré-remplit avec lui quand le carnet est vide
+    'reference', _prix_reference())
+$$;
+
+create or replace function _verifier_parametre(p_cle text, v jsonb) returns void
+language plpgsql set search_path = public, extensions, pg_temp as $$
+declare k text; p jsonb; ok boolean;
+begin
+  if jsonb_typeof(v) <> 'object' then raise exception 'paramètre invalide' using detail = 'un objet JSON est attendu'; end if;
+  ok := case p_cle
+    when 'frais' then _nombre_entre(v -> 'placeur', 0, 0.05) and _nombre_entre(v -> 'preneur', 0, 0.05) and _nombre_entre(v -> 'sortie', 0, 0.05)
+    when 'marche' then v ->> 'paire' = 'USDT/XAFe' and _nombre_entre(v -> 'pas_prix', 0.01, 100) and _nombre_entre(v -> 'quantite_min', 0.01, 1000000)
+                       and jsonb_typeof(v -> 'ouvert') = 'boolean'
+                       -- les règles du marché (0017) : chacune facultative, chacune bornée
+                       and (not (v ? 'quantite_max') or _nombre_entre(v -> 'quantite_max', (v ->> 'quantite_min')::numeric, 1e9))
+                       and (not (v ? 'marche_quantite_max') or _nombre_entre(v -> 'marche_quantite_max', (v ->> 'quantite_min')::numeric, 1e9))
+                       and (not (v ? 'ordres_ouverts_max') or _nombre_entre(v -> 'ordres_ouverts_max', 1, 10000, true))
+                       and (not (v ? 'bande_execution') or _nombre_entre(v -> 'bande_execution', 0.001, 0.5))
+                       and (not (v ? 'bande_achat') or (jsonb_typeof(v -> 'bande_achat') = 'array' and jsonb_array_length(v -> 'bande_achat') = 2
+                            and _nombre_entre(v -> 'bande_achat' -> 0, 0.01, 1) and _nombre_entre(v -> 'bande_achat' -> 1, 1, 100)))
+                       and (not (v ? 'bande_vente') or (jsonb_typeof(v -> 'bande_vente') = 'array' and jsonb_array_length(v -> 'bande_vente') = 2
+                            and _nombre_entre(v -> 'bande_vente' -> 0, 0.01, 1) and _nombre_entre(v -> 'bande_vente' -> 1, 1, 100)))
+                       and (not (v ? 'prix_reference') or jsonb_typeof(v -> 'prix_reference') = 'null' or _nombre_entre(v -> 'prix_reference', 0.01, 1e9))
+    when 'depot' then _nombre_entre(v -> 'validite_minutes', 5, 1440, true) and _nombre_entre(v -> 'grace_minutes', 0, 10080, true)
+                      and (not (v ? 'declaration_complete') or jsonb_typeof(v -> 'declaration_complete') = 'boolean')
+    when 'sortie' then _nombre_entre(v -> 'reprises_max', 1, 10, true)
+                       and (not (v ? 'ouvertes') or jsonb_typeof(v -> 'ouvertes') = 'boolean')
+                       and (not (v ? 'mode') or v ->> 'mode' in ('totem', 'manuel'))
+                       and (not (v ? 'seuil_deux_personnes') or jsonb_typeof(v -> 'seuil_deux_personnes') = 'null'
+                            or _nombre_entre(v -> 'seuil_deux_personnes', 1, 1e12))
+    when 'rapide' then _nombre_entre(v -> 'marge', 0, 0.2) and _nombre_entre(v -> 'validite_secondes', 5, 120, true)
+                       and jsonb_typeof(v -> 'ouvert') = 'boolean'
+    when 'code_secret' then _nombre_entre(v -> 'essais', 1, 10, true) and _nombre_entre(v -> 'verrou_minutes', 1, 1440, true)
+                       and _nombre_entre(v -> 'longueur_min', 4, 6, true) and _nombre_entre(v -> 'longueur_max', 4, 8, true)
+                       and (v ->> 'longueur_min')::int <= (v ->> 'longueur_max')::int
+    when 'crypto' then _nombre_entre(v -> 'frais' -> 'USDT', 0, 1000) and _nombre_entre(v -> 'frais' -> 'XAFe', 0, 1000000)
+                       and _nombre_entre(v -> 'confirmations' -> 'bep20', 1, 1000, true) and _nombre_entre(v -> 'confirmations' -> 'trc20', 1, 1000, true)
+                       and jsonb_typeof(v -> 'retraits_ouverts') = 'boolean'
+                       and (not (v ? 'depots_ouverts') or jsonb_typeof(v -> 'depots_ouverts') = 'boolean')
+    when 'paliers' then (select bool_and(x) from (values (v ? '0'), (v ? '1'), (v ? '2')) t(x))
+    when 'conditions' then coalesce(v ->> 'version', '') ~ '^\d{4}-\d{2}-\d{2}$'
+    when 'support' then coalesce(v ->> 'email', '') ~ '^[^@\s]+@[^@\s]+\.[a-z]{2,}$'
+                        and (jsonb_typeof(v -> 'whatsapp') = 'null' or coalesce(v ->> 'whatsapp', '') ~ '^\+[1-9][0-9]{7,14}$')
+    when 'parite' then (jsonb_typeof(v -> 'alerte_numero') = 'null' or coalesce(v ->> 'alerte_numero', '') ~ '^\+?[0-9 ]{9,16}$')
+                       and coalesce(v ->> 'alerte_operateur', '') in ('mtn', 'om')
+                       and _nombre_entre(v -> 'fraicheur_heures', 1, 720, true) and _nombre_entre(v -> 'delai_minutes', 5, 1440, true)
+                       and jsonb_typeof(v -> 'publier_floats') = 'boolean'
+    else false end;
+  if p_cle = 'paliers' and ok then
+    foreach k in array array['0', '1', '2'] loop
+      p := v -> k;
+      if jsonb_typeof(p) = 'null' then continue; end if;
+      if not (jsonb_typeof(p) = 'object' and _nombre_entre(p -> 'entree_jour', 0, 1e12, true) and _nombre_entre(p -> 'sortie_jour', 0, 1e12, true)) then
+        ok := false;
+      end if;
+    end loop;
+  end if;
+  if not coalesce(ok, false) then
+    raise exception 'paramètre invalide' using detail = format('« %s » : une clé manque, ou une valeur sort de ses bornes', p_cle);
+  end if;
+end $$;
+
+-- ──────────────────────────────── les droits ───────────────────────────────
+revoke all on function _marche(), _prix_reference(), _dans_la_bande_d_execution(text, numeric, numeric) from public, anon, authenticated;
+$sql$;
+    raise notice '0017_regles_du_marche.sql : appliquée';
+  end if;
+end $consolide$;
+
+-- ─── 0018_reseaux.sql (md5 d9e42057feb7f7d7f214114b67ffc43c) ───
+-- déjà en place si : rejouable telle quelle
+do $consolide$
+begin
+  if false then
+    raise notice '0018_reseaux.sql : déjà en place, rien à faire';
+  else
+    execute $sql$
+-- ╔════════════════════════════════════════════════════════════════════════╗
+-- ║  Glisil · 0018 · le registre des réseaux                               ║
+-- ║                                                                        ║
+-- ║  Un client a UN solde de XAFe (et un d'USDT) ; le réseau ne se choisit ║
+-- ║  qu'au moment de déposer ou de retirer — comme chez Binance. La        ║
+-- ║  réserve vit sur un réseau MAISON (BSC) ; un retrait sur un autre      ║
+-- ║  réseau y crée les XAFe et les détruit dans la réserve (0015), à la    ║
+-- ║  façon du « burn and mint » de Circle (CCTP). La somme, tous réseaux   ║
+-- ║  ensemble, est ce que la parité compare au registre (0016).            ║
+-- ║                                                                        ║
+-- ║  Ce qui manquait : la LISTE des réseaux. BEP20 et TRC20 étaient écrits ║
+-- ║  en dur à douze endroits (contraintes, retrait, explorateur, parité,   ║
+-- ║  tâches du veilleur). Ils vivent maintenant dans une table, avec ce    ║
+-- ║  qu'il faut savoir de chacun : sa famille (EVM, Tron, Solana), son     ║
+-- ║  explorateur, sa monnaie de frais, son compte de dérivation.           ║
+-- ║                                                                        ║
+-- ║  Ethereum, Base et Polygon y sont, FERMÉS : la famille EVM sait déjà   ║
+-- ║  les lire ; il reste à y déployer le contrat XAFe, à poser leur nœud,  ║
+-- ║  puis à les ouvrir. Solana y est aussi, fermé — et ne peut pas         ║
+-- ║  s'ouvrir : aucun veilleur ne sait encore le lire.                     ║
+-- ║  Le plan complet : docs/RESEAUX.md.                                     ║
+-- ╚════════════════════════════════════════════════════════════════════════╝
+
+create table if not exists reseaux (
+  id                text primary key check (id ~ '^[a-z][a-z0-9]{1,11}$'),
+  nom               text not null,                 -- « BNB Smart Chain »
+  norme             text not null,                 -- ce que le client lit sur son wallet : « BEP20 »
+  famille           text not null check (famille in ('evm', 'tron', 'solana')),
+  chain_id          bigint,                        -- EVM : le numéro de la chaîne (56, 1, 8453…)
+  -- Le compte de dérivation (m/44'/60'/<compte>'/0/i pour l'EVM) : deux réseaux
+  -- d'une même famille n'ont JAMAIS les mêmes adresses de dépôt. Une adresse
+  -- vit sur un réseau ; un envoi par erreur sur un autre réseau EVM arrive à
+  -- une adresse que la graine contrôle encore, et se récupère à la main.
+  compte_hd         int not null check (compte_hd between 0 and 1000),
+  natif             text not null,                 -- la monnaie qui paie les frais : BNB, TRX, ETH…
+  decimales_natif   int not null check (decimales_natif between 0 and 30),
+  explorateur       text not null check (explorateur ~ '^https://'),
+  explorateur_essai text check (explorateur_essai ~ '^https://'),
+  -- ouvert aux clients : on y dépose, on y retire. Un réseau fermé garde son
+  -- veilleur s'il est configuré : les retraits déjà demandés partent, et ce
+  -- qui arrive encore sur une adresse attribuée est crédité.
+  actif             boolean not null default false,
+  ordre             int not null,
+  note              text,
+  unique (famille, compte_hd)
+);
+alter table reseaux enable row level security;
+
+insert into reseaux (id, nom, norme, famille, chain_id, compte_hd, natif, decimales_natif, explorateur, explorateur_essai, actif, ordre, note) values
+  ('bep20',   'BNB Smart Chain', 'BEP20',   'evm',    56,   0, 'BNB', 18, 'https://bscscan.com',     'https://testnet.bscscan.com', true,  1, 'le réseau maison : la réserve y vit'),
+  ('trc20',   'Tron',            'TRC20',   'tron',   null, 0, 'TRX',  6, 'https://tronscan.org/#',  'https://nile.tronscan.org/#', true,  2, null),
+  ('erc20',   'Ethereum',        'ERC20',   'evm',    1,    1, 'ETH', 18, 'https://etherscan.io',    'https://sepolia.etherscan.io', false, 3, 'frais de réseau élevés : à ouvrir pour les gros montants seulement'),
+  ('base',    'Base',            'Base',    'evm',    8453, 2, 'ETH', 18, 'https://basescan.org',    'https://sepolia.basescan.org', false, 4, null),
+  ('polygon', 'Polygon',         'Polygon', 'evm',    137,  3, 'POL', 18, 'https://polygonscan.com', 'https://amoy.polygonscan.com', false, 5, null),
+  ('solana',  'Solana',          'SPL',     'solana', null, 0, 'SOL',  9, 'https://solscan.io',      null,                          false, 6, 'pas encore de veilleur : un adaptateur Solana est à écrire')
+on conflict (id) do nothing;
+
+-- ─────────────── les contraintes : la table, au lieu d'une liste ───────────
+-- Une clé étrangère : un réseau inconnu du registre n'entre nulle part.
+alter table adresses_crypto         drop constraint if exists adresses_crypto_reseau_check;
+alter table adresses_libres         drop constraint if exists adresses_libres_reseau_check;
+alter table retraits_crypto         drop constraint if exists retraits_crypto_reseau_check;
+alter table reserve_chaine          drop constraint if exists reserve_chaine_reseau_check;
+alter table chaine_mouvements_jeton drop constraint if exists chaine_mouvements_jeton_reseau_check;
+do $$
+declare t text;
+begin
+  foreach t in array array['adresses_crypto', 'adresses_libres', 'retraits_crypto', 'reserve_chaine', 'chaine_mouvements_jeton'] loop
+    if not exists (select 1 from pg_constraint where conname = t || '_reseau_fkey') then
+      execute format('alter table %I add constraint %I foreign key (reseau) references reseaux (id)', t, t || '_reseau_fkey');
+    end if;
+  end loop;
+end $$;
+
+-- ───────────────────────────── ce qu'on en lit ─────────────────────────────
+-- Configuré : le contrat XAFe et le nœud du réseau sont posés (paramètre
+-- « chaine », par la mise en service). Lisible : un veilleur sait le lire.
+create or replace function _reseau_configure(p_id text) returns boolean
+language sql stable set search_path = public as $$
+  select jsonb_typeof(parametre('chaine') -> p_id) = 'object'
+     and coalesce(parametre('chaine') -> p_id ->> 'xafe', '') <> ''
+$$;
+
+create or replace function _reseau_lisible(p_famille text) returns boolean
+language sql immutable set search_path = public as $$ select p_famille in ('evm', 'tron') $$;
+
+-- Une adresse a la forme de sa FAMILLE : 0x + 40 hexadécimaux pour l'EVM, T +
+-- 33 signes base58 pour Tron, 32 à 44 signes base58 pour Solana.
+create or replace function _adresse_valide(p_famille text, p_adresse text) returns boolean
+language sql immutable set search_path = public as $$
+  select coalesce(case p_famille
+    when 'evm'    then p_adresse ~ '^0x[0-9a-fA-F]{40}$'
+    when 'tron'   then p_adresse ~ '^T[1-9A-HJ-NP-Za-km-z]{33}$'
+    when 'solana' then p_adresse ~ '^[1-9A-HJ-NP-Za-km-z]{32,44}$'
+  end, false)
+$$;
+
+-- Le réseau d'un client : ouvert. (Ne s'ouvre que configuré et lisible :
+-- admin_activer_reseau le vérifie.) Sinon : la phrase qu'il lira.
+create or replace function _reseau_ouvert(p_id text) returns reseaux
+language plpgsql stable set search_path = public as $$
+declare r reseaux;
+begin
+  select * into r from reseaux where id = p_id;
+  if not found then raise exception 'réseau inconnu'; end if;
+  if not r.actif then
+    raise exception 'réseau pas encore ouvert' using detail = format('%s (%s) n''est pas encore ouvert sur Glisil', r.nom, r.norme);
+  end if;
+  return r;
+end $$;
+
+create or replace function _explorateur(p_reseau text) returns text
+language sql stable set search_path = public as $$
+  select case when coalesce((parametre('chaine') ->> 'essai')::boolean, false) then coalesce(explorateur_essai, explorateur) else explorateur end
+    from reseaux where id = p_reseau
+$$;
+
+-- ───────────────────────── l'adresse de dépôt ──────────────────────────────
+create or replace function adresse_depot(p_actif text, p_reseau text) returns text
+language plpgsql security definer set search_path = public as $$
+declare v_compte uuid := auth.uid(); v_adresse text; v_libre adresses_libres;
+begin
+  perform _exiger_compte_actif(v_compte);
+  -- fermé : aucune adresse ne se montre — pas même celle déjà attribuée, sur laquelle de vrais USDT n'arriveraient nulle part
+  if not coalesce((parametre('crypto') ->> 'depots_ouverts')::boolean, true) then return null; end if;
+  -- un réseau fermé ne montre pas d'adresse non plus : un envoi n'y serait pas attendu
+  if not exists (select 1 from reseaux where id = p_reseau and actif) then return null; end if;
+  perform 1 from comptes where id = v_compte for no key update;
+  select adresse into v_adresse from adresses_crypto where compte_id = v_compte and actif = p_actif and reseau = p_reseau;
+  if found then return v_adresse; end if;
+  select * into v_libre from adresses_libres where actif = p_actif and reseau = p_reseau order by id for update skip locked limit 1;
+  if not found then return null; end if;
+  delete from adresses_libres where id = v_libre.id;
+  insert into adresses_crypto (compte_id, actif, reseau, adresse, indice) values (v_compte, p_actif, p_reseau, v_libre.adresse, v_libre.indice)
+  on conflict (compte_id, actif, reseau) do update set adresse = adresses_crypto.adresse
+  returning adresse into v_adresse;
+  return v_adresse;
+end $$;
+
+-- ───────────────────────────── le retrait ──────────────────────────────────
+-- Le même retrait qu'en 0002 ; seul le contrôle du réseau change : le
+-- registre au lieu d'une liste, la forme de l'adresse d'après sa famille.
+create or replace function demander_retrait_crypto(p_actif text, p_reseau text, p_adresse text, p_montant numeric, p_cle text, p_code text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_compte uuid := auth.uid();
+  v        jsonb;
+  v_r      retraits_crypto;
+  v_res    reseaux;
+  v_frais  numeric;
+  v_palier jsonb;
+  v_cours  numeric;
+  v_xaf    numeric;
+begin
+  perform _exiger_compte_actif(v_compte);
+  if p_cle is not null then
+    select * into v_r from retraits_crypto where compte_id = v_compte and cle = p_cle;
+    if found then return _retrait_json(v_r) || '{"deja": true}'; end if;
+  end if;
+  if not coalesce((parametre('crypto') ->> 'retraits_ouverts')::boolean, false) then
+    raise exception 'retraits crypto pas encore ouverts' using detail = 'l''envoi sur la chaîne arrive bientôt ; vos fonds restent disponibles';
+  end if;
+  if p_actif not in ('XAFe', 'USDT') then raise exception 'actif inconnu'; end if;
+  v_res := _reseau_ouvert(p_reseau);
+  if not _adresse_valide(v_res.famille, p_adresse) then
+    raise exception 'adresse invalide' using detail = format('ce n''est pas une adresse %s (%s)', v_res.norme, v_res.nom);
+  end if;
+  if p_montant is null or p_montant <= 0 or p_montant <> round(p_montant, case p_actif when 'USDT' then 2 else 0 end) then
+    raise exception 'montant invalide';
+  end if;
+  v := _controler_code(v_compte, p_code);
+  if not (v ->> 'ok')::boolean then return v; end if;
+  v_frais := (parametre('crypto') -> 'frais' ->> p_actif)::numeric;
+
+  perform 1 from comptes where id = v_compte for no key update;
+  v_palier := parametre('paliers') -> (select palier::text from comptes where id = v_compte);
+  if v_palier is not null and v_palier <> 'null'::jsonb then
+    if p_actif = 'USDT' then
+      v_cours := (select prix from executions order by cree_le desc, id desc limit 1);
+      if v_cours is null then raise exception 'pas de cours de référence' using detail = 'le plafond du palier se compte en XAF'; end if;
+      v_xaf := (p_montant + v_frais) * v_cours;
+    else
+      v_xaf := p_montant + v_frais;
+    end if;
+    if _sorties_du_jour(v_compte) + v_xaf > (v_palier ->> 'sortie_jour')::numeric then
+      raise exception 'plafond du palier atteint' using detail = format('%s XAF par jour, retraits crypto compris', v_palier ->> 'sortie_jour');
+    end if;
+  end if;
+  insert into retraits_crypto (reference, compte_id, actif, reseau, adresse, montant, frais, cle)
+  values ('XAFe-CR-' || lpad(nextval('retraits_crypto_numero')::text, 6, '0'), v_compte, p_actif, p_reseau, p_adresse, p_montant, v_frais, p_cle)
+  returning * into v_r;
+  perform _mouvement(v_compte, p_actif, -(p_montant + v_frais), p_montant + v_frais, 'retrait_crypto_bloque', 'retraits_crypto', v_r.reference);
+  return _retrait_json(v_r);
+end $$;
+
+-- ─────────────────── la liste que l'écran du client lit ────────────────────
+create or replace function _reseaux_publics() returns jsonb
+language sql stable set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', id, 'nom', nom, 'norme', norme, 'famille', famille, 'natif', natif,
+                                               'explorateur', _explorateur(id), 'maison', id = _reseau_de_la_reserve(),
+                                               'confirmations', coalesce((parametre('crypto') -> 'confirmations' ->> id)::int,
+                                                                         (parametre('chaine') -> id ->> 'confirmations')::int))
+                            order by ordre), '[]'::jsonb)
+    from reseaux where actif
+$$;
+
+create or replace function parametres_publics() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'frais', parametre('frais'),
+    'marche', _marche() || jsonb_build_object('reference', _prix_reference()),
+    'paliers', parametre('paliers'),
+    'rapide', jsonb_build_object('marge', parametre('rapide') -> 'marge', 'ouvert', coalesce((parametre('rapide') ->> 'ouvert')::boolean, false),
+                                 'validite_secondes', parametre('rapide') -> 'validite_secondes'),
+    'crypto', jsonb_build_object('frais', parametre('crypto') -> 'frais',
+                                 'retraits_ouverts', coalesce((parametre('crypto') ->> 'retraits_ouverts')::boolean, false),
+                                 'depots_ouverts', coalesce((parametre('crypto') ->> 'depots_ouverts')::boolean, true),
+                                 -- les réseaux ouverts, dans l'ordre où l'écran les propose
+                                 'reseaux', _reseaux_publics()),
+    'sortie', jsonb_build_object('ouvertes', coalesce((parametre('sortie') ->> 'ouvertes')::boolean, true),
+                                 'mode', coalesce(parametre('sortie') ->> 'mode', 'totem')),
+    'operateurs', (select jsonb_agg(jsonb_build_object('id', id, 'nom', nom, 'plafond_par_transfert', plafond_par_transfert,
+                                                       'plafond_jour', plafond_jour) order by id) from operateurs),
+    'conditions', parametre('conditions'),
+    'support', parametre('support'))
+   where auth.uid() is not null
+$$;
+
+-- ─────────────────────── ce que le veilleur reçoit ─────────────────────────
+-- Les deux clés d'avant (bep20, trc20) restent, pour un veilleur pas encore
+-- mis à jour ; « reseaux » porte chaque réseau configuré, avec sa famille et
+-- son compte de dérivation.
+create or replace function chaine_configuration() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare v jsonb := parametre('chaine'); v_essai boolean; v_secrets jsonb := '{}'::jsonb;
+begin
+  v_essai := coalesce((v ->> 'essai')::boolean, false);
+  if to_regclass('vault.decrypted_secrets') is not null then
+    execute $q$select coalesce(jsonb_object_agg(name, decrypted_secret), '{}'::jsonb) from vault.decrypted_secrets
+                where name in ('veilleur_jeton', 'essai_graine', 'essai_admin_cle')$q$ into v_secrets;
+  end if;
+  return jsonb_build_object(
+    'essai', v_essai,
+    'bep20', v -> 'bep20',
+    'trc20', v -> 'trc20',
+    'reseaux', (select coalesce(jsonb_object_agg(r.id, (v -> r.id) || jsonb_build_object('famille', r.famille, 'compte_hd', r.compte_hd,
+                                                                                          'natif', r.natif, 'decimales_natif', r.decimales_natif,
+                                                                                          'chain_id', r.chain_id)), '{}'::jsonb)
+                  from reseaux r where _reseau_configure(r.id) and _reseau_lisible(r.famille)),
+    'jeton', v_secrets ->> 'veilleur_jeton',
+    -- jamais hors d'un réseau d'essai : en production la graine n'est pas dans la base
+    'graine', case when v_essai then v_secrets ->> 'essai_graine' end,
+    'admin_cle_essai', case when v_essai then v_secrets ->> 'essai_admin_cle' end);
+end $$;
+
+-- ───────────── un réveil par réseau configuré, et rien de plus ─────────────
+-- Les tâches de pg_cron suivent le registre : un réseau configuré qu'un
+-- veilleur sait lire a sa tâche ; une tâche dont le réseau n'est plus là
+-- s'en va. Rejouée quand le paramètre « chaine » change (le déclencheur plus
+-- bas) : configurer Base suffit à le faire veiller.
+create or replace function planifier_veilleurs() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_voulus text[]; v_id text;
+begin
+  select coalesce(array_agg(id order by ordre), '{}') into v_voulus from reseaux where _reseau_configure(id) and _reseau_lisible(famille);
+  if to_regnamespace('cron') is null then return jsonb_build_object('planifie', false, 'reseaux', to_jsonb(v_voulus)); end if;
+  execute $q$select cron.unschedule(jobid) from cron.job where jobname like 'xafe-veilleur-%' and substr(jobname, 15) <> all($1)$q$ using v_voulus;
+  foreach v_id in array v_voulus loop
+    execute $q$select cron.schedule($1, '* * * * *', format('select public.reveiller_veilleur(%L)', $2))$q$ using 'xafe-veilleur-' || v_id, v_id;
+  end loop;
+  return jsonb_build_object('planifie', true, 'reseaux', to_jsonb(v_voulus));
+end $$;
+
+create or replace function _replanifier_veilleurs() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  perform planifier_veilleurs();
+  return null;
+end $$;
+drop trigger if exists parametres_chaine_replanifie on parametres;
+create trigger parametres_chaine_replanifie after insert or update of valeur on parametres
+  for each row when (new.cle = 'chaine') execute function _replanifier_veilleurs();
+
+select planifier_veilleurs();
+
+-- ──────────────────────── ce que l'équipe en voit ──────────────────────────
+create or replace function admin_reseaux() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  perform _exiger_droit('voir');
+  return (select coalesce(jsonb_agg(jsonb_build_object(
+      'id', r.id, 'nom', r.nom, 'norme', r.norme, 'famille', r.famille, 'chain_id', r.chain_id, 'natif', r.natif,
+      'actif', r.actif, 'maison', r.id = _reseau_de_la_reserve(), 'configure', _reseau_configure(r.id),
+      'lisible', _reseau_lisible(r.famille), 'explorateur', _explorateur(r.id), 'contrat', parametre('chaine') -> r.id ->> 'xafe',
+      'note', r.note,
+      'adresses_attribuees', (select count(*) from adresses_crypto a where a.reseau = r.id),
+      'retraits_en_cours', (select count(*) from retraits_crypto x where x.reseau = r.id and x.etat in ('en_attente', 'en_cours'))) order by r.ordre), '[]'::jsonb)
+    from reseaux r);
+end $$;
+
+-- Ouvrir ou fermer un réseau aux clients. Ouvrir exige qu'un veilleur sache
+-- le lire ET que le contrat XAFe y soit posé : sinon le client verrait une
+-- adresse sur laquelle rien n'arriverait. Fermer le réseau maison est refusé :
+-- la réserve y vit.
+create or replace function admin_activer_reseau(p_id text, p_actif boolean) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r reseaux;
+begin
+  perform _exiger_droit('parametres');
+  select * into r from reseaux where id = p_id for update;
+  if not found then raise exception 'réseau inconnu'; end if;
+  if p_actif is null then raise exception 'ouvrir ou fermer ?'; end if;
+  if p_actif and not _reseau_lisible(r.famille) then
+    raise exception 'réseau pas encore lisible' using detail = format('aucun veilleur ne sait encore lire %s : un adaptateur est à écrire (docs/RESEAUX.md)', r.nom);
+  end if;
+  if p_actif and not _reseau_configure(r.id) then
+    raise exception 'réseau pas configuré' using detail = format('déployez d''abord le contrat XAFe sur %s et posez-le dans « chaine » (mise en service)', r.nom);
+  end if;
+  if not p_actif and r.id = _reseau_de_la_reserve() then
+    raise exception 'le réseau maison ne se ferme pas' using detail = 'la réserve de XAFe y vit';
+  end if;
+  update reseaux set actif = p_actif where id = r.id;
+  perform _journaliser(case when p_actif then 'ouvrir_reseau' else 'fermer_reseau' end, r.id);
+  return jsonb_build_object('ok', true, 'id', r.id, 'actif', p_actif);
+end $$;
+
+-- ─────────────── la parité et les wallets : tous les réseaux ───────────────
+create or replace function _parite_json(p_detail boolean) returns jsonb
+language sql stable set search_path = public as $$
+  select jsonb_build_object(
+    'releve', (select to_jsonb(p) - 'detail' || jsonb_build_object('reseaux', p.detail -> 'reseaux',
+                 'floats_detail', case when p_detail then p.detail -> 'floats'
+                                when coalesce((parametre('parite') ->> 'publier_floats')::boolean, true)
+                                then (select coalesce(jsonb_agg(jsonb_build_object('operateur', o, 'solde', s, 'annonce_le', d, 'connu', c)), '[]'::jsonb)
+                                        from (select x ->> 'operateur' o, sum((x ->> 'solde')::numeric) s, min((x ->> 'annonce_le')::timestamptz) d, bool_and((x ->> 'connu')::boolean) c
+                                                from jsonb_array_elements(p.detail -> 'floats') x group by 1) g) end)
+                 from parite_releves p order by p.fait_le desc limit 1),
+    'historique', (select coalesce(jsonb_agg(jsonb_build_object('fait_le', fait_le, 'statut', statut, 'registre', registre, 'chaine', chaine, 'ecart', ecart, 'floats', floats) order by fait_le), '[]'::jsonb)
+                     from (select * from parite_releves where fait_le > now() - interval '7 days' and (extract(minute from fait_le)::int % 60) < 5 order by fait_le) h),
+    -- chaque réseau où le contrat XAFe est posé : c'est leur SOMME qui se compare au registre
+    'contrats', (select coalesce(jsonb_agg(jsonb_build_object('reseau', r.id, 'nom', r.nom, 'contrat', parametre('chaine') -> r.id ->> 'xafe', 'explorateur', _explorateur(r.id),
+                                                       'maison', r.id = _reseau_de_la_reserve(),
+                                                       'reserve', (select etat ->> 'chaud' from chaine_etats e where e.reseau = r.id)) order by r.ordre), '[]'::jsonb)
+                   from reseaux r where _reseau_configure(r.id)),
+    'essai', coalesce((parametre('chaine') ->> 'essai')::boolean, false),
+    'lignes', (select coalesce(jsonb_agg(to_jsonb(l) - case when p_detail then '{}'::text[] else array['etat_registre', 'tx_attendu', 'adresse_vue'] end order by l.depuis desc), '[]'::jsonb)
+                 from (select * from _parite_lignes() order by depuis desc limit case when p_detail then 500 else 100 end) l),
+    'alertes', case when p_detail then (select coalesce(jsonb_agg(to_jsonb(a) order by a.ouverte_le desc), '[]'::jsonb)
+                                          from parite_alertes a where a.close_le is null or a.close_le > now() - interval '7 days')
+                    else (select count(*) from parite_alertes where close_le is null and gravite <> 'attention')::text::jsonb end)
+$$;
+
+create or replace function admin_wallets() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare r jsonb;
+begin
+  perform _exiger_droit('voir');
+  select jsonb_build_object(
+    'reseaux', coalesce((select jsonb_agg(jsonb_build_object(
+        'reseau', n.id, 'nom', n.nom, 'actif', n.actif,
+        'etat', e.etat, 'maj_le', e.maj_le,
+        'muet', e.maj_le is null or e.maj_le < now() - interval '2 minutes',
+        'adresses_attribuees', (select count(*) from adresses_crypto a where a.reseau = n.id),
+        'adresses_libres', (select count(*) from adresses_libres l where l.reseau = n.id),
+        'retraits_en_cours', (select count(*) from retraits_crypto x where x.reseau = n.id and x.etat in ('en_attente', 'en_cours')),
+        'retraits_remplaces', (select count(*) from retraits_crypto x where x.reseau = n.id and cardinality(x.tx_remplacees) > 0),
+        'curseur', (select bloc from chaine_curseurs c where c.reseau = n.id)) order by n.ordre)
+      -- les réseaux qui veillent ou que les clients voient ; les autres n'ont rien à montrer
+      from reseaux n left join chaine_etats e on e.reseau = n.id
+     where n.actif or _reseau_configure(n.id)), '[]'::jsonb),
+    'orphelins', coalesce((select jsonb_agg(jsonb_build_object('reseau', o.reseau, 'actif', o.actif, 'adresse', o.adresse, 'montant', o.montant, 'preuve', o.preuve, 'raison', o.raison, 'vu_le', o.vu_le) order by o.vu_le desc)
+                             from chaine_orphelins o), '[]'::jsonb),
+    'du_usdt', (select coalesce(sum(disponible + bloque), 0) from soldes where actif = 'USDT' and compte_id <> compte_maison()),
+    'maison_usdt', (select coalesce(sum(disponible + bloque), 0) from soldes where actif = 'USDT' and compte_id = compte_maison()))
+    into r;
+  return r;
+end $$;
+
+-- La réserve ne s'installe que sur un réseau du registre qu'un veilleur sait lire.
+create or replace function _reseau_de_la_reserve() returns text
+language sql stable set search_path = public as $$
+  select coalesce((select id from reseaux where id = parametre('chaine') ->> 'reserve' and _reseau_lisible(famille)), 'bep20')
+$$;
+
+-- ──────────────────────────────── les droits ───────────────────────────────
+revoke all on table reseaux from public, anon, authenticated;
+grant all on table reseaux to service_role;
+revoke all on function _reseau_configure(text), _reseau_lisible(text), _adresse_valide(text, text), _reseau_ouvert(text),
+  _reseaux_publics(), planifier_veilleurs(), _replanifier_veilleurs(), admin_reseaux(), admin_activer_reseau(text, boolean)
+  from public, anon, authenticated;
+grant execute on function admin_reseaux(), admin_activer_reseau(text, boolean) to authenticated;
+grant execute on function planifier_veilleurs() to service_role;
+$sql$;
+    raise notice '0018_reseaux.sql : appliquée';
+  end if;
+end $consolide$;

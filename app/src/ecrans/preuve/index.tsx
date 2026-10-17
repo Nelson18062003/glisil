@@ -15,7 +15,7 @@ import { Link } from "react-router-dom";
 import { usePreuve } from "../../guichet";
 import type { LignePreuve, PreuveDeReserve, StatutParite } from "../../guichet/types";
 import { operateur as opDe } from "../../noyau/argent";
-import { hashCourt, lienContrat, lienTransaction, NOMS_RESEAUX } from "../../noyau/chaine";
+import { hashCourt, lienContrat, lienTransaction, nomsReseau } from "../../noyau/chaine";
 import { enTranches, quand, xaf } from "../../noyau/format";
 import { tones, type Tone } from "../../theme";
 import { Badge, Card, JetonXafe, Line, Marque, NomGlisil, Squelette } from "../../ui";
@@ -83,7 +83,7 @@ function Transactions({ p }: { p: PreuveDeReserve }) {
             <Box sx={{ minWidth: 0, flex: 1 }}>
               <Typography fontWeight={600} sx={{ fontFamily: "Roboto Mono, monospace", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis" }}>{l.reference ?? "sans référence"}</Typography>
               <Typography variant="caption" component="div">
-                {l.genre === "frappe" ? "Création" : "Destruction"} · {NOMS_RESEAUX[l.reseau].nom} · {quand(l.depuis)}
+                {l.genre === "frappe" ? "Création" : "Destruction"} · {nomsReseau(l.reseau).nom} · {quand(l.depuis)}
               </Typography>
               {lien && <LienMui href={lien} target="_blank" rel="noreferrer" sx={{ fontFamily: "Roboto Mono, monospace", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 0.5, minHeight: 32 }}>{hashCourt(l.tx_vu)} <OpenInNewRounded sx={{ fontSize: 13 }} /></LienMui>}
             </Box>
@@ -173,8 +173,8 @@ export function Preuve() {
                   const lien = lienContrat(c?.explorateur, n.reseau, c?.contrat);
                   return (
                     <Box key={n.reseau}>
-                      <Line label={NOMS_RESEAUX[n.reseau].nom} value={n.offre != null ? `${jeton(n.offre)} XAFe` : "en lecture"} />
-                      {lien && <LienMui href={lien} target="_blank" rel="noreferrer" variant="caption" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, minHeight: 32 }}>le contrat sur {NOMS_RESEAUX[n.reseau].explorateur} <OpenInNewRounded sx={{ fontSize: 12 }} /></LienMui>}
+                      <Line label={nomsReseau(n.reseau).nom} value={n.offre != null ? `${jeton(n.offre)} XAFe` : "en lecture"} />
+                      {lien && <LienMui href={lien} target="_blank" rel="noreferrer" variant="caption" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, minHeight: 32 }}>le contrat sur {nomsReseau(n.reseau).explorateur} <OpenInNewRounded sx={{ fontSize: 12 }} /></LienMui>}
                     </Box>
                   );
                 })}
@@ -189,7 +189,7 @@ export function Preuve() {
             <Card sx={{ gap: 1 }}>
               <Typography variant="subtitle1" component="h2">Le vérifier vous-même</Typography>
               <Box component="ol" sx={{ m: 0, pl: 2.5, maxWidth: 660, "& li": { mb: 1 } }}>
-                <li><Typography variant="body2">Ouvrez le contrat XAFe dans l'explorateur ({p.contrats.map((c, i) => <span key={c.reseau}>{i ? " · " : ""}<LienMui href={lienContrat(c.explorateur, c.reseau, c.contrat) ?? undefined} target="_blank" rel="noreferrer">{NOMS_RESEAUX[c.reseau].nom}</LienMui></span>)}) : son « total supply » est la colonne 3.</Typography></li>
+                <li><Typography variant="body2">Ouvrez le contrat XAFe dans l'explorateur ({p.contrats.map((c, i) => <span key={c.reseau}>{i ? " · " : ""}<LienMui href={lienContrat(c.explorateur, c.reseau, c.contrat) ?? undefined} target="_blank" rel="noreferrer">{nomsReseau(c.reseau).nom}</LienMui></span>)}) : son « total supply » est la colonne 3.</Typography></li>
                 <li><Typography variant="body2">Chaque transaction porte une <b>empreinte</b> : le keccak256 du texte de la référence (« XAFe-DP-000003 »). Le contrat refuse de créer deux fois des XAFe sous la même.</Typography></li>
                 <li><Typography variant="body2">Chaque client retrouve dans son reçu PDF la transaction qui a créé ses XAFe, et un code à scanner qui l'ouvre.</Typography></li>
               </Box>

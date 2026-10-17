@@ -5,7 +5,7 @@
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { GuichetAdmin } from "./guichet";
-import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets } from "./types";
+import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets, ReseauRegistre } from "./types";
 import type { Parite } from "./types";
 import { verifierPreuve } from "./preuve";
 
@@ -104,6 +104,8 @@ export class GuichetSupabase implements GuichetAdmin {
   async modifierParametre(cle: string, valeur: unknown) { await this.rpc("admin_modifier_parametre", { p_cle: cle, p_valeur: valeur }); }
   journal() { return this.rpc<LigneJournal[]>("admin_journal", { p_n: 200 }); }
   wallets() { return this.rpc<Wallets>("admin_wallets"); }
+  reseaux() { return this.rpc<ReseauRegistre[]>("admin_reseaux"); }
+  async activerReseau(id: string, actif: boolean) { await this.rpc("admin_activer_reseau", { p_id: id, p_actif: actif }); }
   parite() { return this.rpc<Parite>("admin_parite"); }
   async rapprocherMaintenant() { await this.rpc("admin_rapprocher_maintenant"); }
   async saisirReleve(floatId: number, solde: number, annonceLe: string, preuve: string, note?: string) {

@@ -294,6 +294,39 @@ try {
   await page.locator("img[alt^='Code QR']").waitFor();
   await capturer("crypto-deposer");
 
+  etape("Les réseaux viennent du moteur : Base ouvert, il s'ajoute au dépôt ; une adresse 0x se CHOISIT (BSC ou Base), une adresse T se reconnaît");
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem("xafe-base-ouvert")) globalThis.__xafeEpreuve = { parametres: { crypto: { retraits_ouverts: true, depots_ouverts: true, reseaux: [
+      { id: "bep20", nom: "BNB Smart Chain", norme: "BEP20", famille: "evm", natif: "BNB", confirmations: 15, maison: true },
+      { id: "trc20", nom: "Tron", norme: "TRC20", famille: "tron", natif: "TRX", confirmations: 20, maison: false },
+      { id: "base", nom: "Base", norme: "Base", famille: "evm", natif: "ETH", confirmations: 30, maison: false }] } } };
+  });
+  await page.evaluate(() => sessionStorage.setItem("xafe-base-ouvert", "1"));
+  await page.goto(`${BASE}/crypto/deposer/USDT`);
+  await page.getByRole("button", { name: "Base", exact: true }).click();
+  await voir("USDT sur Base uniquement");
+  await voir("30 confirmations");
+  const adresseBase = await page.locator("img[alt^='Code QR']").getAttribute("alt");
+  exiger(/Base$/.test(adresseBase ?? ""), `le code QR est celui de Base (${adresseBase})`);
+  await capturer("crypto-deposer-base");
+  await page.goto(`${BASE}/crypto/retirer/USDT/adresse`);
+  await page.getByLabel("Adresse du wallet").fill("0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21");
+  await voir("Sur quel réseau votre wallet attend-il les USDT ?");
+  exiger(await page.getByRole("button", { name: "Continuer" }).isDisabled(), "une adresse 0x avec deux réseaux EVM ouverts : rien n'est choisi d'office");
+  exiger(await page.getByRole("button", { name: "TRC20", exact: true }).count() === 0, "Tron n'est pas proposé pour une adresse 0x");
+  await page.getByRole("button", { name: "Base", exact: true }).click();
+  exiger(!(await page.getByRole("button", { name: "Continuer" }).isDisabled()), "Base choisi : on continue");
+  await voir("attend bien des USDT sur Base");
+  await capturer("crypto-retirer-choisir-reseau");
+  // une autre adresse efface le choix : un choix fait pour une adresse ne vaut pas pour la suivante
+  await page.getByLabel("Adresse du wallet").fill("0x7908cf9242fb2018f3487908cf9242fb2018f348");
+  exiger(await page.getByRole("button", { name: "Continuer" }).isDisabled(), "une adresse neuve redemande le réseau");
+  await page.getByLabel("Adresse du wallet").fill("TPL66VK2gCXNCD7EJg9pgJRfqcRazjhUZY");
+  await voir("TRC20 · Tron");
+  exiger(await page.getByText("Sur quel réseau").count() === 0, "une adresse T : Tron seul, pas de question");
+  exiger(!(await page.getByRole("button", { name: "Continuer" }).isDisabled()), "Tron reconnu : on continue");
+  await page.evaluate(() => { sessionStorage.removeItem("xafe-base-ouvert"); globalThis.__xafeEpreuve = {}; });
+
   /* --------------------------------------------------------- compte */
   etape("Compte : numéros, paliers, aide");
   await page.goto(`${BASE}/compte`);

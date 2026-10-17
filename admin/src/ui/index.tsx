@@ -177,6 +177,7 @@ const ETATS: Record<string, { label: string; tone: Tone }> = {
   faite: { label: "fait", tone: "green" }, retenue: { label: "retenue", tone: "amber" }, rapprochee: { label: "rapprochée", tone: "green" }, remboursee: { label: "remboursée", tone: "blue" },
   concorde: { label: "concorde", tone: "green" }, en_route: { label: "en route", tone: "blue" }, en_retard: { label: "en retard", tone: "amber" },
   refusee: { label: "refusée par la chaîne", tone: "red" }, ecart: { label: "écart", tone: "red" }, inconnue: { label: "inconnue du registre", tone: "red" },
+  pret: { label: "prêt", tone: "amber" }, ferme: { label: "fermé", tone: "neutral" },
   ouvert: { label: "ouvert", tone: "blue" }, partiel: { label: "partiel", tone: "amber" }, execute: { label: "exécuté", tone: "green" }, muet: { label: "muet", tone: "red" }, actif: { label: "actif", tone: "green" }, inactif: { label: "en pause", tone: "neutral" },
 };
 

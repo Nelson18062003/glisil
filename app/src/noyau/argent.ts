@@ -44,20 +44,89 @@ export function fraisSortieManuelle(montant: number): { frais: number; envoi: nu
   return { frais, envoi: montant - frais };
 }
 
-export const RESEAUX: Record<"bep20" | "trc20", { nom: string; chaine: string; confirmations: number; valide: (a: string) => boolean }> = {
-  bep20: { nom: "BEP20", chaine: "BNB Smart Chain", confirmations: 15, valide: (a) => /^0x[0-9a-fA-F]{40}$/.test(a) },
-  trc20: { nom: "TRC20", chaine: "Tron", confirmations: 20, valide: (a) => /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(a) },
+/**
+ * LES RÉSEAUX. Un client a UN solde ; le réseau ne se choisit qu'au dépôt ou
+ * au retrait. La liste vient du moteur (parametres_publics → crypto.reseaux,
+ * registre « reseaux », migration 0018) : l'équipe ouvre Base ou Ethereum, et
+ * l'écran les propose sans qu'on le recompile. BEP20 et TRC20 en sont les
+ * valeurs de départ, tant que la première lecture n'est pas revenue.
+ */
+export type Famille = "evm" | "tron" | "solana";
+export type InfoReseau = {
+  id: string;
+  /** ce que le client lit sur son wallet : « BEP20 », « TRC20 », « Base » */
+  nom: string;
+  /** la chaîne : « BNB Smart Chain », « Tron » */
+  chaine: string;
+  famille: Famille;
+  confirmations: number;
+  /** la monnaie des frais de réseau : BNB, TRX, ETH */
+  natif: string;
+  /** le réseau où vit la réserve de XAFe */
+  maison: boolean;
 };
 
+const FORMES: Record<Famille, RegExp> = {
+  evm: /^0x[0-9a-fA-F]{40}$/,
+  tron: /^T[1-9A-HJ-NP-Za-km-z]{33}$/,
+  solana: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
+};
+export const adresseValide = (famille: Famille, a: string) => FORMES[famille].test(a.trim());
+
+const DEPART: InfoReseau[] = [
+  { id: "bep20", nom: "BEP20", chaine: "BNB Smart Chain", famille: "evm", confirmations: 15, natif: "BNB", maison: true },
+  { id: "trc20", nom: "TRC20", chaine: "Tron", famille: "tron", confirmations: 20, natif: "TRX", maison: false },
+];
+/** Tous les réseaux déjà vus (l'historique peut nommer un réseau fermé depuis). */
+export const RESEAUX: Record<string, InfoReseau> = Object.fromEntries(DEPART.map((r) => [r.id, r]));
+/** Les réseaux ouverts, dans l'ordre où l'écran les propose : le maison d'abord. */
+export const RESEAUX_OUVERTS: string[] = DEPART.map((r) => r.id);
+
+/** Ce qu'on sait d'un réseau ; un identifiant inconnu se montre tel quel, jamais en plantant l'écran. */
+export function infoReseau(id: string): InfoReseau {
+  return RESEAUX[id] ?? { id, nom: id.toUpperCase(), chaine: id.toUpperCase(), famille: "evm", confirmations: 15, natif: "", maison: false };
+}
+export const reseauxOuverts = (): InfoReseau[] => RESEAUX_OUVERTS.map(infoReseau);
+/** « BEP20 · BNB Smart Chain » ; « Base » seul quand la norme et la chaîne portent le même nom */
+export const libelleReseau = (r: InfoReseau) => (r.nom === r.chaine ? r.chaine : `${r.nom} · ${r.chaine}`);
+
 /**
- * Le réseau se LIT dans l'adresse : 0x… (40 signes hexadécimaux) est BEP20,
- * T… (34 signes base58) est TRC20 — les deux formes ne se recouvrent pas. Le
- * client n'a donc pas à choisir un réseau qu'il pourrait choisir faux : c'est
- * l'erreur la plus coûteuse en crypto (des fonds envoyés sur la mauvaise chaîne).
+ * Les réseaux OUVERTS où cette adresse peut vivre. Une adresse T… n'est que
+ * Tron ; une adresse 0x… vaut pour TOUS les réseaux EVM — BSC, Base,
+ * Ethereum, Polygon ont la même forme. Une seule possibilité : l'écran la
+ * prend. Plusieurs : le client choisit, et l'écran ne choisit jamais pour lui
+ * (des fonds envoyés sur la mauvaise chaîne sont l'erreur la plus coûteuse en crypto).
  */
-export function reseauDe(adresse: string): "bep20" | "trc20" | null {
+export function reseauxPour(adresse: string): InfoReseau[] {
   const a = adresse.trim();
-  return RESEAUX.bep20.valide(a) ? "bep20" : RESEAUX.trc20.valide(a) ? "trc20" : null;
+  return reseauxOuverts().filter((r) => adresseValide(r.famille, a));
+}
+
+/** Le réseau de l'adresse, s'il n'y en a qu'un possible ; sinon null (aucun, ou à choisir). */
+export function reseauDe(adresse: string): string | null {
+  const l = reseauxPour(adresse);
+  return l.length === 1 ? l[0].id : null;
+}
+
+/** « BEP20 ou TRC20 », « BEP20, TRC20 ou Base » */
+export function nomsDesReseaux(): string {
+  const n = reseauxOuverts().map((r) => r.nom);
+  return n.length <= 1 ? (n[0] ?? "aucun réseau") : `${n.slice(0, -1).join(", ")} ou ${n[n.length - 1]}`;
+}
+
+function appliquerReseaux(liste: unknown) {
+  if (!Array.isArray(liste)) return;
+  const lus: InfoReseau[] = [];
+  for (const x of liste) {
+    if (!x || typeof x !== "object") return;
+    const r = x as Record<string, unknown>;
+    if (typeof r.id !== "string" || !/^[a-z][a-z0-9]{1,11}$/.test(r.id) || !["evm", "tron", "solana"].includes(String(r.famille))) return;   // une liste abîmée laisse celle d'avant
+    const confirmations = typeof r.confirmations === "number" && r.confirmations >= 1 && r.confirmations <= 1000 ? r.confirmations : infoReseau(r.id).confirmations;
+    lus.push({ id: r.id, nom: typeof r.norme === "string" ? r.norme : r.id.toUpperCase(), chaine: typeof r.nom === "string" ? r.nom : r.id,
+               famille: r.famille as Famille, confirmations, natif: typeof r.natif === "string" ? r.natif : "", maison: r.maison === true });
+  }
+  for (const r of lus) RESEAUX[r.id] = r;
+  RESEAUX_OUVERTS.splice(0, RESEAUX_OUVERTS.length, ...lus.map((r) => r.id));
 }
 
 /** L'achat rapide : un prix ferme pris au carnet, plus cette marge (posée par l'équipe). */
@@ -338,6 +407,7 @@ export function appliquerParametres(p: unknown): boolean {
   poser(FRAIS_CRYPTO, "XAFe", nombre(r.crypto?.frais?.XAFe, 0, 1_000_000));
   if (typeof r.crypto?.retraits_ouverts === "boolean") CRYPTO.retraitsOuverts = r.crypto.retraits_ouverts;
   if (typeof r.crypto?.depots_ouverts === "boolean") CRYPTO.depotsOuverts = r.crypto.depots_ouverts;
+  appliquerReseaux(r.crypto?.reseaux);
   if (typeof r.sortie?.ouvertes === "boolean") SORTIES.ouvertes = r.sortie.ouvertes;
   if (r.sortie?.mode === "totem" || r.sortie?.mode === "manuel") SORTIES.mode = r.sortie.mode;
   if (typeof r.marche?.ouvert === "boolean") MARCHE.ouvert = r.marche.ouvert;
