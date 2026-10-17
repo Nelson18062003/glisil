@@ -7,7 +7,7 @@
  * vit. Il tourne quand l'application n'a pas de projet Supabase configuré.
  * Il n'a aucune valeur comptable : c'est une maquette qui répond.
  */
-import { achatMax, adresseValide, arrondi2, bandeDePrix, coutAuCarnet, decouperSortie, devisSurLeCarnet, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide, RAPIDE, SORTIES, fraisSortieManuelle, infoReseau, RESEAUX, RESEAUX_OUVERTS } from "../noyau/argent";
+import { achatMax, adresseValide, arrondi2, FRAIS_CRYPTO, bandeDePrix, coutAuCarnet, decouperSortie, devisSurLeCarnet, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide, RAPIDE, SORTIES, fraisSortieManuelle, infoReseau, RESEAUX, RESEAUX_OUVERTS } from "../noyau/argent";
 import { ErreurMoteur } from "../noyau/erreurs";
 import { emailNormalise, emailValide } from "../noyau/identite";
 import { numeroSaisi, operateurDuNumero, transactionIdNormalise, xaf as xafDe } from "../noyau/format";
@@ -1029,7 +1029,7 @@ export class GuichetDemo implements Guichet {
     if (!RESEAUX_OUVERTS.includes(reseau)) throw new ErreurMoteur(RESEAUX[reseau] ? "réseau pas encore ouvert" : "réseau inconnu");
     if (!adresseValide(infoReseau(reseau).famille, adresse)) throw new ErreurMoteur("adresse invalide");
     this.exigerCode(d, codeSecret);
-    const frais = actif === "USDT" ? 1 : 500;
+    const frais = FRAIS_CRYPTO[actif];
     this.mouvement(d, actif, -(montant + frais), montant + frais);
     const r: RetraitCrypto & { cle: string } = { reference: this.reference(d, "XAFe-CR-"), actif, reseau, adresse, montant, frais, etat: "en_attente", txHash: null, creeLe: iso(), cle };
     d.retraits.unshift(r);

@@ -126,7 +126,7 @@ function graine(): Etat {
     journal: [{ id: 1, admin: "Nelson Soh", action: "creer_terminal", cible: "yaounde-1", detail: null, quand: iso(t - 5 * 24 * H) }],
     parametres: {
       frais: { placeur: 0.0005, preneur: 0.001, sortie: 0.005 }, marche: { paire: "USDT/XAFe", pas_prix: 0.05, quantite_min: 10, ouvert: true },
-      depot: { validite_minutes: 30, grace_minutes: 120 }, sortie: { reprises_max: 3, mode: "manuel", seuil_deux_personnes: 500_000 }, rapide: { marge: 0.01, validite_secondes: 20, ouvert: true }, crypto: { frais: { USDT: 1, XAFe: 500 }, confirmations: { bep20: 15, trc20: 20 } },
+      depot: { validite_minutes: 30, grace_minutes: 120 }, sortie: { reprises_max: 3, mode: "manuel", seuil_deux_personnes: 500_000 }, rapide: { marge: 0.01, validite_secondes: 20, ouvert: true }, crypto: { frais: { USDT: 1, XAFe: 0 }, confirmations: { bep20: 15, trc20: 20 } },
       code_secret: { essais: 3, verrou_minutes: 15, longueur_min: 4, longueur_max: 6 },
       support: { email: "support@glisil.com", whatsapp: null },
       conditions: { version: "2026-10-16" },
