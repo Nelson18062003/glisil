@@ -235,6 +235,7 @@ export class ChaineTron implements Chaine {
       const [contrat, selecteur, types, valeurs] =
         appel.type === "jeton" ? [this.contrat(appel.actif), "transfer(address,uint256)", ["address", "uint256"], [vingtOctets(appel.vers), appel.montant]]
         : appel.type === "frapper" ? [this.c.xafe, "frapper(address,uint256,bytes32)", ["address", "uint256", "bytes32"], [vingtOctets(appel.vers), appel.montant, appel.empreinte]]
+        : appel.type === "detruire" ? [this.c.xafe, "detruire(uint256,bytes32)", ["uint256", "bytes32"], [appel.montant, appel.empreinte]]
         : [this.c.xafe, "detruireDepot(address,uint256,bytes32)", ["address", "uint256", "bytes32"], [vingtOctets(appel.adresse), appel.montant, appel.empreinte]];
       tx = await this.noeud.fabriquerAppel(depuis.adresse, contrat as string, selecteur as string, types as string[], valeurs as unknown[], this.c.plafondFraisSun ?? 100_000_000);
     }

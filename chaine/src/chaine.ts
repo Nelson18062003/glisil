@@ -14,7 +14,9 @@ export type Appel =
   | { type: "jeton"; actif: Actif; vers: string; montant: bigint }
   | { type: "natif"; vers: string; montant: bigint }
   | { type: "frapper"; vers: string; montant: bigint; empreinte: string }
-  | { type: "detruireDepot"; adresse: string; montant: bigint; empreinte: string };
+  | { type: "detruireDepot"; adresse: string; montant: bigint; empreinte: string }
+  /** détruire sur le solde de l'appelant : la réserve de Glisil (le wallet chaud) */
+  | { type: "detruire"; montant: bigint; empreinte: string };
 
 export type Transfert = { adresse: string; brut: bigint; preuve: string };
 

@@ -10,6 +10,7 @@ export const ABI_JETON = [
   "function transfer(address to, uint256 montant) returns (bool)",
   "function frapper(address vers, uint256 montant, bytes32 empreinte)",
   "function detruireDepot(address adresse, uint256 montant, bytes32 empreinte)",
+  "function detruire(uint256 montant, bytes32 empreinte)",
   "function estAdresseDeDepot(address) view returns (bool)",
   "function destructionReferencee(bytes32) view returns (bool)",
   "function totalSupply() view returns (uint256)",
@@ -84,6 +85,7 @@ export class ChaineEvm implements Chaine {
     if (appel.type === "natif") tx = { to: appel.vers, value: appel.montant };
     else if (appel.type === "jeton") tx = { to: await this.jetons[appel.actif].getAddress(), data: IFACE.encodeFunctionData("transfer", [appel.vers, appel.montant]) };
     else if (appel.type === "frapper") tx = { to: await this.jetons.XAFe.getAddress(), data: IFACE.encodeFunctionData("frapper", [appel.vers, appel.montant, appel.empreinte]) };
+    else if (appel.type === "detruire") tx = { to: await this.jetons.XAFe.getAddress(), data: IFACE.encodeFunctionData("detruire", [appel.montant, appel.empreinte]) };
     else tx = { to: await this.jetons.XAFe.getAddress(), data: IFACE.encodeFunctionData("detruireDepot", [appel.adresse, appel.montant, appel.empreinte]) };
     const pret = await p.populateTransaction({ ...tx, nonce: await this.fournisseur.getTransactionCount(p.address, "pending") });
     const brut = await p.signTransaction(pret);
