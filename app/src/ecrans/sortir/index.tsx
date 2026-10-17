@@ -186,7 +186,7 @@ export function SortirVerifier() {
       <Screen title="Vérifiez" back="/sortir/destination">
         <Card>
           <Line label="Montant" value={`${xaf(etat.montant)} XAFe`} />
-          <Line label={`Frais (${pourcent(FRAIS.sortie)})`} value={xaf(frais)} />
+          <Line label={FRAIS.sortie > 0 ? `Frais (${pourcent(FRAIS.sortie)})` : "Frais"} value={frais > 0 ? xaf(frais) : "Offerts"} />
           <Divider />
           <Line label="Vous recevez" value={`${xaf(envoi)} XAF`} strong />
           <Line label="Vers" value={`${op.nom.split(" ")[0]} · ${numeroEnTranches(numero.numero)}`} />
@@ -216,7 +216,7 @@ export function SortirVerifier() {
     <Screen title="Vérifiez" back="/sortir/destination">
       <Card>
         <Line label="Montant" value={`${xaf(etat.montant)} XAFe`} />
-        <Line label={`Frais (${pourcent(FRAIS.sortie)})`} value={xaf(d.frais)} />
+        <Line label={FRAIS.sortie > 0 ? `Frais (${pourcent(FRAIS.sortie)})` : "Frais"} value={d.frais > 0 ? xaf(d.frais) : "Offerts"} />
         <Divider />
         <Line label="Vous recevez" value={`${xaf(d.envoi)} XAF`} strong />
         <Line label="Vers" value={`${op.nom.split(" ")[0]} · ${numeroEnTranches(numero.numero)}`} />
