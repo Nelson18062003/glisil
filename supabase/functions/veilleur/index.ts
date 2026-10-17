@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
   const reseau = new URL(req.url).searchParams.get("reseau");
   if (!estReseau(reseau)) return new Response(JSON.stringify({ erreur: `reseau=${Object.keys(RESEAUX).join("|")}` }), { status: 400 });
   const tour = unTour(reseau, reglages).then(
-    (b) => { console.log(JSON.stringify(b)); return b; },
+    (b) => { console.log(JSON.stringify(b, (_k, v) => typeof v === "bigint" ? v.toString() : v)); return b; },
     (e) => { console.error(`✗ ${reseau} : ${(e as Error).message}`); return { reseau, erreur: (e as Error).message }; },
   );
   // ?attendre=1 : la réponse porte le bilan du tour (pour vérifier à la main) ; sinon on rend la main tout de suite
