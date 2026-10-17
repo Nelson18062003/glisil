@@ -31,6 +31,8 @@ import { useGesteUnique } from "../../ui/gestes";
 
 const actifDe = (a: string | undefined): Actif => (a === "XAFe" ? "XAFe" : "USDT");
 const fmt = (a: Actif, n: number) => (a === "USDT" ? enTranches(n, 2) : xaf(n));
+/* des frais nuls se disent « offerts », pas « 0 XAFe » */
+const fraisLus = (a: Actif, n: number) => (n > 0 ? `${fmt(a, n)} ${a}` : "Offerts");
 
 export function Crypto() {
   const ouvert = useOuvertures();
@@ -186,7 +188,7 @@ export function CryptoRetirerAdresse() {
       {reseau && (
         <Card>
           <Line label="Réseau" value={libelleReseau(reseau)} strong />
-          <Line label="Frais du retrait" value={`${fmt(actif, FRAIS_CRYPTO[actif])} ${actif}`} />
+          <Line label="Frais du retrait" value={fraisLus(actif, FRAIS_CRYPTO[actif])} />
           <Typography variant="body2">Vérifiez que votre wallet attend bien des {actif} sur {reseau.chaine} : un envoi sur une chaîne ne se rappelle pas.</Typography>
         </Card>
       )}
@@ -226,7 +228,7 @@ export function CryptoRetirerMontant() {
           {saisie ? saisie.replace(".", ",") : "0"} <Typography component="span" variant="h5" color="text.secondary">{actif}</Typography>
         </Typography>
         <Typography variant="body2" mt={0.5} sx={{ color: trop ? "error.main" : undefined }}>
-          {soldes ? (trop ? `Disponible ${fmt(actif, dispo)} ${actif}, frais ${fmt(actif, frais)} compris` : `Disponible : ${fmt(actif, dispo)} ${actif} · frais ${fmt(actif, frais)} ${actif}`) : " "}
+          {soldes ? (trop ? `Disponible ${fmt(actif, dispo)} ${actif}, frais ${fmt(actif, frais)} compris` : `Disponible : ${fmt(actif, dispo)} ${actif} · frais ${frais > 0 ? `${fmt(actif, frais)} ${actif}` : "offerts"}`) : " "}
         </Typography>
       </Box>
       <Stack direction="row" gap={1} justifyContent="center">
@@ -250,7 +252,7 @@ export function CryptoRetirerVerifier() {
     <Screen title="Vérifiez" back={`/crypto/retirer/${actif}/montant`}>
       <Card>
         <Line label="Montant" value={`${fmt(actif, c.montant)} ${actif}`} />
-        <Line label="Frais de réseau" value={`${fmt(actif, frais)} ${actif}`} />
+        <Line label="Frais de réseau" value={fraisLus(actif, frais)} />
         <Divider />
         <Line label="Débité" value={`${fmt(actif, c.montant + frais)} ${actif}`} strong />
         <Line label="Réseau" value={libelleReseau(infoReseau(c.reseau))} />
@@ -316,7 +318,7 @@ export function CryptoEnvoye() {
     return (
       <Success title={`${r.actif} envoyés`} amount={`${fmt(r.actif, r.montant)} ${r.actif}`} caption={`Vers ${adresseCourte(r.adresse)} sur ${infoReseau(r.reseau).chaine}, ${quand(r.creeLe)}.`} primary={{ label: "Retour à l'accueil", to: "/" }} secondary={{ label: "Voir le détail", to: `/historique/${r.reference}` }}>
         <Card>
-          <Line label="Frais" value={`${fmt(r.actif, r.frais)} ${r.actif}`} />
+          <Line label="Frais" value={fraisLus(r.actif, r.frais)} />
           <Line label="Transaction" value={r.txHash ?? "—"} mono />
           <Line label="Référence" value={r.reference} mono />
         </Card>

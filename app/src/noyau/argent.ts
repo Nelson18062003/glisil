@@ -22,7 +22,7 @@ export const FRAIS: { placeur: number; preneur: number; sortie: number } = {
 };
 
 /** frais d'un retrait vers un wallet externe, par actif (le gaz, à prix fixe) */
-export const FRAIS_CRYPTO: Record<"USDT" | "XAFe", number> = { USDT: 1, XAFe: 500 };
+export const FRAIS_CRYPTO: Record<"USDT" | "XAFe", number> = { USDT: 1, XAFe: 0 };
 
 /**
  * La crypto : les retraits vers la chaîne sont fermés par le moteur tant
