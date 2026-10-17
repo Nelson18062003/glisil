@@ -74,7 +74,7 @@ export function Accueil() {
             <Poche badge="usdt" label="USDT" valeur={enTranches(soldes.USDT.disponible, 2)} bloque={soldes.USDT.bloque > 0 ? `${enTranches(soldes.USDT.bloque, 2)} bloqués` : undefined} />
           </Stack>
           {/* le XAFe est un jeton : la promesse 1 XAFe = 1 XAF se vérifie, à un geste */}
-          <Typography component={Link} to="/preuve" variant="caption" sx={{ color: "inherit", opacity: 0.85, alignSelf: "flex-start", textUnderlineOffset: 3 }}>
+          <Typography component={Link} to="/preuve" variant="caption" sx={{ color: "inherit", opacity: 0.85, alignSelf: "flex-start", textUnderlineOffset: 3, display: "inline-flex", alignItems: "center", minHeight: 32 }}>
             1 XAFe = 1 XAF · voir la preuve sur la blockchain
           </Typography>
         </Card>

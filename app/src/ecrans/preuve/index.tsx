@@ -70,7 +70,7 @@ function Transactions({ p }: { p: PreuveDeReserve }) {
   return (
     <Card sx={{ gap: 0.5, p: { xs: 1.5, sm: 2.5 } }}>
       <Typography variant="subtitle1" component="h2" sx={{ px: 1 }}>Chaque opération, et sa transaction</Typography>
-      <Typography variant="body2" sx={{ px: 1, mb: 1 }}>Un dépôt crédité crée des XAFe ; un retrait payé en détruit. La référence de l'opération est scellée dans la transaction.</Typography>
+      <Typography variant="body2" sx={{ px: 1, mb: 1, maxWidth: 660 }}>Un dépôt crédité crée des XAFe ; un retrait payé en détruit. La référence de l'opération est scellée dans la transaction.</Typography>
       {lignes.length === 0 && <Typography variant="body2" sx={{ px: 1, py: 2 }}>Aucune opération encore.</Typography>}
       {lignes.map((l, i) => {
         const c = p.contrats.find((x) => x.reseau === l.reseau);
@@ -85,7 +85,7 @@ function Transactions({ p }: { p: PreuveDeReserve }) {
               <Typography variant="caption" component="div">
                 {l.genre === "frappe" ? "Création" : "Destruction"} · {NOMS_RESEAUX[l.reseau].nom} · {quand(l.depuis)}
               </Typography>
-              {lien && <LienMui href={lien} target="_blank" rel="noreferrer" sx={{ fontFamily: "Roboto Mono, monospace", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 0.5 }}>{hashCourt(l.tx_vu)} <OpenInNewRounded sx={{ fontSize: 13 }} /></LienMui>}
+              {lien && <LienMui href={lien} target="_blank" rel="noreferrer" sx={{ fontFamily: "Roboto Mono, monospace", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 0.5, minHeight: 32 }}>{hashCourt(l.tx_vu)} <OpenInNewRounded sx={{ fontSize: 13 }} /></LienMui>}
             </Box>
             <Stack alignItems="flex-end" gap={0.5} sx={{ flexShrink: 0 }}>
               <Typography fontWeight={600} sx={{ fontVariantNumeric: "tabular-nums", color: l.genre === "frappe" ? "primary.main" : "text.primary" }}>{signe}{jeton(l.montant ?? l.montant_vu)}</Typography>
@@ -134,7 +134,7 @@ export function Preuve() {
 
         {p && p.essai && (
           <Paper sx={{ p: 2, borderRadius: 5, bgcolor: tones.amber.bg, color: tones.amber.fg }}>
-            <Typography variant="body2" sx={{ color: "inherit" }}><b>Réseau d'essai.</b> Les contrats XAFe tournent encore sur les réseaux de test de la BNB Smart Chain et de Tron : sur la blockchain, ces jetons n'ont pas encore de valeur. La méthode, elle, est celle du vrai réseau.</Typography>
+            <Typography variant="body2" sx={{ color: "inherit", maxWidth: 660 }}><b>Réseau d'essai.</b> Les contrats XAFe tournent encore sur les réseaux de test de la BNB Smart Chain et de Tron : sur la blockchain, ces jetons n'ont pas encore de valeur. La méthode, elle, est celle du vrai réseau.</Typography>
           </Paper>
         )}
 
@@ -144,7 +144,7 @@ export function Preuve() {
           <>
             <Paper data-statut={r.statut} sx={{ p: { xs: 2.5, sm: 3.5 }, borderRadius: 7, bgcolor: tones[s.tone].bg, color: tones[s.tone].fg }}>
               <Typography variant="h5" component="h2" sx={{ fontWeight: 700, color: "inherit" }}>{s.titre}</Typography>
-              <Typography variant="body1" sx={{ mt: 0.75, color: "inherit", maxWidth: 760 }}>{s.phrase}</Typography>
+              <Typography variant="body1" sx={{ mt: 0.75, color: "inherit", maxWidth: 720 }}>{s.phrase}</Typography>
               <Typography variant="caption" sx={{ display: "block", mt: 1, color: "inherit", opacity: 0.8 }}>Relevé {quand(r.fait_le)} · refait toutes les cinq minutes</Typography>
             </Paper>
 
@@ -174,7 +174,7 @@ export function Preuve() {
                   return (
                     <Box key={n.reseau}>
                       <Line label={NOMS_RESEAUX[n.reseau].nom} value={n.offre != null ? `${jeton(n.offre)} XAFe` : "en lecture"} />
-                      {lien && <LienMui href={lien} target="_blank" rel="noreferrer" variant="caption" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>le contrat sur {NOMS_RESEAUX[n.reseau].explorateur} <OpenInNewRounded sx={{ fontSize: 12 }} /></LienMui>}
+                      {lien && <LienMui href={lien} target="_blank" rel="noreferrer" variant="caption" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, minHeight: 32 }}>le contrat sur {NOMS_RESEAUX[n.reseau].explorateur} <OpenInNewRounded sx={{ fontSize: 12 }} /></LienMui>}
                     </Box>
                   );
                 })}
@@ -188,7 +188,7 @@ export function Preuve() {
 
             <Card sx={{ gap: 1 }}>
               <Typography variant="subtitle1" component="h2">Le vérifier vous-même</Typography>
-              <Box component="ol" sx={{ m: 0, pl: 2.5, "& li": { mb: 1 } }}>
+              <Box component="ol" sx={{ m: 0, pl: 2.5, maxWidth: 660, "& li": { mb: 1 } }}>
                 <li><Typography variant="body2">Ouvrez le contrat XAFe dans l'explorateur ({p.contrats.map((c, i) => <span key={c.reseau}>{i ? " · " : ""}<LienMui href={lienContrat(c.explorateur, c.reseau, c.contrat) ?? undefined} target="_blank" rel="noreferrer">{NOMS_RESEAUX[c.reseau].nom}</LienMui></span>)}) : son « total supply » est la colonne 3.</Typography></li>
                 <li><Typography variant="body2">Chaque transaction porte une <b>empreinte</b> : le keccak256 du texte de la référence (« XAFe-DP-000003 »). Le contrat refuse de créer deux fois des XAFe sous la même.</Typography></li>
                 <li><Typography variant="body2">Chaque client retrouve dans son reçu PDF la transaction qui a créé ses XAFe, et un code à scanner qui l'ouvre.</Typography></li>
