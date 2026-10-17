@@ -253,6 +253,45 @@ try {
   await voir("jamais attribuée à un client");
   exiger(await page.locator('[data-tuile="Couverture"]').count() === 1, "la couverture des USDT dus est dite");
   await capturer("wallets");
+
+  etape("Réseaux : BSC maison ne se ferme pas, Solana ne s'ouvre pas, Base (contrat posé) s'ouvre après confirmation");
+  await voir("maison · la réserve");
+  await voir("pas encore de veilleur");
+  const ligneReseau = (nom) => page.locator("tr", { has: page.getByText(nom, { exact: true }) });
+  exiger(await ligneReseau("BNB Smart Chain").getByRole("button", { name: /^(Ouvrir|Fermer)$/ }).count() === 0, "le réseau maison n'a pas de bouton « Fermer »");
+  exiger(await ligneReseau("Solana").getByRole("button", { name: /^(Ouvrir|Fermer)$/ }).count() === 0, "Solana n'a pas de bouton « Ouvrir »");
+  exiger(await ligneReseau("Ethereum").getByRole("button", { name: /^(Ouvrir|Fermer)$/ }).count() === 0, "Ethereum, sans contrat, n'a pas de bouton « Ouvrir »");
+  await ligneReseau("Base").getByRole("button", { name: "Ouvrir" }).click();
+  await voir("Ouvrir Base aux clients ?");
+  await capturer("reseaux-ouvrir");
+  await page.getByRole("button", { name: "Ouvrir le réseau" }).click();
+  await ligneReseau("Base").getByRole("button", { name: "Fermer" }).waitFor();
+  await voir("ouvert aux clients");
+  await ligneReseau("Base").getByRole("button", { name: "Fermer" }).click();
+  await page.getByRole("button", { name: "Fermer le réseau" }).click();
+  await ligneReseau("Base").getByRole("button", { name: "Ouvrir" }).waitFor();
+
+  etape("Parité : floats, registre, chaîne — et un relevé d'opérateur saisi");
+  await page.goto(`${BASE}/parite`);
+  await voir("La parité tient");
+  await voir("1 · Les floats");
+  await voir("2 · Le registre");
+  await voir("3 · La chaîne");
+  await voir("XAFe-DP-000512");
+  exiger(await page.locator("[data-statut]").count() === 1, "le bandeau dit l'état de la parité");
+  exiger(await page.getByText("en route", { exact: true }).count() >= 1, "une frappe en route se montre comme telle");
+  await capturer("parite");
+  await page.getByRole("button", { name: "Saisir un relevé" }).first().click();
+  await page.getByLabel("solde du relevé").fill("4 250 000");
+  exiger(await page.getByRole("button", { name: "Enregistrer le relevé" }).isDisabled(), "sans le fichier du relevé, rien ne s'enregistre");
+  await page.locator('input[type="file"]').setInputFiles({ name: "releve-mtn.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 releve") });
+  await page.getByRole("button", { name: "Enregistrer le relevé" }).click();
+  await voir("relevé officiel");
+  await voir("4 250 000 XAF");
+  await capturer("parite-releve");
+  await page.goto(`${BASE}/`);
+  exiger(await page.locator("[data-parite]").count() === 1, "le tableau de bord dit la parité");
+
   await page.getByRole("button", { name: "Se déconnecter" }).click();
   await page.waitForURL(/\/connexion$/);
   await page.getByLabel("Adresse e-mail").fill("support@glisil.com");
@@ -268,6 +307,9 @@ try {
   await voir("Akwa 1");
   exiger((await page.getByRole("button", { name: "Nouveau terminal" }).count()) === 0, "le support ne crée pas de terminal");
   await capturer("support-terminaux");
+  await page.goto(`${BASE}/parite`);
+  await voir("1 · Les floats");
+  exiger((await page.getByRole("button", { name: "Saisir un relevé" }).count()) === 0, "le support ne saisit pas de relevé");
 
   exiger(erreurs.length === 0, `des erreurs ont été vues dans le navigateur :\n  ${erreurs.join("\n  ")}`);
   console.log(`✓ l'administration tient (${n} captures dans admin/captures/)`);

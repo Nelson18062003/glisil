@@ -131,6 +131,10 @@ try {
   await page.waitForURL(new RegExp(`/entrer/credite/${refDepot}$`));
   await voir("XAFe crédités");
   await voir("20394817250");
+  /* le XAFe est un jeton : le crédit se double d'une frappe sur la blockchain, montrée tout de suite */
+  await voir("Sur la blockchain");
+  await voir("En route vers la blockchain");
+  exiger(await page.locator('[data-chaine="envoye"]').count() === 1, "une frappe qui part n'est pas dite confirmée");
   await capturer("entrer-credite");
   await page.getByRole("link", { name: "Retour à l'accueil" }).click();
   await page.waitForURL(`${BASE}/`);
@@ -171,6 +175,33 @@ try {
   await page.getByText("Prix (XAFe)").first().waitFor();
   await page.waitForTimeout(800);
   await capturer("marche");
+  /* le prix est un VRAI prix, pré-rempli (le meilleur en face), pas un exemple gris dans une case vide */
+  const prixPose = await page.getByLabel("Prix (XAFe)").inputValue();
+  exiger(/^\d{3},\d{2}$/.test(prixPose), `le prix est pré-rempli : « ${prixPose} »`);
+  /* le bouton gris dit pourquoi, la règle et sa borne : 1 USDT est sous le minimum */
+  await page.getByLabel("Quantité (USDT)").fill("1");
+  await voir("Au moins 10 USDT");
+  exiger(await page.getByRole("button", { name: "Acheter USDT" }).isDisabled(), "sous le minimum, le bouton ne part pas");
+  await capturer("marche-raison");
+  /* le total d'abord : 61 840 XAFe au prix posé donnent la quantité, au centime inférieur */
+  await page.getByLabel("Total (XAFe)").fill("61840");
+  const qDuTotal = Number((await page.getByLabel("Quantité (USDT)").inputValue()).replace(",", "."));
+  exiger(qDuTotal > 0 && Math.abs(qDuTotal * Number(prixPose.replace(",", ".")) - 61840) < Number(prixPose.replace(",", ".")), `le total donne la quantité : ${qDuTotal}`);
+  /* un prix loin du marché : la bande le dit avant l'envoi */
+  await page.getByLabel("Prix (XAFe)").fill("900");
+  await voir("se place entre");
+  await page.getByRole("button", { name: "Meilleur prix en face" }).click();
+  /* la démonstration fait vivre son carnet : le meilleur prix a pu bouger d'un pas depuis, mais il revient près du marché */
+  const prixBbo = await page.getByLabel("Prix (XAFe)").inputValue();
+  exiger(/^\d{3},\d{2}$/.test(prixBbo) && Math.abs(Number(prixBbo.replace(",", ".")) - Number(prixPose.replace(",", "."))) < 5, `BBO remet le meilleur prix en face : ${prixBbo}`);
+  exiger(await page.getByText("se place entre").count() === 0, "revenu dans la bande, plus de raison affichée");
+  await page.getByLabel("Quantité (USDT)").fill("");
+  await page.getByRole("link", { name: "Règles du marché" }).click();
+  await page.waitForURL(/\/marche\/regles$/);
+  for (const t of ["Comment un échange se fait", "Prix de référence", "Bande d'un achat", "Protection d'un ordre au marché", "Ordres ouverts, au plus"]) await voir(t);
+  await capturer("marche-regles");
+  await page.goBack();
+  await page.waitForURL(/\/marche$/);
   await page.getByText("Limite", { exact: true }).first().click();
   await page.getByText("Marché", { exact: true }).last().click();
   await page.getByLabel("Quantité (USDT)").fill("10");
@@ -227,9 +258,32 @@ try {
   await voir("20394817250");
   await voir("Lu par TOTEM");
   await capturer("historique-detail");
-  /* le reçu se télécharge comme un fichier */
-  const [fichier] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Télécharger le reçu" }).click()]);
-  exiger(fichier.suggestedFilename().startsWith("Recu-XAFe-DP-"), `le reçu porte sa référence : ${fichier.suggestedFilename()}`);
+  await voir("Sur la blockchain");
+  exiger(await page.getByRole("link", { name: /Voir sur BscScan/ }).count() === 1, "la transaction s'ouvre dans l'explorateur");
+  const lienTx = await page.getByRole("link", { name: /Voir sur BscScan/ }).getAttribute("href");
+  exiger(/^https:\/\/testnet\.bscscan\.com\/tx\/0x[0-9a-f]{64}$/.test(lienTx ?? ""), `le lien vise une transaction : ${lienTx}`);
+  /* le reçu se télécharge comme un fichier PDF, qui porte la transaction */
+  const [fichier] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: /Télécharger le reçu/ }).click()]);
+  exiger(/^Recu-XAFe-DP-.*\.pdf$/.test(fichier.suggestedFilename()), `le reçu est un PDF qui porte sa référence : ${fichier.suggestedFilename()}`);
+  {
+    const { readFileSync } = await import("node:fs");
+    const octets = readFileSync(await fichier.path());
+    exiger(octets.subarray(0, 5).toString() === "%PDF-" && octets.length > 4000, "le reçu est un vrai PDF, pas un fichier vide");
+  }
+
+  etape("La preuve de réserve : publique, sans compte — floats, registre, blockchain, chaque transaction");
+  {
+    const p3 = await navigateur.newPage({ viewport: { width: 390, height: 844 } });
+    p3.on("pageerror", (e) => erreurs.push(`preuve : ${e.message}`));
+    await p3.goto(`${BASE}/preuve`);
+    await p3.getByText("Preuve de réserve").first().waitFor();
+    for (const t of ["1 · Les floats", "2 · Le registre", "3 · La blockchain", "Écart avec le registre", "Le vérifier vous-même", "XAFe-DP-000401"]) await p3.getByText(t).first().waitFor();
+    exiger(await p3.locator("[data-statut]").count() === 1, "l'état de la parité est dit en tête");
+    exiger(await p3.locator('[data-ligne="en_route"]').count() >= 1 && await p3.locator('[data-ligne="concorde"]').count() >= 1, "chaque transaction a son verdict");
+    exiger(!/677 ?12|NUMERO|@/.test(await p3.locator("body").innerText()), "aucun numéro ni adresse e-mail de client sur la page publique");
+    await p3.screenshot({ path: `${OUT}preuve.png`, fullPage: true });
+    await p3.close();
+  }
 
   /* --------------------------------------------------------- crypto */
   etape("Crypto : l'adresse de dépôt et son code QR");
@@ -239,6 +293,39 @@ try {
   await page.waitForURL(/\/crypto\/deposer\/USDT$/);
   await page.locator("img[alt^='Code QR']").waitFor();
   await capturer("crypto-deposer");
+
+  etape("Les réseaux viennent du moteur : Base ouvert, il s'ajoute au dépôt ; une adresse 0x se CHOISIT (BSC ou Base), une adresse T se reconnaît");
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem("xafe-base-ouvert")) globalThis.__xafeEpreuve = { parametres: { crypto: { retraits_ouverts: true, depots_ouverts: true, reseaux: [
+      { id: "bep20", nom: "BNB Smart Chain", norme: "BEP20", famille: "evm", natif: "BNB", confirmations: 15, maison: true },
+      { id: "trc20", nom: "Tron", norme: "TRC20", famille: "tron", natif: "TRX", confirmations: 20, maison: false },
+      { id: "base", nom: "Base", norme: "Base", famille: "evm", natif: "ETH", confirmations: 30, maison: false }] } } };
+  });
+  await page.evaluate(() => sessionStorage.setItem("xafe-base-ouvert", "1"));
+  await page.goto(`${BASE}/crypto/deposer/USDT`);
+  await page.getByRole("button", { name: "Base", exact: true }).click();
+  await voir("USDT sur Base uniquement");
+  await voir("30 confirmations");
+  const adresseBase = await page.locator("img[alt^='Code QR']").getAttribute("alt");
+  exiger(/Base$/.test(adresseBase ?? ""), `le code QR est celui de Base (${adresseBase})`);
+  await capturer("crypto-deposer-base");
+  await page.goto(`${BASE}/crypto/retirer/USDT/adresse`);
+  await page.getByLabel("Adresse du wallet").fill("0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21");
+  await voir("Sur quel réseau votre wallet attend-il les USDT ?");
+  exiger(await page.getByRole("button", { name: "Continuer" }).isDisabled(), "une adresse 0x avec deux réseaux EVM ouverts : rien n'est choisi d'office");
+  exiger(await page.getByRole("button", { name: "TRC20", exact: true }).count() === 0, "Tron n'est pas proposé pour une adresse 0x");
+  await page.getByRole("button", { name: "Base", exact: true }).click();
+  exiger(!(await page.getByRole("button", { name: "Continuer" }).isDisabled()), "Base choisi : on continue");
+  await voir("attend bien des USDT sur Base");
+  await capturer("crypto-retirer-choisir-reseau");
+  // une autre adresse efface le choix : un choix fait pour une adresse ne vaut pas pour la suivante
+  await page.getByLabel("Adresse du wallet").fill("0x7908cf9242fb2018f3487908cf9242fb2018f348");
+  exiger(await page.getByRole("button", { name: "Continuer" }).isDisabled(), "une adresse neuve redemande le réseau");
+  await page.getByLabel("Adresse du wallet").fill("TPL66VK2gCXNCD7EJg9pgJRfqcRazjhUZY");
+  await voir("TRC20 · Tron");
+  exiger(await page.getByText("Sur quel réseau").count() === 0, "une adresse T : Tron seul, pas de question");
+  exiger(!(await page.getByRole("button", { name: "Continuer" }).isDisabled()), "Tron reconnu : on continue");
+  await page.evaluate(() => { sessionStorage.removeItem("xafe-base-ouvert"); globalThis.__xafeEpreuve = {}; });
 
   /* --------------------------------------------------------- compte */
   etape("Compte : numéros, paliers, aide");

@@ -7,7 +7,7 @@
  * vit. Il tourne quand l'application n'a pas de projet Supabase configuré.
  * Il n'a aucune valeur comptable : c'est une maquette qui répond.
  */
-import { achatMax, arrondi2, coutAuCarnet, decouperSortie, devisSurLeCarnet, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide, RAPIDE, SORTIES, fraisSortieManuelle } from "../noyau/argent";
+import { achatMax, adresseValide, arrondi2, bandeDePrix, coutAuCarnet, decouperSortie, devisSurLeCarnet, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide, RAPIDE, SORTIES, fraisSortieManuelle, infoReseau, RESEAUX, RESEAUX_OUVERTS } from "../noyau/argent";
 import { ErreurMoteur } from "../noyau/erreurs";
 import { emailNormalise, emailValide } from "../noyau/identite";
 import { numeroSaisi, operateurDuNumero, transactionIdNormalise, xaf as xafDe } from "../noyau/format";
@@ -16,6 +16,7 @@ import type { Guichet } from "./guichet";
 import type {
   Actif, Carnet, Chandelle, Compte, Cote, Cotation, Declaration, Depot, DevisRapide, Execution, IdOperateur, Niveau, Notification, Numero, Operation, Ordre, ProfilInscription, SensRapide,
   Reseau, ResultatCode, ResultatOrdre, RetraitCrypto, Soldes, Sortie, Transaction, TransfertCrypto, TypeOrdre,
+  LignePreuve, PreuveDeReserve,
 } from "./types";
 
 const CLE_STOCKAGE = "xafe.demo.v5";
@@ -68,6 +69,32 @@ const maintenant = () => Date.now();
 const iso = (t = maintenant()) => new Date(t).toISOString();
 /** Le guichet rend des COPIES : un objet vivant, modifié en place, ferait croire au cache qu'il n'a pas changé. */
 const copie = <T,>(x: T): T => structuredClone(x);
+/** 64 chiffres hexadécimaux tirés d'un texte : la démonstration a des transactions qui ont l'air vraies, toujours les mêmes. */
+function hex64(texte: string): string {
+  let h = 2166136261 >>> 0, sortie = "";
+  for (let tour = 0; sortie.length < 64; tour++) {
+    for (const c of `${texte}#${tour}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+    sortie += h.toString(16).padStart(8, "0");
+  }
+  return `0x${sortie.slice(0, 64)}`;
+}
+
+/** La démo frappe aussi : chaque dossier crédité a sa transaction dans la réserve, en route les trente premières secondes. */
+function avecChaine(dep: Depot): Depot {
+  if (dep.etat !== "credite" || !dep.crediteLe) return { ...dep, chaine: [] };
+  const confirme = maintenant() - new Date(dep.crediteLe).getTime() > 30_000;
+  return {
+    ...dep,
+    chaine: [{
+      reseau: "bep20", operation: "frapper", montant: dep.montantRecu, reference: dep.reference, etat: confirme ? "confirme" : "envoye",
+      txHash: hex64(`tx:${dep.reference}`), bloc: confirme ? 137_261_987 + (parseInt(dep.reference.slice(-3), 10) || 0) : null, essai: true,
+      contrat: "0x750E774368240063BD5CF52b30b91183Efa4dAf3", reserve: "0x771C971497E4409d0225350C49609691E955465C",
+      explorateur: "https://testnet.bscscan.com", empreinte: hex64(`empreinte:${dep.reference}`), relue: confirme,
+      confirmeLe: confirme ? iso(new Date(dep.crediteLe).getTime() + 25_000) : null,
+    }],
+  };
+}
+
 const uuid = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 
 function alea(seed: number): number {
@@ -596,7 +623,7 @@ export class GuichetDemo implements Guichet {
     if (!dep) throw new ErreurMoteur("dépôt inconnu");
     /* Couture d'épreuve (démonstration seulement) : le boîtier se tait, ou l'équipe retire le float. */
     const epreuve = (globalThis as { __xafeEpreuve?: { reception?: Depot["reception"] } }).__xafeEpreuve;
-    return copie(epreuve?.reception && dep.etat === "en_attente" ? { ...dep, reception: epreuve.reception } : dep);
+    return copie(avecChaine(epreuve?.reception && dep.etat === "en_attente" ? { ...dep, reception: epreuve.reception } : dep));
   }
 
   /** Le client tape le transaction ID de son SMS ; le faux TOTEM « trouve » le SMS trois secondes plus tard. */
@@ -693,6 +720,33 @@ export class GuichetDemo implements Guichet {
   /** la démonstration garde les valeurs de la migration, écrites dans noyau/argent.ts */
   /* la démonstration a tout ouvert ; une épreuve peut poser les paramètres que l'équipe poserait (« seulement les dépôts ») */
   async parametres() { return (globalThis as { __xafeEpreuve?: { parametres?: unknown } }).__xafeEpreuve?.parametres ?? null; }
+
+  /** La preuve de la démonstration : une maison en ordre, la frappe la plus récente encore en route. */
+  async preuveDeReserve(): Promise<PreuveDeReserve> {
+    const t = maintenant();
+    const lignes: LignePreuve[] = [
+      { reference: "XAFe-DP-000418", nature: "reserve", reseau: "bep20", genre: "frappe", montant: 500_000, depuis: iso(t - 20_000), empreinte: hex64("empreinte:XAFe-DP-000418"), tx_vu: null, bloc_vu: null, montant_vu: null, verdict: "en_route" },
+      ...[["XAFe-DP-000401", 3_000_000, 20], ["XAFe-WD-000207", -49_500, 26], ["XAFe-DP-000377", 1_250_000, 31], ["XAFe-CR-000012", 750_000, 40], ["XAFe-DP-000350", 8_000_000, 52]].map(([ref, m, h], i): LignePreuve => {
+        const montant = Math.abs(m as number);
+        return { reference: ref as string, nature: String(ref).includes("-CR-") ? "retrait" : "reserve", reseau: "bep20", genre: (m as number) > 0 ? "frappe" : "destruction", montant,
+                 depuis: iso(t - (h as number) * 3600_000), empreinte: hex64(`empreinte:${ref}`), tx_vu: hex64(`tx:${ref}`), bloc_vu: 137_261_987 - i * 1_200, montant_vu: montant, verdict: "concorde" };
+      }),
+    ];
+    const registre = 12_450_500, enRoute = 500_000;
+    return {
+      releve: {
+        fait_le: iso(t - 70_000), statut: "en_cours", registre, dans_comptes: registre - 750_000, sur_wallets: 750_000,
+        chaine: registre - enRoute, offre_lue: registre - enRoute, en_route: enRoute, ecart: 0, floats: 13_120_000, couverture: 13_120_000 - registre, anomalies: 0,
+        reseaux: [{ reseau: "bep20", offre: registre - enRoute, reserve: registre - enRoute - 750_000, bloc: 137_263_410, a_jour: true, lu_le: iso(t - 30_000) },
+                  { reseau: "trc20", offre: 0, reserve: 0, bloc: 71_897_120, a_jour: true, lu_le: iso(t - 45_000) }],
+        floats_detail: [{ operateur: "mtn", solde: 8_420_000, annonce_le: iso(t - 6 * 60_000), connu: true }, { operateur: "om", solde: 4_700_000, annonce_le: iso(t - 41 * 60_000), connu: true }],
+      },
+      historique: Array.from({ length: 48 }, (_, i) => ({ fait_le: iso(t - (48 - i) * 3600_000), statut: "juste" as const, registre: registre - (48 - i) * 60_000, chaine: registre - (48 - i) * 60_000, ecart: 0, floats: 13_120_000 - (48 - i) * 50_000 })),
+      contrats: [{ reseau: "bep20", contrat: "0x750E774368240063BD5CF52b30b91183Efa4dAf3", explorateur: "https://testnet.bscscan.com", reserve: "0x771C971497E4409d0225350C49609691E955465C" },
+                 { reseau: "trc20", contrat: "TFtfFFmagGUjxGrG3cM4MX4kTv8YvBgLnk", explorateur: "https://nile.tronscan.org/#", reserve: "TEW4N3ZiF23GxHTYu8pen6r8uhHeZpALYZ" }],
+      essai: true, lignes, alertes: 0,
+    };
+  }
 
   async renvoyerCodeNumero(id: string) {
     const d = this.dossier();
@@ -803,7 +857,7 @@ export class GuichetDemo implements Guichet {
       dernier: m.mid, variation24h: arrondi2(((m.mid - ilYa24h) / ilYa24h) * 100),
       haut24h: Math.max(...dernieres.map((c) => c.h)), bas24h: Math.min(...dernieres.map((c) => c.l)),
       volume24hUsdt: dernieres.reduce((s, c) => s + c.v, 0),
-      meilleurAchat: livre.achats[0]?.prix ?? null, meilleureVente: livre.ventes[0]?.prix ?? null, releveLe: iso(),
+      meilleurAchat: livre.achats[0]?.prix ?? null, meilleureVente: livre.ventes[0]?.prix ?? null, reference: m.mid, releveLe: iso(),
     };
   }
 
@@ -846,6 +900,14 @@ export class GuichetDemo implements Guichet {
     if (deja) return copie({ ordre: deja, executions: d.executions.filter((e) => e.ordreId === deja.id), autoNegociation: false, deja: true });
     if (!quantiteValide(quantite)) throw new ErreurMoteur("quantité invalide", `au moins ${MARCHE.quantiteMin} USDT, deux décimales`);
     if (type === "limite" && (prix === undefined || !prixValide(prix))) throw new ErreurMoteur("prix invalide", `un multiple de ${MARCHE.pasPrix}`);
+    /* les règles du marché (0017), avec les mêmes phrases que le moteur */
+    if (quantite > MARCHE.quantiteMax) throw new ErreurMoteur("quantité trop grande", `au plus ${MARCHE.quantiteMax} USDT par ordre`);
+    if (type === "marche" && quantite > MARCHE.marcheQuantiteMax) throw new ErreurMoteur("ordre au marché trop grand", `au plus ${MARCHE.marcheQuantiteMax} USDT au marché`);
+    const bande = type === "limite" ? bandeDePrix(cote, this.etat.marche.mid) : null;
+    if (bande && (prix! < bande.min || prix! > bande.max)) throw new ErreurMoteur("prix hors de la bande", `entre ${bande.min} et ${bande.max} XAFe`);
+    if (type === "limite" && d.ordres.filter((x) => x.etat === "ouvert" || x.etat === "partiel").length >= MARCHE.ordresOuvertsMax) {
+      throw new ErreurMoteur("trop d'ordres ouverts", `au plus ${MARCHE.ordresOuvertsMax}`);
+    }
     const px = type === "limite" ? prix! : null;
 
     const o: Ordre & { cle: string } = {
@@ -955,7 +1017,8 @@ export class GuichetDemo implements Guichet {
     let h = 0;
     for (const c of graine) h = (h * 31 + c.charCodeAt(0)) >>> 0;
     const hex = (n: number) => Array.from({ length: n }, (_, i) => ((h >> ((i * 5) % 28)) & 15).toString(16)).join("");
-    return reseau === "bep20" ? `0x${hex(20)}${hex(20)}` : `T${hex(16).toUpperCase()}${hex(17)}`;
+    if (!RESEAUX_OUVERTS.includes(reseau)) return null;   // comme le moteur : un réseau fermé ne montre pas d'adresse
+    return infoReseau(reseau).famille === "tron" ? `T${hex(16).toUpperCase()}${hex(17)}` : `0x${hex(20)}${hex(20)}`;
   }
 
   async demanderRetraitCrypto({ actif, reseau, adresse, montant, cle, codeSecret }: { actif: Actif; reseau: Reseau; adresse: string; montant: number; cle: string; codeSecret: string }) {
@@ -963,7 +1026,8 @@ export class GuichetDemo implements Guichet {
     const deja = d.retraits.find((x) => (x as unknown as { cle?: string }).cle === cle);
     if (deja) return copie(deja);
     if (!(montant > 0)) throw new ErreurMoteur("montant invalide");
-    if (!(reseau === "bep20" ? /^0x[0-9a-fA-F]{40}$/.test(adresse) : /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(adresse))) throw new ErreurMoteur("adresse invalide");
+    if (!RESEAUX_OUVERTS.includes(reseau)) throw new ErreurMoteur(RESEAUX[reseau] ? "réseau pas encore ouvert" : "réseau inconnu");
+    if (!adresseValide(infoReseau(reseau).famille, adresse)) throw new ErreurMoteur("adresse invalide");
     this.exigerCode(d, codeSecret);
     const frais = actif === "USDT" ? 1 : 500;
     this.mouvement(d, actif, -(montant + frais), montant + frais);
@@ -985,7 +1049,7 @@ export class GuichetDemo implements Guichet {
   async historique(): Promise<Operation[]> {
     const d = this.dossier();
     const ops: Operation[] = [
-      ...d.depots.filter((x) => x.etat !== "annule" && x.etat !== "expire").map((x): Operation => ({ nature: "depot", reference: x.reference, quand: x.crediteLe ?? x.creeLe, etat: x.etat, montant: x.montantRecu, detail: x })),
+      ...d.depots.filter((x) => x.etat !== "annule" && x.etat !== "expire").map((x): Operation => ({ nature: "depot", reference: x.reference, quand: x.crediteLe ?? x.creeLe, etat: x.etat, montant: x.montantRecu, detail: avecChaine(x) })),
       ...d.sorties.map((x): Operation => ({ nature: "sortie", reference: x.reference, quand: x.creeLe, etat: x.etat, montant: -x.montant, detail: x })),
       ...d.ordres.filter((x) => x.executee > 0 || x.etat !== "annule").map((x): Operation => ({ nature: "ordre", reference: x.id, quand: x.creeLe, etat: x.etat, montant: (x.cote === "achat" ? -1 : 1) * (x.rapide?.total ?? x.totalXafe), detail: x })),
       ...d.retraits.map((x): Operation => ({ nature: "crypto", reference: x.reference, quand: x.creeLe, etat: x.etat === "envoye" ? "confirme" : x.etat === "echoue" ? "echoue" : "en_attente", montant: -x.montant, actif: x.actif, detail: x })),

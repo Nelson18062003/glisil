@@ -15,7 +15,7 @@ import CloseRounded from "@mui/icons-material/CloseRounded";
 import HourglassTopRounded from "@mui/icons-material/HourglassTopRounded";
 import { Box, Button, Chip, CircularProgress, IconButton, InputAdornment, Paper, Stack, TextField, Typography } from "@mui/material";
 import { useState } from "react";
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useCompte, useDepot, useGuichet, useNumeros, useOuvertures, useRafraichir } from "../../guichet";
 import type { Declaration, IdOperateur } from "../../guichet/types";
 import { montantValide, OPERATEURS, PALIERS, operateur as opDe } from "../../noyau/argent";
@@ -25,6 +25,7 @@ import { useParcours } from "../../navigation/parcours";
 import { tones } from "../../theme";
 import { Amount, Attente, Card, Chips, FeuilleErreur, Keypad, Line, List, Row, Screen, Success } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
+import { SurLaChaine } from "../../ui/chaine";
 
 /* ------------------------------------------------------- 1 · opérateur */
 
@@ -415,10 +416,15 @@ export function EntrerCredite() {
       primary={ouvert.marche ? { label: "Aller au marché", to: "/marche" } : { label: "Retour à l'accueil", to: "/" }}
       secondary={ouvert.marche ? { label: "Retour à l'accueil", to: "/" } : { label: "Ajouter d'autres XAFe", to: "/entrer/operateur" }}
     >
-      <Card>
-        <Line label="Dossier XAFe" value={depot.reference} mono />
-        {credites.map((d) => <Line key={d.id} label={`Transaction ID ${opDe(depot.operateur).nom}`} value={d.transactionId} mono />)}
-      </Card>
+      <Stack gap={1.5} sx={{ textAlign: "left" }}>
+        <Card>
+          <Line label="Dossier XAFe" value={depot.reference} mono />
+          {credites.map((d) => <Line key={d.id} label={`Transaction ID ${opDe(depot.operateur).nom}`} value={d.transactionId} mono />)}
+        </Card>
+        {/* le XAFe est un jeton : ses XAFe viennent d'être créés sur la blockchain, la transaction le prouve */}
+        <SurLaChaine traces={depot.chaine} />
+        <Button variant="text" component={Link} to={`/historique/${depot.reference}`}>Voir le reçu</Button>
+      </Stack>
     </Success>
   );
 }

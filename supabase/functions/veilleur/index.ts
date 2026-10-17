@@ -1,12 +1,12 @@
 // Le veilleur de chaîne, dans Supabase : un tour par appel, un réseau par appel.
-//   POST /functions/v1/veilleur?reseau=bep20|trc20     en-tête x-veilleur-jeton
+//   POST /functions/v1/veilleur?reseau=bep20|trc20|base…     en-tête x-veilleur-jeton
 // pg_cron le réveille chaque minute (migration 0006). La logique est celle de
 // chaine/src/veilleur.ts, la même que le service Node et que l'épreuve.
 // Les réglages viennent de la base (chaine_configuration, migration 0007) ;
 // un secret de la fonction du même nom passe avant — en production, XAFE_GRAINE
 // est un secret que le propriétaire saisit lui-même (chaine/README.md).
 import { envDepuisConfiguration, veilleursDepuis, type ConfigurationMoteur } from "../../../chaine/src/service.ts";
-import type { Reseau } from "../../../chaine/src/cles.ts";
+import { estReseau, RESEAUX, variableDuNoeud, type Reseau } from "../../../chaine/src/cles.ts";
 
 const env = Deno.env.toObject();
 // dans Supabase : l'API du projet et la clé de service, fournies d'office ; ailleurs (l'épreuve) : MOTEUR_URL, MOTEUR_CLE
@@ -34,7 +34,7 @@ function memes(a: string, b: string) {
 
 async function unTour(reseau: Reseau, reglages: Record<string, string | undefined>) {
   // un réseau pas encore configuré : rien à faire, et rien à crier chaque minute
-  if (!reglages[reseau === "bep20" ? "BEP20_RPC" : "TRC20_NOEUD"]) return { reseau, saute: "réseau pas encore configuré" };
+  if (!reglages[variableDuNoeud(reseau)]) return { reseau, saute: "réseau pas encore configuré" };
   // un tour à la fois : si le précédent tourne encore, celui-ci s'efface
   if (!(await rpc("chaine_prendre_tour", { p_reseau: reseau, p_secondes: 300 }))) return { reseau, saute: "un tour est déjà en cours" };
   try {
@@ -54,9 +54,9 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ erreur: "jeton refusé" }), { status: 401, headers: { "content-type": "application/json" } });
   }
   const reseau = new URL(req.url).searchParams.get("reseau");
-  if (reseau !== "bep20" && reseau !== "trc20") return new Response(JSON.stringify({ erreur: "reseau=bep20 ou trc20" }), { status: 400 });
+  if (!estReseau(reseau)) return new Response(JSON.stringify({ erreur: `reseau=${Object.keys(RESEAUX).join("|")}` }), { status: 400 });
   const tour = unTour(reseau, reglages).then(
-    (b) => { console.log(JSON.stringify(b)); return b; },
+    (b) => { console.log(JSON.stringify(b, (_k, v) => typeof v === "bigint" ? v.toString() : v)); return b; },
     (e) => { console.error(`✗ ${reseau} : ${(e as Error).message}`); return { reseau, erreur: (e as Error).message }; },
   );
   // ?attendre=1 : la réponse porte le bilan du tour (pour vérifier à la main) ; sinon on rend la main tout de suite

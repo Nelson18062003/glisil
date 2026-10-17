@@ -2,7 +2,7 @@
 
 *Tirée du code par `app/scripts/carte.mjs` — ne pas modifier à la main. Relancer `node scripts/carte.mjs` après tout changement de navigation.*
 
-47 écrans · 129 passages (sans compter la barre d'onglets, présente sur les quatre écrans racines).
+48 écrans · 134 passages (sans compter la barre d'onglets, présente sur les quatre écrans racines).
 
 ## Les modules et leurs passages
 
@@ -11,6 +11,7 @@ flowchart LR
   subgraph m_Entrerdanslapplication["Entrer dans l'application"]
     conditions["/conditions"]
     confidentialite["/confidentialite"]
+    preuve["/preuve"]
     bienvenue["/bienvenue"]
     bienvenue_code["/bienvenue/code"]
     bienvenue_inscription["/bienvenue/inscription"]
@@ -75,6 +76,7 @@ flowchart LR
   end
   accueil --> compte
   accueil --> notifications
+  accueil --> preuve
   accueil --> entrer_transaction__ref
   accueil --> entrer_operateur
   accueil --> sortir_montant
@@ -122,6 +124,7 @@ flowchart LR
   entrer_payer__ref --> entrer_operateur
   entrer_payer__ref --> entrer_transaction__ref
   entrer_transaction__ref --> entrer_credite__ref
+  entrer_credite__ref --> historique__ref
   entrer_credite__ref --> marche
   entrer_credite__ref --> accueil
   entrer_credite__ref --> entrer_operateur
@@ -143,6 +146,9 @@ flowchart LR
   marche_carnet --> marche
   marche_execute__id --> marche
   marche_execute__id --> accueil
+  preuve --> accueil
+  preuve --> conditions
+  preuve --> confidentialite
   rapide --> entrer_operateur
   rapide --> crypto_deposer__actif
   rapide --> rapide_prix
@@ -175,17 +181,18 @@ Les flèches « retour » et les onglets ne sont pas dessinés : chaque écran e
 |---|---|---|---|
 | `/conditions` | 0 | flèche, lien | `/` |
 | `/confidentialite` | 0 | flèche, lien | `/` |
+| `/preuve` | 0 | lien | `/` `/conditions` `/confidentialite` |
 | `/bienvenue` | 0 | lien | `/bienvenue/code` |
 | `/bienvenue/code` | 1 | flèche, lien | `/bienvenue` `/bienvenue/inscription` `/bienvenue/profil` `/` |
 | `/bienvenue/inscription` | 2 | flèche, lien | `/bienvenue` `/bienvenue/profil` |
 | `/bienvenue/profil` | 2 | flèche | — |
-| `/` | 0 | onglets, lien | `/compte` `/notifications` `/entrer/transaction/:ref` `/entrer/operateur` `/sortir/montant` `/crypto` `/marche` `/rapide` `/compte/numeros/ajouter` `/compte/paliers/identite` `/historique` |
+| `/` | 0 | onglets, lien | `/compte` `/notifications` `/preuve` `/entrer/transaction/:ref` `/entrer/operateur` `/sortir/montant` `/crypto` `/marche` `/rapide` `/compte/numeros/ajouter` `/compte/paliers/identite` `/historique` |
 | `/notifications` | 1 | flèche | — |
 | `/entrer/operateur` | 1 | flèche, lien | `/entrer/montant` |
 | `/entrer/montant` | 2 | flèche, lien | `/entrer/operateur` `/entrer/payer/:ref` |
 | `/entrer/payer/:ref` | 3 | flèche, lien | `/entrer/operateur` `/entrer/transaction/:ref` |
 | `/entrer/transaction/:ref` | 1 | flèche, lien | `/entrer/credite/:ref` |
-| `/entrer/credite/:ref` | 2 | lien | `/marche` `/` `/entrer/operateur` |
+| `/entrer/credite/:ref` | 2 | lien | `/historique/:ref` `/marche` `/` `/entrer/operateur` |
 | `/sortir/montant` | 1 | flèche, lien | `/crypto/retirer/:actif/adresse` `/marche/ordres` `/` `/entrer/operateur` `/compte/numeros` `/compte/numeros/ajouter` `/sortir/destination` |
 | `/sortir/destination` | 2 | flèche, lien | `/compte/numeros/ajouter` `/sortir/verifier` |
 | `/sortir/verifier` | 3 | flèche, lien | `/sortir/montant` `/sortir/code` |

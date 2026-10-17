@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { achatMax, decouperSortie, fraisOrdre, nombreDeTransferts, prixValide, quantiteValide, simulerMarche } from "./argent.ts";
+import { achatMax, bandeDePrix, decouperSortie, fraisOrdre, nombreDeTransferts, prixValide, quantiteValide, raisonDuRefus, simulerMarche } from "./argent.ts";
 import { lisible } from "./erreurs.ts";
 import { apresFrappe, enTranches, jourRelatif, numeroEnTranches, numeroSaisi, operateurDuNumero, pourcent, prix, signe, usdt } from "./format.ts";
 
@@ -171,4 +171,63 @@ test("le réseau se lit dans l'adresse, sans recouvrement", async () => {
   assert.equal(reseauDe("0x7908cf9242fb2018f3487908cf9242fb2018f34"), null, "un signe de moins");
   assert.equal(reseauDe("TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLS0"), null, "le 0 n'est pas en base58");
   assert.equal(reseauDe("bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh"), null, "une adresse Bitcoin n'est ni l'une ni l'autre");
+});
+
+test("les réseaux viennent du moteur : une adresse 0x vaut pour chaque réseau EVM ouvert, et l'écran ne choisit pas", async () => {
+  const { appliquerParametres, reseauDe, reseauxPour, reseauxOuverts, infoReseau, nomsDesReseaux } = await import("./argent");
+  const { lienTransaction, lienContrat, nomsReseau } = await import("./chaine");
+  const bep20 = { id: "bep20", nom: "BNB Smart Chain", norme: "BEP20", famille: "evm", natif: "BNB", confirmations: 15, maison: true };
+  const trc20 = { id: "trc20", nom: "Tron", norme: "TRC20", famille: "tron", natif: "TRX", confirmations: 20, maison: false };
+  const base = { id: "base", nom: "Base", norme: "Base", famille: "evm", natif: "ETH", confirmations: 30, maison: false };
+  const evm = "0x7908cf9242fb2018f3487908cf9242fb2018f348";
+  try {
+    appliquerParametres({ crypto: { reseaux: [bep20, trc20, base] } });
+    assert.deepEqual(reseauxOuverts().map((r) => r.id), ["bep20", "trc20", "base"]);
+    assert.deepEqual(reseauxPour(evm).map((r) => r.id), ["bep20", "base"], "0x : BSC et Base");
+    assert.equal(reseauDe(evm), null, "deux possibles : au client de choisir, jamais l'écran");
+    assert.equal(reseauDe("TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE"), "trc20", "T… : Tron seul, pris d'office");
+    assert.equal(nomsDesReseaux(), "BEP20, TRC20 ou Base");
+    assert.equal(infoReseau("base").confirmations, 30);
+    assert.equal(nomsReseau("base").explorateur, "BaseScan");
+    assert.equal(lienTransaction("https://basescan.org", "base", "0xab"), "https://basescan.org/tx/0xab");
+    assert.equal(lienTransaction("https://tronscan.org/#", "trc20", "ab"), "https://tronscan.org/#/transaction/ab");
+    assert.equal(lienContrat("https://tronscan.org/#", "trc20", "T1"), "https://tronscan.org/#/token20/T1");
+    // une liste abîmée laisse celle d'avant, plutôt qu'un écran sans réseau
+    appliquerParametres({ crypto: { reseaux: [bep20, { id: "../x", famille: "evm" }] } });
+    assert.deepEqual(reseauxOuverts().map((r) => r.id), ["bep20", "trc20", "base"]);
+    // Base fermé : il sort de la liste, mais l'historique sait encore le nommer
+    appliquerParametres({ crypto: { reseaux: [bep20, trc20] } });
+    assert.equal(reseauDe(evm), "bep20", "un seul réseau EVM ouvert : la lecture redevient sûre");
+    assert.equal(infoReseau("base").nom, "Base");
+    assert.equal(infoReseau("inconnu").nom, "INCONNU", "un réseau jamais vu ne fait pas tomber l'écran");
+  } finally {
+    appliquerParametres({ crypto: { reseaux: [bep20, trc20] } });
+  }
+});
+
+test("la bande de prix est celle du moteur : au pas, vers l'intérieur", () => {
+  assert.deepEqual(bandeDePrix("achat", 604.55), { min: 483.65, max: 665 });
+  assert.deepEqual(bandeDePrix("vente", 600), { min: 540, max: 720 });
+  assert.equal(bandeDePrix("achat", null), null, "sans référence, pas de bande : le premier ordre fait le marché");
+});
+
+test("le bouton gris dit pourquoi : la règle et sa borne, dans l'ordre du moteur", () => {
+  const base = { cote: "achat" as const, type: "limite" as const, prix: 618.4, quantite: 10, dispoXafe: 1_000_000, dispoUsdt: 0, reference: 618.4, ouverts: 0 };
+  /* les nombres s'écrivent à la française, avec des espaces fines : on les lit comme des espaces */
+  const raison = (o: Parameters<typeof raisonDuRefus>[0]) => raisonDuRefus(o)?.replace(/[\u202f\u00a0]/g, " ") ?? null;
+  assert.equal(raison(base), null);
+  // le cas de la capture : 1 000 XAFe, un prix de 618,40 — 1,61 USDT, sous le minimum de 10
+  assert.match(raison({ ...base, quantite: 1.61, dispoXafe: 1000 })!, /Au moins 10 USDT .*6 184 XAFe/);
+  assert.equal(raison({ ...base, prix: 0 }), "Fixez votre prix.", "une case vide n'est pas un prix");
+  assert.match(raison({ ...base, prix: 618.41 })!, /0,05/);
+  assert.match(raison({ ...base, prix: 700 })!, /entre 494,75 et 680,20/);
+  assert.match(raison({ ...base, quantite: 2000 })!, /Il faut 1 236 800 XAFe/);
+  assert.match(raison({ ...base, ouverts: 200 })!, /200 ordres ouverts/);
+  assert.match(raison({ ...base, cote: "vente", dispoUsdt: 5 })!, /5 USDT disponibles/);
+  assert.match(raison({ ...base, type: "marche", quantite: 200_000 })!, /ordre limite/);
+});
+
+test("achat max : sans prix, on ne sait pas — jamais une division par 1", () => {
+  assert.equal(achatMax(1000, 0), 0);
+  assert.equal(achatMax(1000, 618.4), 1.61);
 });

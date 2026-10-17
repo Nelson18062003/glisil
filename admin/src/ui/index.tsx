@@ -6,6 +6,7 @@
 import AccountBalanceRounded from "@mui/icons-material/AccountBalanceRounded";
 import AdminPanelSettingsRounded from "@mui/icons-material/AdminPanelSettingsRounded";
 import AccountBalanceWalletRounded from "@mui/icons-material/AccountBalanceWalletRounded";
+import BalanceRounded from "@mui/icons-material/BalanceRounded";
 import ArrowDownwardRounded from "@mui/icons-material/ArrowDownwardRounded";
 import ArrowUpwardRounded from "@mui/icons-material/ArrowUpwardRounded";
 import HistoryRounded from "@mui/icons-material/HistoryRounded";
@@ -34,6 +35,7 @@ const SECTIONS: { to: string; label: string; icone: ReactNode; droit: Droit }[] 
   { to: "/sorties", label: "Sorties", icone: <ArrowUpwardRounded />, droit: "voir" },
   { to: "/terminaux", label: "Terminaux", icone: <RouterRounded />, droit: "voir" },
   { to: "/wallets", label: "Wallets", icone: <AccountBalanceWalletRounded />, droit: "voir" },
+  { to: "/parite", label: "Parité", icone: <BalanceRounded />, droit: "voir" },
   { to: "/clients", label: "Clients", icone: <PeopleRounded />, droit: "clients" },
   { to: "/marche", label: "Marché", icone: <ShowChartRounded />, droit: "voir" },
   { to: "/parametres", label: "Paramètres", icone: <TuneRounded />, droit: "voir" },
@@ -173,6 +175,9 @@ const ETATS: Record<string, { label: string; tone: Tone }> = {
   en_attente: { label: "en attente", tone: "amber" }, attendu: { label: "attend le SMS", tone: "amber" }, credite: { label: "crédité", tone: "green" }, expire: { label: "expiré", tone: "neutral" }, annule: { label: "annulé", tone: "neutral" }, annulee: { label: "annulée", tone: "neutral" },
   refuse: { label: "refusé", tone: "red" }, en_cours: { label: "en cours", tone: "blue" }, envoyee: { label: "envoyée", tone: "green" }, partielle: { label: "partielle", tone: "amber" }, echouee: { label: "échouée", tone: "red" },
   faite: { label: "fait", tone: "green" }, retenue: { label: "retenue", tone: "amber" }, rapprochee: { label: "rapprochée", tone: "green" }, remboursee: { label: "remboursée", tone: "blue" },
+  concorde: { label: "concorde", tone: "green" }, en_route: { label: "en route", tone: "blue" }, en_retard: { label: "en retard", tone: "amber" },
+  refusee: { label: "refusée par la chaîne", tone: "red" }, ecart: { label: "écart", tone: "red" }, inconnue: { label: "inconnue du registre", tone: "red" },
+  pret: { label: "prêt", tone: "amber" }, ferme: { label: "fermé", tone: "neutral" },
   ouvert: { label: "ouvert", tone: "blue" }, partiel: { label: "partiel", tone: "amber" }, execute: { label: "exécuté", tone: "green" }, muet: { label: "muet", tone: "red" }, actif: { label: "actif", tone: "green" }, inactif: { label: "en pause", tone: "neutral" },
 };
 

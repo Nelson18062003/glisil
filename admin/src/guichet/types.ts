@@ -61,7 +61,42 @@ export type Sortie = {
 export type Rapprochement = { etat: "concorde" | "ecart" | "absent"; montant?: number; numero?: string | null; terminal?: string; emis_le?: string | null; texte?: string | null };
 /** Ce que les puces ont vu partir et qu'aucune sortie n'explique. */
 export type SortieNonExpliquee = { id: number; terminal: string; operateur: string; float_numero: string | null; numero: string | null; montant: number | null; transaction_id: string | null; texte: string | null; emis_le: string | null };
-export type ATraiter = { sorties_manuelles: number; sorties_a_confirmer: number; montant_a_payer: number; sorties_non_expliquees: number };
+export type ATraiter = {
+  sorties_manuelles: number; sorties_a_confirmer: number; montant_a_payer: number; sorties_non_expliquees: number;
+  /** le dernier relevé de parité (0016) : null tant qu'aucun n'a été fait */
+  parite?: { statut: StatutParite; ecart: number | null; couverture: number | null; fait_le: string; alertes: number } | null;
+};
+
+/* ─────────────────────────── la parité (0016) ─────────────────────────── */
+export type StatutParite = "juste" | "en_cours" | "ecart" | "incomplet";
+export type VerdictLigne = "concorde" | "en_route" | "en_retard" | "refusee" | "ecart" | "inconnue";
+/** Une ligne du rapprochement : ce que le registre attend sur la chaîne, et ce que la chaîne montre. */
+export type LigneParite = {
+  reference: string | null; nature: "reserve" | "retrait" | "retour" | "inconnue"; reseau: "bep20" | "trc20"; genre: "frappe" | "destruction";
+  montant: number | null; etat_registre?: string | null; tx_attendu?: string | null; depuis: string;
+  empreinte: string | null; tx_vu: string | null; bloc_vu: number | null; montant_vu: number | null; adresse_vue?: string | null; verdict: VerdictLigne;
+};
+export type JetonLu = { reseau: "bep20" | "trc20"; offre: number | null; reserve: number | null; bloc: number | null; a_jour: boolean; lu_le: string | null };
+export type FloatParite = { id: number; operateur: string; numero: string; solde: number | null; annonce_le: string | null; source: "sms" | "ussd" | "releve" | null; connu: boolean };
+export type ReleveParite = {
+  id: number; fait_le: string; registre: number; dans_comptes: number; sur_wallets: number;
+  chaine: number | null; offre_lue: number | null; en_route: number; ecart: number | null;
+  floats: number | null; couverture: number | null; anomalies: number; statut: StatutParite;
+  reseaux: JetonLu[]; floats_detail: FloatParite[];
+};
+export type AlerteParite = {
+  id: number; code: string; gravite: "grave" | "anomalie" | "attention"; message: string; detail: unknown;
+  ouverte_le: string; vue_le: string; vues: number; sms_le: string | null; close_le: string | null;
+};
+export type ContratXafe = { reseau: "bep20" | "trc20"; contrat: string | null; explorateur: string; reserve: string | null };
+export type Parite = {
+  releve: ReleveParite | null;
+  historique: { fait_le: string; statut: StatutParite; registre: number; chaine: number | null; ecart: number | null; floats: number | null }[];
+  contrats: ContratXafe[]; essai: boolean; lignes: LigneParite[]; alertes: AlerteParite[];
+  reglages: { alerte_numero: string | null; alerte_operateur: "mtn" | "om"; fraicheur_heures: number; delai_minutes: number; publier_floats: boolean } | null;
+  floats: { id: number; operateur: string; numero: string; titulaire: string | null; actif: boolean;
+            dernier: { solde: number; annonce_le: string; source: "sms" | "ussd" | "releve"; preuve: string | null; note: string | null } | null }[];
+};
 export type Client = {
   id: string; telephone: string; nom: string | null; entreprise: string | null; palier: number; verification_en_cours: "identite" | "entreprise" | null;
   cree_le: string; desactive_le: string | null; xafe: number; usdt: number;
@@ -106,8 +141,14 @@ export type EtatChaine = {
   froid: string | null; usdt_froid: number | null; plafond_chaud: number | null; garder_chaud: number | null;
   a_inscrire: string[]; alertes: string[];
 };
+/** Un réseau du registre (0018) : ouvert aux clients ou non, configuré, lisible par un veilleur. */
+export type ReseauRegistre = {
+  id: string; nom: string; norme: string; famille: "evm" | "tron" | "solana"; chain_id: number | null; natif: string;
+  actif: boolean; maison: boolean; configure: boolean; lisible: boolean; explorateur: string | null; contrat: string | null; note: string | null;
+  adresses_attribuees: number; retraits_en_cours: number;
+};
 export type ReseauWallets = {
-  reseau: "bep20" | "trc20"; etat: EtatChaine | null; maj_le: string | null; muet: boolean;
+  reseau: string; nom?: string; actif?: boolean; etat: EtatChaine | null; maj_le: string | null; muet: boolean;
   adresses_attribuees: number; adresses_libres: number; retraits_en_cours: number; retraits_remplaces: number; curseur: number | null;
 };
 export type Orphelin = { reseau: string; actif: string; adresse: string; montant: number; preuve: string; raison: string; vu_le: string };

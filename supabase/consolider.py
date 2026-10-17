@@ -42,6 +42,15 @@ TEMOINS = {
     "0013_depot_declare.sql": ("false", "rejouable telle quelle"),
     # 0014 : colonnes et index « if not exists », fonctions « or replace », seau et politiques re-posés.
     "0014_sorties_manuelles.sql": ("false", "rejouable telle quelle"),
+    # 0015 : table « if not exists », déclencheur re-posé, le rattrapage ne prend que ce qui manque.
+    "0015_reserve_sur_la_chaine.sql": ("false", "rejouable telle quelle"),
+    # 0016 : tables « if not exists », fonctions « or replace », tâche planifiée retirée puis re-posée.
+    "0016_parite.sql": ("false", "rejouable telle quelle"),
+    # 0017 : fonctions « or replace » seulement.
+    "0017_regles_du_marche.sql": ("false", "rejouable telle quelle"),
+    # 0018 : table « if not exists », lignes « on conflict do nothing », clés étrangères posées si absentes,
+    # déclencheur retiré puis re-posé, tâches du veilleur recalculées.
+    "0018_reseaux.sql": ("false", "rejouable telle quelle"),
 }
 
 

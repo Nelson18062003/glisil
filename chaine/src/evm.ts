@@ -1,7 +1,8 @@
 /* La BNB Smart Chain (et toute chaîne EVM) : ce que le veilleur lui demande. */
 import { Contract, getAddress, Interface, JsonRpcProvider, Transaction, zeroPadValue, type TransactionRequest } from "ethers";
-import type { Actif, Appel, Chaine, Transfert } from "./chaine.ts";
-import { CHAUD, deriver } from "./cles.ts";
+import type { Actif, Appel, Chaine, MouvementJeton, Transfert } from "./chaine.ts";
+import { mouvementsDepuisJournaux, SUJETS } from "./chaine.ts";
+import { CHAUD, deriver, type Reseau } from "./cles.ts";
 
 export const ABI_JETON = [
   "event Transfer(address indexed from, address indexed to, uint256 value)",
@@ -10,6 +11,7 @@ export const ABI_JETON = [
   "function transfer(address to, uint256 montant) returns (bool)",
   "function frapper(address vers, uint256 montant, bytes32 empreinte)",
   "function detruireDepot(address adresse, uint256 montant, bytes32 empreinte)",
+  "function detruire(uint256 montant, bytes32 empreinte)",
   "function estAdresseDeDepot(address) view returns (bool)",
   "function destructionReferencee(bytes32) view returns (bool)",
   "function totalSupply() view returns (uint256)",
@@ -17,10 +19,12 @@ export const ABI_JETON = [
 const IFACE = new Interface(ABI_JETON);
 const TRANSFER = IFACE.getEvent("Transfer")!.topicHash;
 
-export type ConfigEvm = { rpcUrl: string; usdt: string; xafe: string; confirmations: number; graine: string };
+export type ConfigEvm = { rpcUrl: string; usdt: string; xafe: string; confirmations: number; graine: string;
+  /** le réseau EVM : BSC par défaut, Ethereum, Base, Polygon… — il décide du compte de dérivation */
+  reseau?: Reseau };
 
 export class ChaineEvm implements Chaine {
-  readonly reseau = "bep20" as const;
+  readonly reseau: Reseau;
   readonly confirmations: number;
   readonly fournisseur: JsonRpcProvider;
   readonly chaud: string;
@@ -29,12 +33,13 @@ export class ChaineEvm implements Chaine {
   private graine: string;
 
   constructor(c: ConfigEvm) {
+    this.reseau = c.reseau ?? "bep20";
     this.confirmations = c.confirmations;
     this.graine = c.graine;
     // cacheTimeout -1 : ethers garde sinon 250 ms la réponse « pas de reçu », et un tour qui suit de près croit
     // jamais partie une transaction déjà minée — sur de l'argent, une réponse d'avant ne vaut rien
     this.fournisseur = new JsonRpcProvider(c.rpcUrl, undefined, { staticNetwork: true, pollingInterval: 500, cacheTimeout: -1 });
-    this.chaud = deriver(c.graine, "bep20", CHAUD).adresse;
+    this.chaud = deriver(c.graine, this.reseau, CHAUD).adresse;
     this.jetons = { USDT: new Contract(c.usdt, ABI_JETON, this.fournisseur), XAFe: new Contract(c.xafe, ABI_JETON, this.fournisseur) };
   }
 
@@ -67,6 +72,17 @@ export class ChaineEvm implements Chaine {
   async dejaDetruit(empreinte: string) { return Boolean(await this.jetons.XAFe.destructionReferencee(empreinte)); }
   async offreXafe() { return BigInt(await this.jetons.XAFe.totalSupply()); }
 
+  async mouvementsXafe(de: number, a: number): Promise<MouvementJeton[]> {
+    const contrat = await this.jetons.XAFe.getAddress();
+    const journaux = [];
+    for (let b = de; b <= a; b += 5000) {
+      for (const j of await this.fournisseur.getLogs({ address: contrat, topics: [Object.values(SUJETS)], fromBlock: b, toBlock: Math.min(a, b + 4999) })) {
+        journaux.push({ tx: j.transactionHash, index: j.index, bloc: j.blockNumber, topics: [...j.topics], data: j.data });
+      }
+    }
+    return mouvementsDepuisJournaux(journaux, (x) => getAddress(x));
+  }
+
   async fraisJeton(actif: Actif, depuisIndice: number, vers: string, montant: bigint) {
     const depuis = deriver(this.graine, this.reseau, depuisIndice).adresse;
     const gaz = (await this.fournisseur.estimateGas({ from: depuis, to: await this.jetons[actif].getAddress(), data: IFACE.encodeFunctionData("transfer", [vers, montant]) })) * 12n / 10n;
@@ -84,6 +100,7 @@ export class ChaineEvm implements Chaine {
     if (appel.type === "natif") tx = { to: appel.vers, value: appel.montant };
     else if (appel.type === "jeton") tx = { to: await this.jetons[appel.actif].getAddress(), data: IFACE.encodeFunctionData("transfer", [appel.vers, appel.montant]) };
     else if (appel.type === "frapper") tx = { to: await this.jetons.XAFe.getAddress(), data: IFACE.encodeFunctionData("frapper", [appel.vers, appel.montant, appel.empreinte]) };
+    else if (appel.type === "detruire") tx = { to: await this.jetons.XAFe.getAddress(), data: IFACE.encodeFunctionData("detruire", [appel.montant, appel.empreinte]) };
     else tx = { to: await this.jetons.XAFe.getAddress(), data: IFACE.encodeFunctionData("detruireDepot", [appel.adresse, appel.montant, appel.empreinte]) };
     const pret = await p.populateTransaction({ ...tx, nonce: await this.fournisseur.getTransactionCount(p.address, "pending") });
     const brut = await p.signTransaction(pret);

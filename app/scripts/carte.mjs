@@ -25,7 +25,7 @@ const SRC = join(RACINE, "src");
    Un parcours d'argent ne doit pas s'allonger au-delà. */
 const PROFONDEUR_MAX = 6;
 /* les portes d'entrée : on y arrive de l'extérieur (un lien, une notification, l'ouverture) */
-const ENTREES = ["/", "/bienvenue", "/conditions", "/confidentialite"];
+const ENTREES = ["/", "/bienvenue", "/conditions", "/confidentialite", "/preuve"];
 /* les écrans qu'une notification ouvre : leur cible vient de la base (n.cible) */
 const PAR_NOTIFICATION = ["/historique/:ref", "/compte/paliers", "/marche/ordres/:id"];
 
@@ -180,7 +180,7 @@ function temoin(graphe) {
 /* ------------------------------------------------------------ la carte écrite */
 
 const MODULES = [
-  ["Entrer dans l'application", (r) => r.startsWith("/bienvenue") || r === "/conditions" || r === "/confidentialite"],
+  ["Entrer dans l'application", (r) => r.startsWith("/bienvenue") || r === "/conditions" || r === "/confidentialite" || r === "/preuve"],
   ["Accueil", (r) => r === "/" || r === "/notifications"],
   ["Entrer des XAF", (r) => r.startsWith("/entrer")],
   ["Sortir des XAF", (r) => r.startsWith("/sortir")],

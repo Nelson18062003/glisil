@@ -95,6 +95,21 @@ if [ "${ATTAQUES:-0}" = "1" ]; then
   exit 0
 fi
 
+# Le test différentiel : le vrai moteur et le moteur de référence (moteur/differentiel/reference.py,
+# le règlement écrit une seconde fois, en Python), sur les mêmes ordres tirés au hasard, doivent
+# tomber d'accord sur chaque réponse, chaque échange et chaque solde, au centime.
+differentiel() {
+  echo "· différentiel : le moteur et sa référence, sur les mêmes ordres au hasard"
+  for graine in 0.11 0.42 0.77; do
+    $COMME "PATH=$PATH $PSQL -d xafe -v graine=$graine -v n=1500 -f $ICI/moteur/differentiel/flux.sql" >"$GRAPPE/diff.log" 2>&1 \
+      || { cat "$GRAPPE/diff.log"; echo "✗ le flux différentiel ne se joue pas"; exit 1; }
+    $COMME "PATH=$PATH psql -h /tmp -p $PORT -U postgres -d xafe -At -c 'select _diff_json()'" >"$GRAPPE/diff.json"
+    printf "  graine %s :" "$graine"
+    python3 "$ICI/moteur/differentiel/differentiel.py" "$GRAPPE/diff.json" --temoins || exit 1
+  done
+}
+if [ "${DIFF_SEUL:-0}" = "1" ]; then differentiel; echo "✓ le moteur et sa référence tombent d'accord"; exit 0; fi
+
 # HASARD_SEUL=1 : les migrations, puis le hasard seul (pour éprouver le hasard lui-même).
 if [ "${HASARD_SEUL:-0}" != "1" ]; then
 echo "· scénarios"
@@ -119,4 +134,5 @@ sed 's/^psql:.*NOTICE:  //; s/^NOTICE:  //' "$GRAPPE/hasard.log"
 
 echo "· la charge : seize clients en même temps"
 . "$ICI/moteur/charge/charger.sh"
+differentiel
 echo "✓ le moteur tient"

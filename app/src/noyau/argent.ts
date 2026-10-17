@@ -44,20 +44,89 @@ export function fraisSortieManuelle(montant: number): { frais: number; envoi: nu
   return { frais, envoi: montant - frais };
 }
 
-export const RESEAUX: Record<"bep20" | "trc20", { nom: string; chaine: string; confirmations: number; valide: (a: string) => boolean }> = {
-  bep20: { nom: "BEP20", chaine: "BNB Smart Chain", confirmations: 15, valide: (a) => /^0x[0-9a-fA-F]{40}$/.test(a) },
-  trc20: { nom: "TRC20", chaine: "Tron", confirmations: 20, valide: (a) => /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(a) },
+/**
+ * LES RÉSEAUX. Un client a UN solde ; le réseau ne se choisit qu'au dépôt ou
+ * au retrait. La liste vient du moteur (parametres_publics → crypto.reseaux,
+ * registre « reseaux », migration 0018) : l'équipe ouvre Base ou Ethereum, et
+ * l'écran les propose sans qu'on le recompile. BEP20 et TRC20 en sont les
+ * valeurs de départ, tant que la première lecture n'est pas revenue.
+ */
+export type Famille = "evm" | "tron" | "solana";
+export type InfoReseau = {
+  id: string;
+  /** ce que le client lit sur son wallet : « BEP20 », « TRC20 », « Base » */
+  nom: string;
+  /** la chaîne : « BNB Smart Chain », « Tron » */
+  chaine: string;
+  famille: Famille;
+  confirmations: number;
+  /** la monnaie des frais de réseau : BNB, TRX, ETH */
+  natif: string;
+  /** le réseau où vit la réserve de XAFe */
+  maison: boolean;
 };
 
+const FORMES: Record<Famille, RegExp> = {
+  evm: /^0x[0-9a-fA-F]{40}$/,
+  tron: /^T[1-9A-HJ-NP-Za-km-z]{33}$/,
+  solana: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
+};
+export const adresseValide = (famille: Famille, a: string) => FORMES[famille].test(a.trim());
+
+const DEPART: InfoReseau[] = [
+  { id: "bep20", nom: "BEP20", chaine: "BNB Smart Chain", famille: "evm", confirmations: 15, natif: "BNB", maison: true },
+  { id: "trc20", nom: "TRC20", chaine: "Tron", famille: "tron", confirmations: 20, natif: "TRX", maison: false },
+];
+/** Tous les réseaux déjà vus (l'historique peut nommer un réseau fermé depuis). */
+export const RESEAUX: Record<string, InfoReseau> = Object.fromEntries(DEPART.map((r) => [r.id, r]));
+/** Les réseaux ouverts, dans l'ordre où l'écran les propose : le maison d'abord. */
+export const RESEAUX_OUVERTS: string[] = DEPART.map((r) => r.id);
+
+/** Ce qu'on sait d'un réseau ; un identifiant inconnu se montre tel quel, jamais en plantant l'écran. */
+export function infoReseau(id: string): InfoReseau {
+  return RESEAUX[id] ?? { id, nom: id.toUpperCase(), chaine: id.toUpperCase(), famille: "evm", confirmations: 15, natif: "", maison: false };
+}
+export const reseauxOuverts = (): InfoReseau[] => RESEAUX_OUVERTS.map(infoReseau);
+/** « BEP20 · BNB Smart Chain » ; « Base » seul quand la norme et la chaîne portent le même nom */
+export const libelleReseau = (r: InfoReseau) => (r.nom === r.chaine ? r.chaine : `${r.nom} · ${r.chaine}`);
+
 /**
- * Le réseau se LIT dans l'adresse : 0x… (40 signes hexadécimaux) est BEP20,
- * T… (34 signes base58) est TRC20 — les deux formes ne se recouvrent pas. Le
- * client n'a donc pas à choisir un réseau qu'il pourrait choisir faux : c'est
- * l'erreur la plus coûteuse en crypto (des fonds envoyés sur la mauvaise chaîne).
+ * Les réseaux OUVERTS où cette adresse peut vivre. Une adresse T… n'est que
+ * Tron ; une adresse 0x… vaut pour TOUS les réseaux EVM — BSC, Base,
+ * Ethereum, Polygon ont la même forme. Une seule possibilité : l'écran la
+ * prend. Plusieurs : le client choisit, et l'écran ne choisit jamais pour lui
+ * (des fonds envoyés sur la mauvaise chaîne sont l'erreur la plus coûteuse en crypto).
  */
-export function reseauDe(adresse: string): "bep20" | "trc20" | null {
+export function reseauxPour(adresse: string): InfoReseau[] {
   const a = adresse.trim();
-  return RESEAUX.bep20.valide(a) ? "bep20" : RESEAUX.trc20.valide(a) ? "trc20" : null;
+  return reseauxOuverts().filter((r) => adresseValide(r.famille, a));
+}
+
+/** Le réseau de l'adresse, s'il n'y en a qu'un possible ; sinon null (aucun, ou à choisir). */
+export function reseauDe(adresse: string): string | null {
+  const l = reseauxPour(adresse);
+  return l.length === 1 ? l[0].id : null;
+}
+
+/** « BEP20 ou TRC20 », « BEP20, TRC20 ou Base » */
+export function nomsDesReseaux(): string {
+  const n = reseauxOuverts().map((r) => r.nom);
+  return n.length <= 1 ? (n[0] ?? "aucun réseau") : `${n.slice(0, -1).join(", ")} ou ${n[n.length - 1]}`;
+}
+
+function appliquerReseaux(liste: unknown) {
+  if (!Array.isArray(liste)) return;
+  const lus: InfoReseau[] = [];
+  for (const x of liste) {
+    if (!x || typeof x !== "object") return;
+    const r = x as Record<string, unknown>;
+    if (typeof r.id !== "string" || !/^[a-z][a-z0-9]{1,11}$/.test(r.id) || !["evm", "tron", "solana"].includes(String(r.famille))) return;   // une liste abîmée laisse celle d'avant
+    const confirmations = typeof r.confirmations === "number" && r.confirmations >= 1 && r.confirmations <= 1000 ? r.confirmations : infoReseau(r.id).confirmations;
+    lus.push({ id: r.id, nom: typeof r.norme === "string" ? r.norme : r.id.toUpperCase(), chaine: typeof r.nom === "string" ? r.nom : r.id,
+               famille: r.famille as Famille, confirmations, natif: typeof r.natif === "string" ? r.natif : "", maison: r.maison === true });
+  }
+  for (const r of lus) RESEAUX[r.id] = r;
+  RESEAUX_OUVERTS.splice(0, RESEAUX_OUVERTS.length, ...lus.map((r) => r.id));
 }
 
 /** L'achat rapide : un prix ferme pris au carnet, plus cette marge (posée par l'équipe). */
@@ -111,11 +180,29 @@ export function coutAuCarnet(enFace: { prix: number; quantite: number }[], quant
   return reste > 0 ? null : cout;
 }
 
-export const MARCHE: { paire: string; pasPrix: number; quantiteMin: number; ouvert: boolean } = {
+/**
+ * Les règles du marché (docs/REGLES-DU-MARCHE.md, migration 0017) : les mêmes
+ * que le moteur fait respecter. L'écran les lit pour dire AVANT l'envoi
+ * pourquoi un ordre serait refusé — le moteur reste seul juge.
+ */
+export const MARCHE: {
+  paire: string; pasPrix: number; quantiteMin: number; ouvert: boolean;
+  quantiteMax: number; marcheQuantiteMax: number; ordresOuvertsMax: number;
+  bandeAchat: [number, number]; bandeVente: [number, number]; bandeExecution: number;
+  /** le prix autour duquel la bande se calcule (moyenne des échanges récents, ou celle posée par l'équipe) */
+  reference: number | null;
+} = {
   paire: "USDT/XAFe",
   ouvert: true,
   pasPrix: 0.05,
   quantiteMin: 10,
+  quantiteMax: 1_000_000,
+  marcheQuantiteMax: 100_000,
+  ordresOuvertsMax: 200,
+  bandeAchat: [0.8, 1.1],
+  bandeVente: [0.9, 1.2],
+  bandeExecution: 0.05,
+  reference: null,
 };
 
 export type Operateur = {
@@ -210,6 +297,48 @@ export function arrondi2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/**
+ * La bande de prix d'un ordre limite, comme le moteur la calcule : la
+ * référence multipliée par les bornes du côté, ramenée au pas VERS
+ * L'INTÉRIEUR. Null sans référence : le premier ordre fait le marché.
+ */
+export function bandeDePrix(cote: "achat" | "vente", reference: number | null | undefined): { min: number; max: number } | null {
+  if (!reference || !(reference > 0)) return null;
+  const [bas, haut] = cote === "achat" ? MARCHE.bandeAchat : MARCHE.bandeVente;
+  const pas = MARCHE.pasPrix;
+  return { min: arrondi2(Math.ceil(arrondi2(reference * bas) / pas - 1e-9) * pas), max: arrondi2(Math.floor(arrondi2(reference * haut) / pas + 1e-9) * pas) };
+}
+
+/**
+ * Pourquoi le moteur refuserait cet ordre — dans l'ordre où il vérifie, en
+ * une phrase qui dit la règle ET la borne. Null : rien ne s'y oppose.
+ */
+export function raisonDuRefus(o: {
+  cote: "achat" | "vente"; type: "limite" | "marche"; prix: number; quantite: number;
+  dispoXafe: number; dispoUsdt: number; reference: number | null | undefined; ouverts: number;
+}): string | null {
+  if (!(o.quantite > 0)) return null;
+  if (o.type === "limite" && !(o.prix > 0)) return "Fixez votre prix.";
+  if (!quantiteValide(o.quantite)) {
+    return `Au moins ${MARCHE.quantiteMin} USDT par ordre${o.prix > 0 ? ` (≈ ${Math.ceil(MARCHE.quantiteMin * o.prix).toLocaleString("fr-FR")} XAFe)` : ""}, deux décimales au plus.`;
+  }
+  if (o.type === "limite" && !prixValide(o.prix)) return `Le prix va de ${String(MARCHE.pasPrix).replace(".", ",")} en ${String(MARCHE.pasPrix).replace(".", ",")} XAFe.`;
+  if (o.quantite > MARCHE.quantiteMax) return `Au plus ${MARCHE.quantiteMax.toLocaleString("fr-FR")} USDT par ordre.`;
+  if (o.type === "marche" && o.quantite > MARCHE.marcheQuantiteMax) {
+    return `Au plus ${MARCHE.marcheQuantiteMax.toLocaleString("fr-FR")} USDT au marché : au-delà, posez un ordre limite.`;
+  }
+  const bande = o.type === "limite" ? bandeDePrix(o.cote, o.reference) : null;
+  if (bande && (o.prix < bande.min || o.prix > bande.max)) {
+    return `${o.cote === "achat" ? "Un achat" : "Une vente"} se place entre ${bande.min.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} et ${bande.max.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} XAFe (prix de référence ${o.reference!.toLocaleString("fr-FR", { minimumFractionDigits: 2 })}).`;
+  }
+  if (o.type === "limite" && o.ouverts >= MARCHE.ordresOuvertsMax) return `Vous avez déjà ${o.ouverts} ordres ouverts, le maximum : annulez-en un.`;
+  if (o.type === "limite" && o.cote === "achat" && arrondi2(o.prix * o.quantite) > o.dispoXafe) {
+    return `Il faut ${Math.ceil(arrondi2(o.prix * o.quantite)).toLocaleString("fr-FR")} XAFe ; vous en avez ${Math.floor(o.dispoXafe).toLocaleString("fr-FR")}.`;
+  }
+  if (o.cote === "vente" && o.quantite > o.dispoUsdt) return `Vous avez ${o.dispoUsdt.toLocaleString("fr-FR")} USDT disponibles.`;
+  return null;
+}
+
 /** Ce qu'un acheteur peut prendre au plus avec ses XAFe à ce prix (comme le moteur : trunc à 2 déc.). */
 export function achatMax(dispoXafe: number, prix: number): number {
   if (prix <= 0) return 0;
@@ -278,9 +407,19 @@ export function appliquerParametres(p: unknown): boolean {
   poser(FRAIS_CRYPTO, "XAFe", nombre(r.crypto?.frais?.XAFe, 0, 1_000_000));
   if (typeof r.crypto?.retraits_ouverts === "boolean") CRYPTO.retraitsOuverts = r.crypto.retraits_ouverts;
   if (typeof r.crypto?.depots_ouverts === "boolean") CRYPTO.depotsOuverts = r.crypto.depots_ouverts;
+  appliquerReseaux(r.crypto?.reseaux);
   if (typeof r.sortie?.ouvertes === "boolean") SORTIES.ouvertes = r.sortie.ouvertes;
   if (r.sortie?.mode === "totem" || r.sortie?.mode === "manuel") SORTIES.mode = r.sortie.mode;
   if (typeof r.marche?.ouvert === "boolean") MARCHE.ouvert = r.marche.ouvert;
+  poser(MARCHE, "quantiteMax", nombre(r.marche?.quantite_max, 0.01, 1e9));
+  poser(MARCHE, "marcheQuantiteMax", nombre(r.marche?.marche_quantite_max, 0.01, 1e9));
+  poser(MARCHE, "ordresOuvertsMax", nombre(r.marche?.ordres_ouverts_max, 1, 10000));
+  poser(MARCHE, "bandeExecution", nombre(r.marche?.bande_execution, 0.001, 0.5));
+  for (const [cle, champ] of [["bande_achat", "bandeAchat"], ["bande_vente", "bandeVente"]] as const) {
+    const b = r.marche?.[cle];
+    if (Array.isArray(b) && b.length === 2 && b.every((x: unknown) => typeof x === "number" && x > 0)) MARCHE[champ] = [b[0], b[1]];
+  }
+  if (r.marche && "reference" in r.marche) MARCHE.reference = nombre(r.marche.reference, 0.01, 1e9);
   poser(RAPIDE, "marge", nombre(r.rapide?.marge, 0, 0.2));
   poser(RAPIDE, "validiteSecondes", nombre(r.rapide?.validite_secondes, 5, 120));
   if (typeof r.rapide?.ouvert === "boolean") RAPIDE.ouvert = r.rapide.ouvert;

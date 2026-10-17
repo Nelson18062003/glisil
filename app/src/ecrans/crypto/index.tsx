@@ -1,7 +1,12 @@
 /*
- * Crypto : déposer des USDT (une adresse, la même à chaque fois) ; retirer des
- * USDT ou des XAFe vers un wallet externe : Adresse (le réseau s'y lit) →
- * Montant → Vérifier → Code → Envoyé. Mêmes règles que « Sortir des XAF ».
+ * Crypto : déposer des USDT (une adresse par réseau, la même à chaque fois) ;
+ * retirer des USDT ou des XAFe vers un wallet externe : Adresse (le réseau
+ * s'y lit, ou se choisit quand l'adresse vaut pour plusieurs) → Montant →
+ * Vérifier → Code → Envoyé. Mêmes règles que « Sortir des XAF ».
+ *
+ * Un solde, plusieurs réseaux : la liste vient du moteur (0018). Le client
+ * ne voit que les réseaux ouverts ; le réseau maison (où vit la réserve) en
+ * premier.
  */
 import ArrowDownwardRounded from "@mui/icons-material/ArrowDownwardRounded";
 import BoltRounded from "@mui/icons-material/BoltRounded";
@@ -10,6 +15,7 @@ import ArrowUpwardRounded from "@mui/icons-material/ArrowUpwardRounded";
 import CheckCircleRounded from "@mui/icons-material/CheckCircleRounded";
 import ContentCopyRounded from "@mui/icons-material/ContentCopyRounded";
 import ContentPasteRounded from "@mui/icons-material/ContentPasteRounded";
+import HubRounded from "@mui/icons-material/HubRounded";
 import LockRounded from "@mui/icons-material/LockRounded";
 import { Box, Button, CircularProgress, Divider, Paper, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
 import QRCode from "qrcode";
@@ -17,7 +23,7 @@ import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useAdresseDepot, useGuichet, useOuvertures, useRetraitCrypto, useSoldes } from "../../guichet";
 import type { Actif, Reseau } from "../../guichet/types";
-import { arrondi2, FRAIS_CRYPTO, RESEAUX, reseauDe } from "../../noyau/argent";
+import { arrondi2, FRAIS_CRYPTO, infoReseau, libelleReseau, nomsDesReseaux, reseauxOuverts, reseauxPour, type InfoReseau } from "../../noyau/argent";
 import { adresseCourte, enTranches, quand, xaf } from "../../noyau/format";
 import { parcours, useParcours } from "../../navigation/parcours";
 import { Attente, Card, FeuilleErreur, Keypad, Line, List, Points, Row, Screen, Success } from "../../ui";
@@ -34,11 +40,37 @@ export function Crypto() {
     <Screen title="Crypto" back="/">
       <List>
         <Row icon={<BoltRounded />} tone="green" primary="Acheter ou vendre des USDT" {...ligne(ouvert.rapide, "En un geste, au prix du moment")} to="/rapide" />
-        <Row icon={<ArrowDownwardRounded />} tone="blue" primary="Déposer des USDT" {...ligne(ouvert.cryptoDepots, "BEP20 ou TRC20")} to="/crypto/deposer/USDT" />
+        <Row icon={<ArrowDownwardRounded />} tone="blue" primary="Déposer des USDT" {...ligne(ouvert.cryptoDepots, nomsDesReseaux())} to="/crypto/deposer/USDT" />
         <Row icon={<ArrowUpwardRounded />} tone="blue" primary="Retirer des USDT" {...ligne(ouvert.cryptoRetraits, "Vers un wallet externe")} to="/crypto/retirer/USDT/adresse" />
-        <Row icon={<ArrowOutwardRounded />} tone="green" primary="Retirer des XAFe" {...ligne(ouvert.cryptoRetraits, "Vers mon propre wallet, BEP20 ou TRC20")} to="/crypto/retirer/XAFe/adresse" />
+        <Row icon={<ArrowOutwardRounded />} tone="green" primary="Retirer des XAFe" {...ligne(ouvert.cryptoRetraits, `Vers mon propre wallet, ${nomsDesReseaux()}`)} to="/crypto/retirer/XAFe/adresse" />
       </List>
     </Screen>
+  );
+}
+
+/* ------------------------------------------------- choisir un réseau */
+
+/**
+ * Le réseau, choisi par le client. Deux ou trois : des boutons côte à côte ;
+ * davantage : une liste, une ligne par réseau, avec sa chaîne — comme la
+ * feuille « Choisir le réseau » de Binance. Rien n'est coché d'office quand
+ * `aChoisir` : c'est au client de dire sur quelle chaîne il envoie.
+ */
+function ChoixReseau({ reseaux, valeur, choisir }: { reseaux: InfoReseau[]; valeur: string; choisir: (id: string) => void }) {
+  if (reseaux.length <= 3) {
+    return (
+      <ToggleButtonGroup value={valeur} exclusive fullWidth onChange={(_, v) => v && choisir(v)} aria-label="Réseau">
+        {reseaux.map((r) => <ToggleButton key={r.id} value={r.id} sx={{ minHeight: 44 }}>{r.nom}</ToggleButton>)}
+      </ToggleButtonGroup>
+    );
+  }
+  return (
+    <List>
+      {reseaux.map((r) => (
+        <Row key={r.id} icon={<HubRounded />} tone={r.maison ? "green" : "neutral"} primary={r.nom} secondary={`${r.chaine} · ${r.confirmations} confirmations`}
+             selected={r.id === valeur} chevron={false} onClick={() => choisir(r.id)} />
+      ))}
+    </List>
   );
 }
 
@@ -47,7 +79,12 @@ export function Crypto() {
 export function CryptoDeposer() {
   const { actif: a } = useParams();
   const actif = actifDe(a);
-  const [reseau, setReseau] = useState<Reseau>("bep20");
+  useOuvertures();   // se redessine quand la liste des réseaux arrive
+  const ouverts = reseauxOuverts();
+  const [voulu, setReseau] = useState<Reseau>(ouverts[0]?.id ?? "");
+  // un réseau fermé entre-temps : on revient au premier ouvert, jamais une adresse d'un réseau fermé
+  const reseau = ouverts.some((r) => r.id === voulu) ? voulu : (ouverts[0]?.id ?? "");
+  const info = infoReseau(reseau);
   const { data: adresse, isLoading } = useAdresseDepot(actif, reseau);
   const [qr, setQr] = useState<string | null>(null);
   const [copie, setCopie] = useState(false);
@@ -62,18 +99,23 @@ export function CryptoDeposer() {
     try { await navigator.clipboard.writeText(adresse); setCopie(true); setTimeout(() => setCopie(false), 1500); } catch { /* le presse-papiers peut être refusé */ }
   };
 
+  if (!ouverts.length) {
+    return (
+      <Screen title={`Déposer des ${actif}`} back="/crypto">
+        <Typography variant="body2">Aucun réseau n'est ouvert aux dépôts pour le moment. Vos fonds ne sont pas concernés ; revenez bientôt.</Typography>
+      </Screen>
+    );
+  }
   return (
     <Screen title={`Déposer des ${actif}`} back="/crypto">
-      <ToggleButtonGroup value={reseau} exclusive fullWidth onChange={(_, v) => v && setReseau(v)}>
-        <ToggleButton value="bep20">BEP20</ToggleButton>
-        <ToggleButton value="trc20">TRC20</ToggleButton>
-      </ToggleButtonGroup>
+      <Typography variant="body2" fontWeight={500}>Réseau</Typography>
+      <ChoixReseau reseaux={ouverts} valeur={reseau} choisir={setReseau} />
       <Card sx={{ alignItems: "center", gap: 2 }}>
         <Paper sx={{ p: 1.5, bgcolor: "background.default", borderRadius: 4, width: 192, height: 192, display: "grid", placeItems: "center" }}>
-          {qr ? <img src={qr} alt={`Code QR de l'adresse ${actif} ${RESEAUX[reseau].nom}`} width={168} height={168} style={{ borderRadius: 8 }} /> : isLoading ? <CircularProgress /> : <Typography variant="body2" textAlign="center">Adresse en préparation</Typography>}
+          {qr ? <img src={qr} alt={`Code QR de l'adresse ${actif} ${info.nom}`} width={168} height={168} style={{ borderRadius: 8 }} /> : isLoading ? <CircularProgress /> : <Typography variant="body2" textAlign="center">Adresse en préparation</Typography>}
         </Paper>
         <Stack alignItems="center" gap={0.5} sx={{ width: "100%" }}>
-          <Typography variant="caption">Votre adresse {actif} · {RESEAUX[reseau].nom}</Typography>
+          <Typography variant="caption">Votre adresse {actif} · {info.nom}</Typography>
           <Typography sx={{ fontFamily: "Roboto Mono, monospace", fontSize: 14, wordBreak: "break-all", textAlign: "center" }}>
             {adresse ?? (isLoading ? "…" : "Elle vous sera attribuée dans quelques instants ; revenez ici.")}
           </Typography>
@@ -81,7 +123,7 @@ export function CryptoDeposer() {
         <Button variant="contained" startIcon={copie ? <CheckCircleRounded /> : <ContentCopyRounded />} fullWidth disabled={!adresse} onClick={() => void copier()}>{copie ? "Adresse copiée" : "Copier l'adresse"}</Button>
       </Card>
       <Typography variant="body2" textAlign="center">
-        {actif} sur {RESEAUX[reseau].chaine} uniquement. Crédit automatique après {RESEAUX[reseau].confirmations} confirmations ; vous êtes prévenu. L'adresse est la même à chaque fois.
+        {actif} sur {info.nom === info.chaine ? info.chaine : `${info.chaine} (${info.nom})`} uniquement : un envoi depuis un autre réseau n'arrive pas sur ce compte. Crédit automatique après {info.confirmations} confirmations ; vous êtes prévenu. L'adresse est la même à chaque fois.
       </Typography>
       <Box sx={{ flex: 1 }} />
     </Screen>
@@ -91,42 +133,61 @@ export function CryptoDeposer() {
 /* ----------------------------------------------------------- retirer */
 
 /**
- * 1 · L'adresse. Le réseau ne se choisit pas : il se lit dans l'adresse
- * (reseauDe), et l'écran le montre avec ses frais avant de continuer.
+ * 1 · L'adresse. Le réseau se lit dans l'adresse quand elle n'en permet
+ * qu'un (T… : Tron). Une adresse 0x… vaut pour TOUS les réseaux EVM ouverts
+ * (BSC, Base, Ethereum…) : alors le client choisit, et rien n'est coché
+ * d'office — l'écran ne devine pas la chaîne à sa place.
  */
 export function CryptoRetirerAdresse() {
   const { actif: a } = useParams();
   const actif = actifDe(a);
   const navigate = useNavigate();
   const [c, poser] = useParcours("crypto");
-  useEffect(() => { if (c.actif !== actif) poser({ actif, adresse: "", montant: 0 }); }, [actif, c.actif, poser]);
-  const reseau = reseauDe(c.adresse);
-  useEffect(() => { if (reseau && reseau !== c.reseau) poser({ reseau }); }, [reseau, c.reseau, poser]);
+  useOuvertures();
+  useEffect(() => { if (c.actif !== actif) poser({ actif, adresse: "", montant: 0, reseau: "" }); }, [actif, c.actif, poser]);
+  const possibles = reseauxPour(c.adresse);
+  const seul = possibles.length === 1 ? possibles[0].id : null;
+  useEffect(() => { if (seul && seul !== c.reseau) poser({ reseau: seul }); }, [seul, c.reseau, poser]);
+  const reseau = possibles.some((r) => r.id === c.reseau) ? infoReseau(c.reseau) : null;
+  // une adresse neuve efface le réseau choisi : un choix fait pour une autre adresse ne vaut pas pour celle-ci
+  const changer = (adresse: string) => poser({ adresse, reseau: "" });
   const coller = async () => {
-    try { const t = await navigator.clipboard.readText(); poser({ adresse: t.trim() }); } catch { /* lecture refusée : on tape */ }
+    try { const t = await navigator.clipboard.readText(); changer(t.trim()); } catch { /* lecture refusée : on tape */ }
   };
   const tape = c.adresse.trim().length > 10;
+  const ouverts = reseauxOuverts();
+  const formes = ouverts.map((r) => `${r.chaine} (${r.nom === r.chaine ? "" : `${r.nom}, `}adresse en ${r.famille === "tron" ? "T…" : r.famille === "evm" ? "0x…" : "base58"})`);
+  const partagee = new Set(ouverts.map((r) => r.famille)).size < ouverts.length;
   return (
     <Screen title={`Retirer des ${actif}`} back="/crypto">
-      <Typography variant="body2">L'adresse de votre wallet, sur BNB Smart Chain (BEP20, commence par 0x) ou sur Tron (TRC20, commence par T). Le réseau se reconnaît tout seul.</Typography>
+      <Typography variant="body2">
+        L'adresse de votre wallet, sur {formes.length > 1 ? `${formes.slice(0, -1).join(", ")} ou ${formes[formes.length - 1]}` : formes[0]}.{" "}
+        {partagee ? "Une adresse 0x vaut pour plusieurs réseaux : vous choisirez lequel." : "Le réseau se reconnaît tout seul."}
+      </Typography>
       <TextField
         label="Adresse du wallet"
         value={c.adresse}
-        onChange={(e) => poser({ adresse: e.target.value.replace(/\s/g, "") })}
+        onChange={(e) => changer(e.target.value.replace(/\s/g, ""))}
         fullWidth
         multiline
         minRows={2}
         autoComplete="off"
-        error={tape && !reseau}
-        helperText={tape && !reseau ? "Ce n'est ni une adresse BEP20 (0x…) ni une adresse TRC20 (T…). Copiez-la depuis votre wallet." : " "}
+        error={tape && !possibles.length}
+        helperText={tape && !possibles.length ? `Ce n'est une adresse d'aucun réseau ouvert (${nomsDesReseaux()}). Copiez-la depuis votre wallet.` : " "}
         slotProps={{ input: { sx: { fontFamily: "Roboto Mono, monospace", fontSize: 16 } }, htmlInput: { spellCheck: false, autoCapitalize: "off", autoCorrect: "off" } }}
       />
       <Button variant="outlined" startIcon={<ContentPasteRounded />} onClick={() => void coller()}>Coller</Button>
+      {possibles.length > 1 && (
+        <Stack gap={1}>
+          <Typography variant="body2" fontWeight={500}>Sur quel réseau votre wallet attend-il les {actif} ?</Typography>
+          <ChoixReseau reseaux={possibles} valeur={c.reseau} choisir={(id) => poser({ reseau: id })} />
+        </Stack>
+      )}
       {reseau && (
         <Card>
-          <Line label="Réseau" value={`${RESEAUX[reseau].nom} · ${RESEAUX[reseau].chaine}`} strong />
+          <Line label="Réseau" value={libelleReseau(reseau)} strong />
           <Line label="Frais du retrait" value={`${fmt(actif, FRAIS_CRYPTO[actif])} ${actif}`} />
-          <Typography variant="body2">Vérifiez que votre wallet attend bien des {actif} sur {RESEAUX[reseau].chaine} : un envoi sur une chaîne ne se rappelle pas.</Typography>
+          <Typography variant="body2">Vérifiez que votre wallet attend bien des {actif} sur {reseau.chaine} : un envoi sur une chaîne ne se rappelle pas.</Typography>
         </Card>
       )}
       <Box sx={{ flex: 1 }} />
@@ -183,7 +244,7 @@ export function CryptoRetirerVerifier() {
   const actif = actifDe(a);
   const navigate = useNavigate();
   const [c] = useParcours("crypto");
-  if (!c.montant || !c.adresse) return <Navigate to={`/crypto/retirer/${actif}/adresse`} replace />;
+  if (!c.montant || !c.adresse || !c.reseau) return <Navigate to={`/crypto/retirer/${actif}/adresse`} replace />;
   const frais = FRAIS_CRYPTO[actif];
   return (
     <Screen title="Vérifiez" back={`/crypto/retirer/${actif}/montant`}>
@@ -192,7 +253,7 @@ export function CryptoRetirerVerifier() {
         <Line label="Frais de réseau" value={`${fmt(actif, frais)} ${actif}`} />
         <Divider />
         <Line label="Débité" value={`${fmt(actif, c.montant + frais)} ${actif}`} strong />
-        <Line label="Réseau" value={`${RESEAUX[c.reseau].nom} · ${RESEAUX[c.reseau].chaine}`} />
+        <Line label="Réseau" value={libelleReseau(infoReseau(c.reseau))} />
         <Line label="Vers" value={c.adresse} mono />
       </Card>
       <Typography variant="body2" textAlign="center">
@@ -213,7 +274,7 @@ export function CryptoRetirerCode() {
   const [code, setCode] = useState("");
   const [faux, setFaux] = useState<string | null>(null);
   const { lancer, enCours, erreur, effacerErreur } = useGesteUnique("cr", { actif, reseau: c.reseau, adresse: c.adresse.trim(), montant: c.montant });
-  if (!c.montant || !c.adresse) return <Navigate to={`/crypto/retirer/${actif}/adresse`} replace />;
+  if (!c.montant || !c.adresse || !c.reseau) return <Navigate to={`/crypto/retirer/${actif}/adresse`} replace />;
 
   const envoyer = (k: string) =>
     lancer(async (cle) => {
@@ -253,7 +314,7 @@ export function CryptoEnvoye() {
   if (!r) return <Attente erreur={error} />;
   if (r.etat === "envoye") {
     return (
-      <Success title={`${r.actif} envoyés`} amount={`${fmt(r.actif, r.montant)} ${r.actif}`} caption={`Vers ${adresseCourte(r.adresse)} sur ${RESEAUX[r.reseau].chaine}, ${quand(r.creeLe)}.`} primary={{ label: "Retour à l'accueil", to: "/" }} secondary={{ label: "Voir le détail", to: `/historique/${r.reference}` }}>
+      <Success title={`${r.actif} envoyés`} amount={`${fmt(r.actif, r.montant)} ${r.actif}`} caption={`Vers ${adresseCourte(r.adresse)} sur ${infoReseau(r.reseau).chaine}, ${quand(r.creeLe)}.`} primary={{ label: "Retour à l'accueil", to: "/" }} secondary={{ label: "Voir le détail", to: `/historique/${r.reference}` }}>
         <Card>
           <Line label="Frais" value={`${fmt(r.actif, r.frais)} ${r.actif}`} />
           <Line label="Transaction" value={r.txHash ?? "—"} mono />
@@ -271,7 +332,7 @@ export function CryptoEnvoye() {
         <CircularProgress size={64} thickness={3} />
         <Typography variant="h6">En cours</Typography>
         <Typography variant="h4" color="primary.main">{fmt(r.actif, r.montant)} {r.actif}</Typography>
-        <Typography variant="body2">La transaction part sur {RESEAUX[r.reseau].chaine}. Cet écran bascule tout seul ; vous êtes prévenu quand c'est confirmé.</Typography>
+        <Typography variant="body2">La transaction part sur {infoReseau(r.reseau).chaine}. Cet écran bascule tout seul ; vous êtes prévenu quand c'est confirmé.</Typography>
       </Box>
       <Button variant="text" component={Link} to="/" replace>Retour à l'accueil</Button>
     </Screen>

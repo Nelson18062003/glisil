@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useCarnet, useChandelles, useCotation, useGuichet, useMesOrdres, useOrdre, useRafraichir, useSoldes, useTransactions } from "../../guichet";
 import type { Chandelle, Cote, Execution, Niveau, Ordre, TypeOrdre } from "../../guichet/types";
-import { achatMax, arrondi2, FRAIS, fraisOrdre, MARCHE, prixValide, quantiteValide, simulerMarche, totalOrdre } from "../../noyau/argent";
+import { achatMax, arrondi2, bandeDePrix, FRAIS, fraisOrdre, MARCHE, raisonDuRefus, simulerMarche, totalOrdre } from "../../noyau/argent";
 import { enTranches, heure, heureSecondes, jourRelatif, pourcent, prix as fPrix, usdt as fUsdt, xaf } from "../../noyau/format";
 import { useParcours } from "../../navigation/parcours";
 import { Attente, Badge, BUY, BUY_BG, Card, Feuille, FeuilleErreur, Line, Screen, SELL, SELL_BG, Squelette, Success } from "../../ui";
@@ -214,39 +214,59 @@ function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean; autoNe
   const { data: soldes } = useSoldes();
   const { data: cotation } = useCotation();
   const { data: carnet } = useCarnet(30);
+  const { data: mesOrdres } = useMesOrdres();
   const [typeOuvert, setTypeOuvert] = useState(false);
   const [confirme, setConfirme] = useState(false);
+  /* le total tapé par la personne, tant qu'elle ne touche pas à autre chose : c'est lui qui décide de la quantité */
+  const [totalSaisi, setTotalSaisi] = useState<string | null>(null);
   /* l'intention de l'ordre : un prix ou une quantité changés font un autre ordre, avec sa propre clé */
   const { lancer, enCours, erreur, effacerErreur } = useGesteUnique("ord", { cote: f.cote, type: f.type, quantite: f.quantite, prix: f.type === "limite" ? f.prix : null });
 
-  /* un prix par défaut : le meilleur en face, tant que rien n'a été tapé */
+  /* Le meilleur prix en face, sinon le dernier échange, sinon la référence du moteur. Un VRAI prix, jamais un exemple
+     gris qui ressemble à un prix : c'est ce faux « 618,40 » qui faisait croire à un prix posé alors que la case était vide. */
+  const enFace = f.cote === "achat" ? cotation?.meilleureVente : cotation?.meilleurAchat;
+  const prixSuggere = enFace ?? cotation?.dernier ?? cotation?.reference ?? MARCHE.reference ?? null;
   useEffect(() => {
-    if (f.prix === "" && cotation) {
-      const p = f.cote === "achat" ? cotation.meilleureVente ?? cotation.dernier : cotation.meilleurAchat ?? cotation.dernier;
-      if (p != null) poser({ prix: fPrix(p) });
-    }
-  }, [cotation, f.prix, f.cote, poser]);
+    if (f.prix === "" && prixSuggere != null) poser({ prix: fPrix(prixSuggere) });
+  }, [prixSuggere, f.prix, poser]);
 
   const prix = lireNombre(f.prix);
   const quantite = lireNombre(f.quantite);
   const dispoXafe = soldes?.XAFe.disponible ?? 0;
   const dispoUsdt = soldes?.USDT.disponible ?? 0;
-  const prixRef = f.type === "limite" ? prix : (f.cote === "achat" ? cotation?.meilleureVente : cotation?.meilleurAchat) ?? cotation?.dernier ?? 0;
-  const maxQ = f.cote === "achat" ? achatMax(dispoXafe, prixRef || 1) : arrondi2(dispoUsdt);
+  const reference = cotation?.reference ?? MARCHE.reference;
+  /* le prix qui sert aux calculs : celui tapé (limite), sinon le meilleur en face (marché) */
+  const prixCalcul = f.type === "limite" ? prix : enFace ?? 0;
+  /* Achat max : ce que les XAFe disponibles paient À CE PRIX. Sans prix, on ne sait pas — et on ne l'invente pas
+     (l'écran divisait par 1 et annonçait « 1 000 USDT » pour 1 000 XAFe). */
+  const maxQ = f.cote === "achat" ? (prixCalcul > 0 ? achatMax(dispoXafe, prixCalcul) : null) : arrondi2(dispoUsdt);
   const total = f.type === "limite" ? totalOrdre(quantite, prix) : simulerMarche(f.cote, quantite, (f.cote === "achat" ? carnet?.ventes : carnet?.achats) ?? [], f.cote === "achat" ? dispoXafe : Infinity).total;
-  const frais = fraisOrdre(f.cote, quantite, prixRef || 0);
-  const pct = maxQ > 0 ? Math.min(100, Math.round((quantite / maxQ) * 100)) : 0;
-  const valide = quantiteValide(quantite) && (f.type === "marche" || prixValide(prix)) && quantite <= maxQ + 1e-9;
+  const frais = fraisOrdre(f.cote, quantite, prixCalcul || 0);
+  const pct = maxQ && maxQ > 0 ? Math.min(100, Math.round((quantite / maxQ) * 100)) : 0;
+  const ouverts = (mesOrdres ?? []).filter((o) => o.etat === "ouvert" || o.etat === "partiel").length;
+  const raison = raisonDuRefus({ cote: f.cote, type: f.type, prix, quantite, dispoXafe, dispoUsdt, reference, ouverts });
+  const marcheVide = f.type === "marche" && enFace == null;
+  const valide = quantite > 0 && raison === null && !marcheVide && (maxQ === null || quantite <= maxQ + 1e-9);
+  const bande = f.type === "limite" ? bandeDePrix(f.cote, reference) : null;
 
+  const changerQuantite = (q: string) => { setTotalSaisi(null); poser({ quantite: q }); };
+  const changerPrix = (p: string) => { setTotalSaisi(null); poser({ prix: p }); };
+  /* le total d'abord : « je mets 50 000 XAFe » — la quantité s'en déduit, au centime inférieur, comme le moteur */
+  const changerTotal = (t: string) => {
+    setTotalSaisi(t);
+    const x = lireNombre(t);
+    poser({ quantite: prix > 0 && x > 0 ? String(Math.trunc((x / prix) * 100) / 100) : "" });
+  };
   const step = (champ: "prix" | "quantite", d: 1 | -1) => {
-    if (champ === "prix") poser({ prix: fPrix(Math.max(MARCHE.pasPrix, arrondi2(prix + d * MARCHE.pasPrix))) });
-    else poser({ quantite: String(Math.max(0, arrondi2(quantite + d * 10))) });
+    if (champ === "prix") changerPrix(fPrix(Math.max(MARCHE.pasPrix, arrondi2((prix || prixSuggere || 0) + d * MARCHE.pasPrix))));
+    else changerQuantite(String(Math.max(0, arrondi2(quantite + d * 10))));
   };
 
   const placer = () =>
     lancer(async (cle) => {
       const r = await guichet.placerOrdre({ cote: f.cote, type: f.type, quantite, prix: f.type === "limite" ? prix : undefined, cle });
       setConfirme(false);
+      setTotalSaisi(null);
       poser({ quantite: "" });
       await rafraichir();
       onPlace({ ...r.ordre, rempli: r.ordre.executee > 0 && r.ordre.restant === 0, autoNegociation: r.autoNegociation, deja: Boolean(r.deja) });
@@ -255,7 +275,7 @@ function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean; autoNe
   return (
     /* 212 px de formulaire laissaient 40 px au carnet sur un écran de 320 : en dessous de 360, il prend 56 % */
     <Stack gap={1} sx={{ width: 212, flexShrink: 0, "@media (max-width:359px)": { width: "56%" } }}>
-      <SideToggle side={f.cote} onChange={(c) => poser({ cote: c, prix: "" })} />
+      <SideToggle side={f.cote} onChange={(c) => { setTotalSaisi(null); poser({ cote: c, prix: "" }); }} />
       <ButtonBase onClick={() => setTypeOuvert(true)} sx={{ borderRadius: 2 }}>
         <Paper sx={{ bgcolor: "background.default", borderRadius: 2, height: 40, display: "flex", alignItems: "center", px: 1.25, gap: 0.5, width: "100%" }}>
           <InfoOutlined sx={{ fontSize: 16, color: "text.secondary" }} />
@@ -264,29 +284,58 @@ function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean; autoNe
         </Paper>
       </ButtonBase>
       {f.type === "limite" ? (
-        <Field label="Prix (XAFe)" value={f.prix} onChange={(v) => poser({ prix: v })} onStep={(d) => step("prix", d)} placeholder="618,40" />
+        <Stack direction="row" gap={0.75}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Field label="Prix (XAFe)" value={f.prix} onChange={changerPrix} onStep={(d) => step("prix", d)} placeholder="Votre prix" />
+          </Box>
+          {/* « BBO » : le meilleur prix en face, d'un geste */}
+          <ButtonBase aria-label="Meilleur prix en face" disabled={prixSuggere == null} onClick={() => prixSuggere != null && changerPrix(fPrix(prixSuggere))}
+            sx={{ width: 44, borderRadius: 2, bgcolor: "background.default", fontSize: 11, fontWeight: 700, color: prixSuggere == null ? "text.disabled" : "text.primary" }}>
+            BBO
+          </ButtonBase>
+        </Stack>
       ) : (
         <Field label="Prix (XAFe)" value="Prix du marché" />
       )}
-      <Field label="Quantité (USDT)" value={f.quantite} onChange={(v) => poser({ quantite: v })} onStep={(d) => step("quantite", d)} placeholder="0" />
+      {f.type === "limite" && bande && (
+        <Typography data-bande sx={{ fontSize: 11, color: "text.secondary", px: 0.5, lineHeight: 1.3 }}>
+          Entre {fPrix(bande.min)} et {fPrix(bande.max)} · référence {fPrix(reference!)}
+        </Typography>
+      )}
+      <Field label="Quantité (USDT)" value={f.quantite} onChange={changerQuantite} onStep={(d) => step("quantite", d)} placeholder="0" />
       <Box sx={{ px: 1 }}>
-        <Slider aria-label="Part du disponible" getAriaValueText={(v) => `${v} %`} value={pct} onChange={(_, v) => poser({ quantite: String(arrondi2((maxQ * (v as number)) / 100)) })} step={null} marks={[0, 25, 50, 75, 100].map((v) => ({ value: v }))} size="small"
+        {/* la part de ce qu'on a : 25 %, 50 %, 75 %, tout — des USDT achetables à ce prix, ou des USDT qu'on vend */}
+        <Slider aria-label="Part du disponible" getAriaValueText={(v) => `${v} %`} value={pct} disabled={maxQ === null}
+          onChange={(_, v) => changerQuantite(maxQ ? String(Math.trunc(((maxQ * (v as number)) / 100) * 100) / 100) : "")} step={null} marks={[0, 25, 50, 75, 100].map((v) => ({ value: v }))} size="small"
           sx={{ color: "text.secondary", "& .MuiSlider-mark": { width: 8, height: 8, borderRadius: 4, bgcolor: "background.paper", border: 2, borderColor: "text.secondary" }, "& .MuiSlider-thumb": { width: 28, height: 28, bgcolor: "background.paper", border: 2, borderColor: "text.primary" } }} />
       </Box>
-      <Field label="Total (XAFe)" value={total > 0 ? xaf(total) : "—"} />
+      {f.type === "limite" ? (
+        <Field label="Total (XAFe)" value={totalSaisi ?? (total > 0 ? xaf(total) : "")} onChange={changerTotal} placeholder="Ou un montant en XAFe" />
+      ) : (
+        <Field label="Total estimé (XAFe)" value={total > 0 ? xaf(total) : "—"} />
+      )}
       <Stack gap={0.25} sx={{ px: 0.25 }}>
         <Small label="Dispo" value={f.cote === "achat" ? `${xaf(dispoXafe)} XAFe` : `${enTranches(dispoUsdt, 2)} USDT`} />
-        <Small label={f.cote === "achat" ? "Achat max" : "Vente max"} value={`${fUsdt(maxQ)} USDT`} />
+        <Small label={f.cote === "achat" ? "Achat max" : "Vente max"} value={maxQ === null ? "fixez un prix" : `${fUsdt(maxQ)} USDT`} />
         <Small label="Frais est." value={quantite > 0 ? `${frais.actif === "USDT" ? enTranches(frais.montant, 2) : xaf(frais.montant)} ${frais.actif}` : "—"} />
       </Stack>
+      {/* pourquoi le bouton ne part pas : la règle et sa borne, AVANT l'envoi — jamais un bouton gris muet */}
+      {(raison || marcheVide) && (
+        <Typography data-raison role="status" sx={{ fontSize: 12, lineHeight: 1.35, color: "#7A4A00", bgcolor: "#FFF3DC", borderRadius: 1.5, px: 1, py: 0.75 }}>
+          {marcheVide ? "Personne en face au carnet : un ordre au marché ne trouverait rien. Posez un ordre limite, il attendra." : raison}
+        </Typography>
+      )}
       <Button variant="contained" disabled={!valide || enCours} onClick={() => setConfirme(true)} sx={{ bgcolor: couleur(f.cote), minHeight: 44, borderRadius: 2, "&:hover": { bgcolor: couleur(f.cote) } }}>
         {f.cote === "achat" ? "Acheter USDT" : "Vendre USDT"}
       </Button>
+      <Typography component={Link} to="/marche/regles" sx={{ fontSize: 12, color: "text.secondary", textAlign: "center", minHeight: 32, display: "flex", alignItems: "center", justifyContent: "center", textUnderlineOffset: 3 }}>
+        Règles du marché
+      </Typography>
 
       <Feuille ouverte={typeOuvert} onFermer={() => setTypeOuvert(false)} titre="Type d'ordre">
         <Stack gap={1}>
-          {([["limite", "Limite", `Vous fixez le prix. L'ordre attend au carnet jusqu'à trouver preneur. Frais ${pourcent(FRAIS.placeur)} s'il attend, ${pourcent(FRAIS.preneur)} s'il prend.`], ["marche", "Marché", `Exécuté tout de suite au meilleur prix disponible, jusqu'à ce que vos fonds soient épuisés. Frais ${pourcent(FRAIS.preneur)}.`]] as [TypeOrdre, string, string][]).map(([t, nom, aide]) => (
-            <ButtonBase key={t} onClick={() => { poser({ type: t }); setTypeOuvert(false); }} sx={{ textAlign: "left", borderRadius: 3 }}>
+          {([["limite", "Limite", `Vous fixez le prix. L'ordre attend au carnet jusqu'à trouver preneur, vos fonds bloqués. Frais ${pourcent(FRAIS.placeur)} s'il attend, ${pourcent(FRAIS.preneur)} s'il prend.`], ["marche", "Marché", `Exécuté tout de suite au meilleur prix disponible, jamais à plus de ${pourcent(MARCHE.bandeExecution)} du prix de référence ; ce qui ne trouve pas preneur est annulé. Frais ${pourcent(FRAIS.preneur)}.`]] as [TypeOrdre, string, string][]).map(([t, nom, aide]) => (
+            <ButtonBase key={t} onClick={() => { poser({ type: t }); setTotalSaisi(null); setTypeOuvert(false); }} sx={{ textAlign: "left", borderRadius: 3 }}>
               <Paper sx={{ p: 1.5, borderRadius: 3, width: "100%", bgcolor: f.type === t ? "#CDEFD9" : "background.default" }}>
                 <Typography fontWeight={600}>{nom}</Typography>
                 <Typography variant="body2">{aide}</Typography>
@@ -407,6 +456,65 @@ function Actifs() {
         </Stack>
       ))}
     </Stack>
+  );
+}
+
+/* --------------------------------------------------------- les règles */
+
+function Regle({ titre, valeur, aide }: { titre: string; valeur: string; aide: string }) {
+  return (
+    <Stack gap={0.25} sx={{ py: 1.25, borderTop: 1, borderColor: "divider", "&:first-of-type": { borderTop: 0 } }}>
+      <Stack direction="row" justifyContent="space-between" gap={2}>
+        <Typography variant="body2" fontWeight={600}>{titre}</Typography>
+        <Typography variant="body2" fontWeight={600} sx={{ fontVariantNumeric: "tabular-nums", textAlign: "right" }}>{valeur}</Typography>
+      </Stack>
+      <Typography variant="caption">{aide}</Typography>
+    </Stack>
+  );
+}
+
+/**
+ * Les règles du marché, comme la fiche « Trading Parameters » d'une bourse :
+ * ce que le moteur fait respecter, écrit pour qu'on le lise AVANT d'envoyer.
+ * Les chiffres viennent des paramètres de l'équipe (parametres_publics).
+ */
+export function MarcheRegles() {
+  const { data: cotation } = useCotation();
+  const ref = cotation?.reference ?? MARCHE.reference;
+  const achat = bandeDePrix("achat", ref);
+  const vente = bandeDePrix("vente", ref);
+  const pc = (x: number) => `${Math.round(x * 100)} %`;
+  return (
+    <Screen title="Règles du marché" back="/marche">
+      <Card sx={{ gap: 0.5 }}>
+        <Typography variant="subtitle1" component="h2">Comment un échange se fait</Typography>
+        <Box component="ol" sx={{ m: 0, pl: 2.5, "& li": { mb: 0.75 }, typography: "body2" }}>
+          <li>Un ordre limite <b>bloque</b> ses fonds dès qu'il est posé : les XAFe d'un achat, les USDT d'une vente. Ils reviennent s'il est annulé.</li>
+          <li>Un ordre qui arrive rencontre d'abord le <b>meilleur prix</b> en face, puis, à prix égal, l'ordre <b>arrivé le premier</b>.</li>
+          <li>L'échange se fait au prix de l'ordre <b>qui attendait</b> : celui qui arrive ne paie jamais plus cher que sa limite.</li>
+          <li>Un ordre peut être servi en plusieurs fois ; ce qui reste attend au carnet (limite) ou est annulé (marché).</li>
+          <li>On ne s'achète pas à soi-même : un ordre qui rencontrerait l'un des vôtres s'arrête là.</li>
+          <li>Les ordres passent <b>un par un</b> : deux ordres envoyés au même instant ne peuvent pas prendre le même vendeur.</li>
+        </Box>
+      </Card>
+      <Card sx={{ gap: 0 }}>
+        <Typography variant="subtitle1" component="h2" sx={{ mb: 0.5 }}>Les paramètres</Typography>
+        <Regle titre="Prix de référence" valeur={ref ? `${fPrix(ref)} XAFe` : "aucun encore"}
+          aide={ref ? "La moyenne des échanges des cinq dernières minutes, sinon le dernier échange, sinon le prix posé par l'équipe." : "Aucun échange encore : le premier ordre fait le marché, sans bande de prix."} />
+        <Regle titre="Bande d'un achat" valeur={achat ? `${fPrix(achat.min)} – ${fPrix(achat.max)}` : `${pc(MARCHE.bandeAchat[0])} – ${pc(MARCHE.bandeAchat[1])}`}
+          aide={`Un achat limite se place entre ${pc(MARCHE.bandeAchat[0])} et ${pc(MARCHE.bandeAchat[1])} du prix de référence : une faute de frappe ne fait pas acheter à n'importe quel prix.`} />
+        <Regle titre="Bande d'une vente" valeur={vente ? `${fPrix(vente.min)} – ${fPrix(vente.max)}` : `${pc(MARCHE.bandeVente[0])} – ${pc(MARCHE.bandeVente[1])}`}
+          aide={`Une vente limite se place entre ${pc(MARCHE.bandeVente[0])} et ${pc(MARCHE.bandeVente[1])} du prix de référence.`} />
+        <Regle titre="Protection d'un ordre au marché" valeur={`± ${pc(MARCHE.bandeExecution)}`}
+          aide="Un ordre au marché ne s'exécute jamais à plus de cet écart du prix de référence ; ce qu'il ne trouve pas dans cette bande est annulé, pas servi à n'importe quel prix." />
+        <Regle titre="Pas de prix" valeur={`${String(MARCHE.pasPrix).replace(".", ",")} XAFe`} aide="Un prix se donne à ce pas près : 618,40 ou 618,45, pas 618,41." />
+        <Regle titre="Taille d'un ordre" valeur={`${MARCHE.quantiteMin.toLocaleString("fr-FR")} – ${MARCHE.quantiteMax.toLocaleString("fr-FR")} USDT`} aide="La quantité d'USDT d'un ordre, deux décimales au plus." />
+        <Regle titre="Ordre au marché, au plus" valeur={`${MARCHE.marcheQuantiteMax.toLocaleString("fr-FR")} USDT`} aide="Au-delà, posez un ordre limite : vous fixez le prix." />
+        <Regle titre="Ordres ouverts, au plus" valeur={String(MARCHE.ordresOuvertsMax)} aide="Par compte, en même temps." />
+        <Regle titre="Frais" valeur={`${pourcent(FRAIS.placeur)} · ${pourcent(FRAIS.preneur)}`}
+          aide="Le premier si votre ordre attendait au carnet (il y apporte un prix), le second s'il prend un ordre qui attendait. L'acheteur les paie en USDT, le vendeur en XAFe." />
+      </Card>
+    </Screen>
   );
 }
 

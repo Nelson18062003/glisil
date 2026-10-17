@@ -10,8 +10,9 @@ import { ErreurMoteur } from "../noyau/erreurs";
 import { emailNormalise } from "../noyau/identite";
 import { numeroSaisi, transactionIdNormalise } from "../noyau/format";
 import type { Guichet } from "./guichet";
+import type { PreuveDeReserve } from "./types";
 import type {
-  Actif, Carnet, Chandelle, Compte, Cote, Cotation, Declaration, Depot, DevisRapide, Execution, IdOperateur, Notification, Numero, Operation, Ordre, ProfilInscription, SensRapide,
+  Actif, Carnet, Chandelle, Compte, Cote, Cotation, Declaration, Depot, TraceChaine, DevisRapide, Execution, IdOperateur, Notification, Numero, Operation, Ordre, ProfilInscription, SensRapide,
   Reseau, ResultatCode, ResultatOrdre, RetraitCrypto, Soldes, Sortie, Transaction, TransfertCrypto, TypeOrdre,
 } from "./types";
 
@@ -50,6 +51,15 @@ function depot(j: J): Depot {
     reception: j.reception === "retardee" || j.reception === "fermee" ? j.reception : "ouverte", montantRecu: n(j.montant_recu),
     etat: j.etat as Depot["etat"], creeLe: s(j.cree_le), expireLe: s(j.expire_le), crediteLe: sn(j.credite_le),
     declarations: ((j.declarations as J[]) ?? []).map(declaration),
+    chaine: ((j.chaine as J[] | undefined) ?? []).map(trace),
+  };
+}
+function trace(j: J): TraceChaine {
+  return {
+    reseau: j.reseau as Reseau, operation: j.operation === "detruire" ? "detruire" : "frapper", montant: n(j.montant), reference: s(j.reference),
+    etat: (["a_faire", "envoye", "confirme", "echoue"].includes(s(j.etat)) ? j.etat : "a_faire") as TraceChaine["etat"],
+    txHash: sn(j.tx_hash), bloc: nn(j.bloc), essai: Boolean(j.essai), contrat: sn(j.contrat), reserve: sn(j.reserve),
+    explorateur: sn(j.explorateur), empreinte: sn(j.empreinte), relue: Boolean(j.relue), confirmeLe: sn(j.confirme_le),
   };
 }
 function devis(j: J): DevisRapide {
@@ -267,6 +277,10 @@ export class GuichetSupabase implements Guichet {
     const { data, error } = await this.sb.rpc("parametres_publics");
     return error ? null : data;
   }
+  async preuveDeReserve() {
+    const p = await this.rpc<PreuveDeReserve>("preuve_de_reserve");
+    return { ...p, alertes: Number(p.alertes ?? 0), releve: p.releve ? { ...p.releve, floats_detail: p.releve.floats_detail ?? null } : null };
+  }
   async renvoyerCodeNumero(id: string) { return numero(await this.rpc<J>("renvoyer_code_numero", { p_id: id })); }
   async retirerNumero({ id, codeSecret }: { id: string; codeSecret: string }) { await this.rpc("retirer_numero", { p_id: id, p_code: codeSecret }); }
   async demanderSortie({ montant, numeroId, cle, codeSecret, nom }: { montant: number; numeroId: string; cle: string; codeSecret: string; nom?: string }) {
@@ -282,7 +296,7 @@ export class GuichetSupabase implements Guichet {
     const avant = nn(r.il_y_a_24h);
     return {
       dernier, variation24h: dernier !== null && avant ? Math.round(((dernier - avant) / avant) * 10000) / 100 : null,
-      haut24h: nn(r.haut), bas24h: nn(r.bas), volume24hUsdt: n(r.volume_usdt), meilleurAchat: nn(r.meilleur_achat), meilleureVente: nn(r.meilleure_vente), releveLe: new Date().toISOString(),
+      haut24h: nn(r.haut), bas24h: nn(r.bas), volume24hUsdt: n(r.volume_usdt), meilleurAchat: nn(r.meilleur_achat), meilleureVente: nn(r.meilleure_vente), reference: nn(r.reference), releveLe: new Date().toISOString(),
     };
   }
   async carnet(profondeur: number): Promise<Carnet> {

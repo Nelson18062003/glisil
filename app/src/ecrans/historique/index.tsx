@@ -14,10 +14,13 @@ import { useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { useCompte, useHistorique, useOperation } from "../../guichet";
 import type { Operation } from "../../guichet/types";
-import { operateur as opDe, RESEAUX } from "../../noyau/argent";
+import type { RecuDonnees } from "../../noyau/recu-pdf";
+import { infoReseau, libelleReseau, operateur as opDe } from "../../noyau/argent";
 import { enTranches, heure, heureSecondes, jourRelatif, numeroEnTranches, prix as fPrix, quand, signe, usdt as fUsdt, xaf } from "../../noyau/format";
 import { tones, type Tone } from "../../theme";
 import { Card, Chips, EtatVide, Line, List, Row, Screen, Squelette } from "../../ui";
+import { SurLaChaine } from "../../ui/chaine";
+import { telechargerRecu } from "../../ui/recu";
 
 const FILTRES = ["Tout", "Entrées", "Sorties", "Ordres", "Crypto"] as const;
 type Filtre = (typeof FILTRES)[number];
@@ -40,7 +43,7 @@ function apparence(o: Operation): { icone: JSX.Element; tone: Tone; titre: strin
       return { icone: <SwapHorizRounded />, tone: "blue", titre: `${d.cote === "achat" ? "Achat" : "Vente"}${d.rapide ? " rapide" : ""} ${fUsdt(d.executee || d.quantite)} USDT`, sousTitre: d.rapide ? `${heureOuEtat} · frais compris` : d.prixMoyen != null ? `${heureOuEtat} · à ${fPrix(d.prixMoyen)}` : d.prix != null ? `${heureOuEtat} · limite ${fPrix(d.prix)}` : heureOuEtat, droite: d.totalXafe > 0 ? signe(o.montant) : "—", couleur: o.montant > 0 && d.totalXafe > 0 ? tones.green.fg : undefined };
     }
     case "crypto":
-      return { icone: <CurrencyBitcoinRounded />, tone: "neutral", titre: `${o.montant > 0 ? "Dépôt" : "Retrait"} ${o.actif} · ${RESEAUX[o.detail.reseau].nom}`, sousTitre: heureOuEtat, droite: `${signe(o.montant, o.actif === "USDT" ? 2 : 0)} ${o.actif}`, couleur: o.montant > 0 ? tones.green.fg : undefined };
+      return { icone: <CurrencyBitcoinRounded />, tone: "neutral", titre: `${o.montant > 0 ? "Dépôt" : "Retrait"} ${o.actif} · ${infoReseau(o.detail.reseau).nom}`, sousTitre: heureOuEtat, droite: `${signe(o.montant, o.actif === "USDT" ? 2 : 0)} ${o.actif}`, couleur: o.montant > 0 ? tones.green.fg : undefined };
   }
 }
 
@@ -93,22 +96,40 @@ export function Historique() {
 
 /* ------------------------------------------------------------- détail */
 
-function recu(o: Operation, nom: string | null | undefined): string {
-  const lignes = [`Glisil · reçu`, `Client : ${nom ?? ""}`, `Référence : ${o.reference}`, `Date : ${quand(o.quand)}`];
+/** Ce que le reçu PDF porte : le montant, les références, et pour un dépôt sa trace sur la blockchain. */
+function donneesDuRecu(o: Operation, nom: string | null | undefined): Omit<RecuDonnees, "preuve" | "emisLe"> {
+  const lignes: [string, string][] = [];
+  let titre = "Opération Glisil";
+  let montant = `${xaf(o.montant)} XAFe`;
   if (o.nature === "depot") {
-    lignes.push(`Entrée ${opDe(o.detail.operateur).nom} : +${xaf(o.detail.montantRecu)} XAFe`);
-    for (const d of o.detail.declarations.filter((x) => x.etat === "credite")) lignes.push(`Transaction ID ${d.transactionId} : ${xaf(d.montant ?? 0)} XAF`);
+    const op = opDe(o.detail.operateur).nom;
+    titre = `Dépôt ${op}`;
+    montant = `+${xaf(o.detail.montantRecu)} XAFe`;
+    lignes.push(["Float", `${op} · ${numeroEnTranches(o.detail.floatNumero)}`]);
+    for (const d of o.detail.declarations.filter((x) => x.etat === "credite")) {
+      if (d.numeroPayeur) lignes.push(["Depuis", numeroEnTranches(d.numeroPayeur)]);
+      lignes.push([`Transaction ID ${op.split(" ")[0]}`, `${d.transactionId} · ${xaf(d.montant ?? 0)} XAF`]);
+      if (d.crediteLe) lignes.push(["Crédité", quand(d.crediteLe)]);
+    }
   } else if (o.nature === "sortie") {
-    lignes.push(`Sortie ${opDe(o.detail.operateur).nom} vers ${numeroEnTranches(o.detail.numero)} : ${xaf(o.detail.montantEnvoye)} XAF envoyés (frais ${xaf(o.detail.frais)})`);
-    for (const t of o.detail.transferts.filter((x) => x.referenceOperateur)) lignes.push(`Transaction ID ${t.referenceOperateur} : ${xaf(t.envoi)} XAF`);
-    if (o.detail.transactionId) lignes.push(`Transaction ID ${o.detail.transactionId} : ${xaf(o.detail.montantEnvoye)} XAF`);
+    const op = opDe(o.detail.operateur).nom;
+    titre = `Retrait vers ${op}`;
+    montant = `${xaf(o.detail.montantEnvoye)} XAF`;
+    lignes.push(["Vers", numeroEnTranches(o.detail.numero)], ["XAFe débités", xaf(o.detail.montant)], ["Frais", `${xaf(o.detail.frais)} XAFe`]);
+    if (o.detail.nomBeneficiaire) lignes.push(["Au nom de", o.detail.nomBeneficiaire]);
+    for (const t of o.detail.transferts.filter((x) => x.referenceOperateur)) lignes.push(["Transaction ID", `${t.referenceOperateur} · ${xaf(t.envoi)} XAF`]);
+    if (o.detail.transactionId) lignes.push(["Transaction ID", o.detail.transactionId]);
   } else if (o.nature === "ordre") {
-    lignes.push(`${o.detail.cote === "achat" ? "Achat" : "Vente"} ${fUsdt(o.detail.executee)} USDT pour ${xaf(o.detail.totalXafe)} XAFe`);
+    titre = o.detail.cote === "achat" ? "Achat d'USDT" : "Vente d'USDT";
+    montant = `${fUsdt(o.detail.executee)} USDT`;
+    lignes.push(["Pour", `${xaf(o.detail.totalXafe)} XAFe`]);
   } else {
-    lignes.push(`${o.montant > 0 ? "Dépôt" : "Retrait"} ${enTranches(Math.abs(o.montant), o.actif === "USDT" ? 2 : 0)} ${o.actif} · ${RESEAUX[o.detail.reseau].nom}`);
-    if ("txHash" in o.detail && o.detail.txHash) lignes.push(`Transaction : ${o.detail.txHash}`);
+    titre = `${o.montant > 0 ? "Dépôt" : "Retrait"} ${o.actif} · ${infoReseau(o.detail.reseau).nom}`;
+    montant = `${o.montant > 0 ? "+" : ""}${enTranches(o.montant, o.actif === "USDT" ? 2 : 0)} ${o.actif}`;
+    lignes.push(["Adresse", o.detail.adresse]);
+    if ("txHash" in o.detail && o.detail.txHash) lignes.push(["Transaction", o.detail.txHash]);
   }
-  return lignes.join("\n");
+  return { reference: o.reference, titre, montant, quand: quand(o.quand), client: nom ?? null, lignes, chaine: o.nature === "depot" ? o.detail.chaine ?? [] : [] };
 }
 
 export function HistoriqueDetail() {
@@ -125,15 +146,15 @@ export function HistoriqueDetail() {
   /* un seul paiement crédité : le reçu de la maquette, ligne à ligne ; plusieurs : la liste des transaction ID */
   const seul = o.nature === "depot" && o.detail.declarations.length === 1 && o.detail.declarations[0].etat === "credite" ? o.detail.declarations[0] : null;
   const opCourt = o.nature === "depot" ? opDe(o.detail.operateur).nom.split(" ")[0] : "";
-  /* le reçu se télécharge comme un fichier : un lien ne survit pas au partage */
-  const telecharger = () => {
-    const fichier = new Blob([recu(o, compte?.nom)], { type: "text/plain;charset=utf-8" });
-    const lien = document.createElement("a");
-    lien.href = URL.createObjectURL(fichier);
-    lien.download = `Recu-${o.reference}.txt`;
-    lien.click();
-    setTimeout(() => URL.revokeObjectURL(lien.href), 5_000);
-    setPartage("Reçu téléchargé.");
+  /* le reçu se télécharge comme un fichier PDF : un lien ne survit pas au partage */
+  const telecharger = async () => {
+    setPartage("Préparation du reçu…");
+    try {
+      await telechargerRecu(donneesDuRecu(o, compte?.nom));
+      setPartage("Reçu téléchargé.");
+    } catch {
+      setPartage("Le reçu n'a pas pu être préparé. Réessayez.");
+    }
     setTimeout(() => setPartage(null), 2500);
   };
 
@@ -166,6 +187,8 @@ export function HistoriqueDetail() {
         </Card>
       )}
 
+      {o.nature === "depot" && <SurLaChaine traces={o.detail.chaine} />}
+
       {o.nature === "sortie" && (
         <Card>
           <Line label="Vers" value={`${opDe(o.detail.operateur).nom.split(" ")[0]} · ${numeroEnTranches(o.detail.numero)}`} />
@@ -187,7 +210,7 @@ export function HistoriqueDetail() {
 
       {o.nature === "crypto" && (
         <Card>
-          <Line label="Réseau" value={`${RESEAUX[o.detail.reseau].nom} · ${RESEAUX[o.detail.reseau].chaine}`} />
+          <Line label="Réseau" value={libelleReseau(infoReseau(o.detail.reseau))} />
           <Line label="Adresse" value={o.detail.adresse} mono />
           {"frais" in o.detail && <Line label="Frais" value={`${enTranches(o.detail.frais, o.actif === "USDT" ? 2 : 0)} ${o.actif}`} />}
           <Line label="Transaction" value={("txHash" in o.detail && o.detail.txHash) || "en attente"} mono />
@@ -200,7 +223,7 @@ export function HistoriqueDetail() {
         {o.nature === "depot" && (o.etat === "en_attente" || o.detail.declarations.some((d) => d.etat === "attendu")) && (
           <Button variant="contained" startIcon={<ReplayRounded />} component={Link} to={`/entrer/transaction/${o.reference}`}>Reprendre : entrer un transaction ID</Button>
         )}
-        {!enSuspens(o) && <Button variant="outlined" startIcon={<DownloadRounded />} onClick={telecharger}>{partage ?? "Télécharger le reçu"}</Button>}
+        {!enSuspens(o) && <Button variant="outlined" startIcon={<DownloadRounded />} onClick={() => void telecharger()}>{partage ?? "Télécharger le reçu (PDF)"}</Button>}
         <Button variant="text" component={Link} to={`/compte/aide?ref=${encodeURIComponent(o.reference)}`}>Signaler un problème</Button>
       </Stack>
     </Screen>

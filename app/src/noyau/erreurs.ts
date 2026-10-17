@@ -133,6 +133,26 @@ const DICTIONNAIRE: Record<string, Omit<ErreurLisible, "recommencer"> & { recomm
     argent: "Aucun ordre n'a été placé.",
     suite: "Au moins 10 USDT, avec deux décimales au plus.",
   },
+  "quantité trop grande": {
+    titre: "Cet ordre dépasse la taille maximale",
+    argent: "Aucun ordre n'a été placé.",
+    suite: "Découpez-le en plusieurs ordres. Les limites sont dans « Règles du marché ».",
+  },
+  "ordre au marché trop grand": {
+    titre: "Trop grand pour un ordre au marché",
+    argent: "Aucun ordre n'a été placé.",
+    suite: "Au-delà du plafond, posez un ordre limite : vous fixez le prix, il attend au carnet.",
+  },
+  "prix hors de la bande": {
+    titre: "Ce prix est trop loin du marché",
+    argent: "Aucun ordre n'a été placé.",
+    suite: "Un ordre se place près du prix de référence : la bande protège d'une faute de frappe. Rapprochez votre prix.",
+  },
+  "trop d'ordres ouverts": {
+    titre: "Vous avez trop d'ordres ouverts",
+    argent: "Aucun ordre n'a été placé ; les autres attendent toujours.",
+    suite: "Annulez un ordre dans « Ordres ouverts », puis recommencez.",
+  },
   "marché fermé": {
     titre: "Le marché est fermé pour le moment",
     argent: "Aucun ordre n'a été placé.",

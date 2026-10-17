@@ -106,6 +106,7 @@ const ECRANS = [
   { nom: "compte-aide", aller: "/compte/aide" },
   { nom: "compte-fermer", aller: "/compte/fermer" },
   { nom: "conditions", aller: "/conditions" },
+  { nom: "preuve", aller: "/preuve" },
 ];
 /* sans session : à jouer dans une fenêtre neuve */
 const ECRANS_ANONYMES = [

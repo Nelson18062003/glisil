@@ -804,18 +804,21 @@ insert into numeros (compte_id, operateur, numero, verifie_le, actif_des) values
   ('44444444-4444-4444-4444-444444444444', 'mtn', '670444444', now() - interval '2 days', now() - interval '1 day'),
   ('55555555-5555-5555-5555-555555555555', 'mtn', '670555000', now() - interval '2 days', now() - interval '1 day');
 
--- 11.1 · les droits. anon n'exécute RIEN ; authenticated n'exécute que ce qui
+-- 11.1 · les droits. anon n'exécute RIEN (sauf la preuve de réserve, publique
+-- à dessein) ; authenticated n'exécute que ce qui
 -- lit auth.uid() (ou se garde par _exiger_droit), plus quatre lectures
 -- publiques du marché. Aucune fonction de service ne lui est ouverte.
 do $$
 declare v text;
 begin
   select string_agg(p.oid::regprocedure::text, ', ') into v from pg_proc p
-   where p.pronamespace = 'public'::regnamespace and has_function_privilege('anon', p.oid, 'execute');
+   where p.pronamespace = 'public'::regnamespace and has_function_privilege('anon', p.oid, 'execute')
+     -- la seule exception, voulue : la preuve de réserve se lit sans compte (0016) — des totaux, aucun nom
+     and p.oid <> 'preuve_de_reserve()'::regprocedure;
   assert v is null, 'anon exécute : ' || v;
   select string_agg(p.oid::regprocedure::text, ', ') into v from pg_proc p
    where p.pronamespace = 'public'::regnamespace and has_function_privilege('authenticated', p.oid, 'execute')
-     and p.proname !~ '^(carnet|transactions_recentes|cotation|chandelles)$'
+     and p.proname !~ '^(carnet|transactions_recentes|cotation|chandelles|preuve_de_reserve)$'
      and p.prosrc !~ 'auth\.uid\(\)' and p.prosrc !~ '_exiger_droit';
   assert v is null, 'authenticated exécute sans lire la session : ' || v;
   select string_agg(p.oid::regprocedure::text, ', ') into v from pg_proc p
@@ -1952,6 +1955,311 @@ begin
   assert (admin_a_traiter() ->> 'sorties_non_expliquees')::int = 1;
   assert total('XAFe') = circulation(), format('XAFe : %s en soldes, %s en circulation', total('XAFe'), circulation());
   raise notice '✓ 11.36 remboursement manuel : mis de côté à la demande, payé avec un ID qui ne sert qu''une fois, prouvé par le SMS de la puce, confirmé par une seconde personne au-delà du seuil, jamais refusé après paiement ; refusé avant, tout revient';
+end $$;
+rollback;
+
+-- 11.37 · chaque XAFe aussi sur la chaîne (0015) : un dépôt crédité, une
+-- sortie payée, un retrait vers un wallet deviennent chacun UNE opération sur
+-- la réserve, dans l'ordre, sous la référence du mouvement. La somme des
+-- frappes moins les destructions vaut ce que Glisil doit dans ses comptes.
+begin;
+do $$
+declare r jsonb; n_avant bigint := (select count(*) from reserve_chaine);
+begin
+  assert (select count(*) from reserve_chaine) = (select count(*) from emissions), 'chaque mouvement passé a sa ligne de réserve';
+  assert (select coalesce(sum(case operation when 'frapper' then montant else -montant end), 0) from reserve_chaine) = circulation(),
+         format('la réserve attendue (%s) vaut ce que les comptes portent (%s)',
+                (select sum(case operation when 'frapper' then montant else -montant end) from reserve_chaine), circulation());
+  insert into emissions (sens, montant, source_table, source_id) values ('emission', 2500, 'depots', 'XAFe-DP-990001');
+  insert into emissions (sens, montant, source_table, source_id) values ('emission', 500, 'depots', 'XAFe-DP-990001');
+  insert into emissions (sens, montant, source_table, source_id) values ('destruction', 1000, 'sorties', 'XAFe-WD-990002');
+  assert (select array_agg(reference || ':' || operation order by id) from reserve_chaine where id > (select coalesce(max(id), 0) from reserve_chaine) - 3)
+         = array['XAFe-DP-990001:frapper', 'XAFe-DP-990001#' || (select max(id) - 1 from emissions) || ':frapper', 'XAFe-WD-990002:detruire'],
+         'la référence du mouvement, un suffixe au second crédit du même dossier, l''ordre gardé';
+  r := chaine_reserve_a_jouer('bep20');
+  assert jsonb_array_length(r) >= 3 and (r -> 0 ->> 'id')::bigint < (r -> 1 ->> 'id')::bigint, 'dans l''ordre';
+  perform chaine_reserve_marquer_envoi((r -> 0 ->> 'id')::bigint, '0xabc', 'brut');
+  perform chaine_reserve_resultat((r -> 0 ->> 'id')::bigint, true, 42, 'bloc 42');
+  begin perform chaine_reserve_resultat((r -> 0 ->> 'id')::bigint, true, 42, 'bloc 42'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'opération de réserve pas en cours', sqlerrm; end;
+  assert (select _trace_chaine('depots', 'XAFe-DP-990001') -> 0 ->> 'operation') = 'frapper', 'le dépôt porte sa trace';
+  assert not has_function_privilege('authenticated', 'chaine_reserve_marquer_envoi(bigint, text, text)', 'execute'), 'le veilleur seul joue la réserve';
+  raise notice '✓ 11.37 chaque XAFe aussi sur la chaîne : un mouvement, une opération de réserve, dans l''ordre, sous sa référence ; la réserve attendue vaut la circulation';
+end $$;
+rollback;
+
+-- 11.38 · la parité à trois colonnes (0016). Une chaîne qui montre exactement
+-- ce que le registre attend : écart 0, aucune anomalie. Puis chaque façon de
+-- mentir, une à une : une frappe que personne n'explique, une opération qui
+-- n'arrive pas, une offre que la lecture n'explique pas, des floats qui ne
+-- couvrent plus — chacune ouvre son alarme, et l'alarme vue deux fois part par SMS.
+begin;
+do $$
+declare r jsonb; l record; v_empr text; n int;
+begin
+  update parametres set valeur = '{"essai": true, "bep20": {"xafe": "0xabc"}, "trc20": null}' where cle = 'chaine';
+  -- le veilleur a appris l'empreinte de chaque référence…
+  perform chaine_noter_empreintes((select jsonb_agg(jsonb_build_object('reference', x, 'empreinte', '0x' || md5(x) || md5(x || '#')))
+                                     from jsonb_array_elements_text(chaine_references_sans_empreinte(1000)) x));
+  assert jsonb_array_length(chaine_references_sans_empreinte(1000)) = 0, 'chaque référence a son empreinte';
+  -- … et relu sur la chaîne chaque opération attendue, telle quelle
+  n := 0;
+  for l in select * from _parite_lignes() loop
+    n := n + 1;
+    insert into chaine_mouvements_jeton (reseau, tx_hash, idx, bloc, genre, adresse, montant, empreinte)
+    values ('bep20', '0xt' || n, 0, n, l.genre, '0xchaud', l.montant, (select empreinte from chaine_empreintes where reference = l.reference));
+  end loop;
+  insert into chaine_etats (reseau, etat) values ('bep20', jsonb_build_object('chaud', '0xchaud', 'jeton', jsonb_build_object(
+    'offre', (select sum(case genre when 'frappe' then montant else -montant end) from chaine_mouvements_jeton), 'bloc', 100000, 'a_jour', true)))
+  on conflict (reseau) do update set etat = excluded.etat;
+  -- les floats : le solde que l'opérateur annonce, assez pour couvrir
+  perform totem_solde_float('akwa-1', 'mtn', '677000000', 1e9, now(), 'sms', 900001);
+  assert (totem_solde_float('akwa-1', 'mtn', '677000000', 1e9, now(), 'sms', 900001) ->> 'resultat') = 'deja', 'un SMS relu ne compte qu''une fois';
+  assert (totem_solde_float('secours-3', 'mtn', '677000000', 5, now(), 'ussd') ->> 'resultat') = 'refuse', 'un float d''un autre terminal est refusé';
+  insert into soldes_floats (float_id, solde, annonce_le, source) select id, 1e9, now(), 'releve' from floats where actif and id not in (select float_id from soldes_floats);
+  r := rapprocher();
+  assert (r ->> 'ecart')::numeric = 0 and (r ->> 'anomalies')::int = 0, format('la chaîne montre ce que le registre attend : %s', r);
+  assert (r ->> 'statut') in ('juste', 'en_cours'), r;
+  assert (r ->> 'registre')::numeric = circulation() + circulation_chaine(), 'le registre : dans les comptes plus sur les wallets';
+  assert (r ->> 'couverture')::numeric > 0, r;
+
+  -- 1. une frappe que le registre n'explique pas : grave, et l'écart se dit au franc
+  insert into chaine_mouvements_jeton (reseau, tx_hash, idx, bloc, genre, adresse, montant, empreinte) values ('bep20', '0xpirate', 0, 99999, 'frappe', '0xinconnu', 5, null);
+  update chaine_etats set etat = jsonb_set(etat, '{jeton,offre}', to_jsonb((etat #>> '{jeton,offre}')::numeric + 5)) where reseau = 'bep20';
+  r := rapprocher();
+  assert (r ->> 'ecart')::numeric = 5 and (r ->> 'statut') = 'ecart', r;
+  assert exists (select 1 from parite_alertes where code = 'ligne:bep20:0xpirate' and gravite = 'grave' and close_le is null), 'la frappe inconnue est une alarme grave';
+  assert exists (select 1 from parite_alertes where code = 'ecart_chaine' and close_le is null), 'l''écart au franc est une alarme';
+  -- l'alarme vue deux fois part par SMS, une seule fois, au numéro posé
+  update parametres set valeur = valeur || '{"alerte_numero": "677 11 22 33"}' where cle = 'parite';
+  perform rapprocher(); perform rapprocher();
+  assert (select count(*) from messages_sortants where cle like 'parite-%' and numero = '677112233') >= 2, 'l''inconnue et l''écart partent par SMS';
+  n := (select count(*) from messages_sortants where cle like 'parite-%');
+  perform rapprocher();
+  assert (select count(*) from messages_sortants where cle like 'parite-%') = n, 'une alarme ne part qu''une fois';
+  delete from chaine_mouvements_jeton where tx_hash = '0xpirate';
+  update chaine_etats set etat = jsonb_set(etat, '{jeton,offre}', to_jsonb((etat #>> '{jeton,offre}')::numeric - 5)) where reseau = 'bep20';
+  r := rapprocher();
+  assert (r ->> 'ecart')::numeric = 0 and not exists (select 1 from parite_alertes where code in ('ecart_chaine', 'ligne:bep20:0xpirate') and close_le is null),
+         'ce qui n''est plus vrai se ferme';
+
+  -- 2. un dépôt crédité : en route, l'écart reste nul ; trop vieux, il devient une anomalie
+  insert into emissions (sens, montant, source_table, source_id) values ('emission', 700, 'depots', 'XAFe-DP-990038');
+  r := rapprocher();
+  assert (r ->> 'ecart')::numeric = 0 and (r ->> 'statut') = 'en_cours' and (r ->> 'en_route')::numeric = 700, r;
+  update reserve_chaine set cree_le = now() - interval '2 hours' where reference = 'XAFe-DP-990038';
+  r := rapprocher();
+  assert exists (select 1 from parite_alertes where code = 'ligne:bep20:XAFe-DP-990038' and close_le is null), 'une frappe attendue qui n''arrive pas';
+  -- refusée par la chaîne : plus « en route », l'écart la montre
+  update reserve_chaine set etat = 'echoue' where reference = 'XAFe-DP-990038';
+  r := rapprocher();
+  assert (r ->> 'ecart')::numeric = -700, format('une frappe refusée manque à la chaîne : %s', r);
+  -- relue mais pas du bon montant : un écart de ligne
+  perform chaine_noter_empreintes(jsonb_build_array(jsonb_build_object('reference', 'XAFe-DP-990038', 'empreinte', '0x' || md5('XAFe-DP-990038') || md5('XAFe-DP-990038#'))));
+  update reserve_chaine set etat = 'confirme' where reference = 'XAFe-DP-990038';
+  perform chaine_noter_mouvements('bep20', 100001, jsonb_build_array(jsonb_build_object('tx', '0xcourt', 'index', 0, 'bloc', 100001, 'genre', 'frappe',
+    'adresse', '0xchaud', 'montant', 690, 'empreinte', '0x' || md5('XAFe-DP-990038') || md5('XAFe-DP-990038#'))));
+  assert (select verdict from _parite_lignes() where reference = 'XAFe-DP-990038') = 'ecart', 'dix francs de moins sur la chaîne';
+
+  -- 3. la lecture : le contrat dit plus que les mouvements relus
+  update chaine_etats set etat = jsonb_set(etat, '{jeton,offre}', to_jsonb((etat #>> '{jeton,offre}')::numeric + 1)) where reseau = 'bep20';
+  perform rapprocher();
+  assert exists (select 1 from parite_alertes where code = 'lecture:bep20' and close_le is null), 'une offre que la lecture n''explique pas';
+
+  -- 4. les floats ne couvrent plus
+  insert into soldes_floats (float_id, solde, annonce_le, source) select id, 0, now(), 'releve' from floats where actif;
+  r := rapprocher();
+  assert (r ->> 'couverture')::numeric < 0 and exists (select 1 from parite_alertes where code = 'couverture' and close_le is null), r;
+  -- un float sans solde récent : le total ne se dit pas (jamais 0 à la place de « non connu »)
+  update soldes_floats set annonce_le = now() - interval '3 days';
+  r := rapprocher();
+  assert r ->> 'floats' is null and r ->> 'couverture' is null, r;
+
+  -- la page publique : sans compte, des totaux et des transactions, aucun numéro
+  assert has_function_privilege('anon', 'preuve_de_reserve()', 'execute'), 'la preuve se lit sans compte';
+  assert not has_function_privilege('anon', 'rapprocher()', 'execute') and not has_function_privilege('authenticated', 'totem_solde_float(text, text, text, numeric, timestamptz, text, bigint)', 'execute');
+  assert not has_table_privilege('anon', 'soldes_floats', 'select') and not has_table_privilege('authenticated', 'parite_alertes', 'select');
+  r := preuve_de_reserve();
+  assert r::text !~ '677000000' and r::text !~ '677112233', 'aucun numéro de float ni d''alerte sur la page publique';
+  assert jsonb_array_length(r -> 'lignes') > 0 and (r -> 'lignes' -> 0) ? 'empreinte' and not ((r -> 'lignes' -> 0) ? 'adresse_vue'), r -> 'lignes' -> 0;
+  raise notice '✓ 11.38 la parité à trois colonnes : écart nul quand la chaîne montre le registre ; inconnue, retard, refus, montant faux, lecture incomplète, floats courts — chacun son alarme, et le SMS une fois';
+end $$;
+rollback;
+
+-- 11.39 · les règles du marché (0017). Chaque garde-fou refuse avec SA règle et
+-- SA borne : bande de prix par côté, taille maximale, plafond au marché, ordres
+-- ouverts par compte ; un ordre au marché ne s'exécute pas hors de la bande
+-- d'exécution ; le prix de référence est une moyenne de cinq minutes, puis le
+-- dernier échange, puis celui de l'équipe, puis rien (le premier ordre fait le
+-- marché).
+begin;
+do $$
+declare r jsonb; a uuid := 'a1700000-0000-0000-0000-000000000001'; b uuid := 'a1700000-0000-0000-0000-000000000002';
+        ref numeric;
+begin
+  insert into comptes (id, telephone, nom, palier) values (a, '670170001', 'Règle A', 2), (b, '670170002', 'Règle B', 2);
+  perform _mouvement(a, 'XAFe', 50000000, 0, 'essai', 'essai', 'r1');
+  perform _mouvement(b, 'USDT', 50000, 0, 'essai', 'essai', 'r2');
+  -- un carnet propre : les ordres des scénarios précédents sortent (la transaction est annulée à la fin)
+  update ordres set etat = 'annule', restant = 0, bloque = 0 where etat in ('ouvert', 'partiel');
+  delete from executions;
+  update parametres set valeur = valeur || '{"prix_reference": null}' where cle = 'marche';
+  assert _prix_reference() is null, 'sans échange ni référence posée : pas de référence';
+
+  -- 1. sans référence, pas de bande : le premier ordre fait le marché
+  perform set_config('xafe.compte', b::text, true);
+  r := placer_ordre('vente', 'limite', 100, 600, 'v-600');
+  perform set_config('xafe.compte', a::text, true);
+  r := placer_ordre('achat', 'limite', 100, 600, 'a-600');
+  assert jsonb_array_length(r -> 'executions') = 1, r;
+  assert _prix_reference() = 600, format('la référence est l''échange : %s', _prix_reference());
+
+  -- 2. la moyenne pondérée de cinq minutes : un échange minuscule au bord ne déplace pas la bande d'un coup
+  perform set_config('xafe.compte', b::text, true);
+  r := placer_ordre('vente', 'limite', 10, 650, 'v-650');
+  perform set_config('xafe.compte', a::text, true);
+  r := placer_ordre('achat', 'limite', 10, 650, 'a-650');
+  ref := _prix_reference();
+  assert ref = round((60000 + 6500) / 110.0, 2), format('moyenne pondérée attendue (604,55, pas 650), lu %s', ref);
+
+  -- 3. la bande de prix, par côté (achat 80 %–110 %, vente 90 %–120 %)
+  begin perform placer_ordre('achat', 'limite', 10, round(ref * 1.15 / 0.05) * 0.05, 'a-haut'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'prix hors de la bande', sqlerrm; end;
+  begin perform placer_ordre('achat', 'limite', 10, round(ref * 0.75 / 0.05) * 0.05, 'a-bas'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'prix hors de la bande', sqlerrm; end;
+  r := placer_ordre('achat', 'limite', 10, round(ref * 0.85 / 0.05) * 0.05, 'a-dans');
+  assert r -> 'ordre' ->> 'etat' = 'ouvert', r;
+  perform set_config('xafe.compte', b::text, true);
+  begin perform placer_ordre('vente', 'limite', 10, round(ref * 0.85 / 0.05) * 0.05, 'v-bas'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'prix hors de la bande', sqlerrm; end;
+  -- une vente à 108 % de la référence est permise au carnet…
+  r := placer_ordre('vente', 'limite', 50, round(ref * 1.08 / 0.05) * 0.05, 'v-loin');
+  assert r -> 'ordre' ->> 'etat' = 'ouvert', r;
+
+  -- 4. …mais un achat AU MARCHÉ ne la prend pas : elle est au-delà de la bande d'exécution (5 %)
+  perform set_config('xafe.compte', a::text, true);
+  r := placer_ordre('achat', 'marche', 10, null, 'a-marche');
+  assert jsonb_array_length(r -> 'executions') = 0 and r -> 'ordre' ->> 'etat' = 'annule', format('rien dans la bande : %s', r);
+  assert (select quantite from _parcourir_carnet(a, 'achat', 10, null)) = 0, 'le devis de l''achat rapide suit la même bande';
+
+  -- 5. la taille maximale, le plafond au marché, les ordres ouverts
+  update parametres set valeur = valeur || '{"quantite_max": 5000, "marche_quantite_max": 1000, "ordres_ouverts_max": 2}' where cle = 'marche';
+  begin perform placer_ordre('achat', 'limite', 6000, round(ref / 0.05) * 0.05, 'a-gros'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'quantité trop grande', sqlerrm; end;
+  begin perform placer_ordre('achat', 'marche', 2000, null, 'a-gros-marche'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'ordre au marché trop grand', sqlerrm; end;
+  r := placer_ordre('achat', 'limite', 10, round(ref * 0.9 / 0.05) * 0.05, 'a-deux');   -- le second ouvert d'A
+  begin perform placer_ordre('achat', 'limite', 10, round(ref * 0.9 / 0.05) * 0.05, 'a-trois'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'trop d''ordres ouverts', sqlerrm; end;
+  r := placer_ordre('achat', 'marche', 10, null, 'a-marche-2');   -- un ordre au marché ne reste pas ouvert : il ne compte pas
+
+  -- 6. la référence posée par l'équipe, quand aucun échange n'existe
+  delete from executions;
+  update parametres set valeur = valeur || '{"prix_reference": 600}' where cle = 'marche';
+  assert _prix_reference() = 600;
+  perform set_config('xafe.compte', b::text, true);
+  begin perform placer_ordre('vente', 'limite', 10, 500, 'v-500'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'prix hors de la bande', sqlerrm; end;
+
+  -- 7. la règle se lit : l'écran reçoit la référence et les bornes
+  perform set_config('xafe.compte', a::text, true);
+  assert (parametres_publics() -> 'marche' ->> 'reference')::numeric = 600 and parametres_publics() -> 'marche' ? 'bande_achat', parametres_publics() -> 'marche';
+  assert (cotation() ->> 'reference')::numeric = 600, cotation();
+  -- un paramètre réécrit en entier, sans les clés des règles, ne fait disparaître aucun garde-fou
+  update parametres set valeur = '{"paire": "USDT/XAFe", "pas_prix": 0.05, "quantite_min": 10, "ouvert": true}' where cle = 'marche';
+  assert (_marche() ->> 'ordres_ouverts_max')::int = 200 and _marche() -> 'bande_achat' = '[0.8, 1.1]'::jsonb, _marche();
+  -- et un paramètre abîmé ne s'écrit pas
+  begin perform _verifier_parametre('marche', parametre('marche') || '{"bande_achat": [1.2, 1.1]}'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
+  raise notice '✓ 11.39 les règles du marché : bande de prix par côté, bande d''exécution au marché (devis compris), taille maximale, plafond au marché, ordres ouverts ; la référence est une moyenne de cinq minutes, puis l''échange, puis celle de l''équipe, puis aucune';
+end $$;
+rollback;
+
+-- 11.40 · le registre des réseaux (0018). Un réseau du registre, et lui seul,
+-- entre dans une adresse, un retrait, la réserve. Un réseau FERMÉ ne montre pas
+-- d'adresse et refuse un retrait ; une adresse a la forme de SA famille (une
+-- adresse 0x vaut pour Base comme pour BSC, jamais pour Tron). Ouvrir un réseau
+-- exige qu'un veilleur sache le lire et que le contrat XAFe y soit posé ; le
+-- réseau maison ne se ferme pas. Le veilleur reçoit chaque réseau configuré.
+begin;
+select _mouvement('22222222-2222-2222-2222-222222222222', 'USDT', 500, 0, 'essai', 'essai', '11.40');
+update parametres set valeur = jsonb_set(valeur, '{retraits_ouverts}', 'true') where cle = 'crypto';
+do $$
+declare r jsonb; c jsonb;
+begin
+  -- un réseau que le registre ne connaît pas n'entre nulle part, même écrit à la main
+  begin
+    insert into adresses_libres (actif, reseau, adresse, indice) values ('USDT', 'dogecoin', 'D' || md5('x'), 1);
+    raise exception 'aurait dû refuser';
+  exception when foreign_key_violation then null; end;
+
+  -- l'écran ne propose que les réseaux ouverts, le maison en premier
+  perform set_config('xafe.compte', '22222222-2222-2222-2222-222222222222', true);
+  r := parametres_publics() -> 'crypto' -> 'reseaux';
+  assert (select array_agg(x ->> 'id' order by o) from jsonb_array_elements(r) with ordinality t(x, o)) = array['bep20', 'trc20'], r;
+  assert (r -> 0 ->> 'maison')::boolean and not (r -> 1 ->> 'maison')::boolean, r;
+
+  -- Base est au registre, mais fermé : pas d'adresse, pas de retrait
+  insert into adresses_libres (actif, reseau, adresse, indice) values ('USDT', 'base', '0xbA5e00000000000000000000000000000000ba5e', 0);
+  assert adresse_depot('USDT', 'base') is null, 'réseau fermé : aucune adresse';
+  begin
+    perform demander_retrait_crypto('USDT', 'base', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 10, null, '1357');
+    raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'réseau pas encore ouvert', sqlerrm; end;
+  begin
+    perform demander_retrait_crypto('USDT', 'dogecoin', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 10, null, '1357');
+    raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'réseau inconnu', sqlerrm; end;
+
+  -- l'équipe ouvre Base : refusé tant que le contrat XAFe n'y est pas posé
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000003', true);   -- le support : voit, ne règle pas
+  begin perform admin_activer_reseau('base', true); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'accès non autorisé', sqlerrm; end;
+  assert jsonb_array_length(admin_reseaux()) = 6, 'le support voit le registre';
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);   -- le super admin
+  begin perform admin_activer_reseau('base', true); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'réseau pas configuré', sqlerrm; end;
+  -- Solana ne s'ouvre pas, même configuré : aucun veilleur ne sait le lire
+  update parametres set valeur = valeur || '{"solana": {"xafe": "So1anaXafe1111111111111111111111111111111"}, "base": {"xafe": "0xbase", "noeud": "https://base.example"}}' where cle = 'chaine';
+  begin perform admin_activer_reseau('solana', true); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'réseau pas encore lisible', sqlerrm; end;
+  -- le réseau maison ne se ferme pas
+  begin perform admin_activer_reseau('bep20', false); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'le réseau maison ne se ferme pas', sqlerrm; end;
+  r := admin_activer_reseau('base', true);
+  assert (r ->> 'actif')::boolean, r;
+  assert exists (select 1 from journal_admin where action = 'ouvrir_reseau' and cible = 'base'), 'l''ouverture se journalise';
+
+  -- le veilleur reçoit Base, avec sa famille et son compte de dérivation ; pas Solana
+  c := chaine_configuration() -> 'reseaux';
+  assert c -> 'base' ->> 'famille' = 'evm' and (c -> 'base' ->> 'compte_hd')::int = 2 and c -> 'base' ->> 'noeud' = 'https://base.example', c;
+  assert not (c ? 'solana'), 'un réseau qu''aucun veilleur ne lit ne lui est pas donné';
+  assert (planifier_veilleurs() -> 'reseaux') ? 'base' and not ((planifier_veilleurs() -> 'reseaux') ? 'solana'), planifier_veilleurs();
+
+  -- ouvert, Base donne son adresse et accepte un retrait — une adresse 0x, pas une adresse Tron
+  perform set_config('xafe.compte', '22222222-2222-2222-2222-222222222222', true);
+  assert adresse_depot('USDT', 'base') = '0xbA5e00000000000000000000000000000000ba5e', 'Base ouvert : l''adresse préparée';
+  begin
+    perform demander_retrait_crypto('USDT', 'base', 'TPL66VK2gCXNCD7EJg9pgJRfqcRazjhUZY', 10, null, '1357');
+    raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'adresse invalide', sqlerrm; end;
+  r := demander_retrait_crypto('USDT', 'base', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 10, 'k-11.40', '1357');
+  assert r ->> 'reseau' = 'base' and r ->> 'etat' = 'en_attente', r;
+  assert jsonb_array_length(chaine_retraits_a_envoyer('base')) = 1, 'le veilleur de Base le voit';
+  assert (select array_agg(x ->> 'id' order by o) from jsonb_array_elements(parametres_publics() -> 'crypto' -> 'reseaux') with ordinality t(x, o))
+         = array['bep20', 'trc20', 'base'], parametres_publics() -> 'crypto' -> 'reseaux';
+  assert _explorateur('base') = 'https://sepolia.basescan.org', 'réseau d''essai : l''explorateur d''essai';
+
+  -- la parité compte chaque réseau où le contrat est posé
+  assert (select array_agg(x ->> 'reseau') from jsonb_array_elements(_parite_json(false) -> 'contrats') x) @> array['base'], _parite_json(false) -> 'contrats';
+
+  -- fermé à nouveau : plus d'adresse ni de retrait neuf, mais le retrait déjà demandé part toujours
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);
+  perform admin_activer_reseau('base', false);
+  perform set_config('xafe.compte', '22222222-2222-2222-2222-222222222222', true);
+  assert adresse_depot('USDT', 'base') is null, 'fermé : l''adresse ne se montre plus';
+  assert jsonb_array_length(chaine_retraits_a_envoyer('base')) = 1, 'fermer n''abandonne pas un retrait en route';
+  raise notice '✓ 11.40 le registre des réseaux : un réseau inconnu n''entre nulle part ; fermé, pas d''adresse ni de retrait ; une adresse a la forme de sa famille ; ouvrir exige un veilleur et un contrat ; le maison ne se ferme pas ; le veilleur et la parité suivent le registre';
 end $$;
 rollback;
 
