@@ -297,7 +297,7 @@ try {
   etape("Les réseaux viennent du moteur : Base ouvert, il s'ajoute au dépôt ; une adresse 0x se CHOISIT (BSC ou Base), une adresse T se reconnaît");
   await page.addInitScript(() => {
     if (sessionStorage.getItem("xafe-base-ouvert")) globalThis.__xafeEpreuve = { parametres: { crypto: { retraits_ouverts: true, depots_ouverts: true, reseaux: [
-      { id: "bep20", nom: "BNB Smart Chain", norme: "BEP20", famille: "evm", natif: "BNB", confirmations: 15, maison: true },
+      { id: "bep20", nom: "BNB Smart Chain", norme: "BEP20", famille: "evm", natif: "BNB", confirmations: 15, maison: true, contrat_xafe: "0x750E774368240063BD5CF52b30b91183Efa4dAf3" },
       { id: "trc20", nom: "Tron", norme: "TRC20", famille: "tron", natif: "TRX", confirmations: 20, maison: false },
       { id: "base", nom: "Base", norme: "Base", famille: "evm", natif: "ETH", confirmations: 30, maison: false }] } } };
   });
@@ -325,6 +325,17 @@ try {
   await voir("TRC20 · Tron");
   exiger(await page.getByText("Sur quel réseau").count() === 0, "une adresse T : Tron seul, pas de question");
   exiger(!(await page.getByRole("button", { name: "Continuer" }).isDisabled()), "Tron reconnu : on continue");
+  etape("Recevoir des XAFe depuis son wallet : l'entrée existe, l'adresse ne reçoit que des XAFe, le contrat se copie pour l'ajouter au wallet");
+  await page.goto(`${BASE}/crypto`);
+  await page.getByText("Recevoir des XAFe").click();
+  await page.waitForURL(/\/crypto\/deposer\/XAFe$/);
+  await page.locator('img[alt^="Code QR de l\'adresse XAFe"]').waitFor();
+  await voir("Cette adresse ne reçoit que des XAFe");
+  await voir("0x750E774368240063BD5CF52b30b91183Efa4dAf3");
+  exiger(await page.getByRole("button", { name: "Copier le contrat XAFe" }).count() === 1, "le contrat XAFe se copie");
+  await capturer("crypto-recevoir-xafe");
+  await page.getByRole("button", { name: "TRC20", exact: true }).click();
+  exiger(await page.getByRole("button", { name: "Copier le contrat XAFe" }).count() === 0, "un réseau dont le contrat n'est pas dit ne montre pas de contrat inventé");
   await page.evaluate(() => { sessionStorage.removeItem("xafe-base-ouvert"); globalThis.__xafeEpreuve = {}; });
 
   /* --------------------------------------------------------- compte */

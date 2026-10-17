@@ -14,6 +14,7 @@ import ArrowOutwardRounded from "@mui/icons-material/ArrowOutwardRounded";
 import ArrowUpwardRounded from "@mui/icons-material/ArrowUpwardRounded";
 import CheckCircleRounded from "@mui/icons-material/CheckCircleRounded";
 import ContentCopyRounded from "@mui/icons-material/ContentCopyRounded";
+import CallReceivedRounded from "@mui/icons-material/CallReceivedRounded";
 import ContentPasteRounded from "@mui/icons-material/ContentPasteRounded";
 import HubRounded from "@mui/icons-material/HubRounded";
 import LockRounded from "@mui/icons-material/LockRounded";
@@ -44,6 +45,7 @@ export function Crypto() {
         <Row icon={<BoltRounded />} tone="green" primary="Acheter ou vendre des USDT" {...ligne(ouvert.rapide, "En un geste, au prix du moment")} to="/rapide" />
         <Row icon={<ArrowDownwardRounded />} tone="blue" primary="Déposer des USDT" {...ligne(ouvert.cryptoDepots, nomsDesReseaux())} to="/crypto/deposer/USDT" />
         <Row icon={<ArrowUpwardRounded />} tone="blue" primary="Retirer des USDT" {...ligne(ouvert.cryptoRetraits, "Vers un wallet externe")} to="/crypto/retirer/USDT/adresse" />
+        <Row icon={<CallReceivedRounded />} tone="green" primary="Recevoir des XAFe" {...ligne(ouvert.cryptoDepots, `Depuis mon propre wallet, ${nomsDesReseaux()}`)} to="/crypto/deposer/XAFe" />
         <Row icon={<ArrowOutwardRounded />} tone="green" primary="Retirer des XAFe" {...ligne(ouvert.cryptoRetraits, `Vers mon propre wallet, ${nomsDesReseaux()}`)} to="/crypto/retirer/XAFe/adresse" />
       </List>
     </Screen>
@@ -90,6 +92,9 @@ export function CryptoDeposer() {
   const { data: adresse, isLoading } = useAdresseDepot(actif, reseau);
   const [qr, setQr] = useState<string | null>(null);
   const [copie, setCopie] = useState(false);
+  const [contratCopie, setContratCopie] = useState(false);
+  /* des XAFe se REÇOIVENT depuis le wallet du client ; des USDT se DÉPOSENT */
+  const titre = actif === "XAFe" ? "Recevoir des XAFe" : `Déposer des ${actif}`;
 
   useEffect(() => {
     if (!adresse) { setQr(null); return; }
@@ -103,13 +108,14 @@ export function CryptoDeposer() {
 
   if (!ouverts.length) {
     return (
-      <Screen title={`Déposer des ${actif}`} back="/crypto">
+      <Screen title={titre} back="/crypto">
         <Typography variant="body2">Aucun réseau n'est ouvert aux dépôts pour le moment. Vos fonds ne sont pas concernés ; revenez bientôt.</Typography>
       </Screen>
     );
   }
   return (
-    <Screen title={`Déposer des ${actif}`} back="/crypto">
+    <Screen title={titre} back="/crypto">
+      {actif === "XAFe" && <Typography variant="body2">Envoyez des XAFe depuis votre wallet (MetaMask, Trust Wallet…) à votre adresse Glisil : ils s'ajoutent à votre solde, et vous pouvez les échanger ou les rendre en XAF.</Typography>}
       <Typography variant="body2" fontWeight={500}>Réseau</Typography>
       <ChoixReseau reseaux={ouverts} valeur={reseau} choisir={setReseau} />
       <Card sx={{ alignItems: "center", gap: 2 }}>
@@ -127,6 +133,21 @@ export function CryptoDeposer() {
       <Typography variant="body2" textAlign="center">
         {actif} sur {info.nom === info.chaine ? info.chaine : `${info.chaine} (${info.nom})`} uniquement : un envoi depuis un autre réseau n'arrive pas sur ce compte. Crédit automatique après {info.confirmations} confirmations ; vous êtes prévenu. L'adresse est la même à chaque fois.
       </Typography>
+      {actif === "XAFe" && (
+        <Card>
+          <Typography variant="body2" fontWeight={600}>Cette adresse ne reçoit que des XAFe</Typography>
+          <Typography variant="body2">Un autre jeton envoyé ici, USDT compris, n'est pas crédité. Pour des USDT, utilisez « Déposer des USDT » : c'est une autre adresse.</Typography>
+          {info.contratXafe && (
+            <>
+              <Typography variant="body2">Pour voir et envoyer vos XAFe dans votre wallet, ajoutez-y le jeton avec l'adresse de son contrat sur {info.chaine} :</Typography>
+              <Typography sx={{ fontFamily: "Roboto Mono, monospace", fontSize: 13, wordBreak: "break-all" }}>{info.contratXafe}</Typography>
+              <Button variant="outlined" startIcon={contratCopie ? <CheckCircleRounded /> : <ContentCopyRounded />} onClick={async () => {
+                try { await navigator.clipboard.writeText(info.contratXafe!); setContratCopie(true); setTimeout(() => setContratCopie(false), 1500); } catch { /* refusé : l'adresse reste lisible */ }
+              }}>{contratCopie ? "Contrat copié" : "Copier le contrat XAFe"}</Button>
+            </>
+          )}
+        </Card>
+      )}
       <Box sx={{ flex: 1 }} />
     </Screen>
   );

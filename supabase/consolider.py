@@ -51,6 +51,8 @@ TEMOINS = {
     # 0018 : table « if not exists », lignes « on conflict do nothing », clés étrangères posées si absentes,
     # déclencheur retiré puis re-posé, tâches du veilleur recalculées.
     "0018_reseaux.sql": ("false", "rejouable telle quelle"),
+    # 0019 : une fonction « or replace ».
+    "0019_recevoir_des_xafe.sql": ("false", "rejouable telle quelle"),
 }
 
 

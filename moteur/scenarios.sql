@@ -2249,6 +2249,8 @@ begin
   assert (select array_agg(x ->> 'id' order by o) from jsonb_array_elements(parametres_publics() -> 'crypto' -> 'reseaux') with ordinality t(x, o))
          = array['bep20', 'trc20', 'base'], parametres_publics() -> 'crypto' -> 'reseaux';
   assert _explorateur('base') = 'https://sepolia.basescan.org', 'réseau d''essai : l''explorateur d''essai';
+  -- le contrat XAFe de chaque réseau ouvert est dit à l'écran (0019) : de quoi l'ajouter à son wallet
+  assert (select x ->> 'contrat_xafe' from jsonb_array_elements(parametres_publics() -> 'crypto' -> 'reseaux') x where x ->> 'id' = 'base') = '0xbase', parametres_publics() -> 'crypto' -> 'reseaux';
 
   -- la parité compte chaque réseau où le contrat est posé
   assert (select array_agg(x ->> 'reseau') from jsonb_array_elements(_parite_json(false) -> 'contrats') x) @> array['base'], _parite_json(false) -> 'contrats';

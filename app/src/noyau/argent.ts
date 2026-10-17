@@ -64,6 +64,8 @@ export type InfoReseau = {
   natif: string;
   /** le réseau où vit la réserve de XAFe */
   maison: boolean;
+  /** l'adresse du contrat XAFe sur ce réseau : de quoi l'ajouter à son wallet */
+  contratXafe?: string;
 };
 
 const FORMES: Record<Famille, RegExp> = {
@@ -123,7 +125,8 @@ function appliquerReseaux(liste: unknown) {
     if (typeof r.id !== "string" || !/^[a-z][a-z0-9]{1,11}$/.test(r.id) || !["evm", "tron", "solana"].includes(String(r.famille))) return;   // une liste abîmée laisse celle d'avant
     const confirmations = typeof r.confirmations === "number" && r.confirmations >= 1 && r.confirmations <= 1000 ? r.confirmations : infoReseau(r.id).confirmations;
     lus.push({ id: r.id, nom: typeof r.norme === "string" ? r.norme : r.id.toUpperCase(), chaine: typeof r.nom === "string" ? r.nom : r.id,
-               famille: r.famille as Famille, confirmations, natif: typeof r.natif === "string" ? r.natif : "", maison: r.maison === true });
+               famille: r.famille as Famille, confirmations, natif: typeof r.natif === "string" ? r.natif : "", maison: r.maison === true,
+               contratXafe: typeof r.contrat_xafe === "string" && adresseValide(r.famille as Famille, r.contrat_xafe) ? r.contrat_xafe : undefined });
   }
   for (const r of lus) RESEAUX[r.id] = r;
   RESEAUX_OUVERTS.splice(0, RESEAUX_OUVERTS.length, ...lus.map((r) => r.id));
