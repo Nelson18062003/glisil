@@ -8,13 +8,17 @@
  *   5. mettre au froid ce qui dépasse le plafond du chaud, et crier quand il manque ;
  *   6. jouer la RÉSERVE : chaque XAFe des comptes Glisil existe aussi sur la
  *      chaîne, dans le wallet chaud du réseau qui la porte (migration 0015) ;
- *   7. publier son état pour l'administration (page « Wallets »).
+ *   7. LIRE le jeton sur la chaîne, sans se fier à ce qu'il a lui-même écrit :
+ *      chaque frappe et chaque destruction depuis le déploiement du contrat,
+ *      l'offre totale et la réserve, au même bloc — la colonne « chaîne » du
+ *      rapprochement à trois colonnes (migration 0016) ;
+ *   8. publier son état pour l'administration (page « Wallets »).
  *
  * La configuration du service : voir README.md (variables XAFE_GRAINE, MOTEUR_*,
  * BEP20_*, TRC20_*, FROID_*). `npm run veilleur`.
  */
 import { formatUnits, keccak256, parseUnits, toUtf8Bytes } from "ethers";
-import type { Actif, Appel, Chaine } from "./chaine.ts";
+import type { Actif, Appel, Chaine, MouvementJeton } from "./chaine.ts";
 import { versMoteur } from "./chaine.ts";
 import { CHAUD, deriver } from "./cles.ts";
 import type { Rpc } from "./moteur.ts";
@@ -36,6 +40,10 @@ export type ConfigVeilleur = {
   attenteMs?: number;
   /** combien d'adresses dériver au plus par tour et par actif (dans Supabase, le calcul d'un appel est compté) */
   parTour?: number;
+  /** le bloc du déploiement du contrat XAFe : la lecture du jeton part de là, pour n'oublier aucune frappe */
+  departJeton?: number;
+  /** combien de blocs lire au plus par tour pour le jeton (le rattrapage se fait en plusieurs tours) */
+  blocsJetonParTour?: number;
   /**
    * RÉSEAU D'ESSAI SEULEMENT : inscrire soi-même au contrat les adresses XAFe
    * préparées, avec une clé admin d'essai. En production, l'admin du contrat
@@ -269,6 +277,54 @@ export class Veilleur {
     this.journal(`réserve : ${o.operation} ${o.montant} XAFe envoyée (${o.reference}, ${hash})`);
   }
 
+  /* ------------------------------------------------------- la lecture du jeton */
+
+  /**
+   * La colonne « chaîne » du rapprochement. Le veilleur ne s'y fie PAS à ses
+   * propres notes : il relit sur la chaîne chaque frappe et chaque destruction
+   * de XAFe depuis le déploiement du contrat, assez confirmées, et les remet à
+   * la base telles quelles — c'est la base qui les rapproche, ligne par ligne,
+   * de ce qu'elle attendait.
+   *
+   * Il rend aussi l'offre totale et la réserve AU BLOC LU : la lecture
+   * s'arrête `confirmations` blocs avant la tête, l'offre se lit à la tête —
+   * ce qui s'est passé entre les deux est retiré, pour que les deux chiffres
+   * parlent du même instant. Tant que la lecture rattrape son retard, ces
+   * chiffres valent null : un total d'avant la fin de la lecture ne se compare
+   * à rien.
+   */
+  async lireLeJeton(rpc: Rpc): Promise<{ bloc: number | null; mouvements: number; offre: string | null; reserve: string | null; a_jour: boolean }> {
+    const ch = this.chaine;
+    const dec = ch.decimales.XAFe;
+    // les références sans empreinte : la base ne sait pas calculer keccak256, le veilleur le fait (et chacun peut le refaire)
+    const sans: string[] = await rpc("chaine_references_sans_empreinte", { p_n: 500 });
+    if (sans?.length) await rpc("chaine_noter_empreintes", { p_empreintes: sans.map((reference) => ({ reference, empreinte: keccak256(toUtf8Bytes(reference)) })) });
+    const cle = `${ch.reseau}:jeton`;
+    const jusqua = (await ch.tete()) - ch.confirmations + 1;
+    const curseur = await rpc("chaine_curseur", { p_reseau: cle });
+    const depuis = curseur == null ? (this.c.departJeton ?? Math.max(0, jusqua - 5000)) : Number(curseur) + 1;
+    const fin = Math.min(jusqua, depuis + (this.c.blocsJetonParTour ?? 100_000) - 1);
+    let n = 0;
+    if (fin >= depuis) {
+      const lus = await ch.mouvementsXafe(depuis, fin);
+      // les mouvements ET le curseur dans le même appel : un tour coupé ne saute aucun bloc, et relire n'ajoute rien
+      n = Number(await rpc("chaine_noter_mouvements", { p_reseau: ch.reseau, p_jusqua: fin, p_mouvements: lus.map((m) => ({ ...m, brut: undefined, montant: formatUnits(m.brut, dec) })) }));
+      if (n) this.journal(`jeton : ${n} frappe(s)/destruction(s) relue(s) jusqu'au bloc ${fin}`);
+    }
+    const lu = Math.max(fin, depuis - 1);
+    if (lu < jusqua) return { bloc: lu, mouvements: n, offre: null, reserve: null, a_jour: false };
+    // l'offre et la réserve à la tête, moins ce qui s'est passé après le bloc lu
+    const offre = await ch.offreXafe();
+    const reserve = await ch.solde("XAFe", ch.chaud);
+    const tete = await ch.tete();
+    const apres: MouvementJeton[] = tete > lu ? await ch.mouvementsXafe(lu + 1, tete) : [];
+    const signe = (m: MouvementJeton) => (m.genre === "frappe" ? m.brut : -m.brut);
+    const offreAuBloc = offre - apres.reduce((s, m) => s + signe(m), 0n);
+    const chaud = ch.chaud.toLowerCase();
+    const reserveAuBloc = reserve - apres.filter((m) => m.adresse.toLowerCase() === chaud).reduce((s, m) => s + signe(m), 0n);
+    return { bloc: lu, mouvements: n, offre: formatUnits(offreAuBloc, dec), reserve: formatUnits(reserveAuBloc, dec), a_jour: true };
+  }
+
   /* ------------------------------------------------------------ le balayage */
 
   /** Les USDT des adresses de dépôt rejoignent le wallet chaud (qui avance les frais). */
@@ -340,6 +396,7 @@ export class Veilleur {
     const retraits = await etape("retraits", () => this.envoyerRetraits(rpc), { envoyes: 0, confirmes: 0, echoues: 0 });
     const auFroid = await etape("froid", () => this.mettreAuFroid(rpc), 0);
     const reserve = await etape("réserve", () => this.jouerReserve(rpc), { frappees: 0, detruites: 0 });
+    const jeton = await etape("lecture du jeton", () => this.lireLeJeton(rpc), null);
     const ch = this.chaine;
     await rpc("chaine_publier_etat", {
       p_reseau: ch.reseau,
@@ -354,9 +411,11 @@ export class Veilleur {
         // l'admin les inscrit au contrat avec SA clé : `npm run mise-en-service -- inscrire …`
         a_inscrire: adresses.aInscrire,
         alertes: [...this.alertes],
+        // la colonne « chaîne » du rapprochement : l'offre et la réserve AU bloc lu (null pendant le rattrapage)
+        jeton: jeton && { ...jeton, lu_le: new Date().toISOString() },
       },
     }).catch((e) => this.journal(`état non publié : ${(e as Error).message}`));
-    return { ...adresses, credites, balayees, ...retraits, auFroid, ...reserve, alertes: [...this.alertes] };
+    return { ...adresses, credites, balayees, ...retraits, auFroid, ...reserve, jeton, alertes: [...this.alertes] };
   }
 }
 

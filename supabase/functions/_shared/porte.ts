@@ -100,6 +100,14 @@ const texte = (v: unknown): string | null => (v === null || v === undefined ? nu
  * tomber les autres, et dit pourquoi elle est refusée.
  */
 export async function traiterSms(rpc: Rpc, terminal: string, charge: unknown): Promise<Reponse> {
+  /* des soldes seuls (une consultation USSD, un SMS de relevé) : {"soldes": [...]} */
+  if (charge && typeof charge === "object" && !Array.isArray(charge) && Array.isArray((charge as Ligne).soldes) && !(charge as Ligne).lignes) {
+    const soldes = (charge as Ligne).soldes as Ligne[];
+    if (soldes.length === 0 || soldes.length > 50) return { statut: 400, corps: { erreur: "un lot va de 1 à 50 soldes" } };
+    const resultats: unknown[] = [];
+    for (const x of soldes) resultats.push(await noterSolde(rpc, terminal, x, x?.source === "sms" ? "sms" : "ussd"));
+    return { statut: 200, corps: { soldes: resultats } };
+  }
   const lignes: Ligne[] = Array.isArray(charge) ? (charge as Ligne[]) : charge && typeof charge === "object" && Array.isArray((charge as Ligne).lignes) ? ((charge as Ligne).lignes as Ligne[]) : [charge as Ligne];
   if (lignes.length === 0 || lignes.length > 200) return { statut: 400, corps: { erreur: "un lot va de 1 à 200 lignes" } };
   const resultats: unknown[] = [];
@@ -123,7 +131,7 @@ export async function traiterSms(rpc: Rpc, terminal: string, charge: unknown): P
           p_texte: texte(l.texte),
           p_emis_le: texte(l.emis_le),
         });
-        resultats.push({ source_id, ...(r as Record<string, unknown>) });
+        resultats.push({ source_id, ...(r as Record<string, unknown>), ...(await soldeDeLaLigne(rpc, terminal, l, source_id)) });
         continue;
       }
       const r = await rpc("totem_sms_recu", {
@@ -137,12 +145,39 @@ export async function traiterSms(rpc: Rpc, terminal: string, charge: unknown): P
         p_texte: texte(l.texte),
         p_emis_le: texte(l.emis_le),
       });
-      resultats.push({ source_id, ...(r as Record<string, unknown>) });
+      resultats.push({ source_id, ...(r as Record<string, unknown>), ...(await soldeDeLaLigne(rpc, terminal, l, source_id)) });
     } catch (e) {
       resultats.push({ source_id, resultat: "erreur", motif: e instanceof Error ? e.message : String(e) });
     }
   }
   return { statut: 200, corps: Array.isArray(charge) || (charge as Ligne)?.lignes ? resultats : resultats[0] };
+}
+
+/**
+ * La colonne « floats » de la parité (0016) : le solde que l'OPÉRATEUR
+ * annonce, jamais un calcul. Il vient avec la ligne (« nouveau solde » du SMS
+ * d'un encaissement ou d'un paiement), ou seul (une consultation USSD). Un
+ * solde qui ne se note pas ne fait jamais tomber la ligne qui le portait :
+ * l'argent d'abord, le relevé ensuite.
+ */
+async function noterSolde(rpc: Rpc, terminal: string, x: Ligne | null | undefined, source: "sms" | "ussd", source_id: number | null = null) {
+  if (!x || typeof x !== "object") return { solde: "refuse", motif: "solde vide" };
+  const solde = nombre(x.solde ?? x.solde_apres);
+  if (solde === null || solde < 0) return { solde: "refuse", motif: "solde illisible" };
+  try {
+    const r = await rpc("totem_solde_float", {
+      p_terminal: terminal, p_operateur: texte(x.operateur), p_float_numero: texte(x.float_numero), p_solde: solde,
+      p_annonce_le: texte(x.annonce_le ?? x.emis_le ?? x.recu_le), p_source: source, p_source_id: source_id ?? nombre(x.source_id),
+    }) as Record<string, unknown>;
+    return { solde: r?.resultat ?? "note", ...(r?.motif ? { motif_solde: r.motif } : {}) };
+  } catch (e) {
+    return { solde: "erreur", motif_solde: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+async function soldeDeLaLigne(rpc: Rpc, terminal: string, l: Ligne, source_id: number) {
+  if (l.solde_apres === undefined || l.solde_apres === null) return {};
+  return noterSolde(rpc, terminal, l, "sms", source_id);
 }
 
 /* ----------------------------------------------------------- commandes */

@@ -4,7 +4,7 @@
  * veilleur.ts, une seule fois ; la BNB Smart Chain (evm.ts) et Tron (tron.ts)
  * ne font que parler leur langue.
  */
-import { formatUnits } from "ethers";
+import { formatUnits, id } from "ethers";
 import type { Reseau } from "./cles.ts";
 
 export type Actif = "USDT" | "XAFe";
@@ -19,6 +19,54 @@ export type Appel =
   | { type: "detruire"; montant: bigint; empreinte: string };
 
 export type Transfert = { adresse: string; brut: bigint; preuve: string };
+
+/**
+ * Un mouvement de l'OFFRE du jeton XAFe, lu sur la chaîne : une frappe (un
+ * Transfer depuis l'adresse zéro) ou une destruction (un Transfer vers elle).
+ * C'est le Transfer standard qui fait foi — il ne dépend pas de ce que NOTRE
+ * contrat raconte ; l'empreinte vient de l'événement Frappe / Detruit de la
+ * même transaction, et vaut null si aucun ne l'accompagne : une frappe que
+ * personne ne saurait expliquer, ce que le rapprochement doit crier.
+ */
+export type MouvementJeton = { tx: string; index: number; bloc: number; genre: "frappe" | "destruction"; adresse: string; brut: bigint; empreinte: string | null };
+
+/** Un journal d'événement tel que les deux réseaux le rendent par eth_getLogs. */
+export type JournalBrut = { tx: string; index: number; bloc: number; topics: string[]; data: string };
+
+export const SUJETS = {
+  transfert: id("Transfer(address,address,uint256)"),
+  frappe: id("Frappe(address,uint256,bytes32)"),
+  detruit: id("Detruit(address,uint256,bytes32)"),
+  geles: id("FondsGelesDetruits(address,uint256,bytes32)"),
+};
+const ZERO = `0x${"0".repeat(64)}`;
+const vingt = (sujet: string) => `0x${sujet.slice(-40)}`.toLowerCase();
+
+/**
+ * Les journaux du contrat XAFe → les mouvements de son offre. Un transfert
+ * ordinaire (d'un client à un autre) ne change pas l'offre : il est écarté.
+ * Chaque frappe se marie à l'événement Frappe de la MÊME transaction, même
+ * destinataire, même montant ; chaque destruction à un Detruit ou un
+ * FondsGelesDetruits — un événement ne sert qu'une fois.
+ */
+export function mouvementsDepuisJournaux(journaux: JournalBrut[], adresse: (vingtOctets: string) => string): MouvementJeton[] {
+  const sceaux = journaux.filter((j) => [SUJETS.frappe, SUJETS.detruit, SUJETS.geles].includes(j.topics[0]?.toLowerCase()));
+  const pris = new Set<JournalBrut>();
+  const mouvements: MouvementJeton[] = [];
+  for (const j of journaux) {
+    if (j.topics[0]?.toLowerCase() !== SUJETS.transfert || j.topics.length < 3) continue;
+    const depuis = j.topics[1].toLowerCase(), vers = j.topics[2].toLowerCase();
+    if (depuis !== ZERO && vers !== ZERO) continue;
+    const genre = depuis === ZERO ? "frappe" : "destruction";
+    const qui = genre === "frappe" ? vers : depuis;
+    const brut = BigInt(j.data);
+    const sceau = sceaux.find((e) => !pris.has(e) && e.tx === j.tx && e.topics[1]?.toLowerCase() === qui && BigInt(e.data) === brut
+      && (genre === "frappe" ? e.topics[0].toLowerCase() === SUJETS.frappe : e.topics[0].toLowerCase() !== SUJETS.frappe));
+    if (sceau) pris.add(sceau);
+    mouvements.push({ tx: j.tx, index: j.index, bloc: j.bloc, genre, adresse: adresse(vingt(qui)), brut, empreinte: sceau?.topics[2]?.toLowerCase() ?? null });
+  }
+  return mouvements.sort((a, b) => a.bloc - b.bloc || a.index - b.index);
+}
 
 export interface Chaine {
   readonly reseau: Reseau;
@@ -36,6 +84,8 @@ export interface Chaine {
   dejaDetruit(empreinte: string): Promise<boolean>;
   /** les XAFe en circulation sur ce réseau (totalSupply), en unités de la chaîne */
   offreXafe(): Promise<bigint>;
+  /** chaque frappe et chaque destruction de XAFe entre deux blocs, avec son empreinte */
+  mouvementsXafe(de: number, a: number): Promise<MouvementJeton[]>;
   /** ce qu'il faut de monnaie native à une adresse de dépôt pour envoyer ce jeton */
   fraisJeton(actif: Actif, depuisIndice: number, vers: string, montant: bigint): Promise<bigint>;
   /** une adresse de retrait valable, écrite comme le réseau l'attend — null si c'est une faute de frappe */

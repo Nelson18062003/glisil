@@ -1,6 +1,7 @@
 /* La BNB Smart Chain (et toute chaîne EVM) : ce que le veilleur lui demande. */
 import { Contract, getAddress, Interface, JsonRpcProvider, Transaction, zeroPadValue, type TransactionRequest } from "ethers";
-import type { Actif, Appel, Chaine, Transfert } from "./chaine.ts";
+import type { Actif, Appel, Chaine, MouvementJeton, Transfert } from "./chaine.ts";
+import { mouvementsDepuisJournaux, SUJETS } from "./chaine.ts";
 import { CHAUD, deriver } from "./cles.ts";
 
 export const ABI_JETON = [
@@ -67,6 +68,17 @@ export class ChaineEvm implements Chaine {
   async estAdresseDeDepot(adresse: string) { return Boolean(await this.jetons.XAFe.estAdresseDeDepot(adresse)); }
   async dejaDetruit(empreinte: string) { return Boolean(await this.jetons.XAFe.destructionReferencee(empreinte)); }
   async offreXafe() { return BigInt(await this.jetons.XAFe.totalSupply()); }
+
+  async mouvementsXafe(de: number, a: number): Promise<MouvementJeton[]> {
+    const contrat = await this.jetons.XAFe.getAddress();
+    const journaux = [];
+    for (let b = de; b <= a; b += 5000) {
+      for (const j of await this.fournisseur.getLogs({ address: contrat, topics: [Object.values(SUJETS)], fromBlock: b, toBlock: Math.min(a, b + 4999) })) {
+        journaux.push({ tx: j.transactionHash, index: j.index, bloc: j.blockNumber, topics: [...j.topics], data: j.data });
+      }
+    }
+    return mouvementsDepuisJournaux(journaux, (x) => getAddress(x));
+  }
 
   async fraisJeton(actif: Actif, depuisIndice: number, vers: string, montant: bigint) {
     const depuis = deriver(this.graine, this.reseau, depuisIndice).adresse;

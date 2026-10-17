@@ -19,6 +19,8 @@ export type ConfigReseau = {
   // pas de clé d'API ici : les paramètres se lisent par les comptes connectés. TRC20_CLE_API est un secret de la fonction.
   noeud: string; usdt: string; xafe: string; confirmations?: number;
   froid?: string; plafond_chaud_usdt?: number; garder_chaud_usdt?: number; natif_minimum?: number;
+  /** le bloc du déploiement du contrat XAFe : la lecture du jeton part de là */
+  depart?: number;
 };
 export type ConfigurationMoteur = {
   essai: boolean; bep20: ConfigReseau | null; trc20: ConfigReseau | null;
@@ -42,6 +44,7 @@ export function envDepuisConfiguration(c: ConfigurationMoteur, env: Env): Env {
     if (r.plafond_chaud_usdt != null) e[`${p}_PLAFOND_CHAUD_USDT`] = String(r.plafond_chaud_usdt);
     if (r.garder_chaud_usdt != null) e[`${p}_GARDER_CHAUD_USDT`] = String(r.garder_chaud_usdt);
     if (r.natif_minimum != null) e[`${p}_NATIF_MINIMUM`] = String(r.natif_minimum);
+    if (r.depart != null) e[`${p}_DEPART`] = String(r.depart);
     // réseau d'essai seulement : la clé admin d'essai inscrit les adresses XAFe
     if (c.essai && c.admin_cle_essai) e[`${p}_ADMIN_CLE_ESSAI`] = c.admin_cle_essai;
   };
@@ -75,6 +78,8 @@ export async function veilleursDepuis(env: Env, seulement?: Reseau[], journal?: 
       seuilBalayage: Number(env.SEUIL_BALAYAGE_USDT ?? 50),
       // les mêmes seuils que « mise-en-service verifier » : sous 0,01 BNB ou 50 TRX, quelques retraits seulement passent encore
       natifMinimum: Number(env[`${prefixe}_NATIF_MINIMUM`] ?? (prefixe === "BEP20" ? 0.01 : 50)),
+      departJeton: env[`${prefixe}_DEPART`] ? Number(env[`${prefixe}_DEPART`]) : undefined,
+      blocsJetonParTour: Number(env[`${prefixe}_BLOCS_JETON_PAR_TOUR`] ?? (prefixe === "BEP20" ? 100_000 : 40_000)),
       froid: env[`${prefixe}_FROID`] ? { adresse: env[`${prefixe}_FROID`]!, plafondChaud: Number(env[`${prefixe}_PLAFOND_CHAUD_USDT`] ?? 20000), garderChaud: Number(env[`${prefixe}_GARDER_CHAUD_USDT`] ?? 10000) } : undefined,
       inscrire: cleEssai
         ? (adresses) => inscrire(prefixe === "BEP20" ? signataireEvm(env.BEP20_RPC!, cleEssai) : signataireTron(env.TRC20_NOEUD!, cleEssai, env.TRC20_CLE_API), prefixe === "BEP20" ? env.BEP20_XAFE! : env.TRC20_XAFE!, adresses)

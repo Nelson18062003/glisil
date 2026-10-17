@@ -804,18 +804,21 @@ insert into numeros (compte_id, operateur, numero, verifie_le, actif_des) values
   ('44444444-4444-4444-4444-444444444444', 'mtn', '670444444', now() - interval '2 days', now() - interval '1 day'),
   ('55555555-5555-5555-5555-555555555555', 'mtn', '670555000', now() - interval '2 days', now() - interval '1 day');
 
--- 11.1 · les droits. anon n'exécute RIEN ; authenticated n'exécute que ce qui
+-- 11.1 · les droits. anon n'exécute RIEN (sauf la preuve de réserve, publique
+-- à dessein) ; authenticated n'exécute que ce qui
 -- lit auth.uid() (ou se garde par _exiger_droit), plus quatre lectures
 -- publiques du marché. Aucune fonction de service ne lui est ouverte.
 do $$
 declare v text;
 begin
   select string_agg(p.oid::regprocedure::text, ', ') into v from pg_proc p
-   where p.pronamespace = 'public'::regnamespace and has_function_privilege('anon', p.oid, 'execute');
+   where p.pronamespace = 'public'::regnamespace and has_function_privilege('anon', p.oid, 'execute')
+     -- la seule exception, voulue : la preuve de réserve se lit sans compte (0016) — des totaux, aucun nom
+     and p.oid <> 'preuve_de_reserve()'::regprocedure;
   assert v is null, 'anon exécute : ' || v;
   select string_agg(p.oid::regprocedure::text, ', ') into v from pg_proc p
    where p.pronamespace = 'public'::regnamespace and has_function_privilege('authenticated', p.oid, 'execute')
-     and p.proname !~ '^(carnet|transactions_recentes|cotation|chandelles)$'
+     and p.proname !~ '^(carnet|transactions_recentes|cotation|chandelles|preuve_de_reserve)$'
      and p.prosrc !~ 'auth\.uid\(\)' and p.prosrc !~ '_exiger_droit';
   assert v is null, 'authenticated exécute sans lire la session : ' || v;
   select string_agg(p.oid::regprocedure::text, ', ') into v from pg_proc p
@@ -1982,6 +1985,104 @@ begin
   assert (select _trace_chaine('depots', 'XAFe-DP-990001') -> 0 ->> 'operation') = 'frapper', 'le dépôt porte sa trace';
   assert not has_function_privilege('authenticated', 'chaine_reserve_marquer_envoi(bigint, text, text)', 'execute'), 'le veilleur seul joue la réserve';
   raise notice '✓ 11.37 chaque XAFe aussi sur la chaîne : un mouvement, une opération de réserve, dans l''ordre, sous sa référence ; la réserve attendue vaut la circulation';
+end $$;
+rollback;
+
+-- 11.38 · la parité à trois colonnes (0016). Une chaîne qui montre exactement
+-- ce que le registre attend : écart 0, aucune anomalie. Puis chaque façon de
+-- mentir, une à une : une frappe que personne n'explique, une opération qui
+-- n'arrive pas, une offre que la lecture n'explique pas, des floats qui ne
+-- couvrent plus — chacune ouvre son alarme, et l'alarme vue deux fois part par SMS.
+begin;
+do $$
+declare r jsonb; l record; v_empr text; n int;
+begin
+  update parametres set valeur = '{"essai": true, "bep20": {"xafe": "0xabc"}, "trc20": null}' where cle = 'chaine';
+  -- le veilleur a appris l'empreinte de chaque référence…
+  perform chaine_noter_empreintes((select jsonb_agg(jsonb_build_object('reference', x, 'empreinte', '0x' || md5(x) || md5(x || '#')))
+                                     from jsonb_array_elements_text(chaine_references_sans_empreinte(1000)) x));
+  assert jsonb_array_length(chaine_references_sans_empreinte(1000)) = 0, 'chaque référence a son empreinte';
+  -- … et relu sur la chaîne chaque opération attendue, telle quelle
+  n := 0;
+  for l in select * from _parite_lignes() loop
+    n := n + 1;
+    insert into chaine_mouvements_jeton (reseau, tx_hash, idx, bloc, genre, adresse, montant, empreinte)
+    values ('bep20', '0xt' || n, 0, n, l.genre, '0xchaud', l.montant, (select empreinte from chaine_empreintes where reference = l.reference));
+  end loop;
+  insert into chaine_etats (reseau, etat) values ('bep20', jsonb_build_object('chaud', '0xchaud', 'jeton', jsonb_build_object(
+    'offre', (select sum(case genre when 'frappe' then montant else -montant end) from chaine_mouvements_jeton), 'bloc', 100000, 'a_jour', true)))
+  on conflict (reseau) do update set etat = excluded.etat;
+  -- les floats : le solde que l'opérateur annonce, assez pour couvrir
+  perform totem_solde_float('akwa-1', 'mtn', '677000000', 1e9, now(), 'sms', 900001);
+  assert (totem_solde_float('akwa-1', 'mtn', '677000000', 1e9, now(), 'sms', 900001) ->> 'resultat') = 'deja', 'un SMS relu ne compte qu''une fois';
+  assert (totem_solde_float('secours-3', 'mtn', '677000000', 5, now(), 'ussd') ->> 'resultat') = 'refuse', 'un float d''un autre terminal est refusé';
+  insert into soldes_floats (float_id, solde, annonce_le, source) select id, 1e9, now(), 'releve' from floats where actif and id not in (select float_id from soldes_floats);
+  r := rapprocher();
+  assert (r ->> 'ecart')::numeric = 0 and (r ->> 'anomalies')::int = 0, format('la chaîne montre ce que le registre attend : %s', r);
+  assert (r ->> 'statut') in ('juste', 'en_cours'), r;
+  assert (r ->> 'registre')::numeric = circulation() + circulation_chaine(), 'le registre : dans les comptes plus sur les wallets';
+  assert (r ->> 'couverture')::numeric > 0, r;
+
+  -- 1. une frappe que le registre n'explique pas : grave, et l'écart se dit au franc
+  insert into chaine_mouvements_jeton (reseau, tx_hash, idx, bloc, genre, adresse, montant, empreinte) values ('bep20', '0xpirate', 0, 99999, 'frappe', '0xinconnu', 5, null);
+  update chaine_etats set etat = jsonb_set(etat, '{jeton,offre}', to_jsonb((etat #>> '{jeton,offre}')::numeric + 5)) where reseau = 'bep20';
+  r := rapprocher();
+  assert (r ->> 'ecart')::numeric = 5 and (r ->> 'statut') = 'ecart', r;
+  assert exists (select 1 from parite_alertes where code = 'ligne:bep20:0xpirate' and gravite = 'grave' and close_le is null), 'la frappe inconnue est une alarme grave';
+  assert exists (select 1 from parite_alertes where code = 'ecart_chaine' and close_le is null), 'l''écart au franc est une alarme';
+  -- l'alarme vue deux fois part par SMS, une seule fois, au numéro posé
+  update parametres set valeur = valeur || '{"alerte_numero": "677 11 22 33"}' where cle = 'parite';
+  perform rapprocher(); perform rapprocher();
+  assert (select count(*) from messages_sortants where cle like 'parite-%' and numero = '677112233') >= 2, 'l''inconnue et l''écart partent par SMS';
+  n := (select count(*) from messages_sortants where cle like 'parite-%');
+  perform rapprocher();
+  assert (select count(*) from messages_sortants where cle like 'parite-%') = n, 'une alarme ne part qu''une fois';
+  delete from chaine_mouvements_jeton where tx_hash = '0xpirate';
+  update chaine_etats set etat = jsonb_set(etat, '{jeton,offre}', to_jsonb((etat #>> '{jeton,offre}')::numeric - 5)) where reseau = 'bep20';
+  r := rapprocher();
+  assert (r ->> 'ecart')::numeric = 0 and not exists (select 1 from parite_alertes where code in ('ecart_chaine', 'ligne:bep20:0xpirate') and close_le is null),
+         'ce qui n''est plus vrai se ferme';
+
+  -- 2. un dépôt crédité : en route, l'écart reste nul ; trop vieux, il devient une anomalie
+  insert into emissions (sens, montant, source_table, source_id) values ('emission', 700, 'depots', 'XAFe-DP-990038');
+  r := rapprocher();
+  assert (r ->> 'ecart')::numeric = 0 and (r ->> 'statut') = 'en_cours' and (r ->> 'en_route')::numeric = 700, r;
+  update reserve_chaine set cree_le = now() - interval '2 hours' where reference = 'XAFe-DP-990038';
+  r := rapprocher();
+  assert exists (select 1 from parite_alertes where code = 'ligne:bep20:XAFe-DP-990038' and close_le is null), 'une frappe attendue qui n''arrive pas';
+  -- refusée par la chaîne : plus « en route », l'écart la montre
+  update reserve_chaine set etat = 'echoue' where reference = 'XAFe-DP-990038';
+  r := rapprocher();
+  assert (r ->> 'ecart')::numeric = -700, format('une frappe refusée manque à la chaîne : %s', r);
+  -- relue mais pas du bon montant : un écart de ligne
+  perform chaine_noter_empreintes(jsonb_build_array(jsonb_build_object('reference', 'XAFe-DP-990038', 'empreinte', '0x' || md5('XAFe-DP-990038') || md5('XAFe-DP-990038#'))));
+  update reserve_chaine set etat = 'confirme' where reference = 'XAFe-DP-990038';
+  perform chaine_noter_mouvements('bep20', 100001, jsonb_build_array(jsonb_build_object('tx', '0xcourt', 'index', 0, 'bloc', 100001, 'genre', 'frappe',
+    'adresse', '0xchaud', 'montant', 690, 'empreinte', '0x' || md5('XAFe-DP-990038') || md5('XAFe-DP-990038#'))));
+  assert (select verdict from _parite_lignes() where reference = 'XAFe-DP-990038') = 'ecart', 'dix francs de moins sur la chaîne';
+
+  -- 3. la lecture : le contrat dit plus que les mouvements relus
+  update chaine_etats set etat = jsonb_set(etat, '{jeton,offre}', to_jsonb((etat #>> '{jeton,offre}')::numeric + 1)) where reseau = 'bep20';
+  perform rapprocher();
+  assert exists (select 1 from parite_alertes where code = 'lecture:bep20' and close_le is null), 'une offre que la lecture n''explique pas';
+
+  -- 4. les floats ne couvrent plus
+  insert into soldes_floats (float_id, solde, annonce_le, source) select id, 0, now(), 'releve' from floats where actif;
+  r := rapprocher();
+  assert (r ->> 'couverture')::numeric < 0 and exists (select 1 from parite_alertes where code = 'couverture' and close_le is null), r;
+  -- un float sans solde récent : le total ne se dit pas (jamais 0 à la place de « non connu »)
+  update soldes_floats set annonce_le = now() - interval '3 days';
+  r := rapprocher();
+  assert r ->> 'floats' is null and r ->> 'couverture' is null, r;
+
+  -- la page publique : sans compte, des totaux et des transactions, aucun numéro
+  assert has_function_privilege('anon', 'preuve_de_reserve()', 'execute'), 'la preuve se lit sans compte';
+  assert not has_function_privilege('anon', 'rapprocher()', 'execute') and not has_function_privilege('authenticated', 'totem_solde_float(text, text, text, numeric, timestamptz, text, bigint)', 'execute');
+  assert not has_table_privilege('anon', 'soldes_floats', 'select') and not has_table_privilege('authenticated', 'parite_alertes', 'select');
+  r := preuve_de_reserve();
+  assert r::text !~ '677000000' and r::text !~ '677112233', 'aucun numéro de float ni d''alerte sur la page publique';
+  assert jsonb_array_length(r -> 'lignes') > 0 and (r -> 'lignes' -> 0) ? 'empreinte' and not ((r -> 'lignes' -> 0) ? 'adresse_vue'), r -> 'lignes' -> 0;
+  raise notice '✓ 11.38 la parité à trois colonnes : écart nul quand la chaîne montre le registre ; inconnue, retard, refus, montant faux, lecture incomplète, floats courts — chacun son alarme, et le SMS une fois';
 end $$;
 rollback;
 

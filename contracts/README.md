@@ -2,13 +2,16 @@
 
 Le franc CFA sur BNB Smart Chain (BEP20), puis Tron (TRC20). 1 XAFe = 1 XAF.
 
-Un XAFe n'existe sur la chaîne que lorsqu'un client sort ses XAFe de la
-plateforme vers son propre wallet : la plateforme le **frappe** alors, avec la
-référence du retrait (`XAFe-CR-000012`), et une référence ne frappe qu'une
-fois. Quand des XAFe reviennent — envoyés à l'adresse de dépôt du client —,
-la plateforme les **détruit** et recrédite le compte. La circulation sur la
-chaîne est une part des XAFe de la plateforme, couverts un pour un par les
-floats MoMo et les comptes en banque (`emissions` dans le moteur).
+**Chaque XAFe dû par Glisil existe sur la chaîne** (migration 0015). Un
+dépôt MoMo ou Orange crédité est **frappé** au même moment dans la RÉSERVE de
+Glisil (le wallet chaud), sous la référence du dossier (`XAFe-DP-000003`) ; un
+retrait payé en XAF y est **détruit**. Quand un client sort ses XAFe vers son
+propre wallet, la plateforme les frappe chez lui (référence du retrait,
+`XAFe-CR-000012`) et les détruit dans la réserve ; quand ils reviennent, elle
+les détruit chez lui et les refrappe dans la réserve. L'offre totale du jeton
+vaut donc toujours ce que Glisil doit — et cela se prouve, à trois colonnes
+(floats, registre, chaîne), sur la page publique `/preuve` : voir
+[docs/PARITE.md](../docs/PARITE.md). Une référence ne frappe qu'une fois.
 
 ```sh
 npm install

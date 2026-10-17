@@ -12,7 +12,8 @@
  *     cas où l'on a le droit d'en signer une autre pour le même retrait.
  */
 import { AbiCoder, decodeBase58, getBytes, hexlify, sha256, SigningKey, toBeHex, zeroPadValue } from "ethers";
-import type { Actif, Appel, Chaine, Transfert } from "./chaine.ts";
+import type { Actif, Appel, Chaine, JournalBrut, MouvementJeton, Transfert } from "./chaine.ts";
+import { mouvementsDepuisJournaux, SUJETS } from "./chaine.ts";
 import { adresseTron, CHAUD, deriver } from "./cles.ts";
 
 export const ABI = AbiCoder.defaultAbiCoder();
@@ -210,6 +211,19 @@ export class ChaineTron implements Chaine {
     return BigInt(await this.lire(this.c.xafe, "destructionReferencee(bytes32)", ["bytes32"], [empreinte])) === 1n;
   }
   async offreXafe() { return BigInt(await this.lire(this.c.xafe, "totalSupply()", [], [])); }
+
+  /** l'interface Ethereum du nœud borne une lecture à 5 000 blocs */
+  async mouvementsXafe(de: number, a: number): Promise<MouvementJeton[]> {
+    const contrat = vingtOctets(this.c.xafe);
+    const journaux: JournalBrut[] = [];
+    for (let b = de; b <= a; b += 5000) {
+      const lus: any[] = await this.noeud.jsonrpc("eth_getLogs", [{ address: contrat, topics: [Object.values(SUJETS)], fromBlock: toBeHex(b), toBlock: toBeHex(Math.min(a, b + 4999)) }]);
+      for (const j of lus ?? []) {
+        journaux.push({ tx: String(j.transactionHash).replace(/^0x/, ""), index: Number(j.logIndex), bloc: Number(j.blockNumber), topics: (j.topics ?? []).map((t: string) => `0x${String(t).replace(/^0x/, "")}`), data: `0x${String(j.data).replace(/^0x/, "") || "0"}` });
+      }
+    }
+    return mouvementsDepuisJournaux(journaux, (x) => adresseTron(x));
+  }
 
   /** le TRX que brûle un transfert de jeton depuis une adresse sans énergie : énergie × prix, plus la bande passante */
   async fraisJeton(actif: Actif, depuisIndice: number, vers: string, montant: bigint) {
