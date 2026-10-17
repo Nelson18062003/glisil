@@ -37,6 +37,15 @@ export const CRYPTO = { retraitsOuverts: true, depotsOuverts: true };
  * ou l'équipe, à la main, qui donne ensuite le transaction ID.
  */
 export const SORTIES: { ouvertes: boolean; mode: "totem" | "manuel" } = { ouvertes: true, mode: "totem" };
+/**
+ * Ajouter un numéro de sortie : avec ou sans code SMS, et le délai avant qu'il
+ * reçoive une sortie (paramètre « numeros », 0020). Les valeurs de départ sont
+ * les plus prudentes, comme dans le moteur : on ne relâche une garde que si on
+ * l'a lue.
+ */
+export const NUMEROS = { verificationSms: true, delaiHeures: 24 };
+/** « tout de suite », « 24 h après vérification » */
+export const delaiDuNumero = () => (NUMEROS.delaiHeures <= 0 ? "tout de suite" : `${NUMEROS.delaiHeures} h après ${NUMEROS.verificationSms ? "vérification" : "son ajout"}`);
 
 /** Les frais d'une sortie payée à la main : une seule fois sur le montant (pas de découpage par transfert). */
 export function fraisSortieManuelle(montant: number): { frais: number; envoi: number } {
@@ -413,6 +422,8 @@ export function appliquerParametres(p: unknown): boolean {
   appliquerReseaux(r.crypto?.reseaux);
   if (typeof r.sortie?.ouvertes === "boolean") SORTIES.ouvertes = r.sortie.ouvertes;
   if (r.sortie?.mode === "totem" || r.sortie?.mode === "manuel") SORTIES.mode = r.sortie.mode;
+  if (typeof r.numeros?.verification_sms === "boolean") NUMEROS.verificationSms = r.numeros.verification_sms;
+  poser(NUMEROS, "delaiHeures", nombre(r.numeros?.delai_heures, 0, 168));
   if (typeof r.marche?.ouvert === "boolean") MARCHE.ouvert = r.marche.ouvert;
   poser(MARCHE, "quantiteMax", nombre(r.marche?.quantite_max, 0.01, 1e9));
   poser(MARCHE, "marcheQuantiteMax", nombre(r.marche?.marche_quantite_max, 0.01, 1e9));

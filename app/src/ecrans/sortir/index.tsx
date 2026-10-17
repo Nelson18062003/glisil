@@ -17,9 +17,9 @@ import LockRounded from "@mui/icons-material/LockRounded";
 import { Box, Button, CircularProgress, Divider, Stack, TextField, Typography } from "@mui/material";
 import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { useCompte, useGuichet, useNumeros, useOuvertures, useSoldes, useSortie } from "../../guichet";
-import { decouperSortie, FRAIS, fraisSortieManuelle, montantValide, nomsDesReseaux, operateur as opDe } from "../../noyau/argent";
-import { apresFrappe, duree, jourRelatif, montantDepuisSaisie, numeroEnTranches, pourcent, quand, xaf } from "../../noyau/format";
+import { useCompte, useGuichet, useNumeros, useOuvertures, useRafraichir, useSoldes, useSortie } from "../../guichet";
+import { decouperSortie, delaiDuNumero, FRAIS, fraisSortieManuelle, montantValide, nomsDesReseaux, NUMEROS, operateur as opDe } from "../../noyau/argent";
+import { apresFrappe, duree, jourRelatif, montantDepuisSaisie, numeroEnTranches, numeroSaisi, numeroValide, operateurDuNumero, pourcent, quand, xaf } from "../../noyau/format";
 import { parcours, useParcours } from "../../navigation/parcours";
 import { Amount, Attente, Card, Chips, Dot, EtatVide, FeuilleErreur, Keypad, Line, List, Points, Row, Screen, Squelette, Success } from "../../ui";
 import { tones } from "../../theme";
@@ -65,11 +65,12 @@ export function SortirMontant() {
       </Screen>
     );
   }
-  if (numeros && verifies.length === 0) {
+  /* sans code SMS, le numéro se tape à l'étape suivante : rien à faire avant */
+  if (numeros && verifies.length === 0 && NUMEROS.verificationSms) {
     return (
       <Screen title="Sortir des XAF" back="/">
         <EtatVide icone={<PhoneAndroidRounded sx={{ fontSize: 36 }} />} tone="green" titre="D'abord, votre numéro MoMo"
-          texte="Vos XAF partent vers un numéro Mobile Money vérifié à votre nom. Il devient actif 24 h après sa vérification : ajoutez-le dès maintenant."
+          texte={`Vos XAF partent vers un numéro Mobile Money vérifié à votre nom. Il devient actif ${delaiDuNumero()} : ajoutez-le dès maintenant.`}
           action={{ label: "Ajouter un numéro", onClick: () => { parcours.poserRetour("/sortir/montant"); navigate("/compte/numeros/ajouter"); } }}
           secondaire={{ label: "Retour à l'accueil", to: "/" }} />
       </Screen>
@@ -79,7 +80,7 @@ export function SortirMontant() {
     return (
       <Screen title="Sortir des XAF" back="/">
         <EtatVide icone={<ScheduleRounded sx={{ fontSize: 36 }} />} tone="amber" titre="Votre numéro sera bientôt prêt"
-          texte={`Pour votre sécurité, un numéro ajouté reçoit des sorties 24 h après sa vérification : ${jourRelatif(new Date(prochain).toISOString()).toLowerCase()} à ${new Date(prochain).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}.`}
+          texte={`Pour votre sécurité, un numéro ajouté reçoit des sorties ${delaiDuNumero()} : ${jourRelatif(new Date(prochain).toISOString()).toLowerCase()} à ${new Date(prochain).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}.`}
           action={{ label: "Retour à l'accueil", to: "/" }} secondaire={{ label: "Mes numéros", to: "/compte/numeros" }} />
       </Screen>
     );
@@ -107,8 +108,22 @@ export function SortirMontant() {
 
 export function SortirDestination() {
   const navigate = useNavigate();
+  const guichet = useGuichet();
+  const rafraichir = useRafraichir();
+  useOuvertures();   // se redessine quand le réglage « numeros » arrive
   const { data: numeros } = useNumeros();
   const [etat, poser] = useParcours("sortir");
+  /* Sans code SMS (0020), le numéro se tape ICI : il est retenu, choisi, et l'on continue. */
+  const [nouveau, setNouveau] = useState("");
+  const opNouveau = operateurDuNumero(nouveau);
+  const { lancer, enCours, erreur, effacerErreur } = useGesteUnique();
+  const ajouter = () =>
+    lancer(async () => {
+      const n = await guichet.ajouterNumero({ operateur: opNouveau!, numero: numeroSaisi(nouveau) });
+      await rafraichir();
+      poser({ numeroId: n.id });
+      setNouveau("");
+    });
   const actif = (n: { verifieLe: string | null; actifDes: string }) => Boolean(n.verifieLe) && new Date(n.actifDes).getTime() <= Date.now();
   const choisi = numeros?.find((n) => n.id === etat.numeroId) ?? null;
 
@@ -121,15 +136,28 @@ export function SortirDestination() {
               key={n.id}
               badge={n.operateur}
               primary={numeroEnTranches(n.numero)}
-              secondary={!n.verifieLe ? `${opDe(n.operateur).nom} · à vérifier` : actif(n) ? `${opDe(n.operateur).nom} · vérifié` : `${opDe(n.operateur).nom} · actif ${jourRelatif(n.actifDes).toLowerCase()} à ${new Date(n.actifDes).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`}
+              secondary={!n.verifieLe ? `${opDe(n.operateur).nom} · à vérifier` : actif(n) ? `${opDe(n.operateur).nom}${NUMEROS.verificationSms ? " · vérifié" : ""}` : `${opDe(n.operateur).nom} · actif ${jourRelatif(n.actifDes).toLowerCase()} à ${new Date(n.actifDes).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`}
               selected={n.id === etat.numeroId}
               disabled={!actif(n)}
               onClick={() => poser({ numeroId: n.id })}
             />
           ))}
-          <Row icon={<AddRounded />} tone="green" primary="Ajouter un numéro" secondary="Actif 24 h après vérification" onClick={() => { parcours.poserRetour("/sortir/destination"); navigate("/compte/numeros/ajouter"); }} />
+          {NUMEROS.verificationSms && <Row icon={<AddRounded />} tone="green" primary="Ajouter un numéro" secondary={`Actif ${delaiDuNumero()}`} onClick={() => { parcours.poserRetour("/sortir/destination"); navigate("/compte/numeros/ajouter"); }} />}
         </List>
       )}
+      {numeros && !NUMEROS.verificationSms && (
+        <Stack gap={1}>
+          <Typography variant="body2" fontWeight={500}>{numeros.length ? "Ou un autre numéro" : "Le numéro Mobile Money qui reçoit"}</Typography>
+          <Stack direction="row" gap={1} alignItems="flex-start">
+            <TextField label="Numéro MoMo ou Orange Money" value={numeroEnTranches(nouveau)} onChange={(e) => setNouveau(numeroSaisi(e.target.value))} type="tel" inputMode="numeric" fullWidth
+              helperText={nouveau.length >= 9 && !opNouveau ? "Ce n'est ni un numéro MTN ni un numéro Orange" : opNouveau ? opDe(opNouveau).nom : " "}
+              error={nouveau.length >= 9 && !opNouveau}
+              slotProps={{ input: { startAdornment: <Typography sx={{ mr: 1, color: "text.secondary" }}>+237</Typography>, sx: { fontVariantNumeric: "tabular-nums" } } }} />
+            <Button variant="outlined" disabled={!numeroValide(nouveau) || !opNouveau || enCours} onClick={() => void ajouter()} sx={{ minHeight: 56, flexShrink: 0 }}>Ajouter</Button>
+          </Stack>
+        </Stack>
+      )}
+      <FeuilleErreur erreur={erreur} onFermer={effacerErreur} />
       <Box sx={{ flex: 1 }} />
       <Button variant="contained" disabled={!choisi || !actif(choisi)} onClick={() => navigate("/sortir/verifier")}>Continuer</Button>
     </Screen>

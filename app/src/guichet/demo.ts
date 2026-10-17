@@ -7,7 +7,7 @@
  * vit. Il tourne quand l'application n'a pas de projet Supabase configuré.
  * Il n'a aucune valeur comptable : c'est une maquette qui répond.
  */
-import { achatMax, adresseValide, arrondi2, FRAIS_CRYPTO, bandeDePrix, coutAuCarnet, decouperSortie, devisSurLeCarnet, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide, RAPIDE, SORTIES, fraisSortieManuelle, infoReseau, RESEAUX, RESEAUX_OUVERTS } from "../noyau/argent";
+import { achatMax, adresseValide, arrondi2, FRAIS_CRYPTO, bandeDePrix, coutAuCarnet, decouperSortie, devisSurLeCarnet, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide, RAPIDE, SORTIES, fraisSortieManuelle, infoReseau, NUMEROS, RESEAUX, RESEAUX_OUVERTS } from "../noyau/argent";
 import { ErreurMoteur } from "../noyau/erreurs";
 import { emailNormalise, emailValide } from "../noyau/identite";
 import { numeroSaisi, operateurDuNumero, transactionIdNormalise, xaf as xafDe } from "../noyau/format";
@@ -696,11 +696,14 @@ export class GuichetDemo implements Guichet {
     const n = numeroSaisi(numero);
     if (!/^6\d{8}$/.test(n) || operateurDuNumero(n) !== operateur) throw new ErreurMoteur("numéro invalide");
     const deja = d.numeros.find((x) => x.numero === n && !x.retireLe);
-    if (deja?.verifieLe) throw new ErreurMoteur("ce numéro est déjà sur votre compte");
+    // comme le moteur (0020) : sans code SMS, le numéro est retenu tout de suite, après le délai réglé
+    const sms = NUMEROS.verificationSms, delai = NUMEROS.delaiHeures * 3600_000;
+    if (deja?.verifieLe) { if (!sms) return copie(deja); throw new ErreurMoteur("ce numéro est déjà sur votre compte"); }
+    if (deja && !sms) { deja.verifieLe = iso(); deja.actifDes = iso(maintenant() + delai); this.emettre(); return copie(deja); }
     if (deja) { d.numerosEnAttente[deja.id] = CODE_SMS_DEMO; return copie(deja); }
-    const nouveau: Numero = { id: uuid(), operateur, numero: n, verifieLe: null, actifDes: iso(maintenant() + 24 * 3600_000), retireLe: null };
+    const nouveau: Numero = { id: uuid(), operateur, numero: n, verifieLe: sms ? null : iso(), actifDes: iso(maintenant() + delai), retireLe: null };
     d.numeros.push(nouveau);
-    d.numerosEnAttente[nouveau.id] = CODE_SMS_DEMO;
+    if (sms) d.numerosEnAttente[nouveau.id] = CODE_SMS_DEMO;
     this.emettre();
     return copie(nouveau);
   }

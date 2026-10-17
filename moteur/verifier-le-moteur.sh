@@ -88,6 +88,9 @@ done
 # l'ID seul. La règle stricte (numéro, montant, nom) est éprouvée à part, par le scénario 11.34,
 # qui la rallume dans sa transaction ; ailleurs, on l'éteint ici — et SEULEMENT ici.
 $COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = valeur || '{\\\"declaration_complete\\\": false}' where cle = 'depot'\"" >/dev/null
+# Même chose pour les numéros (0020) : les scénarios d'avant éprouvent le code SMS et le délai de 24 h.
+# La règle d'aujourd'hui (ni code ni délai) est éprouvée par le scénario 11.41, dans sa transaction.
+$COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = '{\\\"verification_sms\\\": true, \\\"delai_heures\\\": 24}' where cle = 'numeros'\"" >/dev/null
 
 # ATTAQUES=1 : les migrations, puis les attaques de la revue seules (moteur/rouge-puis-vert).
 if [ "${ATTAQUES:-0}" = "1" ]; then

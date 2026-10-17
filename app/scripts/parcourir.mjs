@@ -325,6 +325,30 @@ try {
   await voir("TRC20 · Tron");
   exiger(await page.getByText("Sur quel réseau").count() === 0, "une adresse T : Tron seul, pas de question");
   exiger(!(await page.getByRole("button", { name: "Continuer" }).isDisabled()), "Tron reconnu : on continue");
+  etape("Sans code SMS (réglage « numeros », 0020) : le numéro se tape dans la sortie, il est retenu et choisi tout de suite, sans délai");
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem("xafe-sans-sms")) globalThis.__xafeEpreuve = { parametres: { numeros: { verification_sms: false, delai_heures: 0 } } };
+  });
+  await page.evaluate(() => sessionStorage.setItem("xafe-sans-sms", "1"));
+  await page.goto(`${BASE}/sortir/montant`);
+  await taper(["1", "000"]);
+  await page.getByRole("button", { name: "Continuer" }).click();
+  await page.waitForURL(/\/sortir\/destination$/);
+  exiger(await page.getByText("Ajouter un numéro", { exact: true }).count() === 0, "pas de détour par l'écran du code SMS");
+  await page.getByLabel("Numéro MoMo ou Orange Money").fill("699887766");
+  await voir("Orange Money");
+  await page.getByRole("button", { name: "Ajouter", exact: true }).click();
+  await voir("6 99 88 77 66");
+  exiger(!(await page.getByRole("button", { name: "Continuer" }).isDisabled()), "le numéro tapé est choisi et actif : on continue");
+  await capturer("sortir-numero-sans-code");
+  await page.goto(`${BASE}/compte/numeros/ajouter`);
+  await page.getByLabel("Numéro MoMo").fill("677445566");
+  await page.getByRole("button", { name: "Ajouter ce numéro" }).click();
+  await voir("Numéro ajouté");
+  await voir("tout de suite");
+  exiger(await page.getByText("Code reçu sur ce numéro").count() === 0, "aucun écran de code");
+  await page.evaluate(() => { sessionStorage.removeItem("xafe-sans-sms"); globalThis.__xafeEpreuve = {}; });
+
   etape("Recevoir des XAFe depuis son wallet : l'entrée existe, l'adresse ne reçoit que des XAFe, le contrat se copie pour l'ajouter au wallet");
   await page.goto(`${BASE}/crypto`);
   await page.getByText("Recevoir des XAFe").click();

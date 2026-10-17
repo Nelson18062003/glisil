@@ -53,6 +53,8 @@ TEMOINS = {
     "0018_reseaux.sql": ("false", "rejouable telle quelle"),
     # 0019 : une fonction « or replace ».
     "0019_recevoir_des_xafe.sql": ("false", "rejouable telle quelle"),
+    # 0020 : paramètre « on conflict do nothing », fonctions « or replace », rattrapage idempotent.
+    "0020_numeros_sans_code.sql": ("false", "rejouable telle quelle"),
 }
 
 

@@ -2265,6 +2265,42 @@ begin
 end $$;
 rollback;
 
+-- 11.41 · un numéro sans code SMS ni délai (0020), le réglage de la phase
+-- d'essai : le numéro tapé est retenu et reçoit une sortie tout de suite. Ce
+-- qui reste vrai : un numéro n'est qu'à un compte, il a la forme de son
+-- opérateur, la sortie exige le code secret. Remis à « avec code », la garde
+-- d'avant revient telle quelle.
+begin;
+update parametres set valeur = '{"verification_sms": false, "delai_heures": 0}' where cle = 'numeros';
+do $$
+declare r jsonb; v_id uuid; c uuid := 'a1410000-0000-0000-0000-000000000001'; d uuid := 'a1410000-0000-0000-0000-000000000002';
+begin
+  insert into comptes (id, telephone, nom, palier) values (c, '670141001', 'Sans code', 2), (d, '670141002', 'Autre', 2);
+  perform set_config('xafe.compte', c::text, true);
+  r := ajouter_numero('om', '699141001');
+  assert r ->> 'verifie_le' is not null and (r ->> 'actif_des')::timestamptz <= now(), format('retenu et actif tout de suite : %s', r);
+  assert not exists (select 1 from messages_sortants where numero = '699141001'), 'aucun SMS ne part';
+  assert (ajouter_numero('om', '699141001') ->> 'id') = r ->> 'id', 'le redemander rend le même, sans faute';
+  begin perform ajouter_numero('mtn', '699141002'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'numéro invalide', sqlerrm; end;
+  -- un numéro n'est qu'à un compte
+  perform set_config('xafe.compte', d::text, true);
+  begin perform ajouter_numero('om', '699141001'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'ce numéro est déjà sur un autre compte', sqlerrm; end;
+  -- l'écran lit le réglage
+  assert parametres_publics() -> 'numeros' = '{"verification_sms": false, "delai_heures": 0}'::jsonb, parametres_publics() -> 'numeros';
+  -- remis à « avec code » : la garde d'avant revient (pas de numéro retenu sans code)
+  update parametres set valeur = '{"verification_sms": true, "delai_heures": 24}' where cle = 'numeros';
+  r := ajouter_numero('mtn', '677141003');
+  assert r ->> 'verifie_le' is null and (r ->> 'actif_des')::timestamptz > now() + interval '23 hours', r;
+  assert exists (select 1 from messages_sortants where numero = '677141003'), 'le code SMS part';
+  -- un paramètre abîmé ne s'écrit pas
+  begin perform _verifier_parametre('numeros', '{"verification_sms": "non", "delai_heures": 0}'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
+  raise notice '✓ 11.41 sans code SMS ni délai : le numéro tapé est retenu et actif tout de suite, sans SMS ; il reste à un seul compte et à son opérateur ; remis « avec code », la garde d''avant revient';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';
