@@ -83,7 +83,7 @@ export function Rapide() {
       ) : (<>
       <Amount value={saisie ? (sens === "achat" ? xafe(montant) : saisie.replace(".", ",")) : "0"} unit={unite} hint={aide} hintColor={trop || (montant > 0 && estimation.isError) ? "error.main" : undefined} />
       <Typography variant="caption" textAlign="center" sx={{ mt: -2 }}>
-        {e ? `≈ ${fPrix(e.prix)} XAFe par USDT, frais compris` : `Au prix du carnet, frais de ${pourcent(RAPIDE.marge)} compris`}
+        {e ? `≈ ${fPrix(e.prix)} XAFe par USDT, frais compris` : (RAPIDE.marge > 0 ? `Au prix du carnet, frais de ${pourcent(RAPIDE.marge)} compris` : "Au prix du carnet, sans frais")}
       </Typography>
       <Chips items={sens === "achat" ? ["50 000", "200 000", "Tout"] : ["50", "200", "Tout"]} onSelect={choisir} />
       <Box sx={{ flex: 1 }} />

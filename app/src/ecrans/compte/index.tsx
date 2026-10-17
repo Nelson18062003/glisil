@@ -371,7 +371,7 @@ const faq = (): [string, string][] => [
   ["Combien de temps pour être crédité ?", "Dès que TOTEM lit le SMS de votre paiement, en général moins de 10 secondes après que vous avez tapé le transaction ID. Si le SMS arrive après, votre ID attend et se crédite tout seul."],
   ["Pourquoi un transaction ID ?", "MTN et Orange en donnent un à chaque opération, et le même ID est dans le SMS que notre float reçoit. C'est la preuve la plus simple et la plus sûre : pas de capture d'écran, pas de montant à taper."],
   ["Un XAFe vaut toujours 1 XAF ?", "Oui. Un XAFe n'est créé que quand un XAF est reçu, et détruit quand un XAF est envoyé. Les réserves sont sur nos floats MoMo et nos comptes en banque."],
-  ["Que coûte une sortie ?", `${pourcent(FRAIS.sortie)} du montant, arrondis au franc supérieur par transfert. Au-delà du plafond de l'opérateur, la sortie part en plusieurs transferts ; vous les voyez tous.`],
+  ["Que coûte une sortie ?", FRAIS.sortie <= 0 ? "Rien pour le moment : vous recevez exactement le montant de votre sortie. La sortie part en plusieurs transferts si elle dépasse le plafond de l'opérateur ; vous les voyez tous." : `${pourcent(FRAIS.sortie)} du montant, arrondis au franc supérieur par transfert. Au-delà du plafond de l'opérateur, la sortie part en plusieurs transferts ; vous les voyez tous.`],
   ["Un transfert a échoué, où est mon argent ?", "Après trois essais, les XAFe de ce transfert reviennent en disponible sur votre compte. Le détail de l'opération le dit, et vous êtes prévenu."],
   ["Pourquoi attendre 24 h pour un nouveau numéro ?", "Pour que personne qui aurait pris votre téléphone ne puisse vider votre compte vers son propre numéro dans la minute."],
 ];
