@@ -1955,6 +1955,36 @@ begin
 end $$;
 rollback;
 
+-- 11.37 · chaque XAFe aussi sur la chaîne (0015) : un dépôt crédité, une
+-- sortie payée, un retrait vers un wallet deviennent chacun UNE opération sur
+-- la réserve, dans l'ordre, sous la référence du mouvement. La somme des
+-- frappes moins les destructions vaut ce que Glisil doit dans ses comptes.
+begin;
+do $$
+declare r jsonb; n_avant bigint := (select count(*) from reserve_chaine);
+begin
+  assert (select count(*) from reserve_chaine) = (select count(*) from emissions), 'chaque mouvement passé a sa ligne de réserve';
+  assert (select coalesce(sum(case operation when 'frapper' then montant else -montant end), 0) from reserve_chaine) = circulation(),
+         format('la réserve attendue (%s) vaut ce que les comptes portent (%s)',
+                (select sum(case operation when 'frapper' then montant else -montant end) from reserve_chaine), circulation());
+  insert into emissions (sens, montant, source_table, source_id) values ('emission', 2500, 'depots', 'XAFe-DP-990001');
+  insert into emissions (sens, montant, source_table, source_id) values ('emission', 500, 'depots', 'XAFe-DP-990001');
+  insert into emissions (sens, montant, source_table, source_id) values ('destruction', 1000, 'sorties', 'XAFe-WD-990002');
+  assert (select array_agg(reference || ':' || operation order by id) from reserve_chaine where id > (select coalesce(max(id), 0) from reserve_chaine) - 3)
+         = array['XAFe-DP-990001:frapper', 'XAFe-DP-990001#' || (select max(id) - 1 from emissions) || ':frapper', 'XAFe-WD-990002:detruire'],
+         'la référence du mouvement, un suffixe au second crédit du même dossier, l''ordre gardé';
+  r := chaine_reserve_a_jouer('bep20');
+  assert jsonb_array_length(r) >= 3 and (r -> 0 ->> 'id')::bigint < (r -> 1 ->> 'id')::bigint, 'dans l''ordre';
+  perform chaine_reserve_marquer_envoi((r -> 0 ->> 'id')::bigint, '0xabc', 'brut');
+  perform chaine_reserve_resultat((r -> 0 ->> 'id')::bigint, true, 42, 'bloc 42');
+  begin perform chaine_reserve_resultat((r -> 0 ->> 'id')::bigint, true, 42, 'bloc 42'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'opération de réserve pas en cours', sqlerrm; end;
+  assert (select _trace_chaine('depots', 'XAFe-DP-990001') -> 0 ->> 'operation') = 'frapper', 'le dépôt porte sa trace';
+  assert not has_function_privilege('authenticated', 'chaine_reserve_marquer_envoi(bigint, text, text)', 'execute'), 'le veilleur seul joue la réserve';
+  raise notice '✓ 11.37 chaque XAFe aussi sur la chaîne : un mouvement, une opération de réserve, dans l''ordre, sous sa référence ; la réserve attendue vaut la circulation';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';
