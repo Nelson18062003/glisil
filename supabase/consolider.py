@@ -63,6 +63,10 @@ TEMOINS = {
     "0023_robots.sql": ("false", "rejouable telle quelle"),
     # 0024 : table « if not exists », fonctions « or replace ».
     "0024_observer_la_beta.sql": ("false", "rejouable telle quelle"),
+    # 0025 : table « if not exists », déclencheur retiré puis reposé, fonctions « or replace », historique rempli s'il manque.
+    "0025_graphique.sql": ("false", "rejouable telle quelle"),
+    # 0026 : réglages réécrits seulement s'ils sont encore ceux d'origine, compléments une seule fois.
+    "0026_marche_profond.sql": ("false", "rejouable telle quelle"),
 }
 
 

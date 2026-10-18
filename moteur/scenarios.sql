@@ -818,7 +818,7 @@ begin
   assert v is null, 'anon exécute : ' || v;
   select string_agg(p.oid::regprocedure::text, ', ') into v from pg_proc p
    where p.pronamespace = 'public'::regnamespace and has_function_privilege('authenticated', p.oid, 'execute')
-     and p.proname !~ '^(carnet|transactions_recentes|cotation|chandelles|preuve_de_reserve)$'
+     and p.proname !~ '^(carnet|transactions_recentes|cotation|chandelles|bougies|preuve_de_reserve)$'
      and p.prosrc !~ 'auth\.uid\(\)' and p.prosrc !~ '_exiger_droit';
   assert v is null, 'authenticated exécute sans lire la session : ' || v;
   select string_agg(p.oid::regprocedure::text, ', ') into v from pg_proc p
@@ -2308,7 +2308,7 @@ rollback;
 -- compte de test ne reçoit rien et n'entre pas dans les chiffres des clients.
 -- L'équipe dote un compte, avec son droit, et rien hors de la bêta.
 begin;
-update parametres set valeur = '{"actif": true, "message": "bêta", "dotation": {"XAFe": 1000000, "USDT": 2000}, "depots_reels": false}' where cle = 'beta';
+update parametres set valeur = '{"actif": true, "message": "bêta", "dotation": {"XAFe": 1000000, "USDT": 2000}, "depots_reels": false}' where cle = 'beta';  -- 11.42 éprouve la dotation de 0021 telle quelle
 do $$
 declare r jsonb; c uuid := 'b1420000-0000-0000-0000-000000000001'; rb uuid := 'b1420000-0000-0000-0000-000000000002';
         v_registre numeric; v_test numeric;
@@ -2445,13 +2445,16 @@ begin
   v_ref := coalesce(_prix_reference(), 600);
   update parametres set valeur = valeur || jsonb_build_object('prix_reference', v_ref) where cle = 'marche';
   -- un premier tour sans hasard : seul le teneur agit
-  update parametres set valeur = jsonb_set(jsonb_set(jsonb_set(valeur, '{derive,volatilite}', '0'), '{derive,choc_probabilite}', '0'),
-                                           '{traders,probabilite}', '0') where cle = 'robots';
+  update parametres set valeur = jsonb_set(jsonb_set(jsonb_set(jsonb_set(valeur, '{derive,volatilite}', '0'), '{derive,choc_probabilite}', '0'),
+                                           '{traders,probabilite}', '0'),
+                                           -- les réglages de 0023 : cinq niveaux (0026 en pose vingt, éprouvés en 11.47)
+                                           '{teneur}', '{"ecart": 0.004, "niveaux": 5, "pas": 0.0015, "taille_usdt": 120, "tolerance": 0.0006, "inventaire": 0.01}')
+   where cle = 'robots';
   update robots_etat set derive = 0 where id = 1;
   r := tourner_les_robots();
   assert (r ->> 'actif')::boolean and (r ->> 'poses')::int = 10 and (r ->> 'refus')::int = 0, r;
-  assert solde(v_tn, 'XAFe', 'dispo') + solde(v_tn, 'XAFe', 'bloque') <= 12000000
-     and (select xafe from dotations_beta where compte_id = v_tn) = 12000000, 'le teneur est doté au premier tour';
+  assert solde(v_tn, 'XAFe', 'dispo') + solde(v_tn, 'XAFe', 'bloque') <= 22000000
+     and (select xafe from dotations_beta where compte_id = v_tn) = 22000000, 'le teneur est doté au premier tour';
   assert (select count(*) from dotations_beta d join robots b on b.compte_id = d.compte_id) = 15 and _doter_les_robots() = 0, 'une seule fois';
   assert (select count(*) from ordres where compte_id = v_tn and etat = 'ouvert' and cote = 'achat') = 5
      and (select count(*) from ordres where compte_id = v_tn and etat = 'ouvert' and cote = 'vente') = 5, 'cinq niveaux de chaque côté';
@@ -2579,6 +2582,86 @@ begin
   assert jsonb_array_length(r -> 'robots' -> 'robots') = 15 and r ? 'cours' and r -> 'argent_de_test' ? 'xafe_robots', r;
   assert jsonb_array_length(r -> 'derniers_signalements') = 20, 'le support voit les derniers signalements';
   raise notice '✓ 11.45 observer la bêta : le testeur signale depuis son écran (texte rogné, écran douteux oublié, vingt par jour) ; l''équipe lit et traite, journalisé ; la page Bêta compte testeurs, argent de test, robots et signalements';
+end $$;
+rollback;
+
+-- 11.46 · le graphique (0025). Avant le premier échange, le cours de
+-- référence jour par jour (la BCE), dit « reference » ; après, les échanges,
+-- dits « marche ». Les bougies sont datées, rangées, et se lisent page par
+-- page vers le passé ; un intervalle inconnu est refusé ; le relevé de
+-- l'heure entre dans l'historique.
+begin;
+do $$
+declare r jsonb; p jsonb; v_debut date; i int; t0 timestamptz; t1 timestamptz;
+begin
+  -- quatre cents jours de cours avant le premier échange de cette base
+  select (min(cree_le) at time zone 'Africa/Douala')::date into v_debut from executions;
+  v_debut := coalesce(v_debut, current_date);
+  for i in 1 .. 400 loop
+    perform _noter_cours_du_jour(v_debut - i, round((1.10 + 0.05 * sin(i / 30.0))::numeric, 6), 'bce');
+  end loop;
+  r := bougies('1j', null, 1000);
+  assert jsonb_array_length(r -> 'bougies') > 400, jsonb_array_length(r -> 'bougies');
+  assert r -> 'bougies' -> 0 ->> 'source' = 'reference', 'le plus ancien est le cours de référence';
+  assert r -> 'bougies' -> -1 ->> 'source' = 'marche' or not exists (select 1 from executions), 'le plus récent, le marché';
+  assert not exists (select 1 from jsonb_array_elements(r -> 'bougies') b
+                      where (b ->> 'h')::numeric < greatest((b ->> 'o')::numeric, (b ->> 'c')::numeric)
+                         or (b ->> 'l')::numeric > least((b ->> 'o')::numeric, (b ->> 'c')::numeric)), 'haut et bas encadrent chaque bougie';
+  -- rangées, sans doublon
+  assert (select bool_and(a < b) from (select (x ->> 't')::timestamptz a, lead((x ->> 't')::timestamptz) over (order by n) b
+                                         from jsonb_array_elements(r -> 'bougies') with ordinality as e(x, n)) z where b is not null), 'rangées, une par jour';
+  -- la référence vaut 655,957 / EUR/USD
+  assert abs((r -> 'bougies' -> 0 ->> 'c')::numeric - 655.957 / round((1.10 + 0.05 * sin(400 / 30.0))::numeric, 6)) < 0.01, r -> 'bougies' -> 0;
+
+  -- page par page vers le passé : la page d'avant s'arrête juste avant la première bougie de celle-ci
+  p := bougies('1j', null, 50);
+  t0 := (p -> 'bougies' -> 0 ->> 't')::timestamptz;
+  assert jsonb_array_length(p -> 'bougies') = 50 and (p ->> 'plus_ancien')::boolean, p ->> 'plus_ancien';
+  p := bougies('1j', t0, 50);
+  t1 := (p -> 'bougies' -> -1 ->> 't')::timestamptz;
+  assert t1 < t0 and jsonb_array_length(p -> 'bougies') = 50, format('%s / %s', t1, t0);
+  -- semaines et mois : moins de bougies, les mêmes années
+  assert jsonb_array_length(bougies('1s', null, 1000) -> 'bougies') between 55 and 62, 'environ 58 semaines';
+  assert jsonb_array_length(bougies('1M', null, 1000) -> 'bougies') between 13 and 16, 'environ 14 mois';
+  -- à l'heure, seulement le marché
+  assert not exists (select 1 from jsonb_array_elements(bougies('1h', null, 1000) -> 'bougies') b where b ->> 'source' = 'reference'), 'pas de référence à l''heure';
+  begin perform bougies('2h'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'intervalle invalide', sqlerrm; end;
+
+  -- un cours relevé à l'heure entre dans l'historique ; un cours posé par l'équipe, non
+  perform _poser_le_cours('frankfurter', 1.0987, current_date + 1);
+  assert (select eur_usd from cours_historiques where jour = current_date + 1) = 1.0987, 'le relevé de l''heure est noté';
+  raise notice '✓ 11.46 le graphique : la référence BCE avant le premier échange, le marché ensuite ; bougies datées, rangées, encadrées ; page par page vers le passé ; semaines et mois ; un intervalle inconnu refusé';
+end $$;
+rollback;
+
+-- 11.47 · le carnet profond (0026), et du capital pour trader. Avec ses réglages, le teneur pose vingt
+-- niveaux de chaque côté, serrés près du prix, qui grossissent en s'éloignant.
+begin;
+update parametres set valeur = valeur || '{"actif": true}' where cle = 'beta';
+select setseed(0.47);
+do $$
+declare r jsonb; v_tn uuid := _robot_teneur(); v_bas numeric; v_haut numeric; v_premier numeric; v_dernier numeric;
+begin
+  assert parametre('robots') -> 'teneur' ->> 'niveaux' = '20', parametre('robots');
+  assert (parametre('beta') -> 'dotation' ->> 'USDT')::numeric = 20000, 'un nouvel inscrit reçoit 20 000 USDT de test';
+  assert (parametre('robots') -> 'derive' ->> 'volatilite')::numeric = 0.0004, 'un prix plus vivant';
+  update parametres set valeur = valeur || jsonb_build_object('prix_reference', coalesce(_prix_reference(), 600)) where cle = 'marche';
+  update parametres set valeur = jsonb_set(jsonb_set(jsonb_set(valeur, '{derive,volatilite}', '0'), '{derive,choc_probabilite}', '0'),
+                                           '{traders,probabilite}', '0') where cle = 'robots';
+  update robots_etat set derive = 0 where id = 1;
+  r := tourner_les_robots();
+  assert (r ->> 'poses')::int = 40 and (r ->> 'refus')::int = 0, r;
+  assert (select xafe from dotations_beta where compte_id = v_tn) = 22000000, 'le teneur neuf reçoit tout d''un coup';
+  select max(prix), min(prix) into v_bas, v_haut from ordres where compte_id = v_tn and etat = 'ouvert' and cote = 'achat';
+  select min(prix) into v_haut from ordres where compte_id = v_tn and etat = 'ouvert' and cote = 'vente';
+  assert v_haut / v_bas - 1 between 0.001 and 0.0025, format('l''écart est serré : %s / %s', v_bas, v_haut);
+  select restant into v_premier from ordres where compte_id = v_tn and etat = 'ouvert' and cote = 'vente' order by prix asc limit 1;
+  select restant into v_dernier from ordres where compte_id = v_tn and etat = 'ouvert' and cote = 'vente' order by prix desc limit 1;
+  assert v_dernier > v_premier * 5, format('les murs : %s au premier niveau, %s au dernier', v_premier, v_dernier);
+  assert (select sum(restant) from ordres where compte_id = v_tn and etat = 'ouvert' and cote = 'vente') > 25000, 'plus de 25 000 USDT à la vente';
+  assert jsonb_array_length(carnet(30) -> 'ventes') >= 20, 'le carnet les montre';
+  raise notice '✓ 11.47 le carnet profond : vingt niveaux de chaque côté, écart serré, des murs qui grossissent, plus de 25 000 USDT de chaque côté';
 end $$;
 rollback;
 
