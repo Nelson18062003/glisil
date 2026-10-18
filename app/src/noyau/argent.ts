@@ -44,6 +44,12 @@ export const SORTIES: { ouvertes: boolean; mode: "totem" | "manuel" } = { ouvert
  * l'a lue.
  */
 export const NUMEROS = { verificationSms: true, delaiHeures: 24 };
+/**
+ * La bêta (0021) : l'argent de la plateforme est de l'argent de test. Le
+ * bandeau le dit, la dotation d'inscription s'annonce, et les dépôts réels
+ * sont fermés sauf pour un compte autorisé (depotsReels, calculé pour CE compte).
+ */
+export const BETA = { actif: false, message: "", dotation: { XAFe: 0, USDT: 0 }, depotsReels: true };
 /** « tout de suite », « 24 h après vérification » */
 export const delaiDuNumero = () => (NUMEROS.delaiHeures <= 0 ? "tout de suite" : `${NUMEROS.delaiHeures} h après ${NUMEROS.verificationSms ? "vérification" : "son ajout"}`);
 
@@ -424,6 +430,13 @@ export function appliquerParametres(p: unknown): boolean {
   if (r.sortie?.mode === "totem" || r.sortie?.mode === "manuel") SORTIES.mode = r.sortie.mode;
   if (typeof r.numeros?.verification_sms === "boolean") NUMEROS.verificationSms = r.numeros.verification_sms;
   poser(NUMEROS, "delaiHeures", nombre(r.numeros?.delai_heures, 0, 168));
+  if (typeof r.beta?.actif === "boolean") {
+    BETA.actif = r.beta.actif;
+    BETA.message = typeof r.beta.message === "string" ? r.beta.message : "";
+    poser(BETA.dotation, "XAFe", nombre(r.beta.dotation?.XAFe, 0, 1e9));
+    poser(BETA.dotation, "USDT", nombre(r.beta.dotation?.USDT, 0, 1e9));
+    if (typeof r.beta.depots_reels === "boolean") BETA.depotsReels = r.beta.depots_reels;
+  }
   if (typeof r.marche?.ouvert === "boolean") MARCHE.ouvert = r.marche.ouvert;
   poser(MARCHE, "quantiteMax", nombre(r.marche?.quantite_max, 0.01, 1e9));
   poser(MARCHE, "marcheQuantiteMax", nombre(r.marche?.marche_quantite_max, 0.01, 1e9));

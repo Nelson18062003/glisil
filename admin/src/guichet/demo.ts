@@ -473,6 +473,20 @@ export class GuichetDemo implements GuichetAdmin {
       ecritures: [{ actif: "XAFe", disponible: 250_000, bloque: 0, nature: "depot", source: "XAFe-DP-000501", quand: iso(maintenant() - 2 * H) }, { actif: "USDT", disponible: 1498.5, bloque: 0, nature: "ordre_execute", source: "ORD-020931", quand: iso(maintenant() - 2 * H + 40_000) }],
     });
   }
+  private dotations = 0;
+  async doter(id: string, xafe: number, usdt: number, motif?: string) {
+    this.exiger("parametres");
+    const c = this.e.clients.find((x) => x.id === id);
+    if (!c) throw new ErreurMoteur("compte inconnu");
+    if (!(xafe >= 0 && usdt >= 0) || (xafe === 0 && usdt === 0) || xafe !== Math.round(xafe)) throw new ErreurMoteur("montant invalide");
+    if (xafe > 100_000_000 || usdt > 1_000_000) throw new ErreurMoteur("montant trop grand", "au plus 100 000 000 XAFe et 1 000 000 USDT d'un coup");
+    for (const [actif, m] of [["XAFe", xafe], ["USDT", usdt]] as const) {
+      if (m > 0) c.soldes[actif] = { disponible: (c.soldes[actif]?.disponible ?? 0) + m, bloque: c.soldes[actif]?.bloque ?? 0 };
+    }
+    const reference = `XAFe-BT-${String(++this.dotations).padStart(6, "0")}`;
+    this.noter("doter", id, { reference, xafe, usdt, motif }); this.emettre();
+    return { reference };
+  }
   async changerPalier(id: string, palier: number, note?: string) {
     this.exiger("paliers");
     const c = this.e.clients.find((x) => x.id === id);

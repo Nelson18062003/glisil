@@ -91,6 +91,7 @@ export class GuichetSupabase implements GuichetAdmin {
   statistiquesClients() { return this.rpc<StatsClients>("admin_statistiques_clients"); }
   clients(recherche?: string, filtre?: string | null) { return this.rpc<Client[]>("admin_clients", { p_recherche: recherche ?? null, p_n: 200, p_filtre: filtre ?? null }); }
   client(id: string) { return this.rpc<ClientDetail>("admin_client", { p_id: id }); }
+  async doter(id: string, xafe: number, usdt: number, motif?: string) { return this.rpc<{ reference: string }>("admin_doter", { p_compte: id, p_xafe: xafe, p_usdt: usdt, p_motif: motif ?? null }); }
   async changerPalier(id: string, palier: number, note?: string) { await this.rpc("admin_changer_palier", { p_id: id, p_palier: palier, p_note: note ?? null }); }
   validerVerification(id: string, ok: boolean, note?: string) { return this.rpc<{ palier: number }>("admin_valider_verification", { p_id: id, p_ok: ok, p_note: note ?? null }); }
   async desactiverCompte(id: string, actif: boolean, note?: string) { await this.rpc("admin_desactiver_compte", { p_id: id, p_actif: actif, p_note: note ?? null }); }

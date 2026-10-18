@@ -6,7 +6,7 @@
 import { appliquerSupport } from "../noyau/conditions";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
-import { appliquerParametres, CRYPTO, MARCHE, RAPIDE, SORTIES } from "../noyau/argent";
+import { appliquerParametres, BETA, CRYPTO, MARCHE, RAPIDE, SORTIES } from "../noyau/argent";
 import { GuichetDemo } from "./demo";
 import type { Guichet } from "./guichet";
 import { GuichetSupabase } from "./supabase";
@@ -66,6 +66,9 @@ export function useOuvertures() {
     rapide: RAPIDE.ouvert && MARCHE.ouvert,
     cryptoDepots: CRYPTO.depotsOuverts,
     cryptoRetraits: CRYPTO.retraitsOuverts,
+    /* la bêta : de l'argent de test ; les dépôts réels fermés, sauf pour un compte autorisé */
+    beta: BETA.actif,
+    entrees: !BETA.actif || BETA.depotsReels,
     /* l'entrée « Crypto » mène à l'un de ces trois : fermée s'ils le sont tous */
     crypto: CRYPTO.depotsOuverts || CRYPTO.retraitsOuverts || (RAPIDE.ouvert && MARCHE.ouvert),
   }), [dataUpdatedAt, isPending]); // les valeurs vivent hors de React : la date de la lecture suffit à les relire

@@ -77,6 +77,12 @@ try {
   const xafeApres = await page.locator('[data-tuile="XAFe"] h4').innerText();
   exiger(xafeAvant !== xafeApres, `le solde XAFe de Jean a changé (${xafeAvant} → ${xafeApres})`);
   await capturer("client-detail");
+  // la bêta : l'équipe donne de l'argent de test, le solde bouge, la dotation se journalise
+  const avantDotation = await page.locator('[data-tuile="XAFe"] h4').innerText();
+  await page.getByRole("button", { name: "Donner de l'argent de test" }).click();
+  await page.getByLabel("XAFe").fill("500000");
+  await page.getByRole("button", { name: "Donner", exact: true }).click();
+  await page.locator('[data-tuile="XAFe"] h4').filter({ hasNotText: avantDotation }).waitFor();
   await page.goto(`${BASE}/entrees?onglet=retenues`);
   await page.getByRole("row").filter({ hasText: "20394817502" }).getByRole("button", { name: "Rembourser" }).click();
   await page.getByLabel("Pourquoi").fill("payeur inconnu, aucun dossier");

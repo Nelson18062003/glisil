@@ -55,6 +55,8 @@ TEMOINS = {
     "0019_recevoir_des_xafe.sql": ("false", "rejouable telle quelle"),
     # 0020 : paramètre « on conflict do nothing », fonctions « or replace », rattrapage idempotent.
     "0020_numeros_sans_code.sql": ("false", "rejouable telle quelle"),
+    # 0021 : paramètre et colonnes « if not exists », table « if not exists », déclencheurs retirés puis reposés, fonctions « or replace ».
+    "0021_beta.sql": ("false", "rejouable telle quelle"),
 }
 
 

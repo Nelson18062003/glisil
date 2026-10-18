@@ -90,8 +90,11 @@ export const routeur = createBrowserRouter([
       { path: "/notifications", element: <Notifications /> },
       { path: "/verrouillage", element: <Navigate to="/" replace /> },
 
-      { path: "/entrer/operateur", element: <EntrerOperateur /> },
-      { path: "/entrer/montant", element: <EntrerMontant /> },
+      /* les dépôts réels : fermés pendant la bêta, sauf pour un compte autorisé ; le suivi d'un dépôt déjà ouvert reste lisible */
+      { element: <SiOuvert porte="entrees" />, children: [
+        { path: "/entrer/operateur", element: <EntrerOperateur /> },
+        { path: "/entrer/montant", element: <EntrerMontant /> },
+      ] },
       { path: "/entrer/payer/:ref", element: <EntrerPayer /> },
       { path: "/entrer/transaction/:ref", element: <EntrerTransaction /> },
       { path: "/entrer/credite/:ref", element: <EntrerCredite /> },

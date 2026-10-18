@@ -50,6 +50,8 @@ export interface GuichetAdmin {
   clients(recherche?: string, filtre?: string | null): Promise<Client[]>;
   client(id: string): Promise<ClientDetail>;
   changerPalier(id: string, palier: number, note?: string): Promise<void>;
+  /** La bêta : donner de l'argent de test à un compte (droit « parametres ») ; refusé hors bêta. */
+  doter(id: string, xafe: number, usdt: number, motif?: string): Promise<{ reference: string }>;
   validerVerification(id: string, ok: boolean, note?: string): Promise<{ palier: number }>;
   desactiverCompte(id: string, actif: boolean, note?: string): Promise<void>;
 

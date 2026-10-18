@@ -2301,6 +2301,72 @@ begin
 end $$;
 rollback;
 
+-- 11.42 · la bêta (0021). Un nouvel inscrit reçoit son argent de test, dit
+-- comme tel dans son historique ; ses XAFe passent par le registre (une
+-- émission, une frappe dans la réserve) et la parité les compte à part. Les
+-- dépôts réels sont fermés, sauf pour un compte autorisé. Un robot ou un
+-- compte de test ne reçoit rien et n'entre pas dans les chiffres des clients.
+-- L'équipe dote un compte, avec son droit, et rien hors de la bêta.
+begin;
+update parametres set valeur = '{"actif": true, "message": "bêta", "dotation": {"XAFe": 1000000, "USDT": 2000}, "depots_reels": false}' where cle = 'beta';
+do $$
+declare r jsonb; c uuid := 'b1420000-0000-0000-0000-000000000001'; rb uuid := 'b1420000-0000-0000-0000-000000000002';
+        v_registre numeric; v_test numeric;
+begin
+  v_registre := circulation(); v_test := _xafe_de_test();
+  insert into comptes (id, telephone, nom, palier) values (c, '670142001', 'Testeur bêta', 2);
+  insert into comptes (id, telephone, nom, palier, genre) values (rb, '670142002', 'Robot', 2, 'robot');
+  assert solde(c, 'XAFe', 'dispo') = 1000000 and solde(c, 'USDT', 'dispo') = 2000, 'la dotation d''inscription';
+  assert not exists (select 1 from soldes where compte_id = rb and disponible > 0), 'un robot ne reçoit rien à l''inscription';
+  assert circulation() = v_registre + 1000000, 'les XAFe de test passent par le registre';
+  assert _xafe_de_test() = v_test + 1000000, 'et sont comptés à part';
+  assert exists (select 1 from reserve_chaine where reference = _reference_dotation((select max(id) from dotations_beta)) and operation = 'frapper'),
+         'une frappe attend dans la réserve : registre et chaîne restent égaux';
+  assert (_parite_json(false) ->> 'xafe_de_test')::numeric = _xafe_de_test(), 'la page de la preuve dit la part de test';
+
+  -- l'historique le dit
+  perform set_config('xafe.compte', c::text, true);
+  assert exists (select 1 from jsonb_array_elements(mon_historique()) x where x ->> 'nature' = 'dotation'
+                   and (x -> 'detail' ->> 'xafe')::numeric = 1000000), mon_historique();
+  -- l'écran sait que c'est la bêta, et que CE compte ne paie pas en vrai
+  r := parametres_publics() -> 'beta';
+  assert (r ->> 'actif')::boolean and not (r ->> 'depots_reels')::boolean and (r -> 'dotation' ->> 'XAFe')::numeric = 1000000, r;
+
+  -- les dépôts réels : fermés, sauf pour un compte autorisé
+  begin perform ouvrir_depot('mtn', 'k-11.42'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'dépôts fermés pendant la bêta', sqlerrm; end;
+  update comptes set argent_reel = true where id = c;
+  assert (parametres_publics() -> 'beta' ->> 'depots_reels')::boolean, 'autorisé : l''écran le sait';
+  begin perform ouvrir_depot('mtn', 'k-11.42b');
+  exception when others then assert sqlerrm <> 'dépôts fermés pendant la bêta', 'autorisé : la bêta ne bloque plus'; end;
+
+  -- l'équipe dote : le support non, le super admin oui, avec ses bornes
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000003', true);
+  begin perform admin_doter(c, 500000, 0, 'essai'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'accès non autorisé', sqlerrm; end;
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);
+  r := admin_doter(c, 500000, 100.5, 'pour trader');
+  assert (r ->> 'ok')::boolean and solde(c, 'XAFe', 'dispo') = 1500000 and solde(c, 'USDT', 'dispo') = 2100.5, r;
+  assert exists (select 1 from journal_admin where action = 'doter' and cible = c::text), 'la dotation se journalise';
+  begin perform admin_doter(c, 200000000, 0); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'montant trop grand', sqlerrm; end;
+  begin perform admin_doter(c, 10.5, 0); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'montant invalide', sqlerrm; end;
+
+  -- les chiffres de l'équipe : les clients, pas les robots
+  assert not exists (select 1 from jsonb_array_elements(admin_clients()) x where (x ->> 'id')::uuid = rb), 'un robot n''est pas un client';
+  assert exists (select 1 from jsonb_array_elements(admin_clients(null, 100, 'robots')) x where (x ->> 'id')::uuid = rb), 'il a son filtre';
+
+  -- un paramètre abîmé ne s'écrit pas ; hors bêta, pas d'argent de test
+  begin perform _verifier_parametre('beta', '{"actif": "oui"}'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
+  update parametres set valeur = valeur || '{"actif": false}' where cle = 'beta';
+  begin perform admin_doter(c, 1000, 0); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'la bêta n''est pas active', sqlerrm; end;
+  raise notice '✓ 11.42 la bêta : la dotation d''inscription passe par le registre et se dit dans l''historique, la parité la compte à part ; dépôts réels fermés sauf compte autorisé ; l''équipe dote avec son droit et ses bornes ; robots hors des chiffres ; rien hors bêta';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';
