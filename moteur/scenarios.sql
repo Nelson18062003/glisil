@@ -1643,7 +1643,7 @@ begin
 
   perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000003', true);  -- le support : droit « clients »
   s := admin_statistiques_clients();
-  assert (s ->> 'total')::int = (select count(*) from comptes where not maison), s;
+  assert (s ->> 'total')::int = (select count(*) from comptes where not maison and genre = 'client'), s;  -- les robots de la bêta (0023) n'y sont pas
   assert (s ->> 'nouveaux_7j')::int >= 1 and (s ->> 'connectes_7j')::int >= 1 and (s ->> 'inscriptions_inachevees')::int >= 1, s;
   assert (s ->> 'actifs_30j')::int <= (s ->> 'total')::int and jsonb_array_length(s -> 'inscriptions_30j') = 30, s;
   assert (s -> 'par_pays' ->> 'CM')::int >= 1, s;
@@ -2364,6 +2364,173 @@ begin
   begin perform admin_doter(c, 1000, 0); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'la bêta n''est pas active', sqlerrm; end;
   raise notice '✓ 11.42 la bêta : la dotation d''inscription passe par le registre et se dit dans l''historique, la parité la compte à part ; dépôts réels fermés sauf compte autorisé ; l''équipe dote avec son droit et ses bornes ; robots hors des chiffres ; rien hors bêta';
+end $$;
+rollback;
+
+-- 11.43 · le vrai dollar (0022). 1 EUR = 655,957 XAF, fixe : le prix d'un
+-- USDT se déduit du cours EUR/USD. Un cours posé devient la référence du
+-- marché ; un cours aberrant ou un saut trop grand est noté, pas posé ; la
+-- prime de l'équipe se pose par-dessus ; sans réseau, rien ne casse ; seule
+-- l'équipe avec son droit force un cours.
+begin;
+update parametres set valeur = '{"actif": true, "prime": 0, "saut_max": 0.05}' where cle = 'cours';
+delete from cours_externes;
+do $$
+declare c cours_externes; r jsonb;
+begin
+  c := _poser_le_cours('frankfurter', 1.1253, '2026-10-16');
+  -- 655,957 / 1,1253 = 582,9174… ; au pas du marché
+  assert c.pose and c.usd_xaf = 582.9174 and c.prix = round(582.9174 / (parametre('marche') ->> 'pas_prix')::numeric) * (parametre('marche') ->> 'pas_prix')::numeric, to_jsonb(c);
+  assert (parametre('marche') ->> 'prix_reference')::numeric = c.prix, 'le cours posé devient la référence du marché';
+  assert (parametre('marche') ->> 'paire') = 'USDT/XAFe' and parametre('marche') ? 'pas_prix', 'le reste des règles ne bouge pas';
+  assert (cotation() -> 'cours_reel' ->> 'usd_xaf')::numeric = 582.9174, 'la cotation publique dit le vrai dollar';
+
+  -- un cours aberrant, un saut de plus de 5 % : notés, pas posés
+  c := _poser_le_cours('frankfurter', 9, null);
+  assert not c.pose and c.erreur like 'cours aberrant%', to_jsonb(c);
+  c := _poser_le_cours('frankfurter', 1.0, null);
+  assert not c.pose and c.erreur like 'saut de%', to_jsonb(c);
+  assert (parametre('marche') ->> 'prix_reference')::numeric = (_cours_reel() ->> 'prix')::numeric
+     and (_cours_reel() ->> 'eur_usd')::numeric = 1.1253, 'la référence garde le dernier cours sain';
+  -- un petit mouvement passe
+  c := _poser_le_cours('frankfurter', 1.12, null);
+  assert c.pose, to_jsonb(c);
+
+  -- la prime de l'équipe, par-dessus
+  update parametres set valeur = valeur || '{"prime": 0.02}' where cle = 'cours';
+  c := _poser_le_cours('frankfurter', 1.12, null);
+  assert c.pose and c.prix > c.usd_xaf * 1.019 and c.prix < c.usd_xaf * 1.021, to_jsonb(c);
+
+  -- sans l'extension http (cette base) : noté, rien ne casse
+  r := relever_le_cours();
+  if to_regprocedure('extensions.http_get(character varying)') is null then
+    assert not (r ->> 'pose')::boolean and r ->> 'erreur' like 'extension http absente%', r;
+  end if;
+  update parametres set valeur = valeur || '{"actif": false}' where cle = 'cours';
+  assert relever_le_cours() = '{"actif": false}'::jsonb, 'éteint : rien ne part';
+
+  -- l'équipe : le support voit, ne force pas ; le super admin force, journalisé
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000003', true);
+  assert jsonb_array_length(admin_cours() -> 'releves') >= 5, 'l''historique des relevés';
+  begin perform admin_poser_le_cours(1.0); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'accès non autorisé', sqlerrm; end;
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);
+  r := admin_poser_le_cours(1.0);
+  assert (r ->> 'ok')::boolean and (parametre('marche') ->> 'prix_reference')::numeric = (r ->> 'prix')::numeric, r;
+  assert exists (select 1 from journal_admin where action = 'poser_le_cours'), 'le cours forcé se journalise';
+  begin perform admin_poser_le_cours(7); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'cours invalide', sqlerrm; end;
+  begin perform _verifier_parametre('cours', '{"actif": true, "prime": 0.5, "saut_max": 0.05}'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
+  raise notice '✓ 11.43 le vrai dollar : 655,957 / EUR/USD devient la référence du marché ; aberrant et saut refusés et notés ; prime par-dessus ; sans réseau rien ne casse ; seule l''équipe force un cours';
+end $$;
+rollback;
+
+-- 11.44 · le marché vivant (0023). Quinze robots, dotés une fois : le teneur
+-- cote des deux côtés autour du vrai dollar, dans la bande, et ne recote pas
+-- ce qui n'a pas bougé ; les traders échangent avec lui ; les soldes restent
+-- justes ; robots éteints ou bêta finie, tout est retiré ; le ménage n'efface
+-- que des ordres de robot sans échange, et rien ne se perd.
+begin;
+update parametres set valeur = valeur || '{"actif": true}' where cle = 'beta';
+select setseed(0.44);
+do $$
+declare r jsonb; v_ref numeric; v_tn uuid := _robot_teneur(); n int; v_exec bigint; v_o ordres; v_bas numeric; v_haut numeric;
+begin
+  assert (select count(*) from robots) = 15 and (select count(*) from robots where role = 'teneur') = 1, 'quinze robots, un teneur';
+  assert (select count(*) from comptes c join robots r on r.compte_id = c.id where c.genre = 'robot') = 15, 'tous du genre robot';
+  assert not exists (select 1 from dotations_beta d join robots b on b.compte_id = d.compte_id), 'pas d''argent avant le premier tour';
+
+  -- l'ancre : un prix de référence posé, dans la bande du carnet tel qu'il est
+  v_ref := coalesce(_prix_reference(), 600);
+  update parametres set valeur = valeur || jsonb_build_object('prix_reference', v_ref) where cle = 'marche';
+  -- un premier tour sans hasard : seul le teneur agit
+  update parametres set valeur = jsonb_set(jsonb_set(jsonb_set(valeur, '{derive,volatilite}', '0'), '{derive,choc_probabilite}', '0'),
+                                           '{traders,probabilite}', '0') where cle = 'robots';
+  update robots_etat set derive = 0 where id = 1;
+  r := tourner_les_robots();
+  assert (r ->> 'actif')::boolean and (r ->> 'poses')::int = 10 and (r ->> 'refus')::int = 0, r;
+  assert solde(v_tn, 'XAFe', 'dispo') + solde(v_tn, 'XAFe', 'bloque') <= 12000000
+     and (select xafe from dotations_beta where compte_id = v_tn) = 12000000, 'le teneur est doté au premier tour';
+  assert (select count(*) from dotations_beta d join robots b on b.compte_id = d.compte_id) = 15 and _doter_les_robots() = 0, 'une seule fois';
+  assert (select count(*) from ordres where compte_id = v_tn and etat = 'ouvert' and cote = 'achat') = 5
+     and (select count(*) from ordres where compte_id = v_tn and etat = 'ouvert' and cote = 'vente') = 5, 'cinq niveaux de chaque côté';
+  select max(prix) into v_bas from ordres where compte_id = v_tn and etat = 'ouvert' and cote = 'achat';
+  select min(prix) into v_haut from ordres where compte_id = v_tn and etat = 'ouvert' and cote = 'vente';
+  assert v_bas < (r ->> 'milieu')::numeric and v_haut > (r ->> 'milieu')::numeric and v_bas < v_haut, r;
+  assert v_haut / v_bas - 1 between 0.003 and 0.006, format('l''écart du teneur : %s / %s', v_bas, v_haut);
+
+  -- rien n'a bougé : rien n'est recoté (les ordres gardent leur place dans la file)
+  n := (select count(*) from ordres where compte_id = v_tn);
+  r := tourner_les_robots();
+  assert (r ->> 'poses')::int = 0 and (r ->> 'annules')::int = 0 and (select count(*) from ordres where compte_id = v_tn) = n, r;
+
+  -- l'ancre monte de 2 % : le teneur suit
+  update parametres set valeur = valeur || jsonb_build_object('prix_reference', round(v_ref * 1.02 / 0.05) * 0.05) where cle = 'marche';
+  r := tourner_les_robots();
+  assert (r ->> 'annules')::int = 10 and (r ->> 'poses')::int = 10, r;
+  assert (select min(prix) from ordres where compte_id = v_tn and etat = 'ouvert' and cote = 'achat') > v_bas, 'les achats montent';
+
+  -- les traders s'en mêlent : des échanges, avec de vrais règlements
+  update parametres set valeur = jsonb_set(jsonb_set(valeur, '{traders,probabilite}', '1'), '{derive,volatilite}', '0.0005') where cle = 'robots';
+  v_exec := (select count(*) from executions);
+  for n in 1 .. 6 loop r := tourner_les_robots(); end loop;
+  assert (select count(*) from executions) > v_exec + 5, format('des échanges : %s', (select count(*) from executions) - v_exec);
+  assert (select tours from robots_etat) >= 9, 'les tours se comptent';
+  assert total('XAFe') = circulation(), format('XAFe : %s en soldes, %s en circulation', total('XAFe'), circulation());
+  assert not exists (select 1 from soldes where disponible < 0 or bloque < 0) and not exists (select 1 from ordres where bloque < 0), 'aucun solde négatif';
+  assert not exists (select 1 from ordres o join robots b on b.compte_id = o.compte_id where o.etat in ('ouvert', 'partiel') and o.type = 'limite'
+                       and o.bloque <> case when o.cote = 'achat' then round(o.restant * o.prix, 2) else o.restant end), 'le bloqué de chaque ordre juste';
+
+  -- un testeur pose un bon prix : un robot le sert
+  insert into comptes (id, telephone, nom, palier) values ('b1440000-0000-0000-0000-000000000001', '670144001', 'Testeur', 2);
+  r := _placer_ordre('b1440000-0000-0000-0000-000000000001', 'achat', 'limite', 50,
+                        (select min(prix) from ordres where compte_id = v_tn and etat in ('ouvert', 'partiel') and cote = 'vente'), null, null);
+  assert jsonb_array_length(r -> 'executions') > 0 and solde('b1440000-0000-0000-0000-000000000001', 'USDT', 'dispo') > 2000, format('le testeur est servi : %s', r);
+
+  -- éteints : tout est retiré au tour suivant, et plus rien ne bouge
+  update parametres set valeur = valeur || '{"actif": false}' where cle = 'robots';
+  r := tourner_les_robots();
+  assert not (r ->> 'actif')::boolean and not exists (select 1 from ordres o join robots b on b.compte_id = o.compte_id
+                                                        where o.etat in ('ouvert', 'partiel')), r;
+  assert not exists (select 1 from soldes s join robots b on b.compte_id = s.compte_id where s.bloque <> 0), 'plus rien de bloqué';
+  -- bêta finie : de même
+  update parametres set valeur = valeur || '{"actif": true}' where cle = 'robots';
+  r := tourner_les_robots();
+  assert (r ->> 'actif')::boolean, r;
+  update parametres set valeur = valeur || '{"actif": false}' where cle = 'beta';
+  r := tourner_les_robots();
+  assert not (r ->> 'actif')::boolean and not exists (select 1 from ordres o join robots b on b.compte_id = o.compte_id
+                                                        where o.etat in ('ouvert', 'partiel')), 'hors bêta, aucun ordre de robot';
+
+  -- le ménage : seuls les ordres de robot sans échange, vieux de deux jours ; rien ne se perd
+  update ordres set maj_le = now() - interval '3 days' where compte_id in (select compte_id from robots);
+  update ordres set maj_le = now() - interval '3 days' where compte_id = 'b1440000-0000-0000-0000-000000000001';
+  n := (select count(*) from ordres o join robots b on b.compte_id = o.compte_id where o.etat = 'annule' and o.executee = 0);
+  r := menage_des_robots();
+  assert (r ->> 'ordres')::int = n and n > 0, r;
+  assert (r ->> 'ecritures')::int > 0, r;
+  assert exists (select 1 from ordres where compte_id = 'b1440000-0000-0000-0000-000000000001'), 'rien d''un testeur ne s''efface';
+  assert exists (select 1 from ordres o join robots b on b.compte_id = o.compte_id where o.executee > 0), 'ce qui a échangé reste';
+  assert not exists (select 1 from soldes s where s.disponible <> coalesce((select sum(disponible_delta) from ecritures x where x.compte_id = s.compte_id and x.actif = s.actif), 0)
+                                             or s.bloque <> coalesce((select sum(bloque_delta) from ecritures x where x.compte_id = s.compte_id and x.actif = s.actif), 0)),
+         'chaque solde vaut toujours la somme de ses écritures';
+  assert total('XAFe') = circulation(), 'et la circulation tient';
+
+  -- l'équipe : le support voit ; un paramètre abîmé ne s'écrit pas
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000003', true);
+  r := admin_robots();
+  assert jsonb_array_length(r -> 'robots') = 15 and (r -> 'echanges_24h' ->> 'total')::int > 0, r -> 'echanges_24h';
+  begin perform _verifier_parametre('robots', parametre('robots') || '{"actif": "oui"}'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
+  perform _verifier_parametre('robots', parametre('robots'));
+  -- un client ne fait pas tourner les robots
+  if exists (select 1 from pg_roles where rolname = 'authenticated') then
+    assert not has_function_privilege('authenticated', 'tourner_les_robots()', 'execute')
+       and not has_function_privilege('authenticated', '_annuler_ordre(uuid, uuid)', 'execute')
+       and has_function_privilege('authenticated', 'annuler_ordre(uuid)', 'execute'), 'les droits des robots';
+  end if;
+  raise notice '✓ 11.44 le marché vivant : quinze robots dotés une fois ; le teneur cote cinq niveaux de chaque côté autour du vrai dollar, ne recote pas ce qui n''a pas bougé, suit l''ancre ; les traders échangent, soldes et bloqués justes ; un testeur est servi ; éteints ou hors bêta tout est retiré ; le ménage n''efface que des ordres de robot sans échange';
 end $$;
 rollback;
 

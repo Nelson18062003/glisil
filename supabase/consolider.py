@@ -57,6 +57,10 @@ TEMOINS = {
     "0020_numeros_sans_code.sql": ("false", "rejouable telle quelle"),
     # 0021 : paramètre et colonnes « if not exists », table « if not exists », déclencheurs retirés puis reposés, fonctions « or replace ».
     "0021_beta.sql": ("false", "rejouable telle quelle"),
+    # 0022 : paramètre « on conflict do nothing », table « if not exists », tâches pg_cron retirées puis reposées, fonctions « or replace ».
+    "0022_cours_reel.sql": ("false", "rejouable telle quelle"),
+    # 0023 : comptes et robots « on conflict do nothing », dotation une seule fois (au premier tour), tâches retirées puis reposées.
+    "0023_robots.sql": ("false", "rejouable telle quelle"),
 }
 
 
