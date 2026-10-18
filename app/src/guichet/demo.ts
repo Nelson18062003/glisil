@@ -14,7 +14,7 @@ import { numeroSaisi, operateurDuNumero, transactionIdNormalise, xaf as xafDe } 
 import { VERSION_CONDITIONS } from "../noyau/conditions";
 import type { Guichet } from "./guichet";
 import type {
-  Actif, Carnet, Chandelle, Compte, Cote, Cotation, Declaration, Depot, DevisRapide, Execution, IdOperateur, Niveau, Notification, Numero, Operation, Ordre, ProfilInscription, SensRapide,
+  Actif, Bougie, Carnet, Chandelle, Intervalle, PageDeBougies, Compte, Cote, Cotation, Declaration, Depot, DevisRapide, Execution, IdOperateur, Niveau, Notification, Numero, Operation, Ordre, ProfilInscription, SensRapide,
   Reseau, ResultatCode, ResultatOrdre, RetraitCrypto, Soldes, Sortie, Transaction, TransfertCrypto, TypeOrdre,
   LignePreuve, PreuveDeReserve,
 } from "./types";
@@ -881,6 +881,62 @@ export class GuichetDemo implements Guichet {
   }
 
   async transactions(n: number) { return this.etat.marche.transactions.slice(0, n); }
+
+  /*
+   * Les bougies de la démonstration : le même dessin que le moteur (0025) —
+   * le cours de référence jour par jour avant l'ouverture du marché (il y a
+   * trente jours ici), les échanges ensuite —, fabriqué par une formule
+   * reproductible : la même bougie ne change pas d'une lecture à l'autre.
+   */
+  async bougies(intervalle: Intervalle, avant?: string | null, nb = 300): Promise<PageDeBougies> {
+    const MIN = 60_000, JOUR = 86_400_000;
+    const maint = maintenant();
+    const debut = Math.floor((maint - 30 * JOUR) / JOUR) * JOUR;
+    const mid = this.etat.marche.mid;
+    // le marché : une marche lente, des vagues, un peu de bruit — recalée pour finir au dernier prix
+    const brut = (minute: number) => 4 * Math.sin(minute / 2900) + 1.6 * Math.sin(minute / 310) + 0.7 * Math.sin(minute / 41) + (alea(minute) - 0.5) * 0.5;
+    const prixA = (ms: number) => mid + brut(Math.floor(ms / MIN)) - brut(Math.floor(maint / MIN));
+    // le cours de référence : 655,957 / EUR/USD, un EUR/USD qui ondule comme le vrai
+    const reference = (jour: number) => 655.957 / (1.12 + 0.07 * Math.sin(jour / 260) + 0.025 * Math.sin(jour / 47) + (alea(jour) - 0.5) * 0.006);
+    const duree: Record<Intervalle, number> = { "1m": MIN, "5m": 5 * MIN, "15m": 15 * MIN, "30m": 30 * MIN, "1h": 60 * MIN, "4h": 240 * MIN, "1j": JOUR, "1s": 7 * JOUR, "1M": 30 * JOUR };
+    const d = duree[intervalle];
+    const fin = avant ? new Date(avant).getTime() : maint + 1;
+    const debutDe = (ms: number) => intervalle === "1M"
+      ? Date.UTC(new Date(ms).getUTCFullYear(), new Date(ms).getUTCMonth(), 1)
+      : intervalle === "1s" ? Math.floor((ms - 4 * JOUR) / d) * d + 4 * JOUR : Math.floor(ms / d) * d;
+    const premierJour = Date.UTC(2016, 0, 1);
+    const sortie: Bougie[] = [];
+    let t = debutDe(fin - 1);
+    if (t >= fin) t = debutDe(t - 1);
+    while (sortie.length < nb) {
+      const suivant = intervalle === "1M" ? Date.UTC(new Date(t).getUTCFullYear(), new Date(t).getUTCMonth() + 1, 1) : t + d;
+      if (suivant <= debut && (d < JOUR)) break;
+      if (suivant <= premierJour) break;
+      const points: number[] = [];
+      let source: Bougie["source"] = "marche";
+      if (t >= debut) {
+        const pas = Math.max(MIN, Math.floor(d / 60));
+        for (let x = t; x < Math.min(suivant, maint); x += pas) points.push(prixA(x));
+      } else {
+        source = "reference";
+        for (let x = Math.max(t, premierJour); x < Math.min(suivant, debut); x += JOUR) {
+          const j = Math.floor(x / JOUR), jour = new Date(x).getUTCDay();
+          if (jour !== 0 && jour !== 6) points.push(reference(j));
+        }
+      }
+      if (points.length) {
+        const o = source === "reference" ? reference(Math.floor(t / JOUR) - 1) : points[0];
+        sortie.push({ t: iso(t), o: arrondi2(o), h: arrondi2(Math.max(o, ...points)), l: arrondi2(Math.min(o, ...points)), c: arrondi2(points[points.length - 1]),
+                      v: source === "reference" ? 0 : Math.round(points.length * (300 + alea(t / MIN) * 900)), source });
+      }
+      const precedent = intervalle === "1M" ? Date.UTC(new Date(t).getUTCFullYear(), new Date(t).getUTCMonth() - 1, 1) : t - d;
+      if (precedent < premierJour - d) break;
+      t = precedent;
+    }
+    sortie.reverse();
+    const plusAncien = sortie.length > 0 && new Date(sortie[0].t).getTime() > (d < JOUR ? debut : premierJour) + d;
+    return { bougies: sortie, plusAncien, debutMarche: iso(debut) };
+  }
 
   async chandelles(intervalleMinutes: number, n: number): Promise<Chandelle[]> {
     const base = this.etat.marche.chandelles;

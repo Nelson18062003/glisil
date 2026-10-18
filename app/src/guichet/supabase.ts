@@ -12,7 +12,7 @@ import { numeroSaisi, transactionIdNormalise } from "../noyau/format";
 import type { Guichet } from "./guichet";
 import type { PreuveDeReserve } from "./types";
 import type {
-  Actif, Carnet, Chandelle, Compte, Cote, Cotation, Declaration, Depot, TraceChaine, DevisRapide, Execution, IdOperateur, Notification, Numero, Operation, Ordre, ProfilInscription, SensRapide,
+  Actif, Carnet, Chandelle, Intervalle, PageDeBougies, Compte, Cote, Cotation, Declaration, Depot, TraceChaine, DevisRapide, Execution, IdOperateur, Notification, Numero, Operation, Ordre, ProfilInscription, SensRapide,
   Reseau, ResultatCode, ResultatOrdre, RetraitCrypto, Soldes, Sortie, Transaction, TransfertCrypto, TypeOrdre,
 } from "./types";
 
@@ -318,6 +318,14 @@ export class GuichetSupabase implements Guichet {
   async chandelles(intervalleMinutes: number, nb: number): Promise<Chandelle[]> {
     const r = await this.rpc<J[]>("chandelles", { p_minutes: intervalleMinutes, p_n: nb });
     return (r ?? []).map((x) => ({ t: s(x.t), o: n(x.o), h: n(x.h), l: n(x.l), c: n(x.c), v: n(x.v) }));
+  }
+  async bougies(intervalle: Intervalle, avant?: string | null, nb = 300): Promise<PageDeBougies> {
+    const r = await this.rpc<J>("bougies", { p_intervalle: intervalle, p_avant: avant ?? null, p_n: nb });
+    return {
+      bougies: ((r.bougies as J[]) ?? []).map((x) => ({ t: s(x.t), o: n(x.o), h: n(x.h), l: n(x.l), c: n(x.c), v: n(x.v), source: x.source === "reference" ? "reference" as const : "marche" as const })),
+      plusAncien: Boolean(r.plus_ancien),
+      debutMarche: r.debut_marche ? s(r.debut_marche) : null,
+    };
   }
   async mesOrdres() { return ((await this.rpc<J[]>("mes_ordres")) ?? []).map(ordre); }
   async ordre(id: string) {

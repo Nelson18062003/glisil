@@ -232,8 +232,27 @@ try {
   await voir("Ouverts (1)");
   await page.goto(`${BASE}/marche/graphique`);
   await voir("Haut 24 h");
+  /* le graphique façon TradingView : un vrai tracé, une légende datée, des années d'historique */
+  await page.locator("[data-graphique-bourse] canvas").first().waitFor();
+  await page.locator("[data-legende]").getByText(/\d{4}/).first().waitFor();
   await page.waitForTimeout(500);
   await capturer("marche-graphique");
+  await page.getByRole("button", { name: "Montrer tout l'historique" }).click();
+  await page.locator('[aria-label="Intervalle 1 mois"][aria-pressed="true"]').waitFor();
+  const boite = await page.locator("[data-graphique-bourse] canvas").first().boundingBox();
+  await page.mouse.move(boite.x + boite.width * 0.15, boite.y + boite.height * 0.5);
+  await page.locator("[data-legende]").getByText("cours de référence BCE", { exact: false }).waitFor();
+  exiger(/20(1[6-9]|2[0-3])/.test(await page.locator("[data-legende]").innerText()), "« Tout » remonte des années en arrière, avant l'ouverture de Glisil");
+  await capturer("marche-graphique-historique");
+  await page.getByRole("button", { name: "Type de graphique : Bougies" }).click();
+  await page.getByRole("menuitem", { name: "Ligne" }).click();
+  await page.getByRole("button", { name: "Type de graphique : Ligne" }).waitFor();
+  await page.getByRole("button", { name: "Type de graphique : Ligne" }).click();
+  await page.getByRole("menuitem", { name: "Bougies" }).click();
+  await page.getByRole("tab", { name: "Profondeur" }).click();
+  await page.locator("[data-profondeur] svg").waitFor();
+  exiger((await page.locator("[data-profondeur]").innerText()).includes("Achats"), "la profondeur dit ce qu'il y a à l'achat et à la vente");
+  await capturer("marche-profondeur");
   await page.goto(`${BASE}/marche/carnet`);
   await voir("Carnet d'ordres");
   await voir("Achat (XAFe)");

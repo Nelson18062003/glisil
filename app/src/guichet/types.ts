@@ -218,6 +218,12 @@ export type Cotation = {
 };
 
 export type Chandelle = { t: string; o: number; h: number; l: number; c: number; v: number };
+/** Les intervalles du graphique : de la minute au mois (0025). */
+export type Intervalle = "1m" | "5m" | "15m" | "30m" | "1h" | "4h" | "1j" | "1s" | "1M";
+/** Une bougie datée : « marche » vient des échanges du carnet, « reference » du cours BCE d'avant le premier échange. */
+export type Bougie = Chandelle & { source: "marche" | "reference" };
+/** Une page de bougies, de la plus ancienne à la plus récente ; `plusAncien` : il en reste avant. */
+export type PageDeBougies = { bougies: Bougie[]; plusAncien: boolean; debutMarche: string | null };
 
 export type RetraitCrypto = {
   reference: string;
