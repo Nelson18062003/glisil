@@ -96,6 +96,7 @@ La bêta ne demande qu'un nom et un numéro. En production :
   plafonds ; palier 1 pièce d'identité + selfie ; palier 2 entreprise (RCCM).
 - Un **prestataire de vérification** (lecture de la pièce, comparaison du
   visage, listes de sanctions) branché sur `demander_verification`.
+- **Les plafonds des paliers** reviennent (Paramètres → « paliers » : en bêta ils sont vides, sans plafond — 0027) : ce sont eux qui disent ce qu'un compte non vérifié peut faire entrer et sortir par jour.
 - **Le code SMS et le délai sur un numéro neuf** reviennent (Paramètres →
   « numeros » : `verification_sms: true`, `delai_heures: 24`) : en bêta ils
   sont coupés, en production ils protègent un compte dont le téléphone a été

@@ -67,6 +67,8 @@ TEMOINS = {
     "0025_graphique.sql": ("false", "rejouable telle quelle"),
     # 0026 : réglages réécrits seulement s'ils sont encore ceux d'origine, compléments une seule fois.
     "0026_marche_profond.sql": ("false", "rejouable telle quelle"),
+    # 0027 : fonctions « or replace », réglages réécrits seulement s'ils sont encore ceux d'origine.
+    "0027_sans_plafond.sql": ("false", "rejouable telle quelle"),
 }
 
 

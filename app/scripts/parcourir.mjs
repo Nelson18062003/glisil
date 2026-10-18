@@ -178,9 +178,9 @@ try {
   /* le prix est un VRAI prix, pré-rempli (le meilleur en face), pas un exemple gris dans une case vide */
   const prixPose = await page.getByLabel("Prix (XAFe)").inputValue();
   exiger(/^\d{3},\d{2}$/.test(prixPose), `le prix est pré-rempli : « ${prixPose} »`);
-  /* le bouton gris dit pourquoi, la règle et sa borne : 1 USDT est sous le minimum */
+  /* le bouton gris dit pourquoi, la règle et sa borne : 1 USDT (≈ 600 XAFe) est sous le minimum de 1 500 XAFe */
   await page.getByLabel("Quantité (USDT)").fill("1");
-  await voir("Au moins 10 USDT");
+  await voir("Au moins 1 500 XAFe par ordre");
   exiger(await page.getByRole("button", { name: "Acheter USDT" }).isDisabled(), "sous le minimum, le bouton ne part pas");
   await capturer("marche-raison");
   /* le total d'abord : 61 840 XAFe au prix posé donnent la quantité, au centime inférieur */
@@ -706,21 +706,21 @@ try {
       beta: { actif: true, message: "Glisil est en bêta : tout l'argent ici est de l'argent de test.", dotation: { XAFe: 1000000, USDT: 2000 }, depots_reels: false } } };
   });
   await page.evaluate(() => sessionStorage.setItem("xafe-beta", "1"));
-  await page.goto(`${BASE}/`);
+  await allerA("/");
   await page.locator("[data-bandeau-beta]").waitFor();
   await voir("tout l'argent ici est de l'argent de test");
   await capturer("beta-accueil");
-  await page.goto(`${BASE}/entrer/operateur`);
+  await allerA("/entrer/operateur");
   await voir("Pas de vrai paiement pendant la bêta");
   await voir("1 000 000 XAFe");
   exiger(await page.getByRole("link", { name: "Essayer le marché" }).count() === 1, "la bêta renvoie vers le marché, pas vers un dépôt");
   await capturer("beta-entrer-ferme");
-  await page.goto(`${BASE}/sortir/montant`);
+  await allerA("/sortir/montant");
   await voir("Les sorties sont fermées pendant la bêta");
-  await page.goto(`${BASE}/crypto/retirer/XAFe/adresse`);
+  await allerA("/crypto/retirer/XAFe/adresse");
   await voir("Les retraits sont fermés pendant la bêta");
   // le testeur signale un problème depuis le bandeau : il part à l'équipe, une référence revient
-  await page.goto(`${BASE}/`);
+  await allerA("/");
   await page.locator("[data-bandeau-beta]").getByRole("link", { name: "Signaler un problème" }).click();
   await page.waitForURL(/\/compte\/aide\?depuis=/);
   exiger(await page.getByRole("button", { name: "Envoyer à l'équipe Glisil" }).isDisabled(), "un texte vide ne part pas");

@@ -512,8 +512,9 @@ export function MarcheRegles() {
         <Regle titre="Protection d'un ordre au marché" valeur={`± ${pc(MARCHE.bandeExecution)}`}
           aide="Un ordre au marché ne s'exécute jamais à plus de cet écart du prix de référence ; ce qu'il ne trouve pas dans cette bande est annulé, pas servi à n'importe quel prix." />
         <Regle titre="Pas de prix" valeur={`${String(MARCHE.pasPrix).replace(".", ",")} XAFe`} aide="Un prix se donne à ce pas près : 618,40 ou 618,45, pas 618,41." />
-        <Regle titre="Taille d'un ordre" valeur={`${MARCHE.quantiteMin.toLocaleString("fr-FR")} – ${MARCHE.quantiteMax.toLocaleString("fr-FR")} USDT`} aide="La quantité d'USDT d'un ordre, deux décimales au plus." />
-        <Regle titre="Ordre au marché, au plus" valeur={`${MARCHE.marcheQuantiteMax.toLocaleString("fr-FR")} USDT`} aide="Au-delà, posez un ordre limite : vous fixez le prix." />
+        <Regle titre="Montant minimum d'un ordre" valeur={`${MARCHE.montantMin.toLocaleString("fr-FR")} XAFe`} aide="Au prix de l'ordre (ou du marché pour un ordre au marché). La quantité se donne au centime d'USDT." />
+        <Regle titre="Montant maximum" valeur={Number.isFinite(MARCHE.quantiteMax) ? `${MARCHE.quantiteMax.toLocaleString("fr-FR")} USDT` : "aucun"} aide="Tradez autant que votre solde le permet." />
+        {Number.isFinite(MARCHE.marcheQuantiteMax) && <Regle titre="Ordre au marché, au plus" valeur={`${MARCHE.marcheQuantiteMax.toLocaleString("fr-FR")} USDT`} aide="Au-delà, posez un ordre limite : vous fixez le prix." />}
         <Regle titre="Ordres ouverts, au plus" valeur={String(MARCHE.ordresOuvertsMax)} aide="Par compte, en même temps." />
         <Regle titre="Frais" valeur={`${pourcent(FRAIS.placeur)} · ${pourcent(FRAIS.preneur)}`}
           aide="Le premier si votre ordre attendait au carnet (il y apporte un prix), le second s'il prend un ordre qui attendait. L'acheteur les paie en USDT, le vendeur en XAFe." />

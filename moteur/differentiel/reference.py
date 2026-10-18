@@ -109,9 +109,10 @@ class Moteur:
                 raise Refus("prix invalide")
         else:
             prix = None
-        if quantite > D(str(self.regle("quantite_max"))):
+        # vide : sans plafond (0027)
+        if self.regle("quantite_max") is not None and quantite > D(str(self.regle("quantite_max"))):
             raise Refus("quantité trop grande")
-        if type_ == "marche" and quantite > D(str(self.regle("marche_quantite_max"))):
+        if type_ == "marche" and self.regle("marche_quantite_max") is not None and quantite > D(str(self.regle("marche_quantite_max"))):
             raise Refus("ordre au marché trop grand")
         ref = self.reference()
         if type_ == "limite" and ref is not None:
@@ -124,6 +125,11 @@ class Moteur:
             ouverts = sum(1 for o in self.ordres.values() if o.compte == compte and o.etat in ("ouvert", "partiel"))
             if ouverts >= int(self.regle("ordres_ouverts_max")):
                 raise Refus("trop d'ordres ouverts")
+        # le minimum en XAFe (0027) : au prix de l'ordre, ou de la référence pour un ordre au marché
+        mmin = self.regle("montant_min")
+        if mmin is not None and (prix is not None or ref is not None):
+            if r2(quantite * (prix if prix is not None else ref)) < D(str(mmin)):
+                raise Refus("ordre trop petit")
 
         self.rang += 1
         o = Ordre(seq, compte, cote, type_, prix, quantite, self.rang, restant=quantite)

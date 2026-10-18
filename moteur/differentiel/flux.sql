@@ -20,7 +20,7 @@ create table _diff_flux (seq int primary key, compte int, action text, cote text
 
 -- un marché aux règles serrées, pour que chaque garde-fou serve souvent
 update parametres set valeur = '{"paire": "USDT/XAFe", "pas_prix": 0.05, "quantite_min": 10, "ouvert": true,
-  "quantite_max": 2000, "marche_quantite_max": 800, "ordres_ouverts_max": 6, "prix_reference": 600,
+  "quantite_max": 2000, "marche_quantite_max": 800, "ordres_ouverts_max": 6, "prix_reference": 600, "montant_min": 7000,
   "bande_achat": [0.8, 1.1], "bande_vente": [0.9, 1.2], "bande_execution": 0.05}' where cle = 'marche';
 update parametres set valeur = '{"placeur": 0.0005, "preneur": 0.0010, "sortie": 0.005}' where cle = 'frais';
 

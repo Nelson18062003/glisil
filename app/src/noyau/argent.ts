@@ -205,7 +205,10 @@ export function coutAuCarnet(enFace: { prix: number; quantite: number }[], quant
  */
 export const MARCHE: {
   paire: string; pasPrix: number; quantiteMin: number; ouvert: boolean;
+  /** sans plafond par défaut (0027) : Infinity */
   quantiteMax: number; marcheQuantiteMax: number; ordresOuvertsMax: number;
+  /** le seul minimum d'un ordre, en XAFe (0027) : au prix de l'ordre, ou de la référence au marché */
+  montantMin: number;
   bandeAchat: [number, number]; bandeVente: [number, number]; bandeExecution: number;
   /** le prix autour duquel la bande se calcule (moyenne des échanges récents, ou celle posée par l'équipe) */
   reference: number | null;
@@ -213,10 +216,11 @@ export const MARCHE: {
   paire: "USDT/XAFe",
   ouvert: true,
   pasPrix: 0.05,
-  quantiteMin: 10,
-  quantiteMax: 1_000_000,
-  marcheQuantiteMax: 100_000,
+  quantiteMin: 0.01,
+  quantiteMax: Infinity,
+  marcheQuantiteMax: Infinity,
   ordresOuvertsMax: 200,
+  montantMin: 1500,
   bandeAchat: [0.8, 1.1],
   bandeVente: [0.9, 1.2],
   bandeExecution: 0.05,
@@ -338,7 +342,7 @@ export function raisonDuRefus(o: {
   if (!(o.quantite > 0)) return null;
   if (o.type === "limite" && !(o.prix > 0)) return "Fixez votre prix.";
   if (!quantiteValide(o.quantite)) {
-    return `Au moins ${MARCHE.quantiteMin} USDT par ordre${o.prix > 0 ? ` (≈ ${Math.ceil(MARCHE.quantiteMin * o.prix).toLocaleString("fr-FR")} XAFe)` : ""}, deux décimales au plus.`;
+    return `Au moins ${String(MARCHE.quantiteMin).replace(".", ",")} USDT par ordre${o.prix > 0 && MARCHE.quantiteMin >= 1 ? ` (≈ ${Math.ceil(MARCHE.quantiteMin * o.prix).toLocaleString("fr-FR")} XAFe)` : ""}, deux décimales au plus.`;
   }
   if (o.type === "limite" && !prixValide(o.prix)) return `Le prix va de ${String(MARCHE.pasPrix).replace(".", ",")} en ${String(MARCHE.pasPrix).replace(".", ",")} XAFe.`;
   if (o.quantite > MARCHE.quantiteMax) return `Au plus ${MARCHE.quantiteMax.toLocaleString("fr-FR")} USDT par ordre.`;
@@ -350,6 +354,11 @@ export function raisonDuRefus(o: {
     return `${o.cote === "achat" ? "Un achat" : "Une vente"} se place entre ${bande.min.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} et ${bande.max.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} XAFe (prix de référence ${o.reference!.toLocaleString("fr-FR", { minimumFractionDigits: 2 })}).`;
   }
   if (o.type === "limite" && o.ouverts >= MARCHE.ordresOuvertsMax) return `Vous avez déjà ${o.ouverts} ordres ouverts, le maximum : annulez-en un.`;
+  // le minimum en XAFe, compté comme le moteur : au prix de l'ordre, ou de la référence au marché
+  const prixCompte = o.type === "limite" ? o.prix : o.reference ?? 0;
+  if (prixCompte > 0 && arrondi2(o.quantite * prixCompte) < MARCHE.montantMin) {
+    return `Au moins ${MARCHE.montantMin.toLocaleString("fr-FR")} XAFe par ordre (≈ ${(Math.ceil((MARCHE.montantMin / prixCompte) * 100) / 100).toLocaleString("fr-FR")} USDT à ce prix).`;
+  }
   if (o.type === "limite" && o.cote === "achat" && arrondi2(o.prix * o.quantite) > o.dispoXafe) {
     return `Il faut ${Math.ceil(arrondi2(o.prix * o.quantite)).toLocaleString("fr-FR")} XAFe ; vous en avez ${Math.floor(o.dispoXafe).toLocaleString("fr-FR")}.`;
   }
@@ -438,8 +447,10 @@ export function appliquerParametres(p: unknown): boolean {
     if (typeof r.beta.depots_reels === "boolean") BETA.depotsReels = r.beta.depots_reels;
   }
   if (typeof r.marche?.ouvert === "boolean") MARCHE.ouvert = r.marche.ouvert;
-  poser(MARCHE, "quantiteMax", nombre(r.marche?.quantite_max, 0.01, 1e9));
-  poser(MARCHE, "marcheQuantiteMax", nombre(r.marche?.marche_quantite_max, 0.01, 1e9));
+  // un plafond vide (null) : il n'y en a pas (0027)
+  if (r.marche && "quantite_max" in r.marche) MARCHE.quantiteMax = r.marche.quantite_max === null ? Infinity : nombre(r.marche.quantite_max, 0.01, 1e12) ?? MARCHE.quantiteMax;
+  if (r.marche && "marche_quantite_max" in r.marche) MARCHE.marcheQuantiteMax = r.marche.marche_quantite_max === null ? Infinity : nombre(r.marche.marche_quantite_max, 0.01, 1e12) ?? MARCHE.marcheQuantiteMax;
+  poser(MARCHE, "montantMin", nombre(r.marche?.montant_min, 0, 1e9));
   poser(MARCHE, "ordresOuvertsMax", nombre(r.marche?.ordres_ouverts_max, 1, 10000));
   poser(MARCHE, "bandeExecution", nombre(r.marche?.bande_execution, 0.001, 0.5));
   for (const [cle, champ] of [["bande_achat", "bandeAchat"], ["bande_vente", "bandeVente"]] as const) {

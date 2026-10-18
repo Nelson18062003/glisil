@@ -2665,6 +2665,48 @@ begin
 end $$;
 rollback;
 
+-- 11.48 · sans plafond (0027). La plateforme ne borne pas le capital : pas
+-- de taille maximale, ni au marché, ni de plafond de palier. Un seul minimum,
+-- en XAFe : 1 500 par ordre, compté au prix de l'ordre (ou de la référence au
+-- marché). Le reste — la bande, les ordres ouverts — tient toujours.
+begin;
+update parametres set valeur = (valeur - 'quantite_max' - 'marche_quantite_max') || '{"quantite_min": 0.01, "montant_min": 1500}' where cle = 'marche';
+update parametres set valeur = '{"0": null, "1": null, "2": null}' where cle = 'paliers';
+do $$
+declare c uuid := 'b1480000-0000-0000-0000-000000000001'; v_px numeric; q numeric; r jsonb;
+begin
+  insert into comptes (id, telephone, nom, palier) values (c, '670148001', 'Gros trader', 0);
+  perform _mouvement(c, 'XAFe', 3000000000, 0, 'essai', 'essai', '11.48');
+  perform _mouvement(c, 'USDT', 3000000, 0, 'essai', 'essai', '11.48');
+  v_px := round(coalesce(_prix_reference(), 600) / 0.05) * 0.05;
+  assert _marche() -> 'quantite_max' = 'null'::jsonb and _marche() -> 'marche_quantite_max' = 'null'::jsonb, _marche();
+
+  -- en dessous de 1 500 XAFe : refusé, avec la règle
+  begin perform _placer_ordre(c, 'achat', 'limite', 2, v_px * 0.9 - mod(v_px * 0.9, 0.05), null, null); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'ordre trop petit', sqlerrm; end;
+  -- à 1 500 XAFe (et au centime d'USDT) : accepté
+  q := ceil(1500 / (v_px * 0.9 - mod(v_px * 0.9, 0.05)) * 100) / 100;
+  r := _placer_ordre(c, 'achat', 'limite', q, v_px * 0.9 - mod(v_px * 0.9, 0.05), null, null);
+  assert r -> 'ordre' ->> 'etat' in ('ouvert', 'execute', 'partiel'), r;
+
+  -- deux millions d'USDT d'un coup, au bas de la bande : pas de plafond
+  r := _placer_ordre(c, 'achat', 'limite', 2000000, ceil(_prix_reference() * 0.8 / 0.05) * 0.05, null, null);
+  assert (r -> 'ordre' ->> 'quantite')::numeric = 2000000, r;
+  -- au marché, cinq cent mille USDT : pas de plafond non plus (ce que le carnet ne sert pas est annulé)
+  r := _placer_ordre(c, 'vente', 'marche', 500000, null, null, null);
+  assert r ? 'ordre', r;
+
+  -- les paliers : plus de plafond par jour
+  perform set_config('xafe.compte', c::text, true);
+  assert parametres_publics() -> 'paliers' = '{"0": null, "1": null, "2": null}'::jsonb, parametres_publics() -> 'paliers';
+  -- un réglage sans plafond s'écrit ; un minimum négatif, non
+  perform _verifier_parametre('marche', parametre('marche'));
+  begin perform _verifier_parametre('marche', parametre('marche') || '{"montant_min": -5}'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
+  raise notice '✓ 11.48 sans plafond : deux millions d''USDT d''un ordre, cinq cent mille au marché, aucun plafond de palier ; un seul minimum, 1 500 XAFe par ordre, au centime d''USDT';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';
