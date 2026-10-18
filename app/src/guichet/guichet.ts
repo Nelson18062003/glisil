@@ -86,6 +86,8 @@ export interface Guichet {
   renvoyerCodeNumero(id: string): Promise<Numero>;
   /** Les frais, pas et plafonds posés par l'équipe (parametres_publics) ; null s'ils ne se lisent pas. */
   parametres(): Promise<unknown>;
+  /** La bêta : dire un problème à l'équipe, depuis l'écran où il est arrivé (0024). Vingt par jour au plus. */
+  signalerUnProbleme(p: { texte: string; ecran?: string | null }): Promise<{ reference: string }>;
   /** La preuve de réserve : floats, registre, chaîne — publique, elle se lit SANS compte. */
   preuveDeReserve(): Promise<PreuveDeReserve>;
   retirerNumero(p: { id: string; codeSecret: string }): Promise<void>;

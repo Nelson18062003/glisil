@@ -700,6 +700,15 @@ try {
   await voir("Les sorties sont fermées pendant la bêta");
   await page.goto(`${BASE}/crypto/retirer/XAFe/adresse`);
   await voir("Les retraits sont fermés pendant la bêta");
+  // le testeur signale un problème depuis le bandeau : il part à l'équipe, une référence revient
+  await page.goto(`${BASE}/`);
+  await page.locator("[data-bandeau-beta]").getByRole("link", { name: "Signaler un problème" }).click();
+  await page.waitForURL(/\/compte\/aide\?depuis=/);
+  exiger(await page.getByRole("button", { name: "Envoyer à l'équipe Glisil" }).isDisabled(), "un texte vide ne part pas");
+  await page.getByLabel("Ce qui s'est passé").fill("Le graphique du marché ne bouge pas sur mon téléphone");
+  await page.getByRole("button", { name: "Envoyer à l'équipe Glisil" }).click();
+  await page.locator("[data-signalement-recu]").getByText("SIG-000001").waitFor();
+  await capturer("beta-signaler");
   await page.evaluate(() => { sessionStorage.removeItem("xafe-beta"); globalThis.__xafeEpreuve = {}; });
 
   exiger(erreurs.length === 0, `des erreurs ont été vues dans le navigateur :\n  ${erreurs.join("\n  ")}`);

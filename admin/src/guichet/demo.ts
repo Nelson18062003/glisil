@@ -7,7 +7,7 @@
 import { DROITS } from "../noyau/droits";
 import { ErreurMoteur } from "./supabase";
 import type { GuichetAdmin } from "./guichet";
-import type { LigneParite, Parite, ReseauRegistre } from "./types";
+import type { Beta, LigneParite, Parite, ReseauRegistre, ReleveCours, Signalement } from "./types";
 import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Transfert, Wallets } from "./types";
 import { verifierPreuve } from "./preuve";
 
@@ -572,8 +572,9 @@ export class GuichetDemo implements GuichetAdmin {
   async parametres() { this.exiger("voir"); return copie(this.e.parametres); }
   async modifierParametre(cle: string, valeur: unknown) {
     this.exiger("parametres");
-    if (!["frais", "marche", "depot", "sortie", "paliers", "crypto", "code_secret", "rapide"].includes(cle)) throw new ErreurMoteur("paramètre inconnu");
+    if (!["frais", "marche", "depot", "sortie", "paliers", "crypto", "code_secret", "rapide", "conditions", "support", "numeros", "beta", "cours", "robots"].includes(cle)) throw new ErreurMoteur("paramètre inconnu");
     this.e.parametres[cle] = valeur;
+    if (cle === "robots") this.robotsActifs = Boolean((valeur as { actif?: boolean } | null)?.actif);
     this.noter("modifier_parametre", cle, valeur); this.emettre();
   }
   async journal() { this.exiger("voir"); return copie(this.e.journal); }
@@ -667,5 +668,69 @@ export class GuichetDemo implements GuichetAdmin {
   }
   async lienReleve(chemin: string) { return this.lienPreuve(chemin); }
 
+  /* ─── la bêta : un marché animé par quinze robots, autour du vrai dollar ─── */
+  private robotsActifs = true;
+  private eurUsd = 1.1253;
+  private signalementsDemo: Signalement[] = [
+    { id: 3, reference: "SIG-000003", compte_id: "c3", nom: "Aïcha Njoya", texte: "Après avoir acheté 200 USDT, mon solde a mis quelques secondes à se mettre à jour.", ecran: "/marche", appareil: "Android 14 · Chrome 130", etat: "nouveau", note: null, traite_le: null, cree_le: iso(maintenant() - 40 * 60_000) },
+    { id: 2, reference: "SIG-000002", compte_id: "c2", nom: "Jean Kamdem", texte: "Je ne trouve pas où voir mes ordres annulés.", ecran: "/marche/ordres", appareil: "iPhone · Safari 18", etat: "vu", note: "à ajouter : filtre « annulés »", traite_le: iso(maintenant() - 2 * H), cree_le: iso(maintenant() - 5 * H) },
+    { id: 1, reference: "SIG-000001", compte_id: "c9", nom: "Grace Fotso", texte: "Le bandeau bêta cache le bouton Retour sur mon petit écran.", ecran: "/", appareil: "Android 12 · Chrome 128", etat: "regle", note: "corrigé le 17", traite_le: iso(maintenant() - 20 * H), cree_le: iso(maintenant() - 26 * H) },
+  ];
+  async beta(): Promise<Beta> {
+    this.exiger("voir");
+    const t = maintenant();
+    const usdXaf = Math.round((655.957 / this.eurUsd) * 10_000) / 10_000;
+    const prixRef = Math.round(usdXaf / 0.05) * 0.05;
+    const releves: ReleveCours[] = Array.from({ length: 24 }, (_, i) => ({
+      id: 100 - i, source: "frankfurter", date_source: new Date(t - i * H).toISOString().slice(0, 10), eur_usd: this.eurUsd, usd_xaf: usdXaf,
+      prix: prixRef, pose: i !== 7, erreur: i === 7 ? "frankfurter : HTTP 503 ; er-api : HTTP 200" : null, releve_le: iso(t - i * H - 17 * 60_000),
+    }));
+    const robots = [
+      { id: "r0", nom: "Robot · teneur de marché", role: "teneur" as const, biais: 0, actions: 18_412, refus: 3, derniere_erreur: "prix hors de la bande — une vente : entre 590,15 et 786,85 XAFe (référence 655,70)", maj_le: iso(t - 12_000), xafe: 11_640_210, usdt: 20_612.4, ordres_ouverts: this.robotsActifs ? 10 : 0 },
+      ...Array.from({ length: 14 }, (_, i) => ({
+        id: `r${i + 1}`, nom: `Robot · trader ${String(i + 1).padStart(2, "0")}`, role: "trader" as const, biais: Math.round(Math.sin(i * 1.7) * 2_000) / 10_000,
+        actions: 300 + i * 37, refus: i % 4, derniere_erreur: i % 4 ? "solde insuffisant — XAFe : -1250.00 disponible, 0 bloqué" : null, maj_le: iso(t - (i + 1) * 45_000),
+        xafe: 400_000 + Math.round(Math.cos(i) * 60_000), usdt: Math.round((700 + Math.sin(i) * 120) * 100) / 100, ordres_ouverts: this.robotsActifs ? i % 3 : 0,
+      })),
+    ];
+    return copie({
+      beta: { actif: true, message: "Glisil est en bêta : tout l'argent ici est de l'argent de test, sans valeur réelle. Les dépôts et les retraits réels sont fermés. Le marché est animé par des robots de test.", dotation: { XAFe: 1_000_000, USDT: 2_000 }, depots_reels: false },
+      testeurs: { total: this.e.clients.length, nouveaux_24h: 3, nouveaux_7j: 9, ont_echange: 7, actifs_24h: 5 },
+      argent_de_test: { xafe_testeurs: this.e.clients.length * 1_000_000, usdt_testeurs: this.e.clients.length * 2_000, xafe_robots: 17_600_000, usdt_robots: 29_800, dotations: this.e.clients.length + 15 },
+      robots: {
+        parametre: { ...((this.e.parametres.robots as object | undefined) ?? {}), actif: this.robotsActifs },
+        etat: { derive: -0.0011, tours: 2_876, dernier_tour: iso(t - 12_000), dernier_choc: iso(t - 6 * H),
+                bilan: this.robotsActifs ? { actif: true, ancre: prixRef, milieu: Math.round(prixRef * 0.9989 * 100) / 100, poses: 2, annules: 1, refus: 0, echanges: 1 } : { actif: false, annules: 34 } },
+        cours: { usd_xaf: usdXaf, eur_usd: this.eurUsd, prime: 0, prix: prixRef, source: "frankfurter", date_source: releves[0].date_source, releve_le: releves[0].releve_le },
+        reference: Math.round(prixRef * 0.9991 / 0.05) * 0.05,
+        robots,
+        echanges_24h: { total: 1_284, robot_robot: 1_201, avec_un_testeur: 83, volume_usdt: 163_420 },
+      },
+      cours: { parametre: { actif: true, prime: 0, saut_max: 0.05 }, reference: Math.round(prixRef * 0.9991 / 0.05) * 0.05, prix_reference: prixRef,
+               dernier: { usd_xaf: usdXaf, eur_usd: this.eurUsd, prime: 0, prix: prixRef, source: "frankfurter", date_source: releves[0].date_source, releve_le: releves[0].releve_le }, releves },
+      signalements: { nouveaux: this.signalementsDemo.filter((x) => x.etat === "nouveau").length, vus: this.signalementsDemo.filter((x) => x.etat === "vu").length, regles: this.signalementsDemo.filter((x) => x.etat === "regle").length },
+      derniers_signalements: this.e.profil?.droits.includes("clients") ? this.signalementsDemo : [],
+    });
+  }
+  async signalements(etat?: Signalement["etat"] | null) {
+    this.exiger("clients");
+    return copie(this.signalementsDemo.filter((x) => !etat || x.etat === etat));
+  }
+  async traiterSignalement(id: number, etat: Signalement["etat"], note?: string) {
+    this.exiger("clients");
+    const x = this.signalementsDemo.find((y) => y.id === id);
+    if (!x) throw new ErreurMoteur("signalement inconnu");
+    x.etat = etat; x.note = note?.trim() || x.note; x.traite_le = iso(maintenant());
+    this.noter("traiter_signalement", x.reference, { etat, note: x.note }); this.emettre();
+  }
+  async releverLeCours() { this.exiger("parametres"); this.noter("relever_le_cours", "cours", { pose: true }); this.emettre(); return { pose: true }; }
+  async poserLeCours(eurUsd: number) {
+    this.exiger("parametres");
+    if (!(eurUsd >= 0.5 && eurUsd <= 2.5)) throw new ErreurMoteur("cours invalide", "EUR/USD entre 0,5 et 2,5");
+    this.eurUsd = eurUsd;
+    const prix = Math.round(655.957 / eurUsd / 0.05) * 0.05;
+    this.noter("poser_le_cours", "cours", { eur_usd: eurUsd, prix }); this.emettre();
+    return { prix };
+  }
   surChangement(cb: () => void) { this.auditeurs.add(cb); return () => { this.auditeurs.delete(cb); }; }
 }

@@ -722,6 +722,14 @@ export class GuichetDemo implements Guichet {
 
   /** la démonstration garde les valeurs de la migration, écrites dans noyau/argent.ts */
   /* la démonstration a tout ouvert ; une épreuve peut poser les paramètres que l'équipe poserait (« seulement les dépôts ») */
+  private signalements = 0;
+  async signalerUnProbleme({ texte }: { texte: string; ecran?: string | null }) {
+    this.dossier();
+    const t = texte.trim();
+    if (t.length < 3 || t.length > 2000) throw new ErreurMoteur("texte invalide");
+    if (this.signalements >= 20) throw new ErreurMoteur("trop de signalements");
+    return { reference: `SIG-${String(++this.signalements).padStart(6, "0")}` };
+  }
   async parametres() { return (globalThis as { __xafeEpreuve?: { parametres?: unknown } }).__xafeEpreuve?.parametres ?? null; }
 
   /** La preuve de la démonstration : une maison en ordre, la frappe la plus récente encore en route. */

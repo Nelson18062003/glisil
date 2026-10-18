@@ -153,6 +153,23 @@ const DICTIONNAIRE: Record<string, Omit<ErreurLisible, "recommencer"> & { recomm
     argent: "Aucun ordre n'a été placé ; les autres attendent toujours.",
     suite: "Annulez un ordre dans « Ordres ouverts », puis recommencez.",
   },
+  "trop de signalements": {
+    titre: "Vous avez déjà beaucoup signalé aujourd'hui",
+    argent: "Rien n'a bougé sur votre compte.",
+    suite: "Vingt signalements par jour au plus : pour la suite, écrivez au support par WhatsApp ou par e-mail, juste en dessous.",
+    recommencer: false,
+  },
+  "texte invalide": {
+    titre: "Dites-nous un peu plus",
+    argent: "Rien n'a bougé sur votre compte.",
+    suite: "Décrivez le problème en quelques mots (2 000 caractères au plus), puis renvoyez.",
+  },
+  "dépôts fermés pendant la bêta": {
+    titre: "Les dépôts réels sont fermés pendant la bêta",
+    argent: "Aucun dépôt n'a été ouvert : ne payez rien.",
+    suite: "L'argent de la bêta est de l'argent de test. Les vrais dépôts ouvriront avec la version définitive.",
+    recommencer: false,
+  },
   "marché fermé": {
     titre: "Le marché est fermé pour le moment",
     argent: "Aucun ordre n'a été placé.",

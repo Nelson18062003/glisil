@@ -187,6 +187,32 @@ try {
   await page.getByLabel("marché ouvert").click();
   await voir("Marché ouvert");
 
+  etape("Bêta : les testeurs, l'argent de test, les robots, le vrai dollar, les signalements");
+  await page.goto(`${BASE}/beta`);
+  await voir("Les robots du marché");
+  await voir("Robot · teneur de marché");
+  await voir("Robot · trader 14");
+  await voir("Le vrai dollar");
+  exiger(await page.locator('[data-tuile="1 USD"]').count() === 1, "le vrai dollar est dit");
+  await voir("Le bandeau bêta cache le bouton Retour");
+  await capturer("beta");
+  await page.getByLabel("robots en marche").click();
+  await voir("Robots arrêtés");
+  await page.getByLabel("robots en marche").click();
+  await voir("Robots en marche");
+  // traiter un signalement : il passe « réglé », la note reste
+  await page.getByRole("row", { name: /Après avoir acheté 200 USDT/ }).getByRole("button", { name: "Traiter" }).click();
+  await page.getByLabel("Note de l'équipe").fill("le solde se relit maintenant tout de suite");
+  await page.getByRole("button", { name: "Réglé" }).click();
+  await voir("Note : le solde se relit maintenant tout de suite");
+  await page.getByRole("row", { name: /Après avoir acheté 200 USDT/ }).getByText("réglé", { exact: true }).waitFor();
+  // un cours posé à la main devient la référence
+  await page.getByRole("button", { name: "Poser un cours" }).click();
+  await page.getByRole("textbox", { name: "EUR/USD" }).fill("1,10");
+  await voir("1 USD = 596");
+  await page.getByRole("button", { name: "Poser", exact: true }).click();
+  await page.locator('[data-tuile="Prix de référence posé"]').getByText("596,30").waitFor();
+
   etape("Équipe : inviter une personne, l'invitation attend son premier code, on la retire");
   await page.goto(`${BASE}/equipe`);
   await voir("Invitations en attente");
@@ -316,6 +342,10 @@ try {
   await page.goto(`${BASE}/parite`);
   await voir("1 · Les floats");
   exiger((await page.getByRole("button", { name: "Saisir un relevé" }).count()) === 0, "le support ne saisit pas de relevé");
+  await page.goto(`${BASE}/beta`);
+  await voir("Ce que les testeurs signalent");
+  exiger((await page.getByLabel("robots en marche").count()) === 0, "le support n'arrête pas les robots");
+  exiger((await page.getByRole("button", { name: "Poser un cours" }).count()) === 0, "le support ne pose pas de cours");
 
   exiger(erreurs.length === 0, `des erreurs ont été vues dans le navigateur :\n  ${erreurs.join("\n  ")}`);
   console.log(`✓ l'administration tient (${n} captures dans admin/captures/)`);

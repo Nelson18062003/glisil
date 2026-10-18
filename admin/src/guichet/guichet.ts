@@ -1,5 +1,5 @@
 import type { Parite } from "./types";
-import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets, ReseauRegistre } from "./types";
+import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets, ReseauRegistre, Beta, Signalement } from "./types";
 
 /** LE GUICHET DE L'ADMINISTRATION : tout ce que les écrans demandent au moteur. */
 export interface GuichetAdmin {
@@ -82,6 +82,16 @@ export interface GuichetAdmin {
   /** Déposer le relevé d'un opérateur : image ou PDF, 10 Mo au plus ; rend son chemin. */
   deposerReleve(floatId: number, fichier: File): Promise<string>;
   lienReleve(chemin: string): Promise<string>;
+
+  /** La bêta (0021–0024) : testeurs, argent de test, robots, vrai dollar, signalements. */
+  beta(): Promise<Beta>;
+  signalements(etat?: Signalement["etat"] | null): Promise<Signalement[]>;
+  /** Marquer un signalement vu ou réglé (droit « clients ») ; la note reste avec lui. */
+  traiterSignalement(id: number, etat: Signalement["etat"], note?: string): Promise<void>;
+  /** Relever le vrai dollar tout de suite (il se relève seul toutes les heures). */
+  releverLeCours(): Promise<{ pose: boolean; erreur?: string | null }>;
+  /** Poser à la main un cours EUR/USD vérifié : confirme un saut que le relevé a refusé. */
+  poserLeCours(eurUsd: number): Promise<{ prix: number }>;
 
   surChangement(cb: () => void): () => void;
 }

@@ -279,6 +279,11 @@ export class GuichetSupabase implements Guichet {
     const { data, error } = await this.sb.rpc("parametres_publics");
     return error ? null : data;
   }
+  async signalerUnProbleme({ texte, ecran }: { texte: string; ecran?: string | null }) {
+    // l'appareil aide l'équipe à reproduire (« Android 14 · Chrome ») ; rien d'autre ne part
+    const appareil = typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 300) : null;
+    return this.rpc<{ reference: string }>("signaler_un_probleme", { p_texte: texte, p_ecran: ecran ?? null, p_appareil: appareil });
+  }
   async preuveDeReserve() {
     const p = await this.rpc<PreuveDeReserve>("preuve_de_reserve");
     return { ...p, alertes: Number(p.alertes ?? 0), releve: p.releve ? { ...p.releve, floats_detail: p.releve.floats_detail ?? null } : null };

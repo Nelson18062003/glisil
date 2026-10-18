@@ -51,7 +51,8 @@ export function Accueil() {
           sx={{ p: 1.5, borderRadius: 4, bgcolor: tones.amber.bg, color: tones.amber.fg }}>
           <ScienceOutlined fontSize="small" sx={{ mt: 0.25 }} />
           <Typography variant="body2" sx={{ color: "inherit" }}>
-            <b>Bêta</b> · {BETA.message || "Tout l'argent ici est de l'argent de test, sans valeur réelle."}
+            <b>Bêta</b> · {BETA.message || "Tout l'argent ici est de l'argent de test, sans valeur réelle."}{" "}
+            <Box component={Link} to="/compte/aide?depuis=%2F" sx={{ color: "inherit", fontWeight: 600 }}>Signaler un problème</Box>
           </Typography>
         </Stack>
       )}

@@ -61,6 +61,8 @@ TEMOINS = {
     "0022_cours_reel.sql": ("false", "rejouable telle quelle"),
     # 0023 : comptes et robots « on conflict do nothing », dotation une seule fois (au premier tour), tâches retirées puis reposées.
     "0023_robots.sql": ("false", "rejouable telle quelle"),
+    # 0024 : table « if not exists », fonctions « or replace ».
+    "0024_observer_la_beta.sql": ("false", "rejouable telle quelle"),
 }
 
 

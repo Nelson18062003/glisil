@@ -5,7 +5,7 @@
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { GuichetAdmin } from "./guichet";
-import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets, ReseauRegistre } from "./types";
+import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets, ReseauRegistre, Beta, Signalement } from "./types";
 import type { Parite } from "./types";
 import { verifierPreuve } from "./preuve";
 
@@ -124,6 +124,12 @@ export class GuichetSupabase implements GuichetAdmin {
     if (error || !data) throw new ErreurMoteur("relevé introuvable", error?.message);
     return data.signedUrl;
   }
+
+  beta() { return this.rpc<Beta>("admin_beta"); }
+  signalements(etat?: Signalement["etat"] | null) { return this.rpc<Signalement[]>("admin_signalements", { p_etat: etat ?? null, p_limite: 200 }); }
+  async traiterSignalement(id: number, etat: Signalement["etat"], note?: string) { await this.rpc("admin_traiter_signalement", { p_id: id, p_etat: etat, p_note: note ?? null }); }
+  releverLeCours() { return this.rpc<{ pose: boolean; erreur?: string | null }>("admin_relever_le_cours"); }
+  poserLeCours(eurUsd: number) { return this.rpc<{ prix: number }>("admin_poser_le_cours", { p_eur_usd: eurUsd }); }
 
   surChangement(cb: () => void) { this.auditeurs.add(cb); return () => { this.auditeurs.delete(cb); }; }
 }

@@ -2534,6 +2534,54 @@ begin
 end $$;
 rollback;
 
+-- 11.45 · observer la bêta (0024). Le testeur signale un problème depuis son
+-- écran ; un texte vide, trop long ou trop fréquent est refusé ; un écran qui
+-- n'est pas un chemin est oublié. L'équipe lit, marque vu ou réglé, et la page
+-- Bêta compte les testeurs, l'argent de test, les robots et les signalements.
+begin;
+do $$
+declare r jsonb; c uuid := 'b1450000-0000-0000-0000-000000000001'; i int;
+begin
+  insert into comptes (id, telephone, nom, palier) values (c, '670145001', 'Testeuse', 1);
+  perform set_config('xafe.compte', c::text, true);
+  r := signaler_un_probleme('Le bouton Acheter ne répond pas', '/marche?paire=USDT', 'Android 14 · Chrome 130');
+  assert (r ->> 'ok')::boolean and r ->> 'reference' like 'SIG-%', r;
+  r := signaler_un_probleme('  Rien ne s''affiche  ', 'javascript:alert(1)', null);
+  assert (select ecran from signalements where compte_id = c order by id desc limit 1) is null, 'un écran qui n''est pas un chemin est oublié';
+  assert (select texte from signalements where compte_id = c order by id desc limit 1) = 'Rien ne s''affiche', 'le texte est rogné';
+  begin perform signaler_un_probleme('  ', null, null); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'texte invalide', sqlerrm; end;
+  begin perform signaler_un_probleme(repeat('x', 2001), null, null); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'texte invalide', sqlerrm; end;
+  for i in 3 .. 20 loop perform signaler_un_probleme('encore ' || i, null, null); end loop;
+  begin perform signaler_un_probleme('le vingt et unième', null, null); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'trop de signalements', sqlerrm; end;
+  -- un client ne lit pas les signalements
+  begin perform admin_signalements(); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'accès non autorisé', sqlerrm; end;
+  begin perform admin_beta(); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'accès non autorisé', sqlerrm; end;
+
+  -- le support lit et traite, journalisé
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000003', true);
+  r := admin_signalements('nouveau');
+  assert jsonb_array_length(r) = 20 and r -> 19 ->> 'ecran' = '/marche?paire=USDT' and r -> 19 ->> 'nom' = 'Testeuse', r -> 19;
+  r := admin_traiter_signalement((select min(id) from signalements where compte_id = c), 'regle', 'corrigé dans la version du 18');
+  assert r ->> 'etat' = 'regle' and exists (select 1 from journal_admin where action = 'traiter_signalement'), r;
+  begin perform admin_traiter_signalement(1, 'perdu'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'état invalide', sqlerrm; end;
+
+  -- la page Bêta
+  r := admin_beta();
+  assert (r -> 'testeurs' ->> 'total')::int = (select count(*) from comptes where not maison and genre = 'client' and ferme_le is null), r -> 'testeurs';
+  assert (r -> 'testeurs' ->> 'nouveaux_24h')::int >= 1, r -> 'testeurs';
+  assert (r -> 'signalements' ->> 'nouveaux')::int = 19 and (r -> 'signalements' ->> 'regles')::int = 1, r -> 'signalements';
+  assert jsonb_array_length(r -> 'robots' -> 'robots') = 15 and r ? 'cours' and r -> 'argent_de_test' ? 'xafe_robots', r;
+  assert jsonb_array_length(r -> 'derniers_signalements') = 20, 'le support voit les derniers signalements';
+  raise notice '✓ 11.45 observer la bêta : le testeur signale depuis son écran (texte rogné, écran douteux oublié, vingt par jour) ; l''équipe lit et traite, journalisé ; la page Bêta compte testeurs, argent de test, robots et signalements';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';
