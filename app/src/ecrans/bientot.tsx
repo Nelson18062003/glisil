@@ -8,9 +8,20 @@
 import ScheduleRounded from "@mui/icons-material/ScheduleRounded";
 import { Outlet } from "react-router-dom";
 import { useOuvertures } from "../guichet";
+import { BETA } from "../noyau/argent";
+import { xaf } from "../noyau/format";
 import { EtatVide, Screen } from "../ui";
 
-export type Porte = "sorties" | "marche" | "rapide" | "crypto" | "cryptoDepots" | "cryptoRetraits";
+export type Porte = "sorties" | "marche" | "rapide" | "crypto" | "cryptoDepots" | "cryptoRetraits" | "entrees";
+
+/* Pendant la bêta, une porte fermée ne « arrive » pas bientôt : elle est fermée parce que l'argent est de test. */
+const PENDANT_LA_BETA: Partial<Record<Porte, () => { titre: string; texte: string }>> = {
+  sorties: () => ({ titre: "Les sorties sont fermées pendant la bêta", texte: "L'argent de la bêta est de l'argent de test : il ne peut pas sortir de Glisil vers Mobile Money. Servez-vous-en pour essayer le marché." }),
+  cryptoRetraits: () => ({ titre: "Les retraits sont fermés pendant la bêta", texte: "L'argent de la bêta est de l'argent de test : il ne peut pas partir vers un wallet externe. Servez-vous-en pour essayer le marché." }),
+  entrees: () => ({ titre: "Pas de vrai paiement pendant la bêta", texte: BETA.dotation.XAFe > 0
+    ? `Tout l'argent ici est de l'argent de test : vous avez reçu ${xaf(BETA.dotation.XAFe)} XAFe${BETA.dotation.USDT > 0 ? ` et ${xaf(BETA.dotation.USDT)} USDT` : ""} à votre inscription. Aucun paiement Mobile Money n'est accepté pour l'instant.`
+    : "Tout l'argent ici est de l'argent de test. Aucun paiement Mobile Money n'est accepté pour l'instant." }),
+};
 
 const TEXTES: Record<Porte, { ecran: string; titre: string; texte: string; retour: string }> = {
   sorties: {
@@ -43,14 +54,22 @@ const TEXTES: Record<Porte, { ecran: string; titre: string; texte: string; retou
     titre: "Les retraits crypto arrivent bientôt",
     texte: "L'envoi vers un wallet externe n'est pas encore ouvert. Vos avoirs restent disponibles sur votre compte.",
   },
+  entrees: {
+    ecran: "Entrer des XAF", retour: "/",
+    titre: "Les dépôts arrivent bientôt",
+    texte: "Ajouter des XAFe par Mobile Money sera possible très prochainement.",
+  },
 };
 
 export function PasEncoreOuvert({ porte }: { porte: Porte }) {
-  const t = TEXTES[porte];
+  const beta = BETA.actif ? PENDANT_LA_BETA[porte]?.() : undefined;
+  const t = { ...TEXTES[porte], ...beta };
+  /* pendant la bêta, ou quand ce sont les dépôts qui sont fermés, on ne renvoie pas vers un dépôt */
+  const action = BETA.actif || porte === "entrees" ? { label: "Essayer le marché", to: "/marche" } : { label: "Ajouter des XAFe", to: "/entrer/operateur" };
   return (
     <Screen title={t.ecran} back={t.retour}>
       <EtatVide icone={<ScheduleRounded sx={{ fontSize: 36 }} />} tone="amber" titre={t.titre} texte={t.texte}
-        action={{ label: "Ajouter des XAFe", to: "/entrer/operateur" }} secondaire={{ label: "Retour à l'accueil", to: "/" }} />
+        action={action} secondaire={{ label: "Retour à l'accueil", to: "/" }} />
     </Screen>
   );
 }

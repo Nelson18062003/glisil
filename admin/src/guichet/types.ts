@@ -176,3 +176,36 @@ export type Equipe = {
   administrateurs: { id: string; email: string; nom: string; role: import("../noyau/droits").Role; actif: boolean; cree_le: string; derniere_connexion: string | null; moi: boolean }[];
   invitations: { email: string; nom: string; role: import("../noyau/droits").Role; invite_le: string }[];
 };
+
+/** Un testeur a signalé un problème (0024). */
+export type Signalement = {
+  id: number; reference: string; compte_id: string; nom: string | null; texte: string; ecran: string | null; appareil: string | null;
+  etat: "nouveau" | "vu" | "regle"; note: string | null; traite_le: string | null; cree_le: string;
+};
+
+/** Le dernier cours posé du vrai dollar (0022). */
+export type CoursReel = { usd_xaf: number; eur_usd: number; prime: number; prix: number; source: string; date_source: string | null; releve_le: string };
+export type ReleveCours = { id: number; source: string; date_source: string | null; eur_usd: number | null; usd_xaf: number | null; prix: number | null; pose: boolean; erreur: string | null; releve_le: string };
+
+export type Robot = {
+  id: string; nom: string; role: "teneur" | "trader"; biais: number; actions: number; refus: number; derniere_erreur: string | null; maj_le: string;
+  xafe: number; usdt: number; ordres_ouverts: number;
+};
+
+/** La page Bêta (admin_beta) : qui teste, l'argent de test, les robots, le vrai dollar, les signalements. */
+export type Beta = {
+  beta: { actif: boolean; message: string | null; dotation: { XAFe: number; USDT: number }; depots_reels: boolean };
+  testeurs: { total: number; nouveaux_24h: number; nouveaux_7j: number; ont_echange: number; actifs_24h: number };
+  argent_de_test: { xafe_testeurs: number; usdt_testeurs: number; xafe_robots: number; usdt_robots: number; dotations: number };
+  robots: {
+    parametre: { actif: boolean; [cle: string]: unknown } | null;
+    etat: { derive: number; tours: number; dernier_tour: string | null; dernier_choc: string | null; bilan: Record<string, unknown> | null } | null;
+    cours: CoursReel | null;
+    reference: number | null;
+    robots: Robot[];
+    echanges_24h: { total: number; robot_robot: number; avec_un_testeur: number; volume_usdt: number };
+  };
+  cours: { parametre: { actif: boolean; prime: number; saut_max: number } | null; reference: number | null; prix_reference: number | null; dernier: CoursReel | null; releves: ReleveCours[] };
+  signalements: { nouveaux: number; vus: number; regles: number };
+  derniers_signalements: Signalement[];
+};

@@ -13,6 +13,7 @@ import HistoryRounded from "@mui/icons-material/HistoryRounded";
 import LogoutRounded from "@mui/icons-material/LogoutRounded";
 import MenuRounded from "@mui/icons-material/MenuRounded";
 import PeopleRounded from "@mui/icons-material/PeopleRounded";
+import ScienceRounded from "@mui/icons-material/ScienceRounded";
 import RouterRounded from "@mui/icons-material/RouterRounded";
 import ShowChartRounded from "@mui/icons-material/ShowChartRounded";
 import TuneRounded from "@mui/icons-material/TuneRounded";
@@ -38,6 +39,7 @@ const SECTIONS: { to: string; label: string; icone: ReactNode; droit: Droit }[] 
   { to: "/parite", label: "Parité", icone: <BalanceRounded />, droit: "voir" },
   { to: "/clients", label: "Clients", icone: <PeopleRounded />, droit: "clients" },
   { to: "/marche", label: "Marché", icone: <ShowChartRounded />, droit: "voir" },
+  { to: "/beta", label: "Bêta", icone: <ScienceRounded />, droit: "voir" },
   { to: "/parametres", label: "Paramètres", icone: <TuneRounded />, droit: "voir" },
   { to: "/journal", label: "Journal", icone: <HistoryRounded />, droit: "voir" },
   { to: "/equipe", label: "Équipe", icone: <AdminPanelSettingsRounded />, droit: "administrateurs" },
@@ -179,6 +181,7 @@ const ETATS: Record<string, { label: string; tone: Tone }> = {
   refusee: { label: "refusée par la chaîne", tone: "red" }, ecart: { label: "écart", tone: "red" }, inconnue: { label: "inconnue du registre", tone: "red" },
   pret: { label: "prêt", tone: "amber" }, ferme: { label: "fermé", tone: "neutral" },
   ouvert: { label: "ouvert", tone: "blue" }, partiel: { label: "partiel", tone: "amber" }, execute: { label: "exécuté", tone: "green" }, muet: { label: "muet", tone: "red" }, actif: { label: "actif", tone: "green" }, inactif: { label: "en pause", tone: "neutral" },
+  nouveau: { label: "nouveau", tone: "amber" }, vu: { label: "vu", tone: "blue" }, regle: { label: "réglé", tone: "green" },
 };
 
 export function Etat({ valeur }: { valeur: string }) {

@@ -4,6 +4,7 @@
  */
 import ArrowDownwardRounded from "@mui/icons-material/ArrowDownwardRounded";
 import ArrowUpwardRounded from "@mui/icons-material/ArrowUpwardRounded";
+import CardGiftcardRounded from "@mui/icons-material/CardGiftcardRounded";
 import CurrencyBitcoinRounded from "@mui/icons-material/CurrencyBitcoinRounded";
 import ReceiptLongOutlined from "@mui/icons-material/ReceiptLongOutlined";
 import ReplayRounded from "@mui/icons-material/ReplayRounded";
@@ -44,11 +45,15 @@ function apparence(o: Operation): { icone: JSX.Element; tone: Tone; titre: strin
     }
     case "crypto":
       return { icone: <CurrencyBitcoinRounded />, tone: "neutral", titre: `${o.montant > 0 ? "Dépôt" : "Retrait"} ${o.actif} · ${infoReseau(o.detail.reseau).nom}`, sousTitre: heureOuEtat, droite: `${signe(o.montant, o.actif === "USDT" ? 2 : 0)} ${o.actif}`, couleur: o.montant > 0 ? tones.green.fg : undefined };
+    case "dotation":
+      /* la bêta : de l'argent de test, dit comme tel */
+      return { icone: <CardGiftcardRounded />, tone: "green", titre: "Argent de test reçu", sousTitre: `${heure(o.quand)} · ${o.detail.motif}${o.detail.usdt > 0 ? ` · +${enTranches(o.detail.usdt, 2)} USDT` : ""}`,
+               droite: o.detail.xafe > 0 ? signe(o.detail.xafe) : `+${enTranches(o.detail.usdt, 2)} USDT`, couleur: tones.green.fg };
   }
 }
 
 const passeLeFiltre = (o: Operation, f: Filtre) =>
-  f === "Tout" || (f === "Entrées" && o.nature === "depot") || (f === "Sorties" && o.nature === "sortie") || (f === "Ordres" && o.nature === "ordre") || (f === "Crypto" && o.nature === "crypto");
+  f === "Tout" || (f === "Entrées" && (o.nature === "depot" || o.nature === "dotation")) || (f === "Sorties" && o.nature === "sortie") || (f === "Ordres" && o.nature === "ordre") || (f === "Crypto" && o.nature === "crypto");
 
 export function Historique() {
   const { data } = useHistorique();
@@ -123,6 +128,11 @@ function donneesDuRecu(o: Operation, nom: string | null | undefined): Omit<RecuD
     titre = o.detail.cote === "achat" ? "Achat d'USDT" : "Vente d'USDT";
     montant = `${fUsdt(o.detail.executee)} USDT`;
     lignes.push(["Pour", `${xaf(o.detail.totalXafe)} XAFe`]);
+  } else if (o.nature === "dotation") {
+    titre = "Argent de test (bêta)";
+    montant = `+${xaf(o.detail.xafe)} XAFe`;
+    if (o.detail.usdt > 0) lignes.push(["USDT", `+${enTranches(o.detail.usdt, 2)} USDT`]);
+    lignes.push(["Motif", o.detail.motif], ["Valeur", "aucune hors de la bêta"]);
   } else {
     titre = `${o.montant > 0 ? "Dépôt" : "Retrait"} ${o.actif} · ${infoReseau(o.detail.reseau).nom}`;
     montant = `${o.montant > 0 ? "+" : ""}${enTranches(o.montant, o.actif === "USDT" ? 2 : 0)} ${o.actif}`;
@@ -205,6 +215,16 @@ export function HistoriqueDetail() {
             <Line key={i} label={`Transfert ${i + 1} · ${ETATS[t.etat] ?? t.etat}`} value={t.referenceOperateur ? `ID ${t.referenceOperateur}` : `${xaf(t.envoi)} XAF`} mono />
           ))}
           {o.detail.etat === "echouee" && <Typography variant="body2" color="error">{opDe(o.detail.operateur).nom} a refusé le transfert trois fois (numéro invalide ou réseau muet). Vos XAFe sont revenus.</Typography>}
+        </Card>
+      )}
+
+      {o.nature === "dotation" && (
+        <Card>
+          <Line label="XAFe" value={`+${xaf(o.detail.xafe)}`} />
+          {o.detail.usdt > 0 && <Line label="USDT" value={`+${enTranches(o.detail.usdt, 2)}`} />}
+          <Line label="Motif" value={o.detail.motif} />
+          <Line label="Référence" value={o.reference} mono />
+          <Typography variant="body2">C'est de l'argent de test de la bêta : il sert à essayer le marché et n'a aucune valeur hors de Glisil.</Typography>
         </Card>
       )}
 

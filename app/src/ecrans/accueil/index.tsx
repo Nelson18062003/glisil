@@ -4,6 +4,7 @@
 import ArrowDownwardRounded from "@mui/icons-material/ArrowDownwardRounded";
 import ArrowUpwardRounded from "@mui/icons-material/ArrowUpwardRounded";
 import ChevronRightRounded from "@mui/icons-material/ChevronRightRounded";
+import ScienceOutlined from "@mui/icons-material/ScienceOutlined";
 import CurrencyBitcoinRounded from "@mui/icons-material/CurrencyBitcoinRounded";
 import HourglassTopRounded from "@mui/icons-material/HourglassTopRounded";
 import NotificationsNoneRounded from "@mui/icons-material/NotificationsNoneRounded";
@@ -17,7 +18,7 @@ import { Link } from "react-router-dom";
 import { useChandelles, useCompte, useCotation, useDepotsEnAttente, useGuichet, useHistorique, useNotifications, useNumeros, useOuvertures, useSoldes } from "../../guichet";
 import { enTranches, initiales, jourRelatif, prix, quand, xaf } from "../../noyau/format";
 import { useSession } from "../../session/session";
-import { PALIERS } from "../../noyau/argent";
+import { BETA, PALIERS } from "../../noyau/argent";
 import { tones } from "../../theme";
 import { Badge, BUY, Card, EtatVide, Icon, List, Masquable, Row, Screen, SELL, Sparkline, Squelette, Tile } from "../../ui";
 
@@ -44,6 +45,17 @@ export function Accueil() {
 
   return (
     <Screen tab="accueil" large gap={2}>
+      {/* la bêta : que personne ne croie tenir de l'argent réel */}
+      {ouvert.beta && (
+        <Stack direction="row" gap={1.25} alignItems="flex-start" role="note" data-bandeau-beta
+          sx={{ p: 1.5, borderRadius: 4, bgcolor: tones.amber.bg, color: tones.amber.fg }}>
+          <ScienceOutlined fontSize="small" sx={{ mt: 0.25 }} />
+          <Typography variant="body2" sx={{ color: "inherit" }}>
+            <b>Bêta</b> · {BETA.message || "Tout l'argent ici est de l'argent de test, sans valeur réelle."}{" "}
+            <Box component={Link} to="/compte/aide?depuis=%2F" sx={{ color: "inherit", fontWeight: 600 }}>Signaler un problème</Box>
+          </Typography>
+        </Stack>
+      )}
       <Stack direction="row" alignItems="center" gap={1.5}>
         <ButtonBase component={Link} to="/compte" sx={{ borderRadius: 20 }} aria-label="Mon compte">
           <Avatar sx={{ bgcolor: "primary.main", fontWeight: 600 }}>{initiales(compte?.nom)}</Avatar>
@@ -107,8 +119,8 @@ export function Accueil() {
       ))}
 
       <Stack direction="row" gap={1.5}>
-        <Tile icon={<ArrowDownwardRounded />} label="Entrer des XAF" to="/entrer/operateur" tone="green" />
-        <Tile icon={<ArrowUpwardRounded />} label="Sortir des XAF" to="/sortir/montant" tone="amber" note={ouvert.pret && !ouvert.sorties ? "Bientôt" : undefined} />
+        <Tile icon={<ArrowDownwardRounded />} label="Entrer des XAF" to="/entrer/operateur" tone="green" note={ouvert.pret && !ouvert.entrees ? "Fermé (bêta)" : undefined} />
+        <Tile icon={<ArrowUpwardRounded />} label="Sortir des XAF" to="/sortir/montant" tone="amber" note={ouvert.pret && !ouvert.sorties ? (ouvert.beta ? "Fermé (bêta)" : "Bientôt") : undefined} />
         <Tile icon={<CurrencyBitcoinRounded />} label="Crypto" to="/crypto" tone="blue" note={ouvert.pret && !ouvert.crypto ? "Bientôt" : undefined} />
       </Stack>
       </Stack>
@@ -197,7 +209,7 @@ const ETATS_COURTS: Record<string, string> = { en_attente: "en attente", en_cour
 
 /** Les cinq dernières opérations, en lignes simples ; le détail est à un clic. */
 function Recents({ operations }: { operations: Operation[] }) {
-  const titre = (o: Operation) => o.nature === "depot" ? "Entrée Mobile Money" : o.nature === "sortie" ? "Sortie Mobile Money" : o.nature === "ordre" ? (o.detail.cote === "achat" ? "Achat d'USDT" : "Vente d'USDT") : `${o.montant > 0 ? "Dépôt" : "Retrait"} ${o.actif}`;
+  const titre = (o: Operation) => o.nature === "depot" ? "Entrée Mobile Money" : o.nature === "sortie" ? "Sortie Mobile Money" : o.nature === "ordre" ? (o.detail.cote === "achat" ? "Achat d'USDT" : "Vente d'USDT") : o.nature === "dotation" ? "Argent de test reçu" : `${o.montant > 0 ? "Dépôt" : "Retrait"} ${o.actif}`;
   return (
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>

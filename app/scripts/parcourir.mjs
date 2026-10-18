@@ -680,6 +680,37 @@ try {
   await voir("1 · TRANSFERT VERS NOTRE NUMÉRO");
   await page.evaluate(() => sessionStorage.removeItem("xafe-depots-seuls"));
 
+  etape("La bêta : le bandeau le dit, les dépôts réels et les sorties sont fermés « pendant la bêta », et l'on est renvoyé vers le marché");
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem("xafe-beta")) globalThis.__xafeEpreuve = { parametres: {
+      sortie: { ouvertes: false }, crypto: { retraits_ouverts: false, depots_ouverts: true },
+      beta: { actif: true, message: "Glisil est en bêta : tout l'argent ici est de l'argent de test.", dotation: { XAFe: 1000000, USDT: 2000 }, depots_reels: false } } };
+  });
+  await page.evaluate(() => sessionStorage.setItem("xafe-beta", "1"));
+  await page.goto(`${BASE}/`);
+  await page.locator("[data-bandeau-beta]").waitFor();
+  await voir("tout l'argent ici est de l'argent de test");
+  await capturer("beta-accueil");
+  await page.goto(`${BASE}/entrer/operateur`);
+  await voir("Pas de vrai paiement pendant la bêta");
+  await voir("1 000 000 XAFe");
+  exiger(await page.getByRole("link", { name: "Essayer le marché" }).count() === 1, "la bêta renvoie vers le marché, pas vers un dépôt");
+  await capturer("beta-entrer-ferme");
+  await page.goto(`${BASE}/sortir/montant`);
+  await voir("Les sorties sont fermées pendant la bêta");
+  await page.goto(`${BASE}/crypto/retirer/XAFe/adresse`);
+  await voir("Les retraits sont fermés pendant la bêta");
+  // le testeur signale un problème depuis le bandeau : il part à l'équipe, une référence revient
+  await page.goto(`${BASE}/`);
+  await page.locator("[data-bandeau-beta]").getByRole("link", { name: "Signaler un problème" }).click();
+  await page.waitForURL(/\/compte\/aide\?depuis=/);
+  exiger(await page.getByRole("button", { name: "Envoyer à l'équipe Glisil" }).isDisabled(), "un texte vide ne part pas");
+  await page.getByLabel("Ce qui s'est passé").fill("Le graphique du marché ne bouge pas sur mon téléphone");
+  await page.getByRole("button", { name: "Envoyer à l'équipe Glisil" }).click();
+  await page.locator("[data-signalement-recu]").getByText("SIG-000001").waitFor();
+  await capturer("beta-signaler");
+  await page.evaluate(() => { sessionStorage.removeItem("xafe-beta"); globalThis.__xafeEpreuve = {}; });
+
   exiger(erreurs.length === 0, `des erreurs ont été vues dans le navigateur :\n  ${erreurs.join("\n  ")}`);
   console.log(`✓ le parcours tient (${numero} captures dans app/captures/)`);
 } catch (e) {

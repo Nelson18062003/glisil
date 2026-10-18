@@ -120,6 +120,8 @@ function operation(j: J): Operation | null {
     case "ordre": { const x = ordre(d); return { nature: "ordre", reference: x.id, quand: x.creeLe, etat: x.etat, montant: (x.cote === "achat" ? -1 : 1) * (x.rapide?.total ?? x.totalXafe), detail: x }; }
     case "retrait": { const x = retrait(d); return { nature: "crypto", reference: x.reference, quand: x.creeLe, etat: x.etat === "envoye" ? "confirme" : x.etat === "echoue" ? "echoue" : "en_attente", montant: -x.montant, actif: x.actif, detail: x }; }
     case "transfert": { const x = transfert(d); return { nature: "crypto", reference: x.id, quand: x.quand, etat: "confirme", montant: x.sens === "entree" ? x.montant : -x.montant, actif: x.actif, detail: x }; }
+    case "dotation": { const x = { reference: s(d.reference), xafe: n(d.xafe), usdt: n(d.usdt), motif: s(d.motif), creeLe: s(d.cree_le) };
+      return { nature: "dotation", reference: x.reference, quand: x.creeLe, etat: "confirme", montant: x.xafe, detail: x }; }
     default: return null;
   }
 }
@@ -276,6 +278,11 @@ export class GuichetSupabase implements Guichet {
   async parametres() {
     const { data, error } = await this.sb.rpc("parametres_publics");
     return error ? null : data;
+  }
+  async signalerUnProbleme({ texte, ecran }: { texte: string; ecran?: string | null }) {
+    // l'appareil aide l'équipe à reproduire (« Android 14 · Chrome ») ; rien d'autre ne part
+    const appareil = typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 300) : null;
+    return this.rpc<{ reference: string }>("signaler_un_probleme", { p_texte: texte, p_ecran: ecran ?? null, p_appareil: appareil });
   }
   async preuveDeReserve() {
     const p = await this.rpc<PreuveDeReserve>("preuve_de_reserve");

@@ -12,6 +12,7 @@ import { Tableau } from "../pages/tableau";
 import { Terminaux } from "../pages/terminaux";
 import { Wallets } from "../pages/wallets";
 import { EquipePage } from "../pages/equipe";
+import { BetaPage } from "../pages/beta";
 import { useSession } from "../session/session";
 
 function Attente() {
@@ -48,6 +49,7 @@ export const routeur = createBrowserRouter([
       { path: "/clients", element: <Clients /> },
       { path: "/clients/:id", element: <ClientDetail /> },
       { path: "/marche", element: <Marche /> },
+      { path: "/beta", element: <BetaPage /> },
       { path: "/parametres", element: <Parametres /> },
       { path: "/journal", element: <Journal /> },
       { path: "/equipe", element: <EquipePage /> },

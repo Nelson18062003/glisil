@@ -21,6 +21,9 @@ const FILTRES: { cle: string | null; label: string }[] = [
   { cle: "nouveaux", label: "Nouveaux (7 j)" },
   { cle: "verifications", label: "Pièces à vérifier" },
   { cle: "desactives", label: "Désactivés" },
+  /* la bêta : les robots du marché et les comptes de test ne sont pas des clients ; ils ont leur filtre */
+  { cle: "robots", label: "Robots" },
+  { cle: "tests", label: "Comptes de test" },
 ];
 
 const nomsPays = typeof Intl !== "undefined" && "DisplayNames" in Intl ? new Intl.DisplayNames(["fr"], { type: "region" }) : null;
@@ -148,7 +151,8 @@ export function ClientDetail() {
   const rafraichir = useRafraichir();
   const { peut } = useSession();
   const { data } = useClient(id);
-  const [dialogue, setDialogue] = useState<"palier" | "verification" | "desactiver" | null>(null);
+  const [dialogue, setDialogue] = useState<"palier" | "verification" | "desactiver" | "doter" | null>(null);
+  const [dotation, setDotation] = useState({ xafe: "1000000", usdt: "0" });
   const [palier, setPalier] = useState(0);
   const [note, setNote] = useState("");
   const [erreur, setErreur] = useState<unknown>(null);
@@ -166,6 +170,8 @@ export function ClientDetail() {
       <Stack direction="row" gap={1}>
         {peut("paliers") && c.verification_en_cours && <Button variant="contained" onClick={() => setDialogue("verification")}>Examiner les pièces</Button>}
         {peut("paliers") && <Button variant="outlined" onClick={() => { setPalier(c.palier); setDialogue("palier"); }}>Changer le palier</Button>}
+        {/* la bêta : de l'argent de test, refusé par le moteur hors bêta */}
+        {peut("parametres") && <Button variant="outlined" onClick={() => setDialogue("doter")}>Donner de l'argent de test</Button>}
         {peut("clients") && <Button variant="text" color="error" onClick={() => setDialogue("desactiver")}>{c.ferme_le ? "Rouvrir" : c.desactive_le ? "Réactiver" : "Désactiver"}</Button>}
       </Stack>
     }>
@@ -240,6 +246,15 @@ export function ClientDetail() {
         </Stack>
       </Stack>
 
+      <Dialogue ouvert={dialogue === "doter"} titre="Donner de l'argent de test" onFermer={() => setDialogue(null)} libelle="Donner" enCours={enCours}
+        desactive={!(Number(dotation.xafe) > 0 || Number(dotation.usdt) > 0)}
+        onValider={() => void agir(() => guichet.doter(c.id, Math.round(Number(dotation.xafe) || 0), Math.round((Number(dotation.usdt) || 0) * 100) / 100, note))}>
+        <Typography variant="body2">Pendant la bêta seulement. Les XAFe sont créés comme un dépôt (et frappés dans la réserve, sur la chaîne d'essai), mais comptés à part par la parité : aucun XAF réel n'est derrière.</Typography>
+        <TextField label="XAFe" value={dotation.xafe} onChange={(e) => setDotation({ ...dotation, xafe: e.target.value.replace(/[^0-9]/g, "") })} inputMode="numeric" fullWidth helperText="au plus 100 000 000" />
+        <TextField label="USDT" value={dotation.usdt} onChange={(e) => setDotation({ ...dotation, usdt: e.target.value.replace(/[^0-9.]/g, "") })} inputMode="decimal" fullWidth helperText="au plus 1 000 000" />
+        <TextField label="Pourquoi" value={note} onChange={(e) => setNote(e.target.value)} fullWidth />
+        <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
+      </Dialogue>
       <Dialogue ouvert={dialogue === "palier"} titre="Changer le palier" onFermer={() => setDialogue(null)} onValider={() => void agir(() => guichet.changerPalier(c.id, palier, note))} libelle="Changer" enCours={enCours}>
         <TextField select label="Palier" value={palier} onChange={(e) => setPalier(Number(e.target.value))} fullWidth>
           {PALIERS.map((p, i) => <MenuItem key={i} value={i}>{p}</MenuItem>)}

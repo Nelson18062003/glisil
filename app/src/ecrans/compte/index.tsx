@@ -15,6 +15,7 @@ import KeyRounded from "@mui/icons-material/KeyRounded";
 import LockResetRounded from "@mui/icons-material/LockResetRounded";
 import LogoutRounded from "@mui/icons-material/LogoutRounded";
 import PhoneAndroidRounded from "@mui/icons-material/PhoneAndroidRounded";
+import SendRounded from "@mui/icons-material/SendRounded";
 import ShieldOutlined from "@mui/icons-material/ShieldOutlined";
 import UploadFileRounded from "@mui/icons-material/UploadFileRounded";
 import VerifiedRounded from "@mui/icons-material/VerifiedRounded";
@@ -27,7 +28,7 @@ import { CONDITIONS, CONFIDENTIALITE, lienWhatsapp, VERSION_CONDITIONS, type Doc
 import { Contact, FeuilleLegale } from "../legal";
 import type { IdOperateur } from "../../guichet/types";
 import { CODE_SMS_DEMO } from "../../guichet/demo";
-import { delaiDuNumero, FRAIS, NUMEROS, OPERATEURS, PALIERS, operateur as opDe } from "../../noyau/argent";
+import { BETA, delaiDuNumero, FRAIS, NUMEROS, OPERATEURS, PALIERS, operateur as opDe } from "../../noyau/argent";
 import { initiales, jourRelatif, numeroEnTranches, numeroSaisi, numeroValide, operateurDuNumero, pourcent, xaf } from "../../noyau/format";
 import { ageAu, paysDe, telephoneLisible } from "../../noyau/identite";
 import { parcours } from "../../navigation/parcours";
@@ -373,16 +374,27 @@ const faq = (): [string, string][] => [
   ["Un XAFe vaut toujours 1 XAF ?", "Oui. Un XAFe n'est créé que quand un XAF est reçu, et détruit quand un XAF est envoyé. Les réserves sont sur nos floats MoMo et nos comptes en banque."],
   ["Que coûte une sortie ?", FRAIS.sortie <= 0 ? "Rien pour le moment : vous recevez exactement le montant de votre sortie. La sortie part en plusieurs transferts si elle dépasse le plafond de l'opérateur ; vous les voyez tous." : `${pourcent(FRAIS.sortie)} du montant, arrondis au franc supérieur par transfert. Au-delà du plafond de l'opérateur, la sortie part en plusieurs transferts ; vous les voyez tous.`],
   ["Un transfert a échoué, où est mon argent ?", "Après trois essais, les XAFe de ce transfert reviennent en disponible sur votre compte. Le détail de l'opération le dit, et vous êtes prévenu."],
-  ["Pourquoi attendre 24 h pour un nouveau numéro ?", "Pour que personne qui aurait pris votre téléphone ne puisse vider votre compte vers son propre numéro dans la minute."],
+  // le délai d'un numéro neuf est un réglage de l'équipe (0020) : la question n'existe que s'il y en a un
+  ...(NUMEROS.delaiHeures > 0 ? [[`Pourquoi attendre ${NUMEROS.delaiHeures} h pour un nouveau numéro ?`, "Pour que personne qui aurait pris votre téléphone ne puisse vider votre compte vers son propre numéro dans la minute."] as [string, string]] : []),
+  ...(BETA.actif ? [["Qu'est-ce que la bêta ?", "Glisil se teste en grand avant d'ouvrir pour de vrai. Tout l'argent ici est de l'argent de test, offert à l'inscription : il ne vaut rien hors de Glisil, et les dépôts et retraits réels sont fermés. Le marché est animé par des robots qui suivent le vrai cours du dollar. Achetez, vendez, essayez tout — et dites-nous ce qui coince, juste en dessous."] as [string, string]] : []),
 ];
 
 export function CompteAide() {
   const [params] = useSearchParams();
   const ref = params.get("ref") ?? "";
+  /* l'écran d'où l'on vient (« Signaler » du bandeau bêta) : un indice pour l'équipe, rien de plus */
+  const depuis = params.get("depuis");
   const { data: compte } = useCompte();
+  const guichet = useGuichet();
   const [texte, setTexte] = useState(ref ? `Référence ${ref} : ` : "");
+  const [recu, setRecu] = useState<string | null>(null);
+  const { lancer, enCours, erreur, effacerErreur } = useGesteUnique();
   const qui = `${compte?.nom ?? ""} (${telephoneLisible(compte?.telephone ?? "")}${compte?.email ? ` · ${compte.email}` : ""})`;
   const lien = lienWhatsapp(`${qui} · ${texte}`);
+  const envoyer = () => lancer(async () => {
+    const r = await guichet.signalerUnProbleme({ texte, ecran: depuis && depuis.startsWith("/") ? depuis : "/compte/aide" });
+    setRecu(r.reference); setTexte("");
+  });
   return (
     <Screen title="Aide" back="/compte">
       <Box>
@@ -395,10 +407,21 @@ export function CompteAide() {
       </Box>
       <Typography variant="subtitle1" sx={{ mt: 1 }}>Signaler un problème</Typography>
       <Typography variant="body2">Dites ce qui s'est passé ; gardez la référence de l'opération (XAFe-…) si vous l'avez. Personne chez Glisil ne vous demandera votre code secret.</Typography>
-      <TextField label="Ce qui s'est passé" value={texte} onChange={(e) => setTexte(e.target.value)} fullWidth multiline minRows={3} />
+      <TextField label="Ce qui s'est passé" value={texte} onChange={(e) => { setTexte(e.target.value); setRecu(null); }} fullWidth multiline minRows={3} inputProps={{ maxLength: 2000 }} />
+      {recu && (
+        <Stack direction="row" gap={1} alignItems="center" role="status" data-signalement-recu
+          sx={{ p: 1.5, borderRadius: 4, bgcolor: tones.green.bg, color: tones.green.fg }}>
+          <CheckCircleRounded fontSize="small" />
+          <Typography variant="body2" sx={{ color: "inherit" }}>Reçu ({recu}) : l'équipe le lit et revient vers vous si besoin. Merci !</Typography>
+        </Stack>
+      )}
+      <Button variant="contained" startIcon={<SendRounded />} onClick={() => void envoyer()} disabled={enCours || texte.trim().length < 5}>
+        {enCours ? "Envoi…" : "Envoyer à l'équipe Glisil"}
+      </Button>
       {lien
-        ? <Button variant="contained" startIcon={<WhatsApp />} href={lien} target="_blank" rel="noopener" disabled={texte.trim().length < 5}>Envoyer sur WhatsApp</Button>
+        ? <Button variant="outlined" startIcon={<WhatsApp />} href={lien} target="_blank" rel="noopener" disabled={texte.trim().length < 5}>Envoyer sur WhatsApp</Button>
         : null}
+      <FeuilleErreur erreur={erreur} onFermer={effacerErreur} />
       <Contact sujet={ref ? `Problème · ${ref}` : "Un problème avec Glisil"} texte={`${qui}\n\n${texte}`} />
       <Typography variant="caption" textAlign="center">L'équipe répond de 8 h à 20 h, sept jours sur sept.</Typography>
     </Screen>

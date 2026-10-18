@@ -247,7 +247,11 @@ export type Operation =
   | { nature: "depot"; reference: string; quand: string; etat: EtatDepot; montant: number; detail: Depot }
   | { nature: "sortie"; reference: string; quand: string; etat: EtatSortie; montant: number; detail: Sortie }
   | { nature: "ordre"; reference: string; quand: string; etat: EtatOrdre; montant: number; detail: Ordre }
-  | { nature: "crypto"; reference: string; quand: string; etat: "confirme" | "en_attente" | "echoue"; montant: number; actif: Actif; detail: TransfertCrypto | RetraitCrypto };
+  | { nature: "crypto"; reference: string; quand: string; etat: "confirme" | "en_attente" | "echoue"; montant: number; actif: Actif; detail: TransfertCrypto | RetraitCrypto }
+  | { nature: "dotation"; reference: string; quand: string; etat: "confirme"; montant: number; detail: Dotation };
+
+/** La bêta : de l'argent de test reçu (à l'inscription, ou donné par l'équipe). */
+export type Dotation = { reference: string; xafe: number; usdt: number; motif: string; creeLe: string };
 
 export type Notification = {
   id: string;
