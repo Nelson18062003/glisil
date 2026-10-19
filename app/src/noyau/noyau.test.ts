@@ -253,3 +253,22 @@ test("achat max : sans prix, on ne sait pas — jamais une division par 1", () =
   assert.equal(achatMax(1000, 0), 0);
   assert.equal(achatMax(1000, 618.4), 1.61);
 });
+
+test("en anglais, les montants et les dates se lisent à l'anglaise", async () => {
+  const { poserLangue } = await import("./langue.ts");
+  const f = await import("./format.ts");
+  poserLangue("en");
+  try {
+    assert.equal(f.xaf(1250000), "1,250,000");
+    assert.equal(f.prix(588.15), "588.15");
+    assert.equal(f.pourcent(0.005), "0.5%");
+    const maintenant = new Date(2026, 9, 19, 15, 0);
+    assert.equal(f.jourRelatif(new Date(2026, 9, 19, 9, 0), maintenant), "Today");
+    assert.equal(f.jourRelatif(new Date(2026, 9, 18, 9, 0), maintenant), "Yesterday");
+    assert.equal(f.jourRelatif(new Date(2026, 9, 12, 9, 0), maintenant), "12 Oct");
+    assert.equal(f.quand(new Date(2026, 9, 19, 9, 5), maintenant), "today at 09:05");
+  } finally {
+    poserLangue("fr");
+  }
+  assert.equal(f.xaf(1250000), "1 250 000", "le français revient tel quel");
+});

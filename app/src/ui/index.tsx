@@ -21,6 +21,7 @@ import {
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { lisible } from "../noyau/erreurs";
+import { choisirLangue, langue, LANGUES } from "../noyau/langue";
 import { useSession } from "../session/session";
 import { brand, tones, type Tone } from "../theme";
 
@@ -302,6 +303,19 @@ export function Chips({ items, selected, onSelect }: { items: string[]; selected
     <Stack direction="row" gap={1} justifyContent="center" flexWrap="wrap">
       {items.map((it) => (
         <Chip key={it} label={it} onClick={onSelect ? () => onSelect(it) : undefined} color={it === selected ? "primary" : undefined} variant={it === selected ? "filled" : "outlined"} />
+      ))}
+    </Stack>
+  );
+}
+
+/** Français / English : le choix se garde sur l'appareil, et l'application se relit aussitôt dans l'autre langue. */
+export function ChoixDeLangue() {
+  const l = langue();
+  return (
+    <Stack direction="row" gap={1} role="group" aria-label="Langue · Language">
+      {LANGUES.map((x) => (
+        <Chip key={x.id} label={x.nom} lang={x.id} onClick={() => choisirLangue(x.id)} color={x.id === l ? "primary" : undefined}
+          variant={x.id === l ? "filled" : "outlined"} aria-pressed={x.id === l} />
       ))}
     </Stack>
   );

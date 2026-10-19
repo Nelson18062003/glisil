@@ -125,6 +125,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
 export function useSession(): Session {
   const s = useContext(Contexte);
-  if (!s) throw new Error("SessionProvider manquant");
+  if (!s) throw new Error("SessionProvider manquant"); // langue-ok (message pour le développeur)
   return s;
 }

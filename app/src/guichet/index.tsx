@@ -78,7 +78,7 @@ export function useOuvertures() {
 
 export function useGuichet(): Guichet {
   const g = useContext(Contexte);
-  if (!g) throw new Error("GuichetProvider manquant");
+  if (!g) throw new Error("GuichetProvider manquant"); // langue-ok (message pour le développeur)
   return g;
 }
 
