@@ -94,6 +94,11 @@ $COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = '{\\\"verif
 # La bêta (0021) ferme les dépôts réels et dote chaque inscrit : les scénarios d'avant jouent hors bêta.
 # La bêta elle-même est éprouvée par le scénario 11.42, dans sa transaction.
 $COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = valeur || '{\\\"actif\\\": false}' where cle = 'beta'\"" >/dev/null
+# Sans plafond (0027) : la plateforme n'a plus de taille maximale ni de plafond de palier, et compte un minimum
+# en XAFe. Les scénarios d'avant éprouvent les plafonds (le mécanisme existe toujours, vide en service) :
+# ils jouent avec les règles d'avant. La règle d'aujourd'hui est éprouvée par le scénario 11.48.
+$COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = valeur || '{\\\"quantite_min\\\": 10, \\\"quantite_max\\\": 1000000, \\\"marche_quantite_max\\\": 100000, \\\"montant_min\\\": 0}' where cle = 'marche'\"" >/dev/null
+$COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = '{\\\"0\\\": {\\\"entree_jour\\\": 500000, \\\"sortie_jour\\\": 500000}, \\\"1\\\": {\\\"entree_jour\\\": 5000000, \\\"sortie_jour\\\": 5000000}, \\\"2\\\": null}' where cle = 'paliers'\"" >/dev/null
 
 # ATTAQUES=1 : les migrations, puis les attaques de la revue seules (moteur/rouge-puis-vert).
 if [ "${ATTAQUES:-0}" = "1" ]; then

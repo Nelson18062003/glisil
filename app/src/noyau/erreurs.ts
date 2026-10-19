@@ -129,9 +129,14 @@ const DICTIONNAIRE: Record<string, Omit<ErreurLisible, "recommencer"> & { recomm
     suite: "Corrigez le prix, par exemple 618,40 plutôt que 618,41.",
   },
   "quantité invalide": {
-    titre: "La quantité est trop petite",
+    titre: "La quantité n'est pas valable",
     argent: "Aucun ordre n'a été placé.",
-    suite: "Au moins 10 USDT, avec deux décimales au plus.",
+    suite: "Une quantité d'USDT s'écrit avec deux décimales au plus.",
+  },
+  "ordre trop petit": {
+    titre: "Cet ordre est trop petit",
+    argent: "Aucun ordre n'a été placé.",
+    suite: "Un ordre vaut au moins 1 500 XAFe. Augmentez un peu la quantité.",
   },
   "quantité trop grande": {
     titre: "Cet ordre dépasse la taille maximale",

@@ -63,6 +63,15 @@ TEMOINS = {
     "0023_robots.sql": ("false", "rejouable telle quelle"),
     # 0024 : table « if not exists », fonctions « or replace ».
     "0024_observer_la_beta.sql": ("false", "rejouable telle quelle"),
+    # 0025 : table « if not exists », déclencheur retiré puis reposé, fonctions « or replace », historique rempli s'il manque.
+    "0025_graphique.sql": ("false", "rejouable telle quelle"),
+    # 0026 : réglages réécrits seulement s'ils sont encore ceux d'origine, compléments une seule fois.
+    "0026_marche_profond.sql": ("false", "rejouable telle quelle"),
+    # 0027 : fonctions « or replace », réglages réécrits seulement s'ils sont encore ceux d'origine.
+    "0027_sans_plafond.sql": ("false", "rejouable telle quelle"),
+    # 0028 redéfinit des fonctions de 0001, 0014, 0015 et 0021 (la garde des dépôts) : rejouée APRÈS
+    # elles, ou une seconde passe remettrait l'ancienne garde et fermerait les floats de démo.
+    "0028_totem_demo.sql": ("false", "rejouable telle quelle"),
 }
 
 

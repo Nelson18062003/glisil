@@ -59,6 +59,11 @@ export function numeroValide(brut: string): boolean {
 export function operateurDuNumero(brut: string): "mtn" | "om" | null {
   const n = numeroSaisi(brut);
   if (n.length < 3) return null;
+  // Les cartes de la démo vivante de TOTEM (600 0x pour MTN, 600 9x pour
+  // Orange) : la base ne les reconnaît que pendant la bêta (0028) — elle
+  // refusera hors bêta ; l'écran, lui, ne bloque pas avant elle.
+  if (n.startsWith("6000")) return "mtn";
+  if (n.startsWith("6009")) return "om";
   const p = Number(n.slice(0, 3));
   if ((p >= 650 && p <= 654) || (p >= 670 && p <= 689)) return "mtn";
   if ((p >= 655 && p <= 659) || (p >= 690 && p <= 699)) return "om";

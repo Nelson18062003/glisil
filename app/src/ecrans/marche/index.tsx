@@ -14,13 +14,14 @@ import RemoveRounded from "@mui/icons-material/RemoveRounded";
 import { Box, Button, ButtonBase, Chip, Divider, IconButton, Menu, MenuItem, Paper, Slider, Snackbar, Stack, Tab, Tabs, Typography, useMediaQuery } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useCarnet, useChandelles, useCotation, useGuichet, useMesOrdres, useOrdre, useRafraichir, useSoldes, useTransactions } from "../../guichet";
-import type { Chandelle, Cote, Execution, Niveau, Ordre, TypeOrdre } from "../../guichet/types";
+import { useCarnet, useCotation, useGuichet, useMesOrdres, useOrdre, useRafraichir, useSoldes, useTransactions } from "../../guichet";
+import type { Cote, Execution, Niveau, Ordre, TypeOrdre } from "../../guichet/types";
 import { achatMax, arrondi2, bandeDePrix, FRAIS, fraisOrdre, MARCHE, raisonDuRefus, simulerMarche, totalOrdre } from "../../noyau/argent";
 import { enTranches, heure, heureSecondes, jourRelatif, pourcent, prix as fPrix, usdt as fUsdt, xaf } from "../../noyau/format";
 import { useParcours } from "../../navigation/parcours";
 import { Attente, Badge, BUY, BUY_BG, Card, Feuille, FeuilleErreur, Line, Screen, SELL, SELL_BG, Squelette, Success } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
+import { GraphiqueBourse, Profondeur } from "./graphique";
 
 const couleur = (c: Cote) => (c === "achat" ? BUY : SELL);
 const fond = (c: Cote) => (c === "achat" ? BUY_BG : SELL_BG);
@@ -315,7 +316,10 @@ function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean; autoNe
         <Field label="Total estimé (XAFe)" value={total > 0 ? xaf(total) : "—"} />
       )}
       <Stack gap={0.25} sx={{ px: 0.25 }}>
-        <Small label="Dispo" value={f.cote === "achat" ? `${xaf(dispoXafe)} XAFe` : `${enTranches(dispoUsdt, 2)} USDT`} />
+        {/* acheter dépense des XAFe, vendre des USDT : le disponible n'est que l'un des deux — l'autre se dit aussi,
+            sinon « Dispo 1 000 000 XAFe » se lit comme « on ne vous laisse qu'un million » (retour d'un testeur) */}
+        <Small label={f.cote === "achat" ? "Dispo pour acheter" : "Dispo pour vendre"} value={f.cote === "achat" ? `${xaf(dispoXafe)} XAFe` : `${enTranches(dispoUsdt, 2)} USDT`} />
+        <Small label={f.cote === "achat" ? "Vos USDT (à vendre)" : "Vos XAFe (pour acheter)"} value={f.cote === "achat" ? `${enTranches(dispoUsdt, 2)} USDT` : `${xaf(dispoXafe)} XAFe`} />
         <Small label={f.cote === "achat" ? "Achat max" : "Vente max"} value={maxQ === null ? "fixez un prix" : `${fUsdt(maxQ)} USDT`} />
         <Small label="Frais est." value={quantite > 0 ? `${frais.actif === "USDT" ? enTranches(frais.montant, 2) : xaf(frais.montant)} ${frais.actif}` : "—"} />
       </Stack>
@@ -508,8 +512,9 @@ export function MarcheRegles() {
         <Regle titre="Protection d'un ordre au marché" valeur={`± ${pc(MARCHE.bandeExecution)}`}
           aide="Un ordre au marché ne s'exécute jamais à plus de cet écart du prix de référence ; ce qu'il ne trouve pas dans cette bande est annulé, pas servi à n'importe quel prix." />
         <Regle titre="Pas de prix" valeur={`${String(MARCHE.pasPrix).replace(".", ",")} XAFe`} aide="Un prix se donne à ce pas près : 618,40 ou 618,45, pas 618,41." />
-        <Regle titre="Taille d'un ordre" valeur={`${MARCHE.quantiteMin.toLocaleString("fr-FR")} – ${MARCHE.quantiteMax.toLocaleString("fr-FR")} USDT`} aide="La quantité d'USDT d'un ordre, deux décimales au plus." />
-        <Regle titre="Ordre au marché, au plus" valeur={`${MARCHE.marcheQuantiteMax.toLocaleString("fr-FR")} USDT`} aide="Au-delà, posez un ordre limite : vous fixez le prix." />
+        <Regle titre="Montant minimum d'un ordre" valeur={`${MARCHE.montantMin.toLocaleString("fr-FR")} XAFe`} aide="Au prix de l'ordre (ou du marché pour un ordre au marché). La quantité se donne au centime d'USDT." />
+        <Regle titre="Montant maximum" valeur={Number.isFinite(MARCHE.quantiteMax) ? `${MARCHE.quantiteMax.toLocaleString("fr-FR")} USDT` : "aucun"} aide="Tradez autant que votre solde le permet." />
+        {Number.isFinite(MARCHE.marcheQuantiteMax) && <Regle titre="Ordre au marché, au plus" valeur={`${MARCHE.marcheQuantiteMax.toLocaleString("fr-FR")} USDT`} aide="Au-delà, posez un ordre limite : vous fixez le prix." />}
         <Regle titre="Ordres ouverts, au plus" valeur={String(MARCHE.ordresOuvertsMax)} aide="Par compte, en même temps." />
         <Regle titre="Frais" valeur={`${pourcent(FRAIS.placeur)} · ${pourcent(FRAIS.preneur)}`}
           aide="Le premier si votre ordre attendait au carnet (il y apporte un prix), le second s'il prend un ordre qui attendait. L'acheteur les paie en USDT, le vendeur en XAFe." />
@@ -566,46 +571,6 @@ export function Marche() {
 
 /* ====================================================== 2 · graphique */
 
-function Candles({ chandelles, dernier }: { chandelles: Chandelle[]; dernier: number | null }) {
-  const W = 376, H = 200, VH = 44, top = 8, bottom = 8;
-  if (chandelles.length === 0) return <Squelette hauteur={H + VH + 24} radius={12} />;
-  const min = Math.min(...chandelles.map((c) => c.l)) - 0.3;
-  const max = Math.max(...chandelles.map((c) => c.h)) + 0.3;
-  const y = (p: number) => top + ((max - p) / (max - min)) * (H - top - bottom);
-  const step = W / chandelles.length;
-  const vmax = Math.max(1, ...chandelles.map((c) => c.v));
-  const grille = [min + (max - min) * 0.2, min + (max - min) * 0.5, min + (max - min) * 0.8].map((g) => Math.round(g * 2) / 2);
-  return (
-    <svg width="100%" viewBox={`0 0 ${W + 44} ${H + VH + 24}`} role="img" aria-label={`Chandeliers, de ${fPrix(min)} à ${fPrix(max)} XAFe`}>
-      {grille.map((g) => (
-        <g key={g}>
-          <line x1="0" y1={y(g)} x2={W} y2={y(g)} stroke="#E3E7E3" />
-          <text x={W + 6} y={y(g) + 4} fontSize="11" fill="#5B615E">{g.toFixed(1)}</text>
-        </g>
-      ))}
-      {dernier != null && dernier > min && dernier < max && (
-        <>
-          <line x1="0" y1={y(dernier)} x2={W} y2={y(dernier)} stroke={BUY} strokeDasharray="3 3" />
-          <rect x={W + 2} y={y(dernier) - 8} width="42" height="16" rx="3" fill={BUY} />
-          <text x={W + 23} y={y(dernier) + 4} fontSize="11" fill="#fff" textAnchor="middle">{dernier.toFixed(1)}</text>
-        </>
-      )}
-      {chandelles.map((c, i) => {
-        const x = i * step + step / 2;
-        const up = c.c >= c.o;
-        const col = up ? BUY : SELL;
-        return (
-          <g key={c.t}>
-            <line x1={x} y1={y(c.h)} x2={x} y2={y(c.l)} stroke={col} strokeWidth="1.2" />
-            <rect x={x - step * 0.3} y={y(Math.max(c.o, c.c))} width={step * 0.6} height={Math.max(1.5, Math.abs(y(c.o) - y(c.c)))} fill={col} />
-            <rect x={x - step * 0.3} y={H + 12 + (VH - (c.v / vmax) * VH)} width={step * 0.6} height={(c.v / vmax) * VH} fill={col} opacity="0.45" />
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <Stack>
@@ -615,17 +580,14 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-const INTERVALLES: [string, number][] = [["15 min", 15], ["1 h", 60], ["4 h", 240], ["1 j", 1440], ["1 sem", 10080]];
-const PLUS: [string, number][] = [["5 min", 5], ["30 min", 30], ["1 mois", 43200]];
-
 /** Le graphique, en panneau, à côté du formulaire d'ordre sur un grand écran. */
 function PanneauGraphique() {
   const { data: c } = useCotation();
-  const [minutes, setMinutes] = useState(60);
-  const { data: chandelles } = useChandelles(minutes, 40);
+  const { data: carnet } = useCarnet(100);
+  const [vue, setVue] = useState<"graphique" | "profondeur">("graphique");
   const v = c?.variation24h ?? 0;
   return (
-    <Paper sx={{ p: 2.5, borderRadius: 6, display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
+    <Paper sx={{ p: 2.5, borderRadius: 6, display: "flex", flexDirection: "column", gap: 1.5, mt: 1 }}>
       <Stack direction="row" alignItems="flex-end" justifyContent="space-between" flexWrap="wrap" gap={2}>
         <Stack>
           <Typography variant="caption">USDT/XAFe · dernier prix</Typography>
@@ -638,12 +600,13 @@ function PanneauGraphique() {
           <Stat label="Volume 24 h (USDT)" value={c ? fUsdt(Math.round(c.volume24hUsdt)) : "—"} />
         </Stack>
       </Stack>
-      <Stack direction="row" gap={0.75} flexWrap="wrap">
-        {INTERVALLES.map(([t, m]) => (
-          <Chip key={t} label={t} onClick={() => setMinutes(m)} variant={m === minutes ? "filled" : "outlined"} color={m === minutes ? "primary" : undefined} />
-        ))}
-      </Stack>
-      <Candles chandelles={chandelles ?? []} dernier={c?.dernier ?? null} />
+      <Tabs value={vue} onChange={(_, val) => setVue(val)} sx={{ minHeight: 36, "& .MuiTab-root": { minHeight: 36, textTransform: "none", fontWeight: 600, px: 1.5 } }}>
+        <Tab value="graphique" label="Graphique" />
+        <Tab value="profondeur" label="Profondeur" />
+      </Tabs>
+      {vue === "graphique"
+        ? <GraphiqueBourse hauteur={420} />
+        : <Profondeur achats={carnet?.achats ?? []} ventes={carnet?.ventes ?? []} hauteur={360} />}
     </Paper>
   );
 }
@@ -651,11 +614,9 @@ function PanneauGraphique() {
 export function MarcheGraphique() {
   const navigate = useNavigate();
   const { data: c } = useCotation();
-  const [minutes, setMinutes] = useState(60);
-  const [plus, setPlus] = useState<HTMLElement | null>(null);
-  const { data: chandelles } = useChandelles(minutes, 28);
   const { data: carnet } = useCarnet(5);
-  const [onglet, setOnglet] = useState<"carnet" | "infos">("carnet");
+  const { data: profond } = useCarnet(100);
+  const [onglet, setOnglet] = useState<"carnet" | "profondeur" | "infos">("carnet");
   const [, poser] = useParcours("marche");
   const v = c?.variation24h ?? 0;
   const max = Math.max(1, ...(carnet?.achats ?? []).map((n) => n.quantite), ...(carnet?.ventes ?? []).map((n) => n.quantite));
@@ -676,26 +637,18 @@ export function MarcheGraphique() {
           <Stat label="Vol 24 h (USDT)" value={c ? fUsdt(Math.round(c.volume24hUsdt)) : "—"} />
         </Stack>
       </Stack>
-      <Stack direction="row" gap={0.5}>
-        {INTERVALLES.map(([t, m]) => (
-          <Chip key={t} label={t} size="small" onClick={() => setMinutes(m)} variant={m === minutes ? "filled" : "outlined"} color={m === minutes ? "primary" : undefined} sx={{ height: 28, fontSize: 12 }} />
-        ))}
-        {(() => { const autre = PLUS.find(([, m]) => m === minutes); return (
-          <Chip label={autre ? autre[0] : "Plus"} size="small" onClick={(e) => setPlus(e.currentTarget)} variant={autre ? "filled" : "outlined"} color={autre ? "primary" : undefined} sx={{ height: 28, fontSize: 12 }} />
-        ); })()}
-        <Menu anchorEl={plus} open={Boolean(plus)} onClose={() => setPlus(null)}>
-          {PLUS.map(([t, m]) => <MenuItem key={t} onClick={() => { setMinutes(m); setPlus(null); }}>{t}</MenuItem>)}
-        </Menu>
-      </Stack>
-      <Paper sx={{ p: 1, borderRadius: 3 }}>
-        <Candles chandelles={chandelles ?? []} dernier={c?.dernier ?? null} />
+      <Paper sx={{ p: 1.25, borderRadius: 3 }}>
+        <GraphiqueBourse hauteur={300} compact />
       </Paper>
-      <Tabs value={onglet} onChange={(_, val) => (val === "trades" ? navigate("/marche/carnet") : setOnglet(val))} variant="fullWidth" sx={{ minHeight: 40, "& .MuiTab-root": { minWidth: 0, px: 1, "@media (max-width:359px)": { fontSize: 13, px: 0.5 } } }}>
+      <Tabs value={onglet} onChange={(_, val) => (val === "trades" ? navigate("/marche/carnet") : setOnglet(val))} variant="scrollable" scrollButtons={false} sx={{ minHeight: 40, "& .MuiTab-root": { minWidth: 0, px: 1.5, "@media (max-width:359px)": { fontSize: 13, px: 1 } } }}>
         <Tab value="carnet" label="Carnet" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
+        <Tab value="profondeur" label="Profondeur" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
         <Tab value="trades" label="Transactions" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
         <Tab value="infos" label="Infos" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
       </Tabs>
-      {onglet === "carnet" ? (
+      {onglet === "profondeur" ? (
+        <Profondeur achats={profond?.achats ?? []} ventes={profond?.ventes ?? []} hauteur={240} />
+      ) : onglet === "carnet" ? (
         <Stack direction="row" gap={2}>
           <Stack sx={{ flex: 1 }}>
             <Stack direction="row" justifyContent="space-between"><Typography variant="caption">Qté</Typography><Typography variant="caption">Achat</Typography></Stack>
@@ -786,6 +739,7 @@ export function MarcheCarnet() {
     <Screen back="/marche" title="USDT/XAFe" gap={1}>
       <Tabs value={onglet} onChange={(_, v) => setOnglet(v)} variant="fullWidth" sx={{ minHeight: 40, "& .MuiTab-root": { minWidth: 0, px: 1, "@media (max-width:359px)": { fontSize: 13, px: 0.5 } } }}>
         <Tab value="carnet" label="Carnet d'ordres" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
+        <Tab value="profondeur" label="Profondeur" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
         <Tab value="trades" label="Transactions" sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
       </Tabs>
       {onglet === "carnet" && <>

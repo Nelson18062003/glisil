@@ -5,6 +5,8 @@ import type {
   Actif,
   Carnet,
   Chandelle,
+  Intervalle,
+  PageDeBougies,
   Compte,
   Cote,
   Cotation,
@@ -99,6 +101,8 @@ export interface Guichet {
   carnet(profondeur: number): Promise<Carnet>;
   transactions(n: number): Promise<Transaction[]>;
   chandelles(intervalleMinutes: number, n: number): Promise<Chandelle[]>;
+  /** Les bougies du graphique, `n` au plus, toutes avant `avant` (null : jusqu'à maintenant) — page par page vers le passé. */
+  bougies(intervalle: Intervalle, avant?: string | null, n?: number): Promise<PageDeBougies>;
   mesOrdres(): Promise<Ordre[]>;
   ordre(id: string): Promise<{ ordre: Ordre; executions: Execution[] }>;
   placerOrdre(p: { cote: Cote; type: TypeOrdre; quantite: number; prix?: number; cle: string }): Promise<ResultatOrdre>;

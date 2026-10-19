@@ -34,8 +34,9 @@ le **moteur de référence** (Python, `moteur/differentiel/reference.py`). Voir
 | Règle | Valeur de départ | Pourquoi |
 |---|---|---|
 | Pas de prix | 0,05 XAFe | des prix comparables |
-| Taille d'un ordre | 10 – 1 000 000 USDT | ni poussière, ni ordre démesuré |
-| Ordre au marché, au plus | 100 000 USDT | au-delà, un ordre limite (on fixe le prix) |
+| Montant minimum d'un ordre | 1 500 XAFe | au prix de l'ordre (de la référence au marché) ; la chaîne coûte peu, un petit ordre a sa place |
+| Quantité | au centime d'USDT | 0,01 USDT au moins |
+| Montant maximum | **aucun** (0027) | on trade autant que son solde le permet ; l'équipe peut remettre `quantite_max` / `marche_quantite_max` |
 | Ordres ouverts par compte | 200 | un carnet qui ne s'encombre pas |
 | Bande d'un achat limite | 80 % – 110 % de la référence | une faute de frappe n'achète pas à n'importe quel prix |
 | Bande d'une vente limite | 90 % – 120 % de la référence | une faute de frappe ne vend pas à 10 XAFe |

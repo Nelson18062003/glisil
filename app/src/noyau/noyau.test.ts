@@ -24,6 +24,9 @@ test("un numéro se lit en tranches et part nu", () => {
   assert.equal(operateurDuNumero("699123456"), "om");
   assert.equal(operateurDuNumero("655111111"), "om");
   assert.equal(operateurDuNumero("650000000"), "mtn");
+  assert.equal(operateurDuNumero("600000005"), "mtn", "démo TOTEM, MTN");
+  assert.equal(operateurDuNumero("600900005"), "om", "démo TOTEM, Orange");
+  assert.equal(operateurDuNumero("600500005"), null, "hors des tranches de démo");
 });
 
 test("le pavé n'accepte que des chiffres et efface", () => {
@@ -55,8 +58,10 @@ test("les règles du carnet sont celles du moteur", () => {
   assert.ok(prixValide(618.4));
   assert.ok(!prixValide(618.41));
   assert.ok(quantiteValide(10));
-  assert.ok(!quantiteValide(5));
+  assert.ok(quantiteValide(5), "le minimum est en XAFe (0027), pas en USDT : 5 USDT est une quantité valable");
+  assert.ok(quantiteValide(0.01));
   assert.ok(!quantiteValide(10.123));
+  assert.ok(!quantiteValide(0.001));
   assert.equal(achatMax(3_000_000, 618.4), 4851.22);
   assert.deepEqual(fraisOrdre("achat", 1500, 618.4), { montant: 1.5, actif: "USDT" });
   assert.deepEqual(fraisOrdre("vente", 1500, 618.4), { montant: 928, actif: "XAFe" });
@@ -145,7 +150,7 @@ test("une intention garde sa clé jusqu'à réussir ; une autre intention a la s
 test("quantités et prix se jugent au centime, comme le moteur, malgré le flottant", async () => {
   const a = await import("./argent.ts");
   for (const q of [19.99, 1.15 + 10, 10.29, 12.35, 10.1, 20.07, 33.33]) assert.equal(a.quantiteValide(q), true, `${q} a deux décimales : le moteur l'accepte`);
-  for (const q of [10.123, 10.005, 9.99, NaN, Infinity]) assert.equal(a.quantiteValide(q), false, `${q} : le moteur le refuse`);
+  for (const q of [10.123, 10.005, 0.001, NaN, Infinity]) assert.equal(a.quantiteValide(q), false, `${q} : le moteur le refuse`);
   for (const p of [618.4, 618.05, 600.1, 599.95]) assert.equal(a.prixValide(p), true, `${p}`);
   for (const p of [618.004, 618.01, 618.06, 0, -5]) assert.equal(a.prixValide(p), false, `${p}`);
 });
@@ -216,15 +221,19 @@ test("le bouton gris dit pourquoi : la règle et sa borne, dans l'ordre du moteu
   /* les nombres s'écrivent à la française, avec des espaces fines : on les lit comme des espaces */
   const raison = (o: Parameters<typeof raisonDuRefus>[0]) => raisonDuRefus(o)?.replace(/[\u202f\u00a0]/g, " ") ?? null;
   assert.equal(raison(base), null);
-  // le cas de la capture : 1 000 XAFe, un prix de 618,40 — 1,61 USDT, sous le minimum de 10
-  assert.match(raison({ ...base, quantite: 1.61, dispoXafe: 1000 })!, /Au moins 10 USDT .*6 184 XAFe/);
+  // le minimum est en XAFe (0027) : 1,61 USDT à 618,40 font 995,62 XAFe, sous 1 500
+  assert.match(raison({ ...base, quantite: 1.61, dispoXafe: 1000 })!, /Au moins 1 500 XAFe par ordre \(≈ 2,43 USDT/);
+  assert.equal(raison({ ...base, quantite: 2.43 }), null, "2,43 USDT font 1 502,71 XAFe : assez");
+  assert.match(raison({ ...base, quantite: 0.005 })!, /deux décimales/);
+  // pas de plafond : un ordre énorme ne bute que sur le solde
+  assert.match(raison({ ...base, quantite: 5_000_000 })!, /Il faut .* XAFe/);
   assert.equal(raison({ ...base, prix: 0 }), "Fixez votre prix.", "une case vide n'est pas un prix");
   assert.match(raison({ ...base, prix: 618.41 })!, /0,05/);
   assert.match(raison({ ...base, prix: 700 })!, /entre 494,75 et 680,20/);
   assert.match(raison({ ...base, quantite: 2000 })!, /Il faut 1 236 800 XAFe/);
   assert.match(raison({ ...base, ouverts: 200 })!, /200 ordres ouverts/);
   assert.match(raison({ ...base, cote: "vente", dispoUsdt: 5 })!, /5 USDT disponibles/);
-  assert.match(raison({ ...base, type: "marche", quantite: 200_000 })!, /ordre limite/);
+  assert.equal(raison({ ...base, type: "marche", quantite: 200_000 }), null, "au marché non plus, pas de plafond (0027)");
 });
 
 test("achat max : sans prix, on ne sait pas — jamais une division par 1", () => {

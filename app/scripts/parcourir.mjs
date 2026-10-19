@@ -178,9 +178,9 @@ try {
   /* le prix est un VRAI prix, pré-rempli (le meilleur en face), pas un exemple gris dans une case vide */
   const prixPose = await page.getByLabel("Prix (XAFe)").inputValue();
   exiger(/^\d{3},\d{2}$/.test(prixPose), `le prix est pré-rempli : « ${prixPose} »`);
-  /* le bouton gris dit pourquoi, la règle et sa borne : 1 USDT est sous le minimum */
+  /* le bouton gris dit pourquoi, la règle et sa borne : 1 USDT (≈ 600 XAFe) est sous le minimum de 1 500 XAFe */
   await page.getByLabel("Quantité (USDT)").fill("1");
-  await voir("Au moins 10 USDT");
+  await voir("Au moins 1 500 XAFe par ordre");
   exiger(await page.getByRole("button", { name: "Acheter USDT" }).isDisabled(), "sous le minimum, le bouton ne part pas");
   await capturer("marche-raison");
   /* le total d'abord : 61 840 XAFe au prix posé donnent la quantité, au centime inférieur */
@@ -232,8 +232,27 @@ try {
   await voir("Ouverts (1)");
   await page.goto(`${BASE}/marche/graphique`);
   await voir("Haut 24 h");
+  /* le graphique façon TradingView : un vrai tracé, une légende datée, des années d'historique */
+  await page.locator("[data-graphique-bourse] canvas").first().waitFor();
+  await page.locator("[data-legende]").getByText(/\d{4}/).first().waitFor();
   await page.waitForTimeout(500);
   await capturer("marche-graphique");
+  await page.getByRole("button", { name: "Montrer tout l'historique" }).click();
+  await page.locator('[aria-label="Intervalle 1 mois"][aria-pressed="true"]').waitFor();
+  const boite = await page.locator("[data-graphique-bourse] canvas").first().boundingBox();
+  await page.mouse.move(boite.x + boite.width * 0.15, boite.y + boite.height * 0.5);
+  await page.locator("[data-legende]").getByText("cours de référence BCE", { exact: false }).waitFor();
+  exiger(/20(1[6-9]|2[0-3])/.test(await page.locator("[data-legende]").innerText()), "« Tout » remonte des années en arrière, avant l'ouverture de Glisil");
+  await capturer("marche-graphique-historique");
+  await page.getByRole("button", { name: "Type de graphique : Bougies" }).click();
+  await page.getByRole("menuitem", { name: "Ligne" }).click();
+  await page.getByRole("button", { name: "Type de graphique : Ligne" }).waitFor();
+  await page.getByRole("button", { name: "Type de graphique : Ligne" }).click();
+  await page.getByRole("menuitem", { name: "Bougies" }).click();
+  await page.getByRole("tab", { name: "Profondeur" }).click();
+  await page.locator("[data-profondeur] svg").waitFor();
+  exiger((await page.locator("[data-profondeur]").innerText()).includes("Achats"), "la profondeur dit ce qu'il y a à l'achat et à la vente");
+  await capturer("marche-profondeur");
   await page.goto(`${BASE}/marche/carnet`);
   await voir("Carnet d'ordres");
   await voir("Achat (XAFe)");
@@ -687,21 +706,21 @@ try {
       beta: { actif: true, message: "Glisil est en bêta : tout l'argent ici est de l'argent de test.", dotation: { XAFe: 1000000, USDT: 2000 }, depots_reels: false } } };
   });
   await page.evaluate(() => sessionStorage.setItem("xafe-beta", "1"));
-  await page.goto(`${BASE}/`);
+  await allerA("/");
   await page.locator("[data-bandeau-beta]").waitFor();
   await voir("tout l'argent ici est de l'argent de test");
   await capturer("beta-accueil");
-  await page.goto(`${BASE}/entrer/operateur`);
+  await allerA("/entrer/operateur");
   await voir("Pas de vrai paiement pendant la bêta");
   await voir("1 000 000 XAFe");
   exiger(await page.getByRole("link", { name: "Essayer le marché" }).count() === 1, "la bêta renvoie vers le marché, pas vers un dépôt");
   await capturer("beta-entrer-ferme");
-  await page.goto(`${BASE}/sortir/montant`);
+  await allerA("/sortir/montant");
   await voir("Les sorties sont fermées pendant la bêta");
-  await page.goto(`${BASE}/crypto/retirer/XAFe/adresse`);
+  await allerA("/crypto/retirer/XAFe/adresse");
   await voir("Les retraits sont fermés pendant la bêta");
   // le testeur signale un problème depuis le bandeau : il part à l'équipe, une référence revient
-  await page.goto(`${BASE}/`);
+  await allerA("/");
   await page.locator("[data-bandeau-beta]").getByRole("link", { name: "Signaler un problème" }).click();
   await page.waitForURL(/\/compte\/aide\?depuis=/);
   exiger(await page.getByRole("button", { name: "Envoyer à l'équipe Glisil" }).isDisabled(), "un texte vide ne part pas");
