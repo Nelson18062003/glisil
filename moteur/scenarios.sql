@@ -2707,6 +2707,61 @@ begin
 end $$;
 rollback;
 
+-- 11.49 · la démo vivante de TOTEM (0028). Pendant la bêta, les numéros de
+-- démo (600 0x, 600 9x) sont des numéros MTN et Orange ; un terminal
+-- « totem-demo » naît démo, toujours entendu ; ses floats reçoivent les
+-- dépôts que la bêta ferme partout ailleurs ; un retrait vers un numéro de
+-- démo passe la porte fermée des sorties, un vrai numéro non.
+begin;
+update parametres set valeur = valeur || '{"actif": true, "depots_reels": false}' where cle = 'beta';
+update parametres set valeur = valeur || '{"ouvertes": false}' where cle = 'sortie';
+insert into terminaux (id, nom) values ('totem-demo', 'TOTEM démo');
+insert into floats (operateur, numero, terminal) values ('mtn', '600000001', 'totem-demo'), ('om', '600900002', 'totem-demo');
+do $$
+declare c uuid := 'b1490000-0000-0000-0000-000000000001'; r jsonb; n_demo uuid; n_vrai uuid;
+begin
+  assert (select demo from terminaux where id = 'totem-demo'), 'le terminal nommé totem-demo naît démo';
+  assert not (select demo from terminaux where id = 'akwa-1'), 'un vrai boîtier ne l''est pas';
+  assert operateur_du_numero('600000005') = 'mtn' and operateur_du_numero('+237 600 90 00 05') = 'om', 'les tranches de démo';
+  assert operateur_du_numero('600500005') is null, 'hors des deux tranches, rien';
+  assert operateur_du_numero('677123456') = 'mtn' and operateur_du_numero('699123456') = 'om', 'les vrais préfixes, inchangés';
+
+  insert into comptes (id, telephone, nom, palier) values (c, '670149001', 'Testeur démo', 0);
+  perform set_config('xafe.compte', c::text, true);
+  perform ajouter_numero('mtn', '600000005');
+  perform ajouter_numero('mtn', '677149002');
+  select id into n_demo from numeros where compte_id = c and numero = '600000005';
+  select id into n_vrai from numeros where compte_id = c and numero = '677149002';
+  assert n_demo is not null and n_vrai is not null, 'les deux numéros s''ajoutent';
+
+  -- le dépôt : SEUL le float de démo est proposé, et il est « ouvert » sans boîtier qui parle
+  r := ouvrir_depot('mtn', 'k-demo-1');
+  assert r ->> 'float_numero' = '600000001' and r ->> 'reception' = 'ouverte', r;
+  -- un dépôt posé sur un vrai float reste refusé à la source
+  begin
+    insert into depots (reference, compte_id, operateur, float_id, expire_le)
+    values ('XAFe-DP-T11490', c, 'mtn', (select id from floats where numero = '677000000'), now() + interval '1 hour');
+    raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'dépôts fermés pendant la bêta', sqlerrm; end;
+  -- le SMS du float de démo est reconnu comme le SIEN (pas « ce numéro n'est pas un float »)
+  r := totem_sms_recu('totem-demo', 1149, 'mtn', '600000001', '600000005', 5000, '18300000003',
+                      'DEMO MTN MoMo : Vous avez recu 5 000 FCFA de TESTEUR (600000005).', now());
+  assert coalesce(r ->> 'motif', '') not like '%pas un float%', r;
+
+  -- les retraits : la porte fermée des sorties s'ouvre pour un numéro de démo, pas pour un vrai
+  begin perform demander_sortie(5000, n_vrai, 'k-demo-s1', '0000', 'TESTEUR');
+        raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'sorties pas encore ouvertes', sqlerrm; end;
+  begin perform demander_sortie(5000, n_demo, 'k-demo-s2', '0000', 'TESTEUR');
+  exception when others then assert sqlerrm <> 'sorties pas encore ouvertes', 'un numéro de démo passe la porte : ' || sqlerrm; end;
+
+  -- hors bêta, la démo n'existe plus : 600 n'est le numéro de personne
+  update parametres set valeur = valeur || '{"actif": false}' where cle = 'beta';
+  assert operateur_du_numero('600000005') is null, 'hors bêta, les tranches de démo ne sont à personne';
+  raise notice '✓ 11.49 la démo vivante de TOTEM : numéros de démo pendant la bêta seulement, le float de démo seul proposé et toujours entendu, son SMS reconnu, un vrai float toujours fermé, un retrait de démo passe la porte, un vrai non';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

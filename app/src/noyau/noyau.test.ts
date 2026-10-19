@@ -24,6 +24,9 @@ test("un numéro se lit en tranches et part nu", () => {
   assert.equal(operateurDuNumero("699123456"), "om");
   assert.equal(operateurDuNumero("655111111"), "om");
   assert.equal(operateurDuNumero("650000000"), "mtn");
+  assert.equal(operateurDuNumero("600000005"), "mtn", "démo TOTEM, MTN");
+  assert.equal(operateurDuNumero("600900005"), "om", "démo TOTEM, Orange");
+  assert.equal(operateurDuNumero("600500005"), null, "hors des tranches de démo");
 });
 
 test("le pavé n'accepte que des chiffres et efface", () => {

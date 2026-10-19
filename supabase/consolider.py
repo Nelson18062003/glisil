@@ -69,6 +69,7 @@ TEMOINS = {
     "0026_marche_profond.sql": ("false", "rejouable telle quelle"),
     # 0027 : fonctions « or replace », réglages réécrits seulement s'ils sont encore ceux d'origine.
     "0027_sans_plafond.sql": ("false", "rejouable telle quelle"),
+    "0028_totem_demo.sql": ("exists (select 1 from information_schema.columns where table_name = 'terminaux' and column_name = 'demo')", "la colonne demo des terminaux"),
 }
 
 
