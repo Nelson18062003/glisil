@@ -21,7 +21,7 @@ import {
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { lisible } from "../noyau/erreurs";
-import { choisirLangue, langue, LANGUES } from "../noyau/langue";
+import { choisirLangue, langue, LANGUES, t } from "../noyau/langue";
 import { useSession } from "../session/session";
 import { brand, tones, type Tone } from "../theme";
 
@@ -57,12 +57,12 @@ export function useFenetre(): Fenetre {
   return etendue ? "etendue" : moyenne ? "moyenne" : "compacte";
 }
 
-/** Les quatre maisons, dans l'ordre de la barre ; `aussi` : les chemins qu'elles couvrent. */
+/** Les quatre maisons, dans l'ordre de la barre ; `aussi` : les chemins qu'elles couvrent. Le nom se relit à chaque lecture (dans la langue de l'écran). */
 export const ONGLETS: { tab: Tab; to: string; label: string; icone: ReactNode; aussi: RegExp }[] = [
-  { tab: "accueil", to: "/", label: "Accueil", icone: <AccountBalanceWalletRounded />, aussi: /^\/($|notifications|entrer|sortir|crypto)/ },
-  { tab: "marche", to: "/marche", label: "Marché", icone: <ShowChartRounded />, aussi: /^\/(marche|rapide)/ },
-  { tab: "historique", to: "/historique", label: "Historique", icone: <HistoryRounded />, aussi: /^\/historique/ },
-  { tab: "compte", to: "/compte", label: "Compte", icone: <PersonRounded />, aussi: /^\/compte/ },
+  { tab: "accueil", to: "/", get label() { return t("Accueil", "Home"); }, icone: <AccountBalanceWalletRounded />, aussi: /^\/($|notifications|entrer|sortir|crypto)/ },
+  { tab: "marche", to: "/marche", get label() { return t("Marché", "Market"); }, icone: <ShowChartRounded />, aussi: /^\/(marche|rapide)/ },
+  { tab: "historique", to: "/historique", get label() { return t("Historique", "History"); }, icone: <HistoryRounded />, aussi: /^\/historique/ },
+  { tab: "compte", to: "/compte", get label() { return t("Compte", "Account"); }, icone: <PersonRounded />, aussi: /^\/compte/ },
 ];
 export const ongletDuChemin = (chemin: string): Tab => ONGLETS.find((o) => o.aussi.test(chemin))?.tab ?? "accueil";
 
@@ -88,18 +88,18 @@ function NavigationLaterale({ large }: { large: boolean }) {
   const { pathname } = useLocation();
   const actif = ongletDuChemin(pathname);
   return (
-    <Box component="nav" aria-label="Navigation principale"
+    <Box component="nav" aria-label={t("Navigation principale", "Main navigation")}
       sx={{ position: "sticky", top: 0, height: "100dvh", flexShrink: 0, width: large ? 256 : 88, borderRight: 1, borderColor: "divider", bgcolor: "background.paper",
             display: "flex", flexDirection: "column", alignItems: large ? "stretch" : "center", gap: 1, px: large ? 1.5 : 0,
             pt: "calc(env(safe-area-inset-top) + 20px)", pb: 2, pl: large ? 1.5 : "env(safe-area-inset-left)", overflowY: "auto" }}>
-      <ButtonBase component={Link} to="/" aria-label="Glisil, accueil" sx={{ borderRadius: 3, alignSelf: large ? "flex-start" : "center", px: large ? 1 : 0, py: 0.5, gap: 1, mb: 2 }}>
+      <ButtonBase component={Link} to="/" aria-label={t("Glisil, accueil", "Glisil, home")} sx={{ borderRadius: 3, alignSelf: large ? "flex-start" : "center", px: large ? 1 : 0, py: 0.5, gap: 1, mb: 2 }}>
         <Marque size={40} />
         {large && <NomGlisil size={26} />}
       </ButtonBase>
       {/* le geste le plus fréquent, à portée de main sur tous les écrans */}
-      <Button component={Link} to="/entrer/operateur" variant="contained" startIcon={large ? <ArrowDownwardRounded /> : undefined} aria-label="Entrer des XAF"
+      <Button component={Link} to="/entrer/operateur" variant="contained" startIcon={large ? <ArrowDownwardRounded /> : undefined} aria-label={t("Entrer des XAF", "Add XAF")}
         sx={{ mb: 2, ...(large ? { justifyContent: "flex-start" } : { minWidth: 56, width: 56, height: 56, borderRadius: 4, px: 0 }) }}>
-        {large ? "Entrer des XAF" : <ArrowDownwardRounded />}
+        {large ? t("Entrer des XAF", "Add XAF") : <ArrowDownwardRounded />}
       </Button>
       {ONGLETS.map((o) => {
         const choisi = o.tab === actif;
@@ -155,13 +155,13 @@ export function Screen({
       {horsLigne && (
         <Stack direction="row" alignItems="center" gap={1} sx={{ bgcolor: tones.amber.bg, color: tones.amber.fg, px: 2, py: 0.75, pt: "calc(env(safe-area-inset-top) + 6px)" }} role="status">
           <WifiOffRounded fontSize="small" />
-          <Typography variant="body2" sx={{ color: "inherit" }}>Hors ligne : les chiffres datent du dernier relevé.</Typography>
+          <Typography variant="body2" sx={{ color: "inherit" }}>{t("Hors ligne : les chiffres datent du dernier relevé.", "Offline: figures are from the last update.")}</Typography>
         </Stack>
       )}
       {(title || flèche || fermer) && (
         <Stack direction="row" alignItems="center" sx={{ minHeight: 64, px: 1, pt: horsLigne ? 0 : "env(safe-area-inset-top)", mt: { sm: dans ? 1 : 0 } }}>
           {flèche && (
-            <IconButton onClick={() => (onBack ? onBack() : navigate(back!))} aria-label="Retour" size="large">
+            <IconButton onClick={() => (onBack ? onBack() : navigate(back!))} aria-label={t("Retour", "Back")} size="large">
               <ArrowBackRounded />
             </IconButton>
           )}
@@ -170,7 +170,7 @@ export function Screen({
           </Typography>
           {actions}
           {fermer && (
-            <IconButton component={Link} to={fermer} aria-label="Fermer" size="large">
+            <IconButton component={Link} to={fermer} aria-label={t("Fermer", "Close")} size="large">
               <CloseRounded />
             </IconButton>
           )}
@@ -184,7 +184,7 @@ export function Screen({
 
 export function BottomNav({ tab }: { tab: Tab }) {
   return (
-    <Paper component="nav" aria-label="Navigation principale" sx={{ borderRadius: 0, borderTop: 1, borderColor: "divider", position: "sticky", bottom: 0, zIndex: 2, pb: "env(safe-area-inset-bottom)" }}>
+    <Paper component="nav" aria-label={t("Navigation principale", "Main navigation")} sx={{ borderRadius: 0, borderTop: 1, borderColor: "divider", position: "sticky", bottom: 0, zIndex: 2, pb: "env(safe-area-inset-bottom)" }}>
       <BottomNavigation value={tab} showLabels sx={{ height: 80 }}>
         {ONGLETS.map((o) => <BottomNavigationAction key={o.tab} component={Link} to={o.to} value={o.tab} label={o.label} icon={o.icone} />)}
       </BottomNavigation>
@@ -267,10 +267,11 @@ export function List({ children }: { children: ReactNode }) {
 }
 
 export function Line({ label, value, strong, color, mono }: { label: string; value: ReactNode; strong?: boolean; color?: string; mono?: boolean }) {
+  const police = mono ? "Roboto Mono, monospace" : undefined; // langue-ok
   return (
     <Stack direction="row" justifyContent="space-between" alignItems="center" gap={2}>
       <Typography variant="body2" sx={{ flexShrink: 0 }}>{label}</Typography>
-      <Typography fontWeight={strong ? 700 : 500} sx={{ color, fontVariantNumeric: "tabular-nums", textAlign: "right", fontFamily: mono ? "Roboto Mono, monospace" : undefined, fontSize: mono ? 14 : undefined, wordBreak: "break-all" }}>
+      <Typography fontWeight={strong ? 700 : 500} sx={{ color, fontVariantNumeric: "tabular-nums", textAlign: "right", fontFamily: police, fontSize: mono ? 14 : undefined, wordBreak: "break-all" }}>
         {value}
       </Typography>
     </Stack>
@@ -298,11 +299,12 @@ export function Amount({ value, unit, hint, hintColor }: { value: string; unit: 
   );
 }
 
-export function Chips({ items, selected, onSelect }: { items: string[]; selected?: string; onSelect?: (it: string) => void }) {
+/** `libelle` : ce qu'on lit, quand l'élément est une clé (un filtre) et pas un texte. Sans lui, l'élément s'affiche tel quel. */
+export function Chips({ items, selected, onSelect, libelle }: { items: string[]; selected?: string; onSelect?: (it: string) => void; libelle?: (it: string) => string }) {
   return (
     <Stack direction="row" gap={1} justifyContent="center" flexWrap="wrap">
       {items.map((it) => (
-        <Chip key={it} label={it} onClick={onSelect ? () => onSelect(it) : undefined} color={it === selected ? "primary" : undefined} variant={it === selected ? "filled" : "outlined"} />
+        <Chip key={it} label={libelle ? libelle(it) : it} onClick={onSelect ? () => onSelect(it) : undefined} color={it === selected ? "primary" : undefined} variant={it === selected ? "filled" : "outlined"} />
       ))}
     </Stack>
   );
@@ -311,8 +313,9 @@ export function Chips({ items, selected, onSelect }: { items: string[]; selected
 /** Français / English : le choix se garde sur l'appareil, et l'application se relit aussitôt dans l'autre langue. */
 export function ChoixDeLangue() {
   const l = langue();
+  const nom = "Langue · Language"; // langue-ok : le nom du choix se lit dans les deux langues, quelle que soit celle de l'écran
   return (
-    <Stack direction="row" gap={1} role="group" aria-label="Langue · Language">
+    <Stack direction="row" gap={1} role="group" aria-label={nom}>
       {LANGUES.map((x) => (
         <Chip key={x.id} label={x.nom} lang={x.id} onClick={() => choisirLangue(x.id)} color={x.id === l ? "primary" : undefined}
           variant={x.id === l ? "filled" : "outlined"} aria-pressed={x.id === l} />
@@ -343,9 +346,10 @@ export function Keypad({ onKey, triple = "000" }: { onKey: (k: string) => void; 
   return (
     <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1 }}>
       {keys.map((k, i) => (
-        <ButtonBase key={i} disabled={k === ""} onClick={() => onKey(k)} aria-label={k === "⌫" ? "Effacer" : k || undefined}
+        <ButtonBase key={i} disabled={k === ""} onClick={() => onKey(k)} aria-label={k === "⌫" ? t("Effacer", "Delete") : (k === "," ? t(",", ".") : k) || undefined}
           sx={{ height: 60, borderRadius: 4, fontSize: 24, fontWeight: 500, bgcolor: k === "" ? "transparent" : "background.paper" }}>
-          {k === "⌫" ? <BackspaceOutlined /> : k}
+          {/* la touche décimale se lit comme le montant s'affiche : « , » en français, « . » en anglais — elle envoie toujours « , » */}
+          {k === "⌫" ? <BackspaceOutlined /> : k === "," ? t(",", ".") : k}
         </ButtonBase>
       ))}
     </Box>
@@ -456,8 +460,8 @@ export function FeuilleErreur({ erreur, onFermer, onRecommencer }: { erreur: unk
             <Typography variant="body2">{e.suite}</Typography>
           </Stack>
           <Stack gap={1}>
-            {onRecommencer && e.recommencer && <Button variant="contained" onClick={() => { onFermer(); onRecommencer(); }}>Réessayer</Button>}
-            <Button variant={onRecommencer && e.recommencer ? "text" : "contained"} onClick={onFermer}>Compris</Button>
+            {onRecommencer && e.recommencer && <Button variant="contained" onClick={() => { onFermer(); onRecommencer(); }}>{t("Réessayer", "Try again")}</Button>}
+            <Button variant={onRecommencer && e.recommencer ? "text" : "contained"} onClick={onFermer}>{t("Compris", "Got it")}</Button>
           </Stack>
         </Stack>
       )}
@@ -481,8 +485,8 @@ export function Attente({ erreur, hauteur = 300, title, back }: { erreur: unknow
   const inconnu = erreur instanceof Error && / inconnue?$/.test(erreur.message);
   const l = lisible(erreur);
   return (
-    <Screen title={inconnu ? "Introuvable" : l.titre} back={back ?? "/"}>
-      <Typography variant="body2" data-attente-erreur="1">{inconnu ? "Cette opération n'est pas sur votre compte." : l.suite}</Typography>
+    <Screen title={inconnu ? t("Introuvable", "Not found") : l.titre} back={back ?? "/"}>
+      <Typography variant="body2" data-attente-erreur="1">{inconnu ? t("Cette opération n'est pas sur votre compte.", "This transaction isn't on your account.") : l.suite}</Typography>
     </Screen>
   );
 }
@@ -577,7 +581,7 @@ export function Marque({ size = 44, tuile = true }: { size?: number; tuile?: boo
 export function NomGlisil({ size = 28, couleur = "text.primary" }: { size?: number; couleur?: string }) {
   return (
     <Box component="span" sx={{ fontFamily: '"Sora", "Roboto", system-ui, sans-serif', fontWeight: 700, fontSize: size, letterSpacing: "-0.04em", lineHeight: 1, color: couleur }}>
-      glisil
+      {"glisil"}
     </Box>
   );
 }

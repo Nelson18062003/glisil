@@ -9,11 +9,15 @@
  * Fabriqué dans le téléphone, sans serveur : pdf-lib et ses polices standard
  * (Helvetica, Courier). Elles ne connaissent que l'alphabet « WinAnsi » : les
  * espaces fines des montants et le signe moins typographique y sont ramenés.
+ * Les libellés suivent la langue de l'écran ; l'anglais n'y emploie que de
+ * l'ASCII, que ces polices savent toujours écrire.
  */
 import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
 import QRCode from "qrcode";
 import type { TraceChaine } from "../guichet/types";
 import { etatDeTrace, lienContrat, lienTransaction, nomsReseau } from "./chaine";
+import { enTranches } from "./format";
+import { langue, t } from "./langue";
 
 export type RecuDonnees = {
   reference: string;
@@ -39,8 +43,8 @@ const FILET = rgb(0.86, 0.88, 0.86);
 const FOND = rgb(0.95, 0.97, 0.95);
 
 /** Ce que les polices standard savent écrire : le reste est ramené, jamais perdu en silence. */
-export function enWinAnsi(t: string): string {
-  return t
+export function enWinAnsi(texte: string): string {
+  return texte
     .replace(/[    ]/g, " ")
     .replace(/[−–]/g, "-")
     .replace(/[‘’]/g, "'")
@@ -50,9 +54,9 @@ export function enWinAnsi(t: string): string {
 
 /** Couper un texte trop long pour sa colonne, mot à mot (ou caractère par caractère pour un hash). */
 function couper(texte: string, police: PDFFont, taille: number, largeur: number): string[] {
-  const t = enWinAnsi(texte);
-  if (police.widthOfTextAtSize(t, taille) <= largeur) return [t];
-  const morceaux = /\s/.test(t) ? t.split(/(\s+)/) : [...t];
+  const brut = enWinAnsi(texte);
+  if (police.widthOfTextAtSize(brut, taille) <= largeur) return [brut];
+  const morceaux = /\s/.test(brut) ? brut.split(/(\s+)/) : [...brut];
   const lignes: string[] = [];
   let courant = "";
   for (const m of morceaux) {
@@ -87,7 +91,7 @@ function qr(page: PDFPage, texte: string, x: number, y: number, cote: number) {
 
 export async function fabriquerRecu(d: RecuDonnees): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
-  doc.setTitle(`Reçu ${d.reference}`);
+  doc.setTitle(t(`Reçu ${d.reference}`, `Receipt ${d.reference}`));
   doc.setAuthor("Glisil");
   doc.setSubject(d.titre);
   doc.setCreationDate(d.emisLe);
@@ -97,14 +101,14 @@ export async function fabriquerRecu(d: RecuDonnees): Promise<Uint8Array> {
   const gras = await doc.embedFont(StandardFonts.HelveticaBold);
   const mono = await doc.embedFont(StandardFonts.Courier);
   const M = 48;
-  const ecrire = (t: string, x: number, y: number, taille: number, police = normal, couleur = ENCRE) => page.drawText(enWinAnsi(t), { x, y, size: taille, font: police, color: couleur });
-  const aDroite = (t: string, xDroite: number, y: number, taille: number, police = normal, couleur = ENCRE) => ecrire(t, xDroite - police.widthOfTextAtSize(enWinAnsi(t), taille), y, taille, police, couleur);
+  const ecrire = (texte: string, x: number, y: number, taille: number, police = normal, couleur = ENCRE) => page.drawText(enWinAnsi(texte), { x, y, size: taille, font: police, color: couleur });
+  const aDroite = (texte: string, xDroite: number, y: number, taille: number, police = normal, couleur = ENCRE) => ecrire(texte, xDroite - police.widthOfTextAtSize(enWinAnsi(texte), taille), y, taille, police, couleur);
 
   /* le bandeau */
   page.drawRectangle({ x: 0, y: H - 96, width: L, height: 96, color: VERT });
   ecrire("glisil", M, H - 58, 30, gras, rgb(1, 1, 1));
   page.drawCircle({ x: M + gras.widthOfTextAtSize("glisil", 30) + 9, y: H - 37, size: 4.5, color: OR });
-  aDroite("REÇU", L - M, H - 46, 11, gras, rgb(1, 1, 1));
+  aDroite(t("REÇU", "RECEIPT"), L - M, H - 46, 11, gras, rgb(1, 1, 1));
   aDroite(d.reference, L - M, H - 64, 13, mono, rgb(1, 1, 1));
 
   /* le montant */
@@ -124,31 +128,32 @@ export async function fabriquerRecu(d: RecuDonnees): Promise<Uint8Array> {
     morceaux.forEach((m, i) => aDroite(m, L - M, y - i * 14, 11, police));
     y -= 14 * morceaux.length + 12;
   };
-  if (d.client) ligne("Client", d.client);
-  ligne("Référence Glisil", d.reference, mono);
-  for (const [l, v] of d.lignes) ligne(l, v, /^(ID|Transaction|Référence)/.test(l) ? mono : normal);
+  if (d.client) ligne(t("Client", "Customer"), d.client);
+  ligne(t("Référence Glisil", "Glisil reference"), d.reference, mono);
+  for (const [l, v] of d.lignes) ligne(l, v, /^(ID|Transaction|Référence|Reference)/.test(l) ? mono : normal);
 
   /* la blockchain : la boîte se mesure avant de se dessiner, les champs n'en débordent jamais */
-  for (const t of d.chaine) {
-    const e = etatDeTrace(t);
-    const lien = lienTransaction(t.explorateur, t.reseau, t.txHash);
+  for (const trace of d.chaine) {
+    const e = etatDeTrace(trace);
+    const lien = lienTransaction(trace.explorateur, trace.reseau, trace.txHash);
     const largeurValeur = L - 2 * M - 140 - 96;
     const champs: { label: string; morceaux: string[]; police: PDFFont; taille: number }[] = [];
     const champ = (label: string, valeur: string, police = mono, taille = 9) => champs.push({ label, morceaux: couper(valeur, police, taille, largeurValeur), police, taille });
-    champ("Réseau", `${nomsReseau(t.reseau).nom}${t.essai ? " (réseau d'essai)" : ""}`, normal, 10);
-    champ("Opération", `${t.operation === "frapper" ? "Frappe" : "Destruction"} de ${t.montant.toLocaleString("fr-FR")} XAFe`, normal, 10);
-    champ("Transaction", t.txHash ?? "pas encore signée");
-    if (t.bloc != null) champ("Bloc", t.bloc.toLocaleString("fr-FR"), normal, 10);
-    champ("Référence scellée", t.reference);
-    if (t.empreinte) champ("Empreinte", t.empreinte);
-    if (t.contrat) champ("Contrat XAFe", t.contrat);
+    const montant = enTranches(trace.montant);
+    champ(t("Réseau", "Network"), `${nomsReseau(trace.reseau).nom}${trace.essai ? t(" (réseau d'essai)", " (test network)") : ""}`, normal, 10);
+    champ(t("Opération", "Operation"), trace.operation === "frapper" ? t(`Frappe de ${montant} XAFe`, `Mint of ${montant} XAFe`) : t(`Destruction de ${montant} XAFe`, `Burn of ${montant} XAFe`), normal, 10);
+    champ(t("Transaction", "Transaction"), trace.txHash ?? t("pas encore signée", "not signed yet"));
+    if (trace.bloc != null) champ(t("Bloc", "Block"), enTranches(trace.bloc), normal, 10);
+    champ(t("Référence scellée", "Sealed reference"), trace.reference);
+    if (trace.empreinte) champ(t("Empreinte", "Hash"), trace.empreinte);
+    if (trace.contrat) champ(t("Contrat XAFe", "XAFe contract"), trace.contrat);
     const corps = champs.reduce((h, c) => h + 12 * c.morceaux.length + 7, 0);
     const hauteur = Math.max(corps, lien ? 132 : 0) + 58;
     y -= 30;
     const haut = y + 28;
     page.drawRectangle({ x: M - 12, y: haut - hauteur, width: L - 2 * M + 24, height: hauteur, color: FOND, borderColor: FILET, borderWidth: 0.8 });
     jeton(page, M + 10, y + 6, 13);
-    ecrire("Sur la blockchain", M + 32, y + 8, 14, gras);
+    ecrire(t("Sur la blockchain", "On the blockchain"), M + 32, y + 8, 14, gras);
     ecrire(e.titre, M + 32, y - 8, 10, normal, e.ton === "green" ? VERT : e.ton === "red" ? rgb(0.7, 0.15, 0.12) : GRIS);
     y -= 34;
     const debutChamps = y;
@@ -159,21 +164,25 @@ export async function fabriquerRecu(d: RecuDonnees): Promise<Uint8Array> {
     }
     if (lien) {
       qr(page, lien, L - M - 112, debutChamps - 104, 112);
-      aDroite(`Scannez : la transaction sur ${nomsReseau(t.reseau).explorateur}`, L - M, debutChamps - 116, 7.5, normal, GRIS);
+      aDroite(t(`Scannez : la transaction sur ${nomsReseau(trace.reseau).explorateur}`, `Scan: the transaction on ${nomsReseau(trace.reseau).explorateur}`), L - M, debutChamps - 116, 7.5, normal, GRIS);
     }
     y = haut - hauteur - 8;
   }
 
   /* le pied */
-  const essai = d.chaine.some((t) => t.essai);
-  const verifier = d.chaine.length
-    ? `Vérifiez sans nous croire sur parole : l'empreinte est keccak256 du texte « ${d.chaine[0].reference} », et le contrat refuse de créer deux fois des XAFe sous la même. L'offre totale du jeton se lit sur ${lienContrat(d.chaine[0].explorateur, d.chaine[0].reseau, d.chaine[0].contrat) ?? "l'explorateur"}.`
+  const essai = d.chaine.some((trace) => trace.essai);
+  const premiere = d.chaine[0];
+  const ouLire = premiere ? lienContrat(premiere.explorateur, premiere.reseau, premiere.contrat) : null;
+  const verifier = premiere
+    ? t(`Vérifiez sans nous croire sur parole : l'empreinte est keccak256 du texte « ${premiere.reference} », et le contrat refuse de créer deux fois des XAFe sous la même. L'offre totale du jeton se lit sur ${ouLire ?? "l'explorateur"}.`,
+        `Verify it yourself, no need to take our word for it: the hash is the keccak256 of the text "${premiere.reference}", and the contract refuses to mint XAFe twice under the same one. The token's total supply can be read at ${ouLire ?? "the explorer"}.`)
     : "";
   let yp = 112;
   for (const m of couper(verifier, normal, 8.5, L - 2 * M)) { ecrire(m, M, yp, 8.5, normal, GRIS); yp -= 12; }
   page.drawLine({ start: { x: M, y: 64 }, end: { x: L - M, y: 64 }, thickness: 0.6, color: FILET });
-  ecrire("1 XAFe = 1 XAF. Chaque XAFe existe aussi sur la blockchain ; la preuve de réserve est publique :", M, 48, 8.5, normal, GRIS);
+  ecrire(t("1 XAFe = 1 XAF. Chaque XAFe existe aussi sur la blockchain ; la preuve de réserve est publique :", "1 XAFe = 1 XAF. Every XAFe also exists on the blockchain; the proof of reserves is public:"), M, 48, 8.5, normal, GRIS);
   ecrire(d.preuve, M, 36, 8.5, gras, VERT);
-  aDroite(`Émis le ${d.emisLe.toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" })}${essai ? " · réseau d'essai : sans valeur" : ""}`, L - M, 36, 8, normal, GRIS);
+  const emis = d.emisLe.toLocaleString(langue() === "en" ? "en-US" : "fr-FR", { dateStyle: "long", timeStyle: "short" });
+  aDroite(t(`Émis le ${emis}${essai ? " · réseau d'essai : sans valeur" : ""}`, `Issued ${emis}${essai ? " - test network: no value" : ""}`), L - M, 36, 8, normal, GRIS);
   return doc.save();
 }

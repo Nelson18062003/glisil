@@ -15,7 +15,7 @@ import path from "node:path";
 
 const RACINE = new URL("../src/", import.meta.url).pathname;
 // des données, pas des écrans : le faux guichet des captures, les types, le thème
-const EXCLUS = new Set(["guichet/demo.ts", "guichet/types.ts", "theme.ts", "noyau/langue.ts"]);
+const EXCLUS = new Set(["guichet/demo.ts", "guichet/types.ts", "theme.ts", "noyau/langue.ts", "noyau/serveur.ts"]); // serveur.ts : la table de traduction des textes de la base
 const MARQUES = /^(XAFe|XAF|USDT|MTN|MTN MoMo|Orange|Orange Money|Glisil|TOTEM|BNB|BEP20|TRC20|BSC|Tron|MoMo|OM|PDF|ID|OTP|KYC|FCFA|BscScan|TronScan|TradingView|WhatsApp|Binance)$/;
 const MOTS = /\b(le|la|les|des|du|de|un|une|et|ou|pour|vos|votre|vous|sur|par|en|au|aux|est|pas|ne|sans|avec|dans|plus|ce|cette|qui|que|il|elle|on|nous|à|son|sa|ses)\b/i;
 const ACCENTS = /[àâäçéèêëîïôöùûüÿœæÀÂÇÉÈÊËÎÏÔÙÛÜŒ]/;

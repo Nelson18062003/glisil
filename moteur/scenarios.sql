@@ -2904,6 +2904,8 @@ begin
   assert jsonb_array_length(r -> 'operateurs') = 2
          and r -> 'operateurs' -> 0 -> 'plafond_par_transfert' = to_jsonb((select plafond_par_transfert from operateurs where id = 'mtn')), r;
   assert not (r ? 'code_secret') and not (r ? 'depot'), 'rien d''autre que ce que l''écran montre';
+  -- le bandeau de la bêta, dans les deux langues (0033)
+  assert r -> 'beta' ->> 'message_en' = parametre('beta') ->> 'message_en' and length(r -> 'beta' ->> 'message_en') > 20, r -> 'beta';
 end $$;
 rollback;
 do $$

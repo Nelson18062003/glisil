@@ -73,6 +73,9 @@ export const APPAREILS = [
 /* ------------------------------------------------------------ les écrans */
 
 const CODE = "1234";
+// la langue de l'écran mesuré (LANGUE=en : l'application en anglais) — les libellés que le harnais cherche suivent
+const EN = process.env.LANGUE === "en";
+const L = (fr, en) => (EN ? en : fr);
 const pave = async (p, chiffres) => { for (const c of chiffres) await p.getByRole("button", { name: c, exact: true }).first().click(); };
 const ADRESSE_BEP20 = "0x7908cf9242fb2018f3487908cf9242fb2018f348";
 
@@ -82,10 +85,10 @@ const ECRANS = [
   { nom: "notifications", aller: "/notifications" },
   { nom: "entrer-operateur", aller: "/entrer/operateur" },
   { nom: "entrer-montant", aller: "/entrer/operateur", puis: async (p) => { await p.getByText("MTN MoMo", { exact: true }).click(); await p.waitForURL(/montant$/); await pave(p, ["2", "5", "0", "000"]); } },
-  { nom: "entrer-payer", aller: "/entrer/operateur", puis: async (p) => { await p.getByText("MTN MoMo", { exact: true }).click(); await p.waitForURL(/montant$/); await pave(p, ["1", "0", "000"]); await p.getByRole("button", { name: "Continuer" }).click(); await p.waitForURL(/payer/); } },
+  { nom: "entrer-payer", aller: "/entrer/operateur", puis: async (p) => { await p.getByText("MTN MoMo", { exact: true }).click(); await p.waitForURL(/montant$/); await pave(p, ["1", "0", "000"]); await p.getByRole("button", { name: L("Continuer", "Continue") }).click(); await p.waitForURL(/payer/); } },
   { nom: "sortir-montant", aller: "/sortir/montant", puis: async (p) => pave(p, ["1", "0", "0", "000"]) },
-  { nom: "sortir-destination", aller: "/sortir/montant", puis: async (p) => { await pave(p, ["1", "0", "000"]); await p.getByRole("button", { name: "Continuer" }).click(); await p.waitForURL(/destination$/); await p.getByText("6 77 12 34 56").click(); } },
-  { nom: "sortir-verifier", aller: "/sortir/montant", puis: async (p) => { await pave(p, ["1", "0", "000"]); await p.getByRole("button", { name: "Continuer" }).click(); await p.getByText("6 77 12 34 56").click(); await p.getByRole("button", { name: "Continuer" }).click(); await p.waitForURL(/verifier$/); } },
+  { nom: "sortir-destination", aller: "/sortir/montant", puis: async (p) => { await pave(p, ["1", "0", "000"]); await p.getByRole("button", { name: L("Continuer", "Continue") }).click(); await p.waitForURL(/destination$/); await p.getByText("6 77 12 34 56").click(); } },
+  { nom: "sortir-verifier", aller: "/sortir/montant", puis: async (p) => { await pave(p, ["1", "0", "000"]); await p.getByRole("button", { name: L("Continuer", "Continue") }).click(); await p.getByText("6 77 12 34 56").click(); await p.getByRole("button", { name: L("Continuer", "Continue") }).click(); await p.waitForURL(/verifier$/); } },
   { nom: "marche", aller: "/marche" },
   { nom: "marche-graphique", aller: "/marche/graphique" },
   { nom: "marche-carnet", aller: "/marche/carnet" },
@@ -93,9 +96,9 @@ const ECRANS = [
   { nom: "rapide", aller: "/rapide", puis: async (p) => pave(p, ["5", "0", "000"]) },
   { nom: "crypto", aller: "/crypto" },
   { nom: "crypto-deposer", aller: "/crypto/deposer/USDT" },
-  { nom: "crypto-retirer-adresse", aller: "/crypto/retirer/USDT/adresse", puis: async (p) => p.getByLabel("Adresse du wallet").fill(ADRESSE_BEP20) },
+  { nom: "crypto-retirer-adresse", aller: "/crypto/retirer/USDT/adresse", puis: async (p) => p.getByLabel(L("Adresse du wallet", "Wallet address")).fill(ADRESSE_BEP20) },
   { nom: "historique", aller: "/historique" },
-  { nom: "historique-detail", aller: "/historique", puis: async (p) => { await p.getByText("Entrée MTN MoMo").first().click(); await p.waitForURL(/historique\/XAFe-/); } },
+  { nom: "historique-detail", aller: "/historique", puis: async (p) => { await p.getByText(L("Entrée MTN MoMo", "MTN MoMo deposit")).first().click(); await p.waitForURL(/historique\/XAFe-/); } },
   { nom: "compte", aller: "/compte" },
   { nom: "compte-informations", aller: "/compte/informations" },
   { nom: "compte-numeros", aller: "/compte/numeros" },
@@ -111,14 +114,14 @@ const ECRANS = [
 /* sans session : à jouer dans une fenêtre neuve */
 const ECRANS_ANONYMES = [
   { nom: "bienvenue", aller: "/bienvenue" },
-  { nom: "bienvenue-code", aller: "/bienvenue", puis: async (p) => { await p.getByLabel("Adresse e-mail").fill("awa@exemple.com"); await p.getByRole("button", { name: "Recevoir mon code" }).click(); await p.waitForURL(/code$/); } },
+  { nom: "bienvenue-code", aller: "/bienvenue", puis: async (p) => { await p.getByLabel(L("Adresse e-mail", "Email address")).fill("awa@exemple.com"); await p.getByRole("button", { name: L("Recevoir mon code", "Get my code") }).click(); await p.waitForURL(/code$/); } },
   { nom: "inscription-verifier", aller: "/bienvenue", puis: async (p) => {
-    await p.getByLabel("Adresse e-mail").fill("grille@exemple.com"); await p.getByRole("button", { name: "Recevoir mon code" }).click();
-    await p.getByLabel("Code reçu par e-mail").fill("123456"); await p.waitForURL(/inscription$/);
-    await p.getByLabel("Prénom").fill("Awa"); await p.getByLabel("Nom de famille").fill("Ngono-Mballa"); await p.getByRole("button", { name: "Continuer" }).click();
-    await p.getByLabel("Jour").fill("12"); await p.getByLabel("Mois").fill("03"); await p.getByLabel("Année").fill("1994"); await p.getByRole("button", { name: "Continuer" }).click();
-    await p.getByLabel("Numéro de téléphone").fill("677998811"); await p.getByRole("button", { name: "Continuer" }).click();
-    await p.getByLabel("Ville").fill("Douala"); await p.keyboard.press("Escape"); await p.getByRole("button", { name: "Continuer" }).click();
+    await p.getByLabel(L("Adresse e-mail", "Email address")).fill("grille@exemple.com"); await p.getByRole("button", { name: L("Recevoir mon code", "Get my code") }).click();
+    await p.getByLabel(L("Code reçu par e-mail", "Code received by email")).fill("123456"); await p.waitForURL(/inscription$/);
+    await p.getByLabel(L("Prénom", "First name")).fill("Awa"); await p.getByLabel(L("Nom de famille", "Last name")).fill("Ngono-Mballa"); await p.getByRole("button", { name: L("Continuer", "Continue") }).click();
+    await p.getByLabel(L("Jour", "Day")).fill("12"); await p.getByLabel(L("Mois", "Month")).fill("03"); await p.getByLabel(L("Année", "Year")).fill("1994"); await p.getByRole("button", { name: L("Continuer", "Continue") }).click();
+    await p.getByLabel(L("Numéro de téléphone", "Phone number")).fill("677998811"); await p.getByRole("button", { name: L("Continuer", "Continue") }).click();
+    await p.getByLabel(L("Ville", "City")).fill("Douala"); await p.keyboard.press("Escape"); await p.getByRole("button", { name: L("Continuer", "Continue") }).click();
   } },
 ];
 
@@ -289,12 +292,12 @@ const pret = async (page) => {
   await page.waitForTimeout(350);
 };
 const deverrouiller = async (page) => {
-  if (await page.getByText("Votre code secret pour continuer").count()) { await pave(page, CODE.split("")); await page.waitForTimeout(400); }
+  if (await page.getByText(L("Votre code secret pour continuer", "Enter your PIN to continue")).count()) { await pave(page, CODE.split("")); await page.waitForTimeout(400); }
 };
 
 try {
   for (const a of appareils) {
-    const ctx = await navigateur.newContext({ viewport: { width: a.w, height: a.h }, deviceScaleFactor: 1, isMobile: Boolean(a.mobile), hasTouch: Boolean(a.mobile), userAgent: a.ua, locale: "fr-FR", permissions: ["clipboard-read", "clipboard-write"] });
+    const ctx = await navigateur.newContext({ viewport: { width: a.w, height: a.h }, deviceScaleFactor: 1, isMobile: Boolean(a.mobile), hasTouch: Boolean(a.mobile), userAgent: a.ua, locale: process.env.LANGUE === "en" ? "en-US" : "fr-FR", permissions: ["clipboard-read", "clipboard-write"] });
     const fautesAppareil = [];
     /* d'abord sans session */
     for (const e of ECRANS_ANONYMES) {
@@ -314,9 +317,9 @@ try {
     /* puis la vitrine connectée */
     const page = await ctx.newPage();
     await page.goto(`${BASE}/bienvenue`);
-    await page.getByLabel("Adresse e-mail").fill("demo@glisil.com");
-    await page.getByRole("button", { name: "Recevoir mon code" }).click();
-    await page.getByLabel("Code reçu par e-mail").fill("123456");
+    await page.getByLabel(L("Adresse e-mail", "Email address")).fill("demo@glisil.com");
+    await page.getByRole("button", { name: L("Recevoir mon code", "Get my code") }).click();
+    await page.getByLabel(L("Code reçu par e-mail", "Code received by email")).fill("123456");
     await page.waitForURL(`${BASE}/`);
     for (const e of ECRANS) {
       try {

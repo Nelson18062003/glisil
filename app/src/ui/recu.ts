@@ -12,7 +12,7 @@ export async function telechargerRecu(d: Omit<RecuDonnees, "preuve" | "emisLe">)
   const fichier = new Blob([octets as BlobPart], { type: "application/pdf" });
   const lien = document.createElement("a");
   lien.href = URL.createObjectURL(fichier);
-  lien.download = `Recu-${d.reference}.pdf`;
+  lien.download = `Recu-${d.reference}.pdf`; // langue-ok
   lien.click();
   setTimeout(() => URL.revokeObjectURL(lien.href), 10_000);
 }

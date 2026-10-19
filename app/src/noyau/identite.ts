@@ -11,6 +11,7 @@
  *                   (au Cameroun : 9 chiffres, commençant par 6 ou 2)
  */
 import { AsYouType, getCountries, getCountryCallingCode, parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js/min";
+import { abonnerLangue, langue } from "./langue";
 
 /* ---------------------------------------------------------------- noms */
 
@@ -71,17 +72,28 @@ export function verdictNaissance(jour: string, mois: string, annee: string, le: 
 export type Pays = { code: CountryCode; nom: string; indicatif: string; drapeau: string };
 
 const drapeau = (code: string) => String.fromCodePoint(...[...code].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
-const noms = typeof Intl !== "undefined" && "DisplayNames" in Intl ? new Intl.DisplayNames(["fr"], { type: "region" }) : null;
+/* Le nom d'un pays dans la langue de l'écran (« Cameroun », « Cameroon ») : lu à chaque affichage, pas figé à l'import. */
+const nomsParLangue = new Map<string, Intl.DisplayNames | null>();
+function nomDuPays(code: string): string {
+  const l = langue();
+  if (!nomsParLangue.has(l)) nomsParLangue.set(l, typeof Intl !== "undefined" && "DisplayNames" in Intl ? new Intl.DisplayNames([l], { type: "region" }) : null); // langue-ok
+  return nomsParLangue.get(l)?.of(code) ?? code;
+}
 
 /** En tête de liste : la zone du franc CFA d'Afrique centrale (le XAF), puis les voisins et les partenaires fréquents. */
 export const PAYS_EN_TETE: CountryCode[] = ["CM", "GA", "CG", "TD", "CF", "GQ", "NG", "CI", "SN", "CD", "FR", "BE", "CN", "AE", "US"];
 
-export const PAYS: Pays[] = (() => {
-  const tous = getCountries().map((code) => ({ code, nom: noms?.of(code) ?? code, indicatif: `+${getCountryCallingCode(code)}`, drapeau: drapeau(code) }));
-  const tete = PAYS_EN_TETE.map((c) => tous.find((p) => p.code === c)).filter((p): p is Pays => Boolean(p));
-  const reste = tous.filter((p) => !PAYS_EN_TETE.includes(p.code)).sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
-  return [...tete, ...reste];
-})();
+/* Chaque pays porte son nom en accesseur ; la liste reste le même tableau, retrié
+   sur place quand la langue change (l'ordre alphabétique n'est pas le même). */
+export const PAYS: Pays[] = getCountries().map((code) => ({ code, get nom() { return nomDuPays(code); }, indicatif: `+${getCountryCallingCode(code)}`, drapeau: drapeau(code) }));
+
+function trierLesPays() {
+  const tete = PAYS_EN_TETE.map((c) => PAYS.find((p) => p.code === c)).filter((p): p is Pays => Boolean(p));
+  const reste = PAYS.filter((p) => !PAYS_EN_TETE.includes(p.code)).sort((a, b) => a.nom.localeCompare(b.nom, langue()));
+  PAYS.splice(0, PAYS.length, ...tete, ...reste);
+}
+trierLesPays();
+abonnerLangue(trierLesPays);
 
 export const paysDe = (code: string): Pays | undefined => PAYS.find((p) => p.code === code);
 
@@ -111,13 +123,13 @@ export function telephoneLisible(e164: string): string {
 
 /* --------------------------------------------------------------- villes */
 
-/** Les villes proposées pendant la frappe ; on peut toujours en taper une autre. */
+/** Les villes proposées pendant la frappe ; on peut toujours en taper une autre. Des noms propres : ils ne se traduisent pas. */
 export const VILLES: Partial<Record<CountryCode, string[]>> = {
-  CM: ["Douala", "Yaoundé", "Bafoussam", "Bamenda", "Garoua", "Maroua", "Ngaoundéré", "Bertoua", "Kribi", "Limbé", "Buea", "Ebolowa", "Kumba",
-       "Nkongsamba", "Edéa", "Dschang", "Foumban", "Mbalmayo", "Loum", "Kousséri", "Mbouda", "Sangmélima", "Bafang", "Bangangté", "Batouri", "Mokolo", "Tiko", "Yagoua", "Meiganga", "Guider"],
-  GA: ["Libreville", "Port-Gentil", "Franceville", "Oyem", "Moanda", "Lambaréné", "Mouila"],
-  CG: ["Brazzaville", "Pointe-Noire", "Dolisie", "Nkayi", "Owando"],
-  TD: ["N'Djaména", "Moundou", "Sarh", "Abéché", "Kélo"],
-  CF: ["Bangui", "Bimbo", "Berbérati", "Carnot", "Bambari"],
-  GQ: ["Malabo", "Bata", "Ebebiyín", "Mongomo"],
+  CM: ["Douala", "Yaoundé", "Bafoussam", "Bamenda", "Garoua", "Maroua", "Ngaoundéré", "Bertoua", "Kribi", "Limbé", "Buea", "Ebolowa", "Kumba", // langue-ok
+       "Nkongsamba", "Edéa", "Dschang", "Foumban", "Mbalmayo", "Loum", "Kousséri", "Mbouda", "Sangmélima", "Bafang", "Bangangté", "Batouri", "Mokolo", "Tiko", "Yagoua", "Meiganga", "Guider"], // langue-ok
+  GA: ["Libreville", "Port-Gentil", "Franceville", "Oyem", "Moanda", "Lambaréné", "Mouila"], // langue-ok
+  CG: ["Brazzaville", "Pointe-Noire", "Dolisie", "Nkayi", "Owando"], // langue-ok
+  TD: ["N'Djaména", "Moundou", "Sarh", "Abéché", "Kélo"], // langue-ok
+  CF: ["Bangui", "Bimbo", "Berbérati", "Carnot", "Bambari"], // langue-ok
+  GQ: ["Malabo", "Bata", "Ebebiyín", "Mongomo"], // langue-ok
 };

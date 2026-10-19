@@ -28,6 +28,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useGuichet } from "../../guichet";
 import type { Bougie, Intervalle, Niveau } from "../../guichet/types";
 import { enTranches, prix as fPrix, usdt as fUsdt } from "../../noyau/format";
+import { langue, t } from "../../noyau/langue";
 import { BUY, SELL } from "../../ui";
 
 /** Douala est à UTC+1 toute l'année : le graphique compte en UTC, on décale l'axe d'une heure. */
@@ -38,39 +39,43 @@ const GRILLE = "#EEF1EE", BORD = "#E3E7E3", TEXTE = "#5B615E";
 
 export type TypeGraphique = "bougies" | "barres" | "ligne" | "zone";
 
-const INTERVALLES: { id: Intervalle; label: string; nom: string }[] = [
+/* des fonctions, pas des constantes : leurs noms se lisent dans la langue de l'écran au moment de l'appel */
+const INTERVALLES = (): { id: Intervalle; label: string; nom: string }[] => [
   { id: "1m", label: "1m", nom: "1 minute" }, { id: "5m", label: "5m", nom: "5 minutes" }, { id: "15m", label: "15m", nom: "15 minutes" },
-  { id: "1h", label: "1H", nom: "1 heure" }, { id: "4h", label: "4H", nom: "4 heures" }, { id: "1j", label: "1J", nom: "1 jour" },
-  { id: "1s", label: "1S", nom: "1 semaine" }, { id: "1M", label: "1M", nom: "1 mois" },
+  { id: "1h", label: "1H", nom: t("1 heure", "1 hour") }, { id: "4h", label: "4H", nom: t("4 heures", "4 hours") }, { id: "1j", label: t("1J", "1D"), nom: t("1 jour", "1 day") },
+  { id: "1s", label: t("1S", "1W"), nom: t("1 semaine", "1 week") }, { id: "1M", label: "1M", nom: t("1 mois", "1 month") },
 ];
+const IDS_INTERVALLES: Intervalle[] = ["1m", "5m", "15m", "1h", "4h", "1j", "1s", "1M"];
 const JOUR = 86_400_000;
 /** Les plages, comme la barre du bas de TradingView : un intervalle qui convient, et la fenêtre à montrer. */
-const PLAGES: { label: string; nom: string; duree: number | null; intervalle: Intervalle }[] = [
-  { label: "1J", nom: "un jour", duree: JOUR, intervalle: "5m" },
-  { label: "5J", nom: "cinq jours", duree: 5 * JOUR, intervalle: "30m" },
-  { label: "1M", nom: "un mois", duree: 30 * JOUR, intervalle: "4h" },
-  { label: "3M", nom: "trois mois", duree: 91 * JOUR, intervalle: "1j" },
-  { label: "1A", nom: "un an", duree: 365 * JOUR, intervalle: "1j" },
-  { label: "5A", nom: "cinq ans", duree: 5 * 365 * JOUR, intervalle: "1s" },
-  { label: "Tout", nom: "tout l'historique", duree: null, intervalle: "1M" },
+const PLAGES = (): { id: string; label: string; nom: string; duree: number | null; intervalle: Intervalle }[] => [
+  { id: "1j", label: t("1J", "1D"), nom: t("un jour", "one day"), duree: JOUR, intervalle: "5m" },
+  { id: "5j", label: t("5J", "5D"), nom: t("cinq jours", "five days"), duree: 5 * JOUR, intervalle: "30m" },
+  { id: "1m", label: "1M", nom: t("un mois", "one month"), duree: 30 * JOUR, intervalle: "4h" },
+  { id: "3m", label: "3M", nom: t("trois mois", "three months"), duree: 91 * JOUR, intervalle: "1j" },
+  { id: "1a", label: t("1A", "1Y"), nom: t("un an", "one year"), duree: 365 * JOUR, intervalle: "1j" },
+  { id: "5a", label: t("5A", "5Y"), nom: t("cinq ans", "five years"), duree: 5 * 365 * JOUR, intervalle: "1s" },
+  { id: "tout", label: t("Tout", "All"), nom: t("tout l'historique", "the full history"), duree: null, intervalle: "1M" },
 ];
-const TYPES: { id: TypeGraphique; nom: string; icone: ReactNode }[] = [
-  { id: "bougies", nom: "Bougies", icone: <CandlestickChartRounded fontSize="small" /> },
-  { id: "barres", nom: "Barres", icone: <SsidChartRounded fontSize="small" /> },
-  { id: "ligne", nom: "Ligne", icone: <ShowChartRounded fontSize="small" /> },
-  { id: "zone", nom: "Zone", icone: <StackedLineChartRounded fontSize="small" /> },
+const TYPES = (): { id: TypeGraphique; nom: string; icone: ReactNode }[] => [
+  { id: "bougies", nom: t("Bougies", "Candles"), icone: <CandlestickChartRounded fontSize="small" /> },
+  { id: "barres", nom: t("Barres", "Bars"), icone: <SsidChartRounded fontSize="small" /> },
+  { id: "ligne", nom: t("Ligne", "Line"), icone: <ShowChartRounded fontSize="small" /> },
+  { id: "zone", nom: t("Zone", "Area"), icone: <StackedLineChartRounded fontSize="small" /> },
 ];
+const IDS_TYPES: TypeGraphique[] = ["bougies", "barres", "ligne", "zone"];
 
 const temps = (iso: string) => (Math.floor(Date.parse(iso) / 1000) + DECALAGE_S) as UTCTimestamp;
-const prixFr = (p: number) => p.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** La langue des dates de l'axe et de la légende : celle de l'écran. */
+const lieu = () => (langue() === "en" ? "en-US" : "fr-FR");
 
 /** La date d'une bougie, comme on la lit : le jour seul pour les jours et au-delà, l'heure en dessous. */
 export function dateDeBougie(iso: string, intervalle: Intervalle): string {
   const d = new Date(Date.parse(iso) + DECALAGE_S * 1000);
-  const jour = d.toLocaleDateString("fr-FR", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" });
-  if (intervalle === "1M") return d.toLocaleDateString("fr-FR", { timeZone: "UTC", month: "long", year: "numeric" });
-  if (intervalle === "1j" || intervalle === "1s") return intervalle === "1s" ? `semaine du ${jour}` : jour;
-  return `${jour} ${d.toLocaleTimeString("fr-FR", { timeZone: "UTC", hour: "2-digit", minute: "2-digit" })}`;
+  const jour = d.toLocaleDateString(lieu(), { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" });
+  if (intervalle === "1M") return d.toLocaleDateString(lieu(), { timeZone: "UTC", month: "long", year: "numeric" });
+  if (intervalle === "1j" || intervalle === "1s") return intervalle === "1s" ? t(`semaine du ${jour}`, `week of ${jour}`) : jour;
+  return `${jour} ${d.toLocaleTimeString(lieu(), { timeZone: "UTC", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}`;
 }
 
 function lireReglage<T extends string>(cle: string, permis: readonly T[], defaut: T): T {
@@ -116,8 +121,8 @@ export function GraphiqueBourse({ hauteur, compact = false }: { hauteur: number;
   const generation = useRef(0);
   const plageVoulue = useRef<number | null | undefined>(undefined);
 
-  const [intervalle, setIntervalle] = useState<Intervalle>(() => lireReglage("glisil.graphique.intervalle", INTERVALLES.map((i) => i.id), "1h"));
-  const [type, setType] = useState<TypeGraphique>(() => lireReglage("glisil.graphique.type", TYPES.map((t) => t.id), "bougies"));
+  const [intervalle, setIntervalle] = useState<Intervalle>(() => lireReglage("glisil.graphique.intervalle", IDS_INTERVALLES, "1h"));
+  const [type, setType] = useState<TypeGraphique>(() => lireReglage("glisil.graphique.type", IDS_TYPES, "bougies"));
   const [survol, setSurvol] = useState<Bougie | null>(null);
   const [derniere, setDerniere] = useState<Bougie | null>(null);
   const [plage, setPlage] = useState<string | null>(null);
@@ -134,7 +139,7 @@ export function GraphiqueBourse({ hauteur, compact = false }: { hauteur: number;
     v.setData(liste.map((b) => ({ time: temps(b.t), value: b.v, color: b.c >= b.o ? "rgba(8,122,65,0.28)" : "rgba(197,34,31,0.28)" })));
     // l'ouverture du marché : la première bougie « marche » qui suit une bougie « reference »
     const i = liste.findIndex((b, k) => b.source === "marche" && k > 0 && liste[k - 1].source === "reference");
-    marqueurs.current?.setMarkers(i > 0 ? [{ time: temps(liste[i].t), position: "aboveBar", color: VERT, shape: "arrowDown", text: "Glisil ouvre" }] : []);
+    marqueurs.current?.setMarkers(i > 0 ? [{ time: temps(liste[i].t), position: "aboveBar", color: VERT, shape: "arrowDown", text: t("Glisil ouvre", "Glisil opens") }] : []);
     setDerniere(liste[liste.length - 1] ?? null);
     setVide(liste.length === 0);
   }, [type]);
@@ -186,7 +191,7 @@ export function GraphiqueBourse({ hauteur, compact = false }: { hauteur: number;
       rightPriceScale: { borderColor: BORD, scaleMargins: { top: 0.1, bottom: 0.24 } },
       timeScale: { borderColor: BORD, timeVisible: true, secondsVisible: false, rightOffset: 4, barSpacing: compact ? 6 : 8, minBarSpacing: 0.3 },
       crosshair: { mode: CrosshairMode.Normal },
-      localization: { locale: "fr-FR", priceFormatter: prixFr },
+      localization: { locale: lieu(), priceFormatter: fPrix },
     });
     chart.current = c;
     volume.current = c.addSeries(HistogramSeries, { priceScaleId: "volume", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
@@ -263,23 +268,25 @@ export function GraphiqueBourse({ hauteur, compact = false }: { hauteur: number;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [intervalle, guichet]);
 
-  const choisirPlage = (p: (typeof PLAGES)[number]) => {
-    setPlage(p.label);
+  const choisirPlage = (p: ReturnType<typeof PLAGES>[number]) => {
+    setPlage(p.id);
     if (p.intervalle === intervalle) void cadrer(p.duree);
     else { plageVoulue.current = p.duree; setIntervalle(p.intervalle); }
   };
 
   const montree = survol ?? derniere;
   const variation = montree ? ((montree.c - montree.o) / montree.o) * 100 : 0;
-  const typeCourant = TYPES.find((t) => t.id === type)!;
+  const types = TYPES();
+  const intervalles = INTERVALLES();
+  const typeCourant = types.find((x) => x.id === type)!;
 
   return (
     <Stack gap={1} data-graphique-bourse>
       {/* intervalles et type de tracé */}
       <Stack direction="row" alignItems="center" gap={0.5} sx={{ overflowX: "auto", scrollbarWidth: "none", "&::-webkit-scrollbar": { display: "none" } }}>
-        {INTERVALLES.map((i) => (
+        {intervalles.map((i) => (
           <Tooltip key={i.id} title={i.nom}>
-            <ButtonBase onClick={() => { setPlage(null); setIntervalle(i.id); }} aria-pressed={i.id === intervalle} aria-label={`Intervalle ${i.nom}`}
+            <ButtonBase onClick={() => { setPlage(null); setIntervalle(i.id); }} aria-pressed={i.id === intervalle} aria-label={t(`Intervalle ${i.nom}`, `Interval ${i.nom}`)}
               sx={{ px: 1, height: 30, minWidth: 34, borderRadius: 1.5, fontSize: 13, fontWeight: i.id === intervalle ? 700 : 500,
                     color: i.id === intervalle ? VERT : "text.secondary", bgcolor: i.id === intervalle ? "rgba(11,107,58,0.10)" : "transparent", flexShrink: 0 }}>
               {i.label}
@@ -287,15 +294,15 @@ export function GraphiqueBourse({ hauteur, compact = false }: { hauteur: number;
           </Tooltip>
         ))}
         <Box sx={{ width: "1px", height: 20, bgcolor: BORD, mx: 0.5, flexShrink: 0 }} />
-        <Tooltip title={`Type : ${typeCourant.nom}`}>
-          <IconButton size="small" onClick={(e) => setMenuType(e.currentTarget)} aria-label={`Type de graphique : ${typeCourant.nom}`} sx={{ color: VERT, flexShrink: 0 }}>
+        <Tooltip title={t(`Type : ${typeCourant.nom}`, `Type: ${typeCourant.nom}`)}>
+          <IconButton size="small" onClick={(e) => setMenuType(e.currentTarget)} aria-label={t(`Type de graphique : ${typeCourant.nom}`, `Chart type: ${typeCourant.nom}`)} sx={{ color: VERT, flexShrink: 0 }}>
             {typeCourant.icone}
           </IconButton>
         </Tooltip>
         <Menu anchorEl={menuType} open={Boolean(menuType)} onClose={() => setMenuType(null)}>
-          {TYPES.map((t) => (
-            <MenuItem key={t.id} selected={t.id === type} onClick={() => { setType(t.id); setMenuType(null); }}>
-              <ListItemIcon>{t.icone}</ListItemIcon><ListItemText>{t.nom}</ListItemText>
+          {types.map((x) => (
+            <MenuItem key={x.id} selected={x.id === type} onClick={() => { setType(x.id); setMenuType(null); }}>
+              <ListItemIcon>{x.icone}</ListItemIcon><ListItemText>{x.nom}</ListItemText>
             </MenuItem>
           ))}
         </Menu>
@@ -307,23 +314,26 @@ export function GraphiqueBourse({ hauteur, compact = false }: { hauteur: number;
           <>
             <Box component="span" sx={{ fontWeight: 600, color: "text.primary" }}>{dateDeBougie(montree.t, intervalle)}</Box>
             {(["o", "h", "l", "c"] as const).map((k) => (
-              <Box component="span" key={k}>{({ o: "O", h: "H", l: "B", c: "C" })[k]} <Box component="span" sx={{ color: montree.c >= montree.o ? BUY : SELL, fontWeight: 500 }}>{fPrix(montree[k])}</Box></Box>
+              <Box component="span" key={k}>{({ o: "O", h: "H", l: t("B", "L"), c: "C" })[k]} <Box component="span" sx={{ color: montree.c >= montree.o ? BUY : SELL, fontWeight: 500 }}>{fPrix(montree[k])}</Box></Box>
             ))}
-            <Box component="span" sx={{ color: variation >= 0 ? BUY : SELL, fontWeight: 600 }}>{variation >= 0 ? "+" : ""}{enTranches(variation, 2)} %</Box>
+            <Box component="span" sx={{ color: variation >= 0 ? BUY : SELL, fontWeight: 600 }}>{variation >= 0 ? "+" : ""}{t(`${enTranches(variation, 2)} %`, `${enTranches(variation, 2)}%`)}</Box>
             {montree.source === "reference"
-              ? <Box component="span" sx={{ fontStyle: "italic" }}>cours de référence BCE · avant l'ouverture de Glisil</Box>
-              : <Box component="span">Vol {fUsdt(Math.round(montree.v))} USDT</Box>}
+              ? <Box component="span" sx={{ fontStyle: "italic" }}>{t("cours de référence BCE · avant l'ouverture de Glisil", "ECB reference rate · before Glisil opened")}</Box>
+              : <Box component="span">{t("Vol", "Vol")} {fUsdt(Math.round(montree.v))} USDT</Box>}
           </>
-        ) : <Box component="span">{vide ? "Pas encore d'échange sur cet intervalle." : "Chargement…"}</Box>}
+        ) : <Box component="span">{vide ? t("Pas encore d'échange sur cet intervalle.", "No trades yet on this interval.") : t("Chargement…", "Loading…")}</Box>}
       </Box>
 
       {/* le tracé */}
       <Box sx={{ position: "relative", height: hauteur, borderRadius: 2, overflow: "hidden" }}>
         <Box ref={boite} sx={{ position: "absolute", inset: 0 }} role="img"
-          aria-label={derniere ? `Graphique USDT/XAFe, intervalle ${INTERVALLES.find((i) => i.id === intervalle)?.nom}, dernier prix ${fPrix(derniere.c)} XAFe` : "Graphique USDT/XAFe"} />
+          aria-label={derniere
+            ? t(`Graphique USDT/XAFe, intervalle ${intervalles.find((i) => i.id === intervalle)?.nom}, dernier prix ${fPrix(derniere.c)} XAFe`,
+                `USDT/XAFe chart, ${intervalles.find((i) => i.id === intervalle)?.nom} interval, last price ${fPrix(derniere.c)} XAFe`)
+            : t("Graphique USDT/XAFe", "USDT/XAFe chart")} />
         {pasAuBout && (
-          <Tooltip title="Revenir au plus récent">
-            <IconButton size="small" onClick={() => chart.current?.timeScale().scrollToRealTime()} aria-label="Revenir au plus récent"
+          <Tooltip title={t("Revenir au plus récent", "Back to the latest")}>
+            <IconButton size="small" onClick={() => chart.current?.timeScale().scrollToRealTime()} aria-label={t("Revenir au plus récent", "Back to the latest")}
               sx={{ position: "absolute", right: 72, bottom: 36, bgcolor: "background.paper", boxShadow: 1, "&:hover": { bgcolor: "background.paper" } }}>
               <LastPageRounded fontSize="small" />
             </IconButton>
@@ -333,11 +343,11 @@ export function GraphiqueBourse({ hauteur, compact = false }: { hauteur: number;
 
       {/* les plages */}
       <Stack direction="row" gap={0.25} sx={{ overflowX: "auto", scrollbarWidth: "none", "&::-webkit-scrollbar": { display: "none" } }}>
-        {PLAGES.map((p) => (
-          <Tooltip key={p.label} title={`Montrer ${p.nom}`}>
-            <ButtonBase onClick={() => choisirPlage(p)} aria-label={`Montrer ${p.nom}`} aria-pressed={plage === p.label}
-              sx={{ px: 1, height: 28, minWidth: 34, borderRadius: 1.5, fontSize: 12, fontWeight: plage === p.label ? 700 : 500, flexShrink: 0,
-                    color: plage === p.label ? VERT : "text.secondary", bgcolor: plage === p.label ? "rgba(11,107,58,0.10)" : "transparent" }}>
+        {PLAGES().map((p) => (
+          <Tooltip key={p.id} title={t(`Montrer ${p.nom}`, `Show ${p.nom}`)}>
+            <ButtonBase onClick={() => choisirPlage(p)} aria-label={t(`Montrer ${p.nom}`, `Show ${p.nom}`)} aria-pressed={plage === p.id}
+              sx={{ px: 1, height: 28, minWidth: 34, borderRadius: 1.5, fontSize: 12, fontWeight: plage === p.id ? 700 : 500, flexShrink: 0,
+                    color: plage === p.id ? VERT : "text.secondary", bgcolor: plage === p.id ? "rgba(11,107,58,0.10)" : "transparent" }}>
               {p.label}
             </ButtonBase>
           </Tooltip>
@@ -377,7 +387,7 @@ export function Profondeur({ achats, ventes, hauteur }: { achats: Niveau[]; vent
   const H = hauteur, bas = 22, droite = 56;
   const a = useMemo(() => cumuler(achats, "achats"), [achats]);
   const v = useMemo(() => cumuler(ventes, "ventes"), [ventes]);
-  if (!a.length && !v.length) return <Box ref={cadre}><Typography variant="body2" sx={{ py: 4, textAlign: "center" }}>Le carnet est vide.</Typography></Box>;
+  if (!a.length && !v.length) return <Box ref={cadre}><Typography variant="body2" sx={{ py: 4, textAlign: "center" }}>{t("Le carnet est vide.", "The order book is empty.")}</Typography></Box>;
   const prixMin = a.length ? a[a.length - 1].prix : v[0].prix * 0.99;
   const prixMax = v.length ? v[v.length - 1].prix : a[0].prix * 1.01;
   const qMax = Math.max(a[a.length - 1]?.cumul ?? 0, v[v.length - 1]?.cumul ?? 0) * 1.08 || 1;
@@ -412,7 +422,8 @@ export function Profondeur({ achats, ventes, hauteur }: { achats: Niveau[]; vent
   return (
     <Box ref={cadre} sx={{ position: "relative" }} data-profondeur>
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} role="img" onPointerMove={surMouvement} onPointerLeave={() => setVise(null)} style={{ touchAction: "pan-y", display: "block" }}
-        aria-label={`Profondeur du carnet : ${fUsdt(Math.round(a[a.length - 1]?.cumul ?? 0))} USDT à l'achat, ${fUsdt(Math.round(v[v.length - 1]?.cumul ?? 0))} USDT à la vente`}>
+        aria-label={t(`Profondeur du carnet : ${fUsdt(Math.round(a[a.length - 1]?.cumul ?? 0))} USDT à l'achat, ${fUsdt(Math.round(v[v.length - 1]?.cumul ?? 0))} USDT à la vente`,
+                      `Order book depth: ${fUsdt(Math.round(a[a.length - 1]?.cumul ?? 0))} USDT on the buy side, ${fUsdt(Math.round(v[v.length - 1]?.cumul ?? 0))} USDT on the sell side`)}>
         {graduations.map((q) => (
           <g key={q}>
             <line x1={0} x2={W - droite} y1={y(q)} y2={y(q)} stroke={GRILLE} />
@@ -436,13 +447,13 @@ export function Profondeur({ achats, ventes, hauteur }: { achats: Niveau[]; vent
       )}
       {vise && (
         <Box sx={{ position: "absolute", top: 30, left: `${Math.min(Math.max((vise.x / W) * 100, 12), 70)}%`, bgcolor: "background.paper", boxShadow: 2, borderRadius: 2, px: 1.25, py: 0.75, pointerEvents: "none", fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
-          <Box sx={{ color: vise.cote === "achat" ? BUY : SELL, fontWeight: 600 }}>{vise.cote === "achat" ? "Achats jusqu'à" : "Ventes jusqu'à"} {fPrix(vise.p.prix)}</Box>
-          <Box>Cumul {fUsdt(Math.round(vise.p.cumul * 100) / 100)} USDT</Box>
+          <Box sx={{ color: vise.cote === "achat" ? BUY : SELL, fontWeight: 600 }}>{vise.cote === "achat" ? t("Achats jusqu'à", "Bids down to") : t("Ventes jusqu'à", "Asks up to")} {fPrix(vise.p.prix)}</Box>
+          <Box>{t("Cumul", "Total")} {fUsdt(Math.round(vise.p.cumul * 100) / 100)} USDT</Box>
         </Box>
       )}
       <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5, fontSize: 12, color: TEXTE }}>
-        <span><Box component="span" sx={{ color: BUY, fontWeight: 600 }}>Achats</Box> · {fUsdt(Math.round(a[a.length - 1]?.cumul ?? 0))} USDT</span>
-        <span><Box component="span" sx={{ color: SELL, fontWeight: 600 }}>Ventes</Box> · {fUsdt(Math.round(v[v.length - 1]?.cumul ?? 0))} USDT</span>
+        <span><Box component="span" sx={{ color: BUY, fontWeight: 600 }}>{t("Achats", "Bids")}</Box> · {fUsdt(Math.round(a[a.length - 1]?.cumul ?? 0))} USDT</span>
+        <span><Box component="span" sx={{ color: SELL, fontWeight: 600 }}>{t("Ventes", "Asks")}</Box> · {fUsdt(Math.round(v[v.length - 1]?.cumul ?? 0))} USDT</span>
       </Stack>
     </Box>
   );

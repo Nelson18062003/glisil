@@ -5,6 +5,9 @@
  * Si une règle change ici, elle a changé là-bas d'abord.
  */
 
+import { prix as fPrix, usdt as fUsdt, xaf } from "./format";
+import { t } from "./langue";
+
 /*
  * Les valeurs ci-dessous sont celles de la migration, au jour de l'écriture.
  * L'équipe les change en base (Paramètres) : au démarrage, l'application lit
@@ -51,9 +54,11 @@ export const NUMEROS = { verificationSms: true, delaiHeures: 24 };
  */
 /* `demoTotem` : un float de la démo vivante de TOTEM est branché (0028, 0029) — pendant la bêta,
    on entre et on sort des XAF de DÉMO, vers et depuis les cartes de démo. */
-export const BETA = { actif: false, message: "", dotation: { XAFe: 0, USDT: 0 }, depotsReels: true, demoTotem: false };
+export const BETA = { actif: false, message: "", messageEn: "", dotation: { XAFe: 0, USDT: 0 }, depotsReels: true, demoTotem: false };
 /** « tout de suite », « 24 h après vérification » */
-export const delaiDuNumero = () => (NUMEROS.delaiHeures <= 0 ? "tout de suite" : `${NUMEROS.delaiHeures} h après ${NUMEROS.verificationSms ? "vérification" : "son ajout"}`);
+export const delaiDuNumero = () => (NUMEROS.delaiHeures <= 0 ? t("tout de suite", "right away")
+  : NUMEROS.verificationSms ? t(`${NUMEROS.delaiHeures} h après vérification`, `${NUMEROS.delaiHeures} h after verification`)
+  : t(`${NUMEROS.delaiHeures} h après son ajout`, `${NUMEROS.delaiHeures} h after it is added`));
 
 /** Les frais d'une sortie payée à la main : une seule fois sur le montant (pas de découpage par transfert). */
 export function fraisSortieManuelle(montant: number): { frais: number; envoi: number } {
@@ -130,7 +135,7 @@ export function reseauDe(adresse: string): string | null {
 /** « BEP20 ou TRC20 », « BEP20, TRC20 ou Base » */
 export function nomsDesReseaux(): string {
   const n = reseauxOuverts().map((r) => r.nom);
-  return n.length <= 1 ? (n[0] ?? "aucun réseau") : `${n.slice(0, -1).join(", ")} ou ${n[n.length - 1]}`;
+  return n.length <= 1 ? (n[0] ?? t("aucun réseau", "no network")) : t(`${n.slice(0, -1).join(", ")} ou ${n[n.length - 1]}`, `${n.slice(0, -1).join(", ")} or ${n[n.length - 1]}`);
 }
 
 function appliquerReseaux(liste: unknown) {
@@ -248,9 +253,10 @@ export function operateur(id: string): Operateur {
 
 export const PALIERS: Record<number, { entreeJour: number | null; sortieJour: number | null; nom: string }> = {
   // aucun plafond par défaut (0027) : seule l'équipe en pose un, et l'écran le lit
-  0: { entreeJour: null, sortieJour: null, nom: "Palier 0 · e-mail vérifié" },
-  1: { entreeJour: null, sortieJour: null, nom: "Palier 1 · identité vérifiée" },
-  2: { entreeJour: null, sortieJour: null, nom: "Palier 2 · entreprise vérifiée" },
+  // le nom se lit dans la langue de l'écran au moment où on le lit : un accesseur, pas une valeur figée à l'import
+  0: { entreeJour: null, sortieJour: null, get nom() { return t("Palier 0 · e-mail vérifié", "Tier 0 · email verified"); } },
+  1: { entreeJour: null, sortieJour: null, get nom() { return t("Palier 1 · identité vérifiée", "Tier 1 · identity verified"); } },
+  2: { entreeJour: null, sortieJour: null, get nom() { return t("Palier 2 · entreprise vérifiée", "Tier 2 · business verified"); } },
 };
 
 /** Combien de transferts MoMo il faut pour un montant : un seul, sauf si l'équipe a posé un plafond. */
@@ -345,29 +351,39 @@ export function raisonDuRefus(o: {
   dispoXafe: number; dispoUsdt: number; reference: number | null | undefined; ouverts: number;
 }): string | null {
   if (!(o.quantite > 0)) return null;
-  if (o.type === "limite" && !(o.prix > 0)) return "Fixez votre prix.";
+  if (o.type === "limite" && !(o.prix > 0)) return t("Fixez votre prix.", "Set your price.");
   if (!quantiteValide(o.quantite)) {
-    return `Au moins ${String(MARCHE.quantiteMin).replace(".", ",")} USDT par ordre${o.prix > 0 && MARCHE.quantiteMin >= 1 ? ` (≈ ${Math.ceil(MARCHE.quantiteMin * o.prix).toLocaleString("fr-FR")} XAFe)` : ""}, deux décimales au plus.`;
+    const min = fUsdt(MARCHE.quantiteMin);
+    const approx = o.prix > 0 && MARCHE.quantiteMin >= 1 ? ` (≈ ${xaf(Math.ceil(MARCHE.quantiteMin * o.prix))} XAFe)` : "";
+    return t(`Au moins ${min} USDT par ordre${approx}, deux décimales au plus.`, `At least ${min} USDT per order${approx}, with no more than two decimals.`);
   }
-  if (o.type === "limite" && !prixValide(o.prix)) return `Le prix va de ${String(MARCHE.pasPrix).replace(".", ",")} en ${String(MARCHE.pasPrix).replace(".", ",")} XAFe.`;
-  if (o.quantite > MARCHE.quantiteMax) return `Au plus ${MARCHE.quantiteMax.toLocaleString("fr-FR")} USDT par ordre.`;
+  if (o.type === "limite" && !prixValide(o.prix)) {
+    const pas = fPrix(MARCHE.pasPrix);
+    return t(`Le prix va de ${pas} en ${pas} XAFe.`, `Prices move in steps of ${pas} XAFe.`);
+  }
+  if (o.quantite > MARCHE.quantiteMax) return t(`Au plus ${fUsdt(MARCHE.quantiteMax)} USDT par ordre.`, `At most ${fUsdt(MARCHE.quantiteMax)} USDT per order.`);
   if (o.type === "marche" && o.quantite > MARCHE.marcheQuantiteMax) {
-    return `Au plus ${MARCHE.marcheQuantiteMax.toLocaleString("fr-FR")} USDT au marché : au-delà, posez un ordre limite.`;
+    return t(`Au plus ${fUsdt(MARCHE.marcheQuantiteMax)} USDT au marché : au-delà, posez un ordre limite.`, `At most ${fUsdt(MARCHE.marcheQuantiteMax)} USDT per market order. Above that, place a limit order.`);
   }
   const bande = o.type === "limite" ? bandeDePrix(o.cote, o.reference) : null;
   if (bande && (o.prix < bande.min || o.prix > bande.max)) {
-    return `${o.cote === "achat" ? "Un achat" : "Une vente"} se place entre ${bande.min.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} et ${bande.max.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} XAFe (prix de référence ${o.reference!.toLocaleString("fr-FR", { minimumFractionDigits: 2 })}).`;
+    const [min, max, ref] = [fPrix(bande.min), fPrix(bande.max), fPrix(o.reference!)];
+    return o.cote === "achat"
+      ? t(`Un achat se place entre ${min} et ${max} XAFe (prix de référence ${ref}).`, `A buy order must be between ${min} and ${max} XAFe (reference price ${ref}).`)
+      : t(`Une vente se place entre ${min} et ${max} XAFe (prix de référence ${ref}).`, `A sell order must be between ${min} and ${max} XAFe (reference price ${ref}).`);
   }
-  if (o.type === "limite" && o.ouverts >= MARCHE.ordresOuvertsMax) return `Vous avez déjà ${o.ouverts} ordres ouverts, le maximum : annulez-en un.`;
+  if (o.type === "limite" && o.ouverts >= MARCHE.ordresOuvertsMax) return t(`Vous avez déjà ${o.ouverts} ordres ouverts, le maximum : annulez-en un.`, `You already have ${o.ouverts} open orders, the maximum. Cancel one first.`);
   // le minimum en XAFe, compté comme le moteur : au prix de l'ordre, ou de la référence au marché
   const prixCompte = o.type === "limite" ? o.prix : o.reference ?? 0;
   if (prixCompte > 0 && arrondi2(o.quantite * prixCompte) < MARCHE.montantMin) {
-    return `Au moins ${MARCHE.montantMin.toLocaleString("fr-FR")} XAFe par ordre (≈ ${(Math.ceil((MARCHE.montantMin / prixCompte) * 100) / 100).toLocaleString("fr-FR")} USDT à ce prix).`;
+    const min = xaf(MARCHE.montantMin), q = fUsdt(Math.ceil((MARCHE.montantMin / prixCompte) * 100) / 100);
+    return t(`Au moins ${min} XAFe par ordre (≈ ${q} USDT à ce prix).`, `At least ${min} XAFe per order (≈ ${q} USDT at this price).`);
   }
   if (o.type === "limite" && o.cote === "achat" && arrondi2(o.prix * o.quantite) > o.dispoXafe) {
-    return `Il faut ${Math.ceil(arrondi2(o.prix * o.quantite)).toLocaleString("fr-FR")} XAFe ; vous en avez ${Math.floor(o.dispoXafe).toLocaleString("fr-FR")}.`;
+    const besoin = xaf(Math.ceil(arrondi2(o.prix * o.quantite))), a = xaf(Math.floor(o.dispoXafe));
+    return t(`Il faut ${besoin} XAFe ; vous en avez ${a}.`, `You need ${besoin} XAFe; you have ${a}.`);
   }
-  if (o.cote === "vente" && o.quantite > o.dispoUsdt) return `Vous avez ${o.dispoUsdt.toLocaleString("fr-FR")} USDT disponibles.`;
+  if (o.cote === "vente" && o.quantite > o.dispoUsdt) return t(`Vous avez ${fUsdt(o.dispoUsdt)} USDT disponibles.`, `You have ${fUsdt(o.dispoUsdt)} USDT available.`);
   return null;
 }
 
@@ -447,6 +463,7 @@ export function appliquerParametres(p: unknown): boolean {
   if (typeof r.beta?.actif === "boolean") {
     BETA.actif = r.beta.actif;
     BETA.message = typeof r.beta.message === "string" ? r.beta.message : "";
+    BETA.messageEn = typeof r.beta.message_en === "string" ? r.beta.message_en : "";
     poser(BETA.dotation, "XAFe", nombre(r.beta.dotation?.XAFe, 0, 1e9));
     poser(BETA.dotation, "USDT", nombre(r.beta.dotation?.USDT, 0, 1e9));
     if (typeof r.beta.depots_reels === "boolean") BETA.depotsReels = r.beta.depots_reels;

@@ -17,6 +17,8 @@ import type { Compte, Numero, Operation, Soldes } from "../../guichet/types";
 import { Link } from "react-router-dom";
 import { useChandelles, useCompte, useCotation, useDepotsEnAttente, useGuichet, useHistorique, useNotifications, useNumeros, useOuvertures, useSoldes } from "../../guichet";
 import { enTranches, initiales, jourRelatif, prix, quand, xaf } from "../../noyau/format";
+import { texteDuServeur, titreDuServeur } from "../../noyau/serveur";
+import { t } from "../../noyau/langue";
 import { useSession } from "../../session/session";
 import { BETA, PALIERS } from "../../noyau/argent";
 import { apparence } from "../../ui/operation";
@@ -52,17 +54,17 @@ export function Accueil() {
           sx={{ p: 1.5, borderRadius: 4, bgcolor: tones.amber.bg, color: tones.amber.fg }}>
           <ScienceOutlined fontSize="small" sx={{ mt: 0.25 }} />
           <Typography variant="body2" sx={{ color: "inherit" }}>
-            <b>Bêta</b> · {BETA.message || "Tout l'argent ici est de l'argent de test, sans valeur réelle."}{" "}
-            <Box component={Link} to="/compte/aide?depuis=%2F" sx={{ color: "inherit", fontWeight: 600 }}>Signaler un problème</Box>
+            <b>{t("Bêta", "Beta")}</b> · {t(BETA.message, BETA.messageEn) || t("Tout l'argent ici est de l'argent de test, sans valeur réelle.", "All the money here is test money, with no real value.")}{" "}
+            <Box component={Link} to="/compte/aide?depuis=%2F" sx={{ color: "inherit", fontWeight: 600 }}>{t("Signaler un problème", "Report a problem")}</Box>
           </Typography>
         </Stack>
       )}
       <Stack direction="row" alignItems="center" gap={1.5}>
-        <ButtonBase component={Link} to="/compte" sx={{ borderRadius: 20 }} aria-label="Mon compte">
+        <ButtonBase component={Link} to="/compte" sx={{ borderRadius: 20 }} aria-label={t("Mon compte", "My account")}>
           <Avatar sx={{ bgcolor: "primary.main", fontWeight: 600 }}>{initiales(compte?.nom)}</Avatar>
         </ButtonBase>
-        <Typography variant="subtitle1" sx={{ flex: 1 }}>Bonjour {compte?.nom?.split(" ")[0] ?? ""}</Typography>
-        <IconButton component={Link} to="/notifications" aria-label="Notifications">
+        <Typography variant="subtitle1" sx={{ flex: 1 }}>{t(`Bonjour ${compte?.nom?.split(" ")[0] ?? ""}`, `Hello ${compte?.nom?.split(" ")[0] ?? ""}`)}</Typography>
+        <IconButton component={Link} to="/notifications" aria-label={"Notifications" /* langue-ok */}>
           <Pastille badgeContent={nonLues} color="secondary" invisible={nonLues === 0}>
             <NotificationsNoneRounded />
           </Pastille>
@@ -74,8 +76,8 @@ export function Accueil() {
       {soldes ? (
         <Card onPrimary>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography variant="body2" sx={{ color: "inherit", opacity: 0.85 }}>{soldes.USDT.disponible + soldes.USDT.bloque > 0 ? "Solde total · XAFe + USDT, estimé en XAF" : "Solde total"}</Typography>
-            <IconButton size="small" onClick={session.basculerMasque} sx={{ color: "inherit", m: -1 }} aria-label={session.montantsMasques ? "Montrer les montants" : "Masquer les montants"}>
+            <Typography variant="body2" sx={{ color: "inherit", opacity: 0.85 }}>{soldes.USDT.disponible + soldes.USDT.bloque > 0 ? t("Solde total · XAFe + USDT, estimé en XAF", "Total balance · XAFe + USDT, estimated in XAF") : t("Solde total", "Total balance")}</Typography>
+            <IconButton size="small" onClick={session.basculerMasque} sx={{ color: "inherit", m: -1 }} aria-label={session.montantsMasques ? t("Montrer les montants", "Show amounts") : t("Masquer les montants", "Hide amounts")}>
               {session.montantsMasques ? <VisibilityOffOutlined fontSize="small" /> : <VisibilityOutlined fontSize="small" />}
             </IconButton>
           </Stack>
@@ -83,13 +85,13 @@ export function Accueil() {
             <Masquable>{totalXaf === null ? "—" : xaf(totalXaf)}</Masquable> XAF
           </Typography>
           <Stack direction="row" gap={1.5} mt={0.5}>
-            <Poche badge="xafe" label="XAFe" valeur={xaf(soldes.XAFe.disponible)} bloque={soldes.XAFe.bloque > 0 ? `${xaf(soldes.XAFe.bloque)} bloqués` : undefined} />
-            <Poche badge="usdt" label="USDT" valeur={enTranches(soldes.USDT.disponible, 2)} bloque={soldes.USDT.bloque > 0 ? `${enTranches(soldes.USDT.bloque, 2)} bloqués` : undefined}
+            <Poche badge="xafe" label="XAFe" valeur={xaf(soldes.XAFe.disponible)} bloque={soldes.XAFe.bloque > 0 ? t(`${xaf(soldes.XAFe.bloque)} bloqués`, `${xaf(soldes.XAFe.bloque)} on hold`) : undefined} />
+            <Poche badge="usdt" label="USDT" valeur={enTranches(soldes.USDT.disponible, 2)} bloque={soldes.USDT.bloque > 0 ? t(`${enTranches(soldes.USDT.bloque, 2)} bloqués`, `${enTranches(soldes.USDT.bloque, 2)} on hold`) : undefined}
               equivalent={cotation?.dernier != null && soldes.USDT.disponible + soldes.USDT.bloque > 0 ? `≈ ${xaf((soldes.USDT.disponible + soldes.USDT.bloque) * cotation.dernier)} XAF` : undefined} />
           </Stack>
           {/* le XAFe est un jeton : la promesse 1 XAFe = 1 XAF se vérifie, à un geste */}
           <Typography component={Link} to="/preuve" variant="caption" sx={{ color: "inherit", opacity: 0.85, alignSelf: "flex-start", textUnderlineOffset: 3, display: "inline-flex", alignItems: "center", minHeight: 32 }}>
-            1 XAFe = 1 XAF · voir la preuve sur la blockchain
+            {t("1 XAFe = 1 XAF · voir la preuve sur la blockchain", "1 XAFe = 1 XAF · see the proof on the blockchain")}
           </Typography>
         </Card>
       ) : (
@@ -101,7 +103,7 @@ export function Accueil() {
       {compte?.verificationEnCours && (
         <Stack direction="row" alignItems="center" gap={1.5} sx={{ bgcolor: tones.blue.bg, color: tones.blue.fg, borderRadius: 4, px: 2, py: 1.25 }}>
           <VerifiedUserOutlined />
-          <Typography variant="body2" sx={{ color: "inherit", flex: 1 }}>Vos pièces sont en vérification. On vous prévient dès que c'est fait.</Typography>
+          <Typography variant="body2" sx={{ color: "inherit", flex: 1 }}>{t("Vos pièces sont en vérification. On vous prévient dès que c'est fait.", "Your documents are being reviewed. We'll let you know as soon as it's done.")}</Typography>
         </Stack>
       )}
 
@@ -110,9 +112,9 @@ export function Accueil() {
           <Stack direction="row" alignItems="center" gap={1.5} sx={{ bgcolor: tones.amber.bg, color: tones.amber.fg, borderRadius: 4, px: 2, py: 1.25, width: "100%" }}>
             <HourglassTopRounded />
             <Stack sx={{ flex: 1 }}>
-              <Typography fontWeight={600} sx={{ color: "inherit" }}>Dépôt en attente · {d.reference}</Typography>
+              <Typography fontWeight={600} sx={{ color: "inherit" }}>{t(`Dépôt en attente · ${d.reference}`, `Pending deposit · ${d.reference}`)}</Typography>
               <Typography variant="body2" sx={{ color: "inherit", opacity: 0.85 }}>
-                {d.declarations.some((x) => x.etat === "attendu") ? "On cherche le SMS de votre paiement…" : "Entrez le transaction ID de votre paiement."}
+                {d.declarations.some((x) => x.etat === "attendu") ? t("On cherche le SMS de votre paiement…", "Looking for your payment SMS…") : t("Entrez le transaction ID de votre paiement.", "Enter your payment's transaction ID.")}
               </Typography>
             </Stack>
             <ChevronRightRounded />
@@ -121,9 +123,9 @@ export function Accueil() {
       ))}
 
       <Stack direction="row" gap={1.5}>
-        <Tile icon={<ArrowDownwardRounded />} label="Entrer des XAF" to="/entrer/operateur" tone="green" note={ouvert.pret && !ouvert.entrees ? "Fermé (bêta)" : undefined} />
-        <Tile icon={<ArrowUpwardRounded />} label="Sortir des XAF" to="/sortir/montant" tone="amber" note={ouvert.pret && !ouvert.sorties ? (ouvert.beta ? "Fermé (bêta)" : "Bientôt") : undefined} />
-        <Tile icon={<CurrencyBitcoinRounded />} label="Crypto" to="/crypto" tone="blue" note={ouvert.pret && !ouvert.crypto ? "Bientôt" : undefined} />
+        <Tile icon={<ArrowDownwardRounded />} label={t("Entrer des XAF", "Add XAF")} to="/entrer/operateur" tone="green" note={ouvert.pret && !ouvert.entrees ? t("Fermé (bêta)", "Closed (beta)") : undefined} />
+        <Tile icon={<ArrowUpwardRounded />} label={t("Sortir des XAF", "Withdraw XAF")} to="/sortir/montant" tone="amber" note={ouvert.pret && !ouvert.sorties ? (ouvert.beta ? t("Fermé (bêta)", "Closed (beta)") : t("Bientôt", "Coming soon")) : undefined} />
+        <Tile icon={<CurrencyBitcoinRounded />} label={"Crypto" /* langue-ok */} to="/crypto" tone="blue" note={ouvert.pret && !ouvert.crypto ? t("Bientôt", "Coming soon") : undefined} />
       </Stack>
       </Stack>
       <Stack gap={2}>
@@ -132,17 +134,17 @@ export function Accueil() {
         /* le marché n'est pas encore ouvert : pas de cours qui bouge sur un marché où l'on ne peut rien faire */
         <Card sx={{ width: "100%" }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography variant="body2">USDT/XAFe</Typography>
-            <Chip label="Bientôt" size="small" sx={{ bgcolor: tones.amber.bg, color: tones.amber.fg, height: 28 }} />
+            <Typography variant="body2">{"USDT/XAFe" /* langue-ok */}</Typography>
+            <Chip label={t("Bientôt", "Coming soon")} size="small" sx={{ bgcolor: tones.amber.bg, color: tones.amber.fg, height: 28 }} />
           </Stack>
-          <Typography variant="subtitle1" fontWeight={600}>Le marché ouvre bientôt</Typography>
-          <Typography variant="body2">Acheter et vendre des USDT sera possible très prochainement. Pour l'instant, ajoutez des XAFe à votre compte.</Typography>
+          <Typography variant="subtitle1" fontWeight={600}>{t("Le marché ouvre bientôt", "The market opens soon")}</Typography>
+          <Typography variant="body2">{t("Acheter et vendre des USDT sera possible très prochainement. Pour l'instant, ajoutez des XAFe à votre compte.", "Buying and selling USDT will be available very soon. For now, add XAFe to your account.")}</Typography>
         </Card>
       ) : (
       <ButtonBase component={Link} to="/marche" sx={{ textAlign: "left", borderRadius: 6 }}>
         <Card sx={{ width: "100%" }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography variant="body2">USDT/XAFe</Typography>
+            <Typography variant="body2">{"USDT/XAFe" /* langue-ok */}</Typography>
             {cotation?.variation24h != null && (
               <Chip label={`${variation >= 0 ? "+" : ""}${enTranches(variation, 2)} %`} size="small" sx={{ bgcolor: variation >= 0 ? "#CDEFD9" : "#F9DEDC", color: variation >= 0 ? "#06331B" : "#7A1F17", height: 28 }} />
             )}
@@ -157,8 +159,8 @@ export function Accueil() {
       )}
       {/* l'achat rapide : pour qui ne veut pas poser un ordre au carnet — rien à acheter ni à vendre tant que le compte est vide */}
       {!vide && ouvert.rapide && <Stack direction="row" gap={1.5}>
-        <Button component={Link} to="/rapide?sens=achat" variant="contained" disableElevation sx={{ flex: 1, bgcolor: BUY, "&:hover": { bgcolor: BUY } }}>Acheter des USDT</Button>
-        <Button component={Link} to="/rapide?sens=vente" variant="outlined" sx={{ flex: 1, color: SELL, borderColor: SELL }}>Vendre</Button>
+        <Button component={Link} to="/rapide?sens=achat" variant="contained" disableElevation sx={{ flex: 1, bgcolor: BUY, "&:hover": { bgcolor: BUY } }}>{t("Acheter des USDT", "Buy USDT")}</Button>
+        <Button component={Link} to="/rapide?sens=vente" variant="outlined" sx={{ flex: 1, color: SELL, borderColor: SELL }}>{t("Vendre", "Sell")}</Button>
       </Stack>}
       {/* sur un grand écran, la place à droite sert à voir ce qui vient de se passer — sur un téléphone, c'est l'onglet Historique */}
       {grand && historique && historique.length > 0 && <Recents operations={historique.slice(0, 5)} />}
@@ -180,15 +182,15 @@ function PremiersPas({ compte, soldes, historique, numeros, sorties }: { compte?
   if (!compte || !soldes || !historique || !numeros) return null;
   const etapes = [
     { fait: historique.some((o) => o.nature === "depot" && o.etat === "credite") || soldes.XAFe.disponible + soldes.XAFe.bloque + soldes.USDT.disponible + soldes.USDT.bloque > 0,
-      titre: "Entrez vos premiers XAF", texte: "Payez notre numéro MTN MoMo ou Orange Money, puis donnez-nous le transaction ID de votre SMS : vos XAFe arrivent en quelques instants.", label: "Entrer des XAF", to: "/entrer/operateur" },
+      titre: t("Entrez vos premiers XAF", "Add your first XAF"), texte: t("Payez notre numéro MTN MoMo ou Orange Money, puis donnez-nous le transaction ID de votre SMS : vos XAFe arrivent en quelques instants.", "Pay our MTN MoMo or Orange Money number, then give us the transaction ID from your SMS: your XAFe arrive within moments."), label: t("Entrer des XAF", "Add XAF"), to: "/entrer/operateur" },
     /* tant que les sorties ne sont pas ouvertes, le numéro de sortie n'est pas une étape */
     ...(sorties ? [{ fait: numeros.some((n) => n.verifieLe && !n.retireLe),
-      titre: "Ajoutez votre numéro MoMo", texte: "C'est vers lui que vous sortirez vos XAF. Il devient actif 24 h après sa vérification : faites-le dès maintenant.", label: "Ajouter mon numéro", to: "/compte/numeros/ajouter" }] : []),
+      titre: t("Ajoutez votre numéro MoMo", "Add your MoMo number"), texte: t("C'est vers lui que vous sortirez vos XAF. Il devient actif 24 h après sa vérification : faites-le dès maintenant.", "This is where you'll withdraw your XAF. It becomes active 24 hours after it's verified, so do it now."), label: t("Ajouter mon numéro", "Add my number"), to: "/compte/numeros/ajouter" }] : []),
     { fait: compte.palier >= 1 || Boolean(compte.verificationEnCours) || plusTard,
-      titre: "Vérifiez votre identité", texte: PALIERS[1].entreeJour == null
+      titre: t("Vérifiez votre identité", "Verify your identity"), texte: PALIERS[1].entreeJour == null
         /* sans plafond (0027), il n'y a pas de plafond à relever : on dit pourquoi vérifier, pas un « 0 à 0 » */
-        ? "Glisil doit savoir qui est derrière chaque compte. Une pièce d'identité et un selfie suffisent."
-        : `Votre plafond passe de ${xaf(PALIERS[0].entreeJour ?? 0)} à ${xaf(PALIERS[1].entreeJour)} XAF par jour. Une pièce d'identité et un selfie suffisent.`, label: "Vérifier mon identité", to: "/compte/paliers/identite", plusTard: true },
+        ? t("Glisil doit savoir qui est derrière chaque compte. Une pièce d'identité et un selfie suffisent.", "Glisil needs to know who is behind each account. An ID document and a selfie are all it takes.")
+        : t(`Votre plafond passe de ${xaf(PALIERS[0].entreeJour ?? 0)} à ${xaf(PALIERS[1].entreeJour)} XAF par jour. Une pièce d'identité et un selfie suffisent.`, `Your limit goes from ${xaf(PALIERS[0].entreeJour ?? 0)} to ${xaf(PALIERS[1].entreeJour)} XAF per day. An ID document and a selfie are all it takes.`), label: t("Vérifier mon identité", "Verify my identity"), to: "/compte/paliers/identite", plusTard: true },
   ];
   const faites = etapes.filter((e) => e.fait).length;
   const suivante = etapes.find((e) => !e.fait);
@@ -196,15 +198,15 @@ function PremiersPas({ compte, soldes, historique, numeros, sorties }: { compte?
   return (
     <Card sx={{ border: 1, borderColor: "divider" }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center">
-        <Typography variant="caption" sx={{ fontWeight: 600, color: "primary.main" }}>POUR BIEN DÉMARRER</Typography>
-        <Typography variant="caption">{faites + 1} sur {etapes.length}</Typography>
+        <Typography variant="caption" sx={{ fontWeight: 600, color: "primary.main" }}>{t("POUR BIEN DÉMARRER", "GETTING STARTED")}</Typography>
+        <Typography variant="caption">{t(`${faites + 1} sur ${etapes.length}`, `${faites + 1} of ${etapes.length}`)}</Typography>
       </Stack>
-      <LinearProgress variant="determinate" value={(faites / etapes.length) * 100} sx={{ height: 4, borderRadius: 2, bgcolor: "divider" }} aria-label="Premiers pas" />
+      <LinearProgress variant="determinate" value={(faites / etapes.length) * 100} sx={{ height: 4, borderRadius: 2, bgcolor: "divider" }} aria-label={t("Premiers pas", "First steps")} />
       <Typography variant="subtitle1" fontWeight={600}>{suivante.titre}</Typography>
       <Typography variant="body2">{suivante.texte}</Typography>
       <Stack direction="row" gap={1} sx={{ mt: 0.5 }}>
         <Button component={Link} to={suivante.to} variant="contained" size="small">{suivante.label}</Button>
-        {suivante.plusTard && <Button size="small" color="inherit" sx={{ color: "text.secondary" }} onClick={() => { try { localStorage.setItem(CLE_PLUS_TARD, "1"); } catch { /* sans stockage, l'étape revient à la prochaine ouverture */ } setPlusTard(true); }}>Plus tard</Button>}
+        {suivante.plusTard && <Button size="small" color="inherit" sx={{ color: "text.secondary" }} onClick={() => { try { localStorage.setItem(CLE_PLUS_TARD, "1"); } catch { /* sans stockage, l'étape revient à la prochaine ouverture */ } setPlusTard(true); }}>{t("Plus tard", "Later")}</Button>}
       </Stack>
     </Card>
   );
@@ -215,8 +217,8 @@ function Recents({ operations }: { operations: Operation[] }) {
   return (
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-        <Typography variant="subtitle1" component="h2" fontWeight={600}>Dernières opérations</Typography>
-        <Button component={Link} to="/historique" size="small">Tout voir</Button>
+        <Typography variant="subtitle1" component="h2" fontWeight={600}>{t("Dernières opérations", "Recent activity")}</Typography>
+        <Button component={Link} to="/historique" size="small">{t("Tout voir", "See all")}</Button>
       </Stack>
       <List>
         {operations.map((o) => {
@@ -259,17 +261,17 @@ export function Notifications() {
   }
 
   return (
-    <Screen title="Notifications" back="/">
+    <Screen title={"Notifications" /* langue-ok : le même mot en anglais */} back="/">
       {!data ? <Squelette /> : data.length === 0 ? (
-        <EtatVide icone={<NotificationsNoneRounded sx={{ fontSize: 36 }} />} titre="Aucune notification"
-          texte="Un dépôt crédité, une sortie envoyée, un ordre exécuté : vous serez prévenu ici." />
+        <EtatVide icone={<NotificationsNoneRounded sx={{ fontSize: 36 }} />} titre={t("Aucune notification", "No notifications")}
+          texte={t("Un dépôt crédité, une sortie envoyée, un ordre exécuté : vous serez prévenu ici.", "A deposit credited, a withdrawal sent, an order filled: you'll be notified here.")} />
       ) : (
         [...groupes].map(([jour, ns]) => (
           <Box key={jour}>
             <Typography variant="subtitle1" sx={{ mb: 1 }}>{jour}</Typography>
             <List>
               {ns.map((n) => (
-                <Row key={n.id} icon={<Icon tone={n.lue ? "neutral" : "green"}><NotificationsNoneRounded /></Icon>} tone={n.lue ? "neutral" : "green"} primary={n.titre} secondary={`${quand(n.quand)} · ${n.texte}`} to={n.cible} />
+                <Row key={n.id} icon={<Icon tone={n.lue ? "neutral" : "green"}><NotificationsNoneRounded /></Icon>} tone={n.lue ? "neutral" : "green"} primary={titreDuServeur(n.titre)} secondary={`${quand(n.quand)} · ${texteDuServeur(n.texte)}`} to={n.cible} />
               ))}
             </List>
           </Box>
