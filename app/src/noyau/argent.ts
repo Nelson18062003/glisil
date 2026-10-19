@@ -232,13 +232,14 @@ export const MARCHE: {
 export type Operateur = {
   id: "mtn" | "om";
   nom: string;
-  plafondParTransfert: number;
-  plafondParJour: number;
+  /** null : aucun plafond (0031) — le client envoie ce qu'il veut, un ID par transfert */
+  plafondParTransfert: number | null;
+  plafondParJour: number | null;
 };
 
 export const OPERATEURS: Operateur[] = [
-  { id: "mtn", nom: "MTN MoMo", plafondParTransfert: 1_000_000, plafondParJour: 100_000_000 },
-  { id: "om", nom: "Orange Money", plafondParTransfert: 500_000, plafondParJour: 1_500_000 },
+  { id: "mtn", nom: "MTN MoMo", plafondParTransfert: null, plafondParJour: null },
+  { id: "om", nom: "Orange Money", plafondParTransfert: null, plafondParJour: null },
 ];
 
 export function operateur(id: string): Operateur {
@@ -246,14 +247,16 @@ export function operateur(id: string): Operateur {
 }
 
 export const PALIERS: Record<number, { entreeJour: number | null; sortieJour: number | null; nom: string }> = {
-  0: { entreeJour: 500_000, sortieJour: 500_000, nom: "Palier 0 · e-mail vérifié" },
-  1: { entreeJour: 5_000_000, sortieJour: 5_000_000, nom: "Palier 1 · identité vérifiée" },
+  // aucun plafond par défaut (0027) : seule l'équipe en pose un, et l'écran le lit
+  0: { entreeJour: null, sortieJour: null, nom: "Palier 0 · e-mail vérifié" },
+  1: { entreeJour: null, sortieJour: null, nom: "Palier 1 · identité vérifiée" },
   2: { entreeJour: null, sortieJour: null, nom: "Palier 2 · entreprise vérifiée" },
 };
 
-/** Combien de transferts MoMo il faut pour un montant, au plafond de l'opérateur. */
-export function nombreDeTransferts(montant: number, plafondParTransfert: number): number {
+/** Combien de transferts MoMo il faut pour un montant : un seul, sauf si l'équipe a posé un plafond. */
+export function nombreDeTransferts(montant: number, plafondParTransfert: number | null): number {
   if (montant <= 0) return 0;
+  if (plafondParTransfert === null) return 1;
   return Math.max(1, Math.ceil(montant / plafondParTransfert));
 }
 
@@ -264,7 +267,7 @@ export type Transfert = { montant: number; frais: number; envoi: number };
  * n transferts de parts égales (le reste sur le dernier), frais arrondis au
  * franc SUPÉRIEUR par transfert, ce qui part = la part moins ses frais.
  */
-export function decouperSortie(montant: number, plafondParTransfert: number, taux = FRAIS.sortie): {
+export function decouperSortie(montant: number, plafondParTransfert: number | null, taux = FRAIS.sortie): {
   transferts: Transfert[];
   frais: number;
   envoi: number;
@@ -467,8 +470,9 @@ export function appliquerParametres(p: unknown): boolean {
   for (const o of Array.isArray(r.operateurs) ? r.operateurs : []) {
     const cible = OPERATEURS.find((x) => x.id === o?.id);
     if (!cible) continue;
-    poser(cible, "plafondParTransfert", nombre(o.plafond_par_transfert, 1, 1e12));
-    poser(cible, "plafondParJour", nombre(o.plafond_jour, 1, 1e13));
+    // null veut dire « aucun plafond » : il se pose tel quel, il n'est pas ignoré
+    if ("plafond_par_transfert" in o) cible.plafondParTransfert = o.plafond_par_transfert === null ? null : nombre(o.plafond_par_transfert, 1, 1e12) ?? cible.plafondParTransfert;
+    if ("plafond_jour" in o) cible.plafondParJour = o.plafond_jour === null ? null : nombre(o.plafond_jour, 1, 1e13) ?? cible.plafondParJour;
   }
   for (const k of ["0", "1", "2"]) {
     if (!r.paliers || !(k in r.paliers)) continue;

@@ -330,7 +330,10 @@ begin
 end $$;
 
 -- ─────────────────────────────── 6 · une sortie ────────────────────────────
+-- Par défaut, aucun plafond par transfert (0031). Ici l'équipe en pose un sur
+-- MTN, pour éprouver le découpage qu'il commande.
 begin;
+update operateurs set plafond_par_transfert = 1000000 where id = 'mtn';
 set local xafe.compte = '11111111-1111-1111-1111-111111111111';
 do $$
 declare r jsonb; a uuid := '11111111-1111-1111-1111-111111111111'; avant numeric := solde(a, 'XAFe', 'dispo');
@@ -2809,6 +2812,27 @@ begin
 end $$;
 rollback;
 
+-- 11.51 · aucun plafond par transfert (0031). Le client envoie ce qu'il veut :
+-- l'écran ne lui dicte plus « 5 transferts de 1 000 000 au plus », et une
+-- sortie automatique part en UN transfert. Un plafond posé par l'équipe
+-- découpe encore (scénario 6).
+begin;
+update operateurs set plafond_par_transfert = null, plafond_jour = null;
+update terminaux set vu_le = now() where id = 'akwa-1';
+set local xafe.compte = '11111111-1111-1111-1111-111111111111';
+do $$
+declare r jsonb; a uuid := '11111111-1111-1111-1111-111111111111'; avant bigint := (select count(*) from commandes);
+begin
+  perform _mouvement(a, 'XAFe', 6000000, 0, 'test', 'test', 'T-11.51');
+  r := demander_sortie(6000000, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-1151');
+  assert (r ->> 'transferts')::int = 1, r;
+  assert (select count(*) from commandes) = avant + 1, 'une sortie de 6 000 000, un seul transfert';
+  r := parametres_publics();
+  assert r -> 'operateurs' -> 0 -> 'plafond_par_transfert' = 'null'::jsonb and r -> 'operateurs' -> 0 -> 'plafond_jour' = 'null'::jsonb, r;
+  raise notice '✓ 11.51 aucun plafond par transfert : 6 000 000 partent en un transfert, l''écran ne lit aucun plafond';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';
@@ -2817,7 +2841,8 @@ declare r jsonb := parametres_publics();
 begin
   assert (r -> 'frais' ->> 'sortie')::numeric = (parametre('frais') ->> 'sortie')::numeric, r;
   assert (r -> 'crypto' ->> 'retraits_ouverts')::boolean, 'ouverts plus haut dans ces scénarios';
-  assert jsonb_array_length(r -> 'operateurs') = 2 and (r -> 'operateurs' -> 0 ->> 'plafond_par_transfert')::numeric = 1000000, r;
+  assert jsonb_array_length(r -> 'operateurs') = 2
+         and r -> 'operateurs' -> 0 -> 'plafond_par_transfert' = to_jsonb((select plafond_par_transfert from operateurs where id = 'mtn')), r;
   assert not (r ? 'code_secret') and not (r ? 'depot'), 'rien d''autre que ce que l''écran montre';
 end $$;
 rollback;

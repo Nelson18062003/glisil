@@ -60,7 +60,7 @@ export function Parametres() {
     <Coquille titre="Paramètres">
       <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
       <Section titre="Opérateurs">
-        <Tableau colonnes={["Opérateur", { label: "Plafond par transfert", align: "right" }, { label: "Plafond par jour", align: "right" }]} lignes={(data?.operateurs ?? []).map((o) => [o.nom, `${xaf(o.plafond_par_transfert)} XAF`, o.plafond_jour != null ? `${xaf(o.plafond_jour)} XAF` : "—"])} />
+        <Tableau colonnes={["Opérateur", { label: "Plafond par transfert", align: "right" }, { label: "Plafond par jour", align: "right" }]} lignes={(data?.operateurs ?? []).map((o) => [o.nom, o.plafond_par_transfert != null ? `${xaf(o.plafond_par_transfert)} XAF` : "aucun", o.plafond_jour != null ? `${xaf(o.plafond_jour)} XAF` : "aucun"])} />
       </Section>
       <Stack direction="row" gap={2} flexWrap="wrap">
         {BLOCS.map((b) => (

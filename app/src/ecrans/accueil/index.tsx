@@ -19,6 +19,7 @@ import { useChandelles, useCompte, useCotation, useDepotsEnAttente, useGuichet, 
 import { enTranches, initiales, jourRelatif, prix, quand, xaf } from "../../noyau/format";
 import { useSession } from "../../session/session";
 import { BETA, PALIERS } from "../../noyau/argent";
+import { apparence } from "../../ui/operation";
 import { tones } from "../../theme";
 import { Badge, BUY, Card, EtatVide, Icon, List, Masquable, Row, Screen, SELL, Sparkline, Squelette, Tile } from "../../ui";
 
@@ -73,7 +74,7 @@ export function Accueil() {
       {soldes ? (
         <Card onPrimary>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography variant="body2" sx={{ color: "inherit", opacity: 0.85 }}>Solde total · estimé en XAF</Typography>
+            <Typography variant="body2" sx={{ color: "inherit", opacity: 0.85 }}>{soldes.USDT.disponible + soldes.USDT.bloque > 0 ? "Solde total · XAFe + USDT, estimé en XAF" : "Solde total"}</Typography>
             <IconButton size="small" onClick={session.basculerMasque} sx={{ color: "inherit", m: -1 }} aria-label={session.montantsMasques ? "Montrer les montants" : "Masquer les montants"}>
               {session.montantsMasques ? <VisibilityOffOutlined fontSize="small" /> : <VisibilityOutlined fontSize="small" />}
             </IconButton>
@@ -83,7 +84,8 @@ export function Accueil() {
           </Typography>
           <Stack direction="row" gap={1.5} mt={0.5}>
             <Poche badge="xafe" label="XAFe" valeur={xaf(soldes.XAFe.disponible)} bloque={soldes.XAFe.bloque > 0 ? `${xaf(soldes.XAFe.bloque)} bloqués` : undefined} />
-            <Poche badge="usdt" label="USDT" valeur={enTranches(soldes.USDT.disponible, 2)} bloque={soldes.USDT.bloque > 0 ? `${enTranches(soldes.USDT.bloque, 2)} bloqués` : undefined} />
+            <Poche badge="usdt" label="USDT" valeur={enTranches(soldes.USDT.disponible, 2)} bloque={soldes.USDT.bloque > 0 ? `${enTranches(soldes.USDT.bloque, 2)} bloqués` : undefined}
+              equivalent={cotation?.dernier != null && soldes.USDT.disponible + soldes.USDT.bloque > 0 ? `≈ ${xaf((soldes.USDT.disponible + soldes.USDT.bloque) * cotation.dernier)} XAF` : undefined} />
           </Stack>
           {/* le XAFe est un jeton : la promesse 1 XAFe = 1 XAF se vérifie, à un geste */}
           <Typography component={Link} to="/preuve" variant="caption" sx={{ color: "inherit", opacity: 0.85, alignSelf: "flex-start", textUnderlineOffset: 3, display: "inline-flex", alignItems: "center", minHeight: 32 }}>
@@ -208,11 +210,8 @@ function PremiersPas({ compte, soldes, historique, numeros, sorties }: { compte?
   );
 }
 
-const ETATS_COURTS: Record<string, string> = { en_attente: "en attente", en_cours: "en cours", ouvert: "ouvert", partiel: "partiel", annule: "annulé", annulee: "annulée", expire: "expiré", echouee: "échouée", echoue: "échoué" };
-
-/** Les cinq dernières opérations, en lignes simples ; le détail est à un clic. */
+/** Les cinq dernières opérations, dites comme dans l'historique ; le détail est à un clic. */
 function Recents({ operations }: { operations: Operation[] }) {
-  const titre = (o: Operation) => o.nature === "depot" ? "Entrée Mobile Money" : o.nature === "sortie" ? "Sortie Mobile Money" : o.nature === "ordre" ? (o.detail.cote === "achat" ? "Achat d'USDT" : "Vente d'USDT") : o.nature === "dotation" ? "Argent de test reçu" : `${o.montant > 0 ? "Dépôt" : "Retrait"} ${o.actif}`;
   return (
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
@@ -220,17 +219,19 @@ function Recents({ operations }: { operations: Operation[] }) {
         <Button component={Link} to="/historique" size="small">Tout voir</Button>
       </Stack>
       <List>
-        {operations.map((o) => (
-          <Row key={`${o.nature}-${o.reference}`} icon={o.montant >= 0 ? <ArrowDownwardRounded /> : <ArrowUpwardRounded />} tone={o.montant >= 0 ? "green" : "amber"}
-            primary={titre(o)} secondary={quand(o.quand)} right={o.montant === 0 ? ETATS_COURTS[o.etat] ?? "—" : o.nature === "crypto" && o.actif === "USDT" ? `${o.montant >= 0 ? "+" : ""}${enTranches(o.montant, 2)}` : `${o.montant >= 0 ? "+" : ""}${xaf(o.montant)}`}
-            rightColor={o.montant > 0 ? tones.green.fg : undefined} to={o.nature === "ordre" ? `/marche/ordres/${o.reference}` : `/historique/${o.reference}`} />
-        ))}
+        {operations.map((o) => {
+          const a = apparence(o);
+          return (
+            <Row key={`${o.nature}-${o.reference}`} icon={a.icone} tone={a.tone} primary={a.titre} secondary={quand(o.quand)} right={a.droite}
+              rightColor={a.couleur} to={o.nature === "ordre" ? `/marche/ordres/${o.reference}` : `/historique/${o.reference}`} />
+          );
+        })}
       </List>
     </Box>
   );
 }
 
-function Poche({ badge, label, valeur, bloque }: { badge: "xafe" | "usdt"; label: string; valeur: string; bloque?: string }) {
+function Poche({ badge, label, valeur, bloque, equivalent }: { badge: "xafe" | "usdt"; label: string; valeur: string; bloque?: string; equivalent?: string }) {
   return (
     <Stack direction="row" alignItems="center" gap={1} sx={{ flex: 1, minWidth: 0, bgcolor: "rgba(255,255,255,0.14)", borderRadius: 3, p: 1.25 }}>
       <Badge kind={badge} size={32} />
@@ -238,6 +239,7 @@ function Poche({ badge, label, valeur, bloque }: { badge: "xafe" | "usdt"; label
         <Typography variant="caption" sx={{ color: "inherit" }}>{label}</Typography>
         <Typography fontWeight={600} sx={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}><Masquable>{valeur}</Masquable></Typography>
         {bloque && <Typography variant="caption" sx={{ color: "inherit" }}><Masquable>{bloque}</Masquable></Typography>}
+        {equivalent && <Typography variant="caption" sx={{ color: "inherit" }}><Masquable>{equivalent}</Masquable></Typography>}
       </Stack>
     </Stack>
   );
