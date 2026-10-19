@@ -208,7 +208,14 @@ export async function traiterCommandes(rpc: Rpc, terminal: string, methode: stri
   const id = morceaux.length > 0 && /^[0-9]+$/.test(morceaux[morceaux.length - 1]) ? Number(morceaux[morceaux.length - 1]) : null;
   const corps = (charge && typeof charge === "object" ? charge : {}) as Ligne;
   const type = String(corps.type ?? url.searchParams.get("type") ?? "transferts");
-  if (!Object.hasOwn(GUICHETS, type)) return { statut: 400, corps: { erreur: "type inconnu : transferts, sms ou remboursements" } };
+  if (type === "sorties_demo") {
+    try { return await traiterSortiesDemo(rpc, terminal, methode, corps); }
+    catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return { statut: message.includes("déjà prise") ? 409 : 400, corps: { erreur: message } };
+    }
+  }
+  if (!Object.hasOwn(GUICHETS, type)) return { statut: 400, corps: { erreur: "type inconnu : transferts, sms, remboursements ou sorties_demo" } };
   const g = GUICHETS[type as TypeDeGuichet];
 
   try {
@@ -243,6 +250,30 @@ export async function traiterCommandes(rpc: Rpc, terminal: string, methode: stri
     /* une commande déjà prise par un autre tour n'est pas une panne : c'est la règle qui tient */
     return { statut: message.includes("déjà prise") ? 409 : 400, corps: { erreur: message } };
   }
+}
+
+/**
+ * Les sorties de démo (0032) : le terminal de démo paie lui-même les retraits
+ * des testeurs vers un numéro de démo. Une sortie se désigne par sa référence.
+ *   GET   ?type=sorties_demo                                         → à payer
+ *   PATCH {type: "sorties_demo", reference, etat: "en_cours"}          → la prendre (409 si déjà prise)
+ *   PATCH {type: "sorties_demo", reference, etat: "envoyee", transaction_id} → payée
+ *   PATCH {type: "sorties_demo", reference, etat: "echouee", motif}   → rien n'est parti : les XAFe reviennent
+ */
+async function traiterSortiesDemo(rpc: Rpc, terminal: string, methode: string, corps: Ligne): Promise<Reponse> {
+  if (methode === "GET") return { statut: 200, corps: (await rpc("totem_sorties_demo", { p_terminal: terminal })) ?? [] };
+  if (methode !== "PATCH") return { statut: 405, corps: { erreur: "GET ?type=sorties_demo ou PATCH {reference, etat}" } };
+  const reference = texte(corps.reference);
+  if (!reference) return { statut: 400, corps: { erreur: "reference manquante" } };
+  const etat = String(corps.etat ?? "");
+  if (etat === "en_cours") return { statut: 200, corps: await rpc("totem_prendre_sortie_demo", { p_terminal: terminal, p_reference: reference }) };
+  if (etat === "envoyee") {
+    return { statut: 200, corps: await rpc("totem_sortie_demo_payee", { p_terminal: terminal, p_reference: reference, p_transaction_id: texte(corps.transaction_id) }) };
+  }
+  if (etat === "echouee") {
+    return { statut: 200, corps: await rpc("totem_sortie_demo_echouee", { p_terminal: terminal, p_reference: reference, p_motif: texte(corps.motif) }) };
+  }
+  return { statut: 400, corps: { erreur: "etat inconnu : en_cours, envoyee ou echouee" } };
 }
 
 /* ----------------------------------------------------------- en-tête HTTP */

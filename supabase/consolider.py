@@ -80,6 +80,8 @@ TEMOINS = {
     # 0031 : colonne rendue facultative, plafonds retirés seulement s'ils sont encore ceux de 0001,
     # demander_sortie « or replace » (posée par 0001).
     "0031_sans_plafond_par_transfert.sql": ("false", "rejouable telle quelle"),
+    # 0032 : fonctions « or replace », paramètre inséré s'il manque, déclencheur retiré puis reposé.
+    "0032_retraits_de_demo_automatiques.sql": ("false", "rejouable telle quelle"),
 }
 
 
