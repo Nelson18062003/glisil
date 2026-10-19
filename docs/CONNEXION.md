@@ -51,7 +51,7 @@ Les suivants s'invitent par `admin_inviter_administrateur(email, nom, rôle)`.
 
 **Authentication → Emails → Templates** : pour **« Confirm signup »** et
 **« Magic Link »**, coller le contenu de `supabase/templates/code-par-email.html`,
-avec pour objet `Votre code Glisil : {{ .Token }}`. Le modèle ne montre que le
+avec pour objet `Votre code Glisil · Your Glisil code : {{ .Token }}`. Le modèle ne montre que le
 code : aucun lien à cliquer.
 
 **Authentication → URL Configuration**

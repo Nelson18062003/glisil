@@ -11,6 +11,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { TraceChaine } from "../guichet/types";
 import { etatDeTrace, hashCourt, lienTransaction, nomsReseau } from "../noyau/chaine";
+import { enTranches } from "../noyau/format";
+import { t } from "../noyau/langue";
 import { tones } from "../theme";
 import { Card, JetonXafe, Line } from "./index";
 
@@ -19,36 +21,37 @@ export function SurLaChaine({ traces }: { traces: TraceChaine[] | undefined }) {
   if (!traces?.length) return null;
   return (
     <>
-      {traces.map((t) => {
-        const e = etatDeTrace(t);
-        const lien = lienTransaction(t.explorateur, t.reseau, t.txHash);
+      {traces.map((trace) => {
+        const e = etatDeTrace(trace);
+        const lien = lienTransaction(trace.explorateur, trace.reseau, trace.txHash);
         return (
-          <Card key={`${t.reseau}:${t.reference}`} sx={{ gap: 1.25 }}>
-            <Stack direction="row" alignItems="center" gap={1.5} data-chaine={t.etat}>
+          <Card key={`${trace.reseau}:${trace.reference}`} sx={{ gap: 1.25 }}>
+            <Stack direction="row" alignItems="center" gap={1.5} data-chaine={trace.etat}>
               <JetonXafe size={40} />
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="subtitle1" component="h2" sx={{ lineHeight: 1.25 }}>Sur la blockchain</Typography>
+                <Typography variant="subtitle1" component="h2" sx={{ lineHeight: 1.25 }}>{t("Sur la blockchain", "On the blockchain")}</Typography>
                 <Chip size="small" label={e.titre} sx={{ mt: 0.5, height: 22, bgcolor: tones[e.ton].bg, color: tones[e.ton].fg, fontWeight: 600, maxWidth: "100%" }} />
               </Box>
-              <IconButton aria-label="Qu'est-ce que c'est ?" onClick={() => setExplique((x) => !x)} size="small"><InfoOutlined /></IconButton>
+              <IconButton aria-label={t("Qu'est-ce que c'est ?", "What is this?")} onClick={() => setExplique((x) => !x)} size="small"><InfoOutlined /></IconButton>
             </Stack>
             <Collapse in={explique}>
               <Typography variant="body2" sx={{ bgcolor: "background.default", p: 1.5, borderRadius: 3 }}>
-                Le XAFe est un jeton sur la blockchain : chaque XAFe crédité sur votre compte y est créé, au même instant, par le contrat XAFe, dans la réserve de Glisil. 1 XAFe = 1 XAF, et le total sur la blockchain vaut toujours ce que Glisil doit à ses clients —{" "}
-                <LienMui component={Link} to="/preuve">la preuve est publique</LienMui>.
+                {t("Le XAFe est un jeton sur la blockchain : chaque XAFe crédité sur votre compte y est créé, au même instant, par le contrat XAFe, dans la réserve de Glisil. 1 XAFe = 1 XAF, et le total sur la blockchain vaut toujours ce que Glisil doit à ses clients —",
+                  "XAFe is a token on the blockchain: every XAFe credited to your account is minted there at the same moment, by the XAFe contract, in Glisil's reserve. 1 XAFe = 1 XAF, and the total on the blockchain always equals what Glisil owes its customers —")}{" "}
+                <LienMui component={Link} to="/preuve">{t("la preuve est publique", "the proof is public")}</LienMui>.
               </Typography>
             </Collapse>
             <Typography variant="body2">{e.phrase}</Typography>
-            <Line label="Réseau" value={`${nomsReseau(t.reseau).nom}${t.essai ? " · essai" : ""}`} />
-            <Line label="Transaction" value={t.txHash ? hashCourt(t.txHash) : "pas encore signée"} mono />
-            {t.bloc != null && <Line label="Bloc" value={t.bloc.toLocaleString("fr-FR")} />}
-            <Line label="Référence scellée" value={t.reference} mono />
+            <Line label={t("Réseau", "Network")} value={`${nomsReseau(trace.reseau).nom}${trace.essai ? t(" · essai", " · test") : ""}`} />
+            <Line label={t("Transaction", "Transaction")} value={trace.txHash ? hashCourt(trace.txHash) : t("pas encore signée", "not signed yet")} mono />
+            {trace.bloc != null && <Line label={t("Bloc", "Block")} value={enTranches(trace.bloc)} />}
+            <Line label={t("Référence scellée", "Sealed reference")} value={trace.reference} mono />
             {lien && (
               <Button variant="outlined" href={lien} target="_blank" rel="noreferrer" endIcon={<OpenInNewRounded />}>
-                Voir sur {nomsReseau(t.reseau).explorateur}
+                {t(`Voir sur ${nomsReseau(trace.reseau).explorateur}`, `View on ${nomsReseau(trace.reseau).explorateur}`)}
               </Button>
             )}
-            {t.essai && <Typography variant="caption">Réseau d'essai : sur la blockchain, ces jetons n'ont pas encore de valeur ; votre solde Glisil, lui, est réel.</Typography>}
+            {trace.essai && <Typography variant="caption">{t("Réseau d'essai : sur la blockchain, ces jetons n'ont pas encore de valeur ; votre solde Glisil, lui, est réel.", "Test network: on the blockchain, these tokens have no value yet; your Glisil balance, however, is real.")}</Typography>}
           </Card>
         );
       })}

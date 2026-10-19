@@ -1,8 +1,12 @@
 /*
  * Une erreur se dit en trois lignes : ce qui s'est passé, ce que ça change
  * pour l'argent, et quoi faire. Jamais un message technique brut.
- * Les phrases du moteur (RAISE EXCEPTION) sont les clés.
+ * Les phrases du moteur (RAISE EXCEPTION) sont les clés : elles restent en
+ * français, car le moteur parle français. Seules les phrases MONTRÉES suivent
+ * la langue de l'écran — le dictionnaire est donc une fonction, relue à
+ * chaque erreur, et non une table figée au chargement.
  */
+import { t } from "./langue";
 
 export type ErreurLisible = {
   titre: string;
@@ -12,378 +16,430 @@ export type ErreurLisible = {
   recommencer: boolean;
 };
 
-const DICTIONNAIRE: Record<string, Omit<ErreurLisible, "recommencer"> & { recommencer?: boolean }> = {
-  /* ---- l'inscription et la connexion */
-  "code incorrect ou expiré": {
-    titre: "Ce code ne marche pas",
-    argent: "Rien n'a bougé.",
-    suite: "Vérifiez les six chiffres, ou demandez un nouveau code : un code reste valable quelques minutes.",
-  },
-  "trop de codes demandés : attendez une minute": {
-    titre: "Trop de codes demandés",
-    argent: "Rien n'a bougé.",
-    suite: "Attendez une minute, puis demandez un nouveau code. Pensez à regarder dans vos courriers indésirables.",
-  },
-  "adresse e-mail invalide": {
-    titre: "Cette adresse e-mail n'est pas valide",
-    argent: "Rien n'a bougé.",
-    suite: "Vérifiez qu'elle est écrite en entier, par exemple awa@exemple.com.",
-  },
-  "adresse e-mail non vérifiée": {
-    titre: "Votre adresse e-mail n'est pas encore vérifiée",
-    argent: "Aucun compte n'a été ouvert.",
-    suite: "Reconnectez-vous avec le code reçu par e-mail.",
-  },
-  "il faut avoir 18 ans": {
-    titre: "Il faut avoir 18 ans",
-    argent: "Aucun compte n'a été ouvert.",
-    suite: "Glisil est un service financier : il est réservé aux personnes majeures.",
-    recommencer: false,
-  },
-  "date de naissance invalide": {
-    titre: "Cette date de naissance n'est pas possible",
-    argent: "Aucun compte n'a été ouvert.",
-    suite: "Vérifiez le jour, le mois et l'année.",
-  },
-  "numéro de téléphone invalide": {
-    titre: "Ce numéro de téléphone n'est pas valide",
-    argent: "Aucun compte n'a été ouvert.",
-    suite: "Choisissez le bon pays, puis tapez le numéro sans l'indicatif. Au Cameroun : 9 chiffres, comme 6 77 12 34 56.",
-  },
-  "ce numéro est déjà utilisé": {
-    titre: "Ce numéro est déjà utilisé",
-    argent: "Aucun compte n'a été ouvert.",
-    suite: "Un numéro ne sert qu'à un seul compte. Si c'est le vôtre, connectez-vous avec l'adresse e-mail de ce compte, ou écrivez au support.",
-    recommencer: false,
-  },
-  "ce numéro ou cette adresse est déjà utilisé": {
-    titre: "Ce numéro ou cette adresse est déjà utilisé",
-    argent: "Aucun compte n'a été ouvert.",
-    suite: "Un numéro et une adresse ne servent qu'à un seul compte. Écrivez au support si c'est une erreur.",
-    recommencer: false,
-  },
-  "prénom invalide": { titre: "Ce prénom n'est pas valide", argent: "Aucun compte n'a été ouvert.", suite: "Des lettres seulement, au moins deux." },
-  "nom invalide": { titre: "Ce nom n'est pas valide", argent: "Aucun compte n'a été ouvert.", suite: "Des lettres seulement, au moins deux." },
-  "ville invalide": { titre: "Cette ville n'est pas valide", argent: "Aucun compte n'a été ouvert.", suite: "Des lettres seulement, au moins deux." },
-  "pays invalide": { titre: "Choisissez votre pays dans la liste", argent: "Aucun compte n'a été ouvert.", suite: "Tapez les premières lettres pour le trouver." },
-  "compte déjà ouvert": {
-    titre: "Votre compte est déjà ouvert",
-    argent: "Rien n'a bougé.",
-    suite: "Rechargez l'application : vous arriverez sur votre compte.",
-    recommencer: false,
-  },
-  "compte pas encore ouvert": {
-    titre: "Votre compte n'est pas encore ouvert",
-    argent: "Rien n'a bougé.",
-    suite: "Terminez votre inscription.",
-  },
-  "devis expiré": {
-    titre: "Le prix a expiré",
-    argent: "Rien n'a bougé.",
-    suite: "Demandez un nouveau prix : il tient quelques secondes.",
-  },
-  "le prix a changé": {
-    titre: "Le prix a changé",
-    argent: "Rien n'a bougé : rien n'a été acheté ni vendu.",
-    suite: "Le carnet a bougé pendant que vous confirmiez. Demandez un nouveau prix.",
-  },
-  "pas assez de vendeurs au carnet": {
-    titre: "Pas assez de vendeurs",
-    argent: "Rien n'a bougé.",
-    suite: "Le carnet n'a pas assez d'USDT à vendre pour ce montant (10 USDT au moins). Essayez un autre montant.",
-  },
-  "pas assez d'acheteurs au carnet": {
-    titre: "Pas assez d'acheteurs",
-    argent: "Rien n'a bougé.",
-    suite: "Le carnet ne prend pas autant d'USDT en ce moment. Essayez un montant plus petit.",
-  },
-  "achat rapide fermé": {
-    titre: "L'achat rapide est fermé",
-    argent: "Rien n'a bougé.",
-    suite: "Le marché reste ouvert : vous pouvez y passer un ordre.",
-    recommencer: false,
-  },
-  "solde insuffisant": {
-    titre: "Le solde ne suffit pas",
-    argent: "Rien n'a bougé : aucun XAFe ni USDT n'a été bloqué.",
-    suite: "Baissez le montant ou entrez des XAF d'abord.",
-  },
-  "plafond du palier atteint": {
-    titre: "Votre palier ne permet pas ce montant aujourd'hui",
-    argent: "Rien n'a bougé.",
-    suite: "Passez au palier suivant dans Compte → Paliers, ou attendez demain.",
-  },
-  "numéro pas encore actif": {
-    titre: "Ce numéro n'est pas encore utilisable",
-    argent: "Rien n'a bougé.",
-    suite: "Un numéro ajouté devient actif 24 h après sa vérification.",
-  },
-  "numéro inconnu sur ce compte": {
-    titre: "Ce numéro n'est pas sur votre compte",
-    argent: "Rien n'a bougé.",
-    suite: "Ajoutez-le dans Compte → Mes numéros MoMo.",
-  },
-  "prix invalide": {
-    titre: "Le prix doit être un multiple de 0,05",
-    argent: "Aucun ordre n'a été placé.",
-    suite: "Corrigez le prix, par exemple 618,40 plutôt que 618,41.",
-  },
-  "quantité invalide": {
-    titre: "La quantité n'est pas valable",
-    argent: "Aucun ordre n'a été placé.",
-    suite: "Une quantité d'USDT s'écrit avec deux décimales au plus.",
-  },
-  "ordre trop petit": {
-    titre: "Cet ordre est trop petit",
-    argent: "Aucun ordre n'a été placé.",
-    suite: "Un ordre vaut au moins 1 500 XAFe. Augmentez un peu la quantité.",
-  },
-  "quantité trop grande": {
-    titre: "Cet ordre dépasse la taille maximale",
-    argent: "Aucun ordre n'a été placé.",
-    suite: "Découpez-le en plusieurs ordres. Les limites sont dans « Règles du marché ».",
-  },
-  "ordre au marché trop grand": {
-    titre: "Trop grand pour un ordre au marché",
-    argent: "Aucun ordre n'a été placé.",
-    suite: "Au-delà du plafond, posez un ordre limite : vous fixez le prix, il attend au carnet.",
-  },
-  "prix hors de la bande": {
-    titre: "Ce prix est trop loin du marché",
-    argent: "Aucun ordre n'a été placé.",
-    suite: "Un ordre se place près du prix de référence : la bande protège d'une faute de frappe. Rapprochez votre prix.",
-  },
-  "trop d'ordres ouverts": {
-    titre: "Vous avez trop d'ordres ouverts",
-    argent: "Aucun ordre n'a été placé ; les autres attendent toujours.",
-    suite: "Annulez un ordre dans « Ordres ouverts », puis recommencez.",
-  },
-  "trop de signalements": {
-    titre: "Vous avez déjà beaucoup signalé aujourd'hui",
-    argent: "Rien n'a bougé sur votre compte.",
-    suite: "Vingt signalements par jour au plus : pour la suite, écrivez au support par WhatsApp ou par e-mail, juste en dessous.",
-    recommencer: false,
-  },
-  "texte invalide": {
-    titre: "Dites-nous un peu plus",
-    argent: "Rien n'a bougé sur votre compte.",
-    suite: "Décrivez le problème en quelques mots (2 000 caractères au plus), puis renvoyez.",
-  },
-  "dépôts fermés pendant la bêta": {
-    titre: "Les dépôts réels sont fermés pendant la bêta",
-    argent: "Aucun dépôt n'a été ouvert : ne payez rien.",
-    suite: "L'argent de la bêta est de l'argent de test. Les vrais dépôts ouvriront avec la version définitive.",
-    recommencer: false,
-  },
-  "marché fermé": {
-    titre: "Le marché est fermé pour le moment",
-    argent: "Aucun ordre n'a été placé.",
-    suite: "Réessayez dans quelques minutes.",
-  },
-  "cet ordre ne peut plus être annulé": {
-    titre: "Cet ordre est déjà exécuté ou annulé",
-    argent: "Ses fonds sont déjà réglés ou libérés.",
-    suite: "Regardez son détail dans Mes ordres.",
-    recommencer: false,
-  },
-  "code secret incorrect": {
-    titre: "Code secret incorrect",
-    argent: "Rien n'a bougé.",
-    suite: "Réessayez. Après trois erreurs, le compte se verrouille 15 minutes.",
-  },
-  "compte verrouillé": {
-    titre: "Compte verrouillé 15 minutes",
-    argent: "Rien n'a bougé.",
-    suite: "Trois codes faux : attendez avant de réessayer.",
-  },
-  "ce dépôt ne peut plus être annulé": {
-    titre: "Ce dépôt est déjà réglé",
-    argent: "S'il a été crédité, vos XAFe sont là.",
-    suite: "Regardez-le dans Historique.",
-    recommencer: false,
-  },
-  "aucun boîtier en ligne pour cet opérateur": {
-    titre: "Nos cartes de cet opérateur ne répondent pas en ce moment",
-    argent: "Rien n'a bougé : aucun XAFe n'a été bloqué.",
-    suite: "Réessayez dans quelques minutes, ou sortez vers un numéro de l'autre opérateur.",
-  },
-  "aucun float disponible pour cet opérateur": {
-    titre: "Aucun numéro de cet opérateur n'est ouvert aux dépôts",
-    argent: "Rien n'a bougé. Ne payez aucun numéro pour l'instant.",
-    suite: "Réessayez dans quelques minutes ou passez par l'autre opérateur.",
-  },
-  "compte désactivé": {
-    titre: "Votre compte est suspendu",
-    argent: "Vos soldes restent à vous ; aucun geste d'argent n'est possible pour l'instant.",
-    suite: "Écrivez au support Glisil, depuis Compte → Aide.",
-    recommencer: false,
-  },
-  "compte fermé": {
-    titre: "Votre compte est fermé",
-    argent: "Aucune opération n'est possible.",
-    suite: "Pour le rouvrir, écrivez au support depuis l'adresse de ce compte.",
-    recommencer: false,
-  },
-  "compte déjà fermé": {
-    titre: "Votre compte est déjà fermé",
-    argent: "Rien n'a bougé.",
-    suite: "Pour le rouvrir, écrivez au support.",
-    recommencer: false,
-  },
-  "il reste de l'argent sur le compte": {
-    titre: "Il reste de l'argent sur votre compte",
-    argent: "Rien n'a été fermé : votre argent est toujours là.",
-    suite: "Sortez d'abord vos XAF et vos USDT, puis revenez fermer le compte.",
-    recommencer: false,
-  },
-  "une opération est en cours": {
-    titre: "Une opération est encore en cours",
-    argent: "Rien n'a été fermé.",
-    suite: "Attendez qu'elle se termine — ou annulez vos ordres ouverts — puis revenez.",
-    recommencer: false,
-  },
-  "un remboursement vous est dû": {
-    titre: "Un remboursement vous est dû",
-    argent: "Rien n'a été fermé : l'équipe doit d'abord vous rendre cet argent.",
-    suite: "Écrivez au support pour qu'il soit fait, puis revenez fermer le compte.",
-    recommencer: false,
-  },
-  "conditions non acceptées": {
-    titre: "Les conditions n'ont pas été acceptées",
-    argent: "Rien n'a bougé.",
-    suite: "Lisez les conditions d'utilisation en vigueur, cochez la case, puis recommencez. Si l'écran insiste, rechargez l'application : une nouvelle version est peut-être sortie.",
-  },
-  "transaction id déjà utilisé": {
-    titre: "Ce transaction ID a déjà été crédité",
-    argent: "Ce paiement ne peut créditer qu'une fois.",
-    suite: "Vérifiez l'ID dans le SMS de l'opérateur. Si c'est bien le vôtre, écrivez à l'équipe.",
-    recommencer: false,
-  },
-  "transaction id déjà déclaré": {
-    titre: "Vous avez déjà tapé ce transaction ID",
-    argent: "Il attend sur un autre de vos dépôts : rien n'est perdu.",
-    suite: "Regardez vos dépôts en attente dans Historique.",
-    recommencer: false,
-  },
-  "cette déclaration ne se retire plus": {
-    titre: "Cet ID ne se retire plus",
-    argent: "Il a été crédité, ou l'équipe le vérifie : rien n'est perdu.",
-    suite: "Regardez son état dans le dépôt.",
-    recommencer: false,
-  },
-  "transaction id inconnu sur ce dépôt": {
-    titre: "Cet ID n'est plus sur ce dépôt",
-    argent: "Rien n'a bougé.",
-    suite: "La liste se met à jour.",
-    recommencer: false,
-  },
-  "transaction id invalide": {
-    titre: "Ce transaction ID n'est pas lisible",
-    argent: "Rien n'a bougé.",
-    suite: "Recopiez-le tel qu'il est écrit dans le SMS de l'opérateur, au moins six caractères.",
-  },
-  "trop de transaction id": {
-    titre: "Trop de transaction ID en attente",
-    argent: "Les ID déjà tapés restent valables : ils seront crédités dès leur SMS.",
-    suite: "Attendez que les premiers soient lus. L'équipe peut rapprocher les autres.",
-    recommencer: false,
-  },
-  "retraits crypto pas encore ouverts": {
-    titre: "L'envoi sur la chaîne n'est pas encore ouvert",
-    argent: "Rien n'a été bloqué : vos fonds restent disponibles.",
-    suite: "Vous pouvez sortir vers MoMo, ou vendre au marché.",
-    recommencer: false,
-  },
-  "pas de cours de référence": {
-    titre: "Le marché n'a pas encore de cours",
-    argent: "Rien n'a bougé.",
-    suite: "Le plafond de votre palier se compte en XAF : il faut un premier échange pour convertir.",
-    recommencer: false,
-  },
-  "code secret déjà choisi": {
-    titre: "Votre code secret est déjà choisi",
-    argent: "Rien n'a changé.",
-    suite: "Il se change dans Compte → Code secret, avec l'ancien.",
-    recommencer: false,
-  },
-  "code secret invalide": {
-    titre: "Le code secret doit faire quatre chiffres",
-    argent: "Rien n'a changé.",
-    suite: "Tapez quatre chiffres, sans lettres.",
-  },
-  "code sms incorrect": {
-    titre: "Ce code SMS n'est pas le bon",
-    argent: "Rien n'a bougé.",
-    suite: "Tapez les six chiffres reçus par SMS. Après cinq erreurs, demandez un nouveau code.",
-  },
-  "code sms expiré": {
-    titre: "Ce code SMS n'est plus valable",
-    argent: "Rien n'a bougé.",
-    suite: "Appuyez sur « Renvoyer le code » : un nouveau SMS part.",
-  },
-  "un code vient de partir": {
-    titre: "Un code vient de partir",
-    argent: "Rien n'a bougé.",
-    suite: "Attendez une minute : le SMS peut mettre un peu de temps.",
-  },
-  "trop de codes demandés": {
-    titre: "Trop de codes demandés pour ce numéro",
-    argent: "Rien n'a bougé.",
-    suite: "Réessayez dans une heure.",
-    recommencer: false,
-  },
-  "trop de numéros en attente de code": {
-    titre: "Trois numéros attendent déjà leur code",
-    argent: "Rien n'a bougé.",
-    suite: "Confirmez-les, ou retirez ceux qui ne sont pas à vous, dans Compte → Mes numéros MoMo.",
-    recommencer: false,
-  },
-  "ce numéro est déjà sur un autre compte": {
-    titre: "Ce numéro est déjà vérifié sur un autre compte",
-    argent: "Rien n'a bougé.",
-    suite: "Un numéro n'appartient qu'à un compte. S'il est à vous, écrivez à l'équipe.",
-    recommencer: false,
-  },
-  "numéro invalide": {
-    titre: "Ce numéro n'est pas un numéro MoMo de cet opérateur",
-    argent: "Rien n'a bougé.",
-    suite: "Neuf chiffres. MTN : 650 à 654, 67…, 68… ; Orange : 655 à 659, 69….",
-  },
-  "pièce invalide": {
-    titre: "Une pièce jointe n'a pas pu être lue",
-    argent: "Rien n'a bougé.",
-    suite: "Reprenez les photos depuis cet écran.",
-  },
-  "non connecté": {
-    titre: "Votre session a expiré",
-    argent: "Rien n'a bougé.",
-    suite: "Reconnectez-vous pour continuer.",
-  },
-  "réseau": {
-    titre: "Pas de réseau",
-    argent: "On ne sait pas si la demande est partie. Ne la refaites pas tout de suite.",
-    suite: "Regardez Historique dans une minute : si rien n'y est, recommencez.",
-    recommencer: false,
-  },
-};
+type Entree = Omit<ErreurLisible, "recommencer"> & { recommencer?: boolean };
+
+/* les lignes qui reviennent */
+const rienNaBouge = () => t("Rien n'a bougé.", "Nothing has changed.");
+const aucunCompte = () => t("Aucun compte n'a été ouvert.", "No account has been opened.");
+const aucunOrdre = () => t("Aucun ordre n'a été placé.", "No order has been placed.");
+const rienNaChange = () => t("Rien n'a changé.", "Nothing has changed.");
+const desLettres = () => t("Des lettres seulement, au moins deux.", "Letters only, at least two.");
+
+/** Les clés (à gauche) sont les phrases du moteur, en français : on ne les traduit jamais. L'ordre compte (« commence par »). */
+function dictionnaire(): Record<string, Entree> {
+  return {
+    /* ---- l'inscription et la connexion */
+    "code incorrect ou expiré": { // langue-ok
+      titre: t("Ce code ne marche pas", "This code doesn't work"),
+      argent: rienNaBouge(),
+      suite: t("Vérifiez les six chiffres, ou demandez un nouveau code : un code reste valable quelques minutes.",
+        "Check the six digits, or request a new code: a code is only valid for a few minutes."),
+    },
+    "trop de codes demandés : attendez une minute": { // langue-ok
+      titre: t("Trop de codes demandés", "Too many codes requested"),
+      argent: rienNaBouge(),
+      suite: t("Attendez une minute, puis demandez un nouveau code. Pensez à regarder dans vos courriers indésirables.",
+        "Wait a minute, then request a new code. Remember to check your spam folder."),
+    },
+    "adresse e-mail invalide": { // langue-ok
+      titre: t("Cette adresse e-mail n'est pas valide", "This email address isn't valid"),
+      argent: rienNaBouge(),
+      suite: t("Vérifiez qu'elle est écrite en entier, par exemple awa@exemple.com.", "Make sure it's written out in full, for example awa@example.com."),
+    },
+    "adresse e-mail non vérifiée": { // langue-ok
+      titre: t("Votre adresse e-mail n'est pas encore vérifiée", "Your email address isn't verified yet"),
+      argent: aucunCompte(),
+      suite: t("Reconnectez-vous avec le code reçu par e-mail.", "Sign in again with the code we emailed you."),
+    },
+    "il faut avoir 18 ans": { // langue-ok
+      titre: t("Il faut avoir 18 ans", "You must be 18 or older"),
+      argent: aucunCompte(),
+      suite: t("Glisil est un service financier : il est réservé aux personnes majeures.", "Glisil is a financial service: it's only open to adults."),
+      recommencer: false,
+    },
+    "date de naissance invalide": { // langue-ok
+      titre: t("Cette date de naissance n'est pas possible", "This date of birth isn't possible"),
+      argent: aucunCompte(),
+      suite: t("Vérifiez le jour, le mois et l'année.", "Check the day, month and year."),
+    },
+    "numéro de téléphone invalide": { // langue-ok
+      titre: t("Ce numéro de téléphone n'est pas valide", "This phone number isn't valid"),
+      argent: aucunCompte(),
+      suite: t("Choisissez le bon pays, puis tapez le numéro sans l'indicatif. Au Cameroun : 9 chiffres, comme 6 77 12 34 56.",
+        "Choose the right country, then type the number without the country code. In Cameroon: 9 digits, like 6 77 12 34 56."),
+    },
+    "ce numéro est déjà utilisé": { // langue-ok
+      titre: t("Ce numéro est déjà utilisé", "This number is already in use"),
+      argent: aucunCompte(),
+      suite: t("Un numéro ne sert qu'à un seul compte. Si c'est le vôtre, connectez-vous avec l'adresse e-mail de ce compte, ou écrivez au support.",
+        "A number can only be used for one account. If it's yours, sign in with that account's email address, or contact support."),
+      recommencer: false,
+    },
+    "ce numéro ou cette adresse est déjà utilisé": { // langue-ok
+      titre: t("Ce numéro ou cette adresse est déjà utilisé", "This number or email address is already in use"),
+      argent: aucunCompte(),
+      suite: t("Un numéro et une adresse ne servent qu'à un seul compte. Écrivez au support si c'est une erreur.",
+        "A number and an email address can only be used for one account. Contact support if this is a mistake."),
+      recommencer: false,
+    },
+    "prénom invalide": { titre: t("Ce prénom n'est pas valide", "This first name isn't valid"), argent: aucunCompte(), suite: desLettres() }, // langue-ok
+    "nom invalide": { titre: t("Ce nom n'est pas valide", "This last name isn't valid"), argent: aucunCompte(), suite: desLettres() }, // langue-ok
+    "ville invalide": { titre: t("Cette ville n'est pas valide", "This city isn't valid"), argent: aucunCompte(), suite: desLettres() }, // langue-ok
+    "pays invalide": { // langue-ok
+      titre: t("Choisissez votre pays dans la liste", "Choose your country from the list"),
+      argent: aucunCompte(),
+      suite: t("Tapez les premières lettres pour le trouver.", "Type the first few letters to find it."),
+    },
+    "compte déjà ouvert": { // langue-ok
+      titre: t("Votre compte est déjà ouvert", "Your account is already open"),
+      argent: rienNaBouge(),
+      suite: t("Rechargez l'application : vous arriverez sur votre compte.", "Reload the app: you'll land on your account."),
+      recommencer: false,
+    },
+    "compte pas encore ouvert": { // langue-ok
+      titre: t("Votre compte n'est pas encore ouvert", "Your account isn't open yet"),
+      argent: rienNaBouge(),
+      suite: t("Terminez votre inscription.", "Finish signing up."),
+    },
+    "devis expiré": { // langue-ok
+      titre: t("Le prix a expiré", "The price has expired"),
+      argent: rienNaBouge(),
+      suite: t("Demandez un nouveau prix : il tient quelques secondes.", "Request a new price: it holds for a few seconds."),
+    },
+    "le prix a changé": { // langue-ok
+      titre: t("Le prix a changé", "The price has changed"),
+      argent: t("Rien n'a bougé : rien n'a été acheté ni vendu.", "Nothing has changed: nothing was bought or sold."),
+      suite: t("Le carnet a bougé pendant que vous confirmiez. Demandez un nouveau prix.", "The order book moved while you were confirming. Request a new price."),
+    },
+    "pas assez de vendeurs au carnet": { // langue-ok
+      titre: t("Pas assez de vendeurs", "Not enough sellers"),
+      argent: rienNaBouge(),
+      suite: t("Le carnet n'a pas assez d'USDT à vendre pour ce montant (10 USDT au moins). Essayez un autre montant.",
+        "The order book doesn't have enough USDT for sale for this amount (10 USDT minimum). Try a different amount."),
+    },
+    "pas assez d'acheteurs au carnet": { // langue-ok
+      titre: t("Pas assez d'acheteurs", "Not enough buyers"),
+      argent: rienNaBouge(),
+      suite: t("Le carnet ne prend pas autant d'USDT en ce moment. Essayez un montant plus petit.",
+        "The order book can't take that much USDT right now. Try a smaller amount."),
+    },
+    "achat rapide fermé": { // langue-ok
+      titre: t("L'achat rapide est fermé", "Quick buy is closed"),
+      argent: rienNaBouge(),
+      suite: t("Le marché reste ouvert : vous pouvez y passer un ordre.", "The market is still open: you can place an order there."),
+      recommencer: false,
+    },
+    "solde insuffisant": { // langue-ok
+      titre: t("Le solde ne suffit pas", "Your balance isn't enough"),
+      argent: t("Rien n'a bougé : aucun XAFe ni USDT n'a été bloqué.", "Nothing has changed: no XAFe or USDT has been locked."),
+      suite: t("Baissez le montant ou entrez des XAF d'abord.", "Lower the amount, or deposit XAF first."),
+    },
+    "plafond du palier atteint": { // langue-ok
+      titre: t("Votre palier ne permet pas ce montant aujourd'hui", "Your tier doesn't allow this amount today"),
+      argent: rienNaBouge(),
+      suite: t("Passez au palier suivant dans Compte → Paliers, ou attendez demain.", "Move up to the next tier in Account → Tiers, or wait until tomorrow."),
+    },
+    "numéro pas encore actif": { // langue-ok
+      titre: t("Ce numéro n'est pas encore utilisable", "This number can't be used yet"),
+      argent: rienNaBouge(),
+      suite: t("Un numéro ajouté devient actif 24 h après sa vérification.", "A new number becomes active 24 hours after it's verified."),
+    },
+    "numéro inconnu sur ce compte": { // langue-ok
+      titre: t("Ce numéro n'est pas sur votre compte", "This number isn't on your account"),
+      argent: rienNaBouge(),
+      suite: t("Ajoutez-le dans Compte → Mes numéros MoMo.", "Add it in Account → My MoMo numbers."),
+    },
+    "prix invalide": { // langue-ok
+      titre: t("Le prix doit être un multiple de 0,05", "The price must be a multiple of 0.05"),
+      argent: aucunOrdre(),
+      suite: t("Corrigez le prix, par exemple 618,40 plutôt que 618,41.", "Correct the price, for example 618.40 instead of 618.41."),
+    },
+    "quantité invalide": { // langue-ok
+      titre: t("La quantité n'est pas valable", "The quantity isn't valid"),
+      argent: aucunOrdre(),
+      suite: t("Une quantité d'USDT s'écrit avec deux décimales au plus.", "A USDT quantity can have at most two decimal places."),
+    },
+    "ordre trop petit": { // langue-ok
+      titre: t("Cet ordre est trop petit", "This order is too small"),
+      argent: aucunOrdre(),
+      suite: t("Un ordre vaut au moins 1 500 XAFe. Augmentez un peu la quantité.", "An order must be worth at least 1,500 XAFe. Increase the quantity a little."),
+    },
+    "quantité trop grande": { // langue-ok
+      titre: t("Cet ordre dépasse la taille maximale", "This order is over the maximum size"),
+      argent: aucunOrdre(),
+      suite: t("Découpez-le en plusieurs ordres. Les limites sont dans « Règles du marché ».", "Split it into several orders. The limits are in \"Market rules\"."),
+    },
+    "ordre au marché trop grand": { // langue-ok
+      titre: t("Trop grand pour un ordre au marché", "Too large for a market order"),
+      argent: aucunOrdre(),
+      suite: t("Au-delà du plafond, posez un ordre limite : vous fixez le prix, il attend au carnet.",
+        "Above the cap, place a limit order: you set the price, and it waits in the order book."),
+    },
+    "prix hors de la bande": { // langue-ok
+      titre: t("Ce prix est trop loin du marché", "This price is too far from the market"),
+      argent: aucunOrdre(),
+      suite: t("Un ordre se place près du prix de référence : la bande protège d'une faute de frappe. Rapprochez votre prix.",
+        "Orders must be placed near the reference price: the price band protects you from typos. Move your price closer."),
+    },
+    "trop d'ordres ouverts": { // langue-ok
+      titre: t("Vous avez trop d'ordres ouverts", "You have too many open orders"),
+      argent: t("Aucun ordre n'a été placé ; les autres attendent toujours.", "No order has been placed; your other orders are still waiting."),
+      suite: t("Annulez un ordre dans « Ordres ouverts », puis recommencez.", "Cancel an order in \"Open orders\", then try again."),
+    },
+    "trop de signalements": { // langue-ok
+      titre: t("Vous avez déjà beaucoup signalé aujourd'hui", "You've already sent a lot of reports today"),
+      argent: t("Rien n'a bougé sur votre compte.", "Nothing has changed on your account."),
+      suite: t("Vingt signalements par jour au plus : pour la suite, écrivez au support par WhatsApp ou par e-mail, juste en dessous.",
+        "The limit is twenty reports a day: for anything else, contact support by WhatsApp or email, just below."),
+      recommencer: false,
+    },
+    "texte invalide": { // langue-ok
+      titre: t("Dites-nous un peu plus", "Tell us a little more"),
+      argent: t("Rien n'a bougé sur votre compte.", "Nothing has changed on your account."),
+      suite: t("Décrivez le problème en quelques mots (2 000 caractères au plus), puis renvoyez.",
+        "Describe the problem in a few words (2,000 characters max), then send it again."),
+    },
+    "dépôts fermés pendant la bêta": { // langue-ok
+      titre: t("Les dépôts réels sont fermés pendant la bêta", "Real deposits are closed during the Beta"),
+      argent: t("Aucun dépôt n'a été ouvert : ne payez rien.", "No deposit has been opened: don't pay anything."),
+      suite: t("L'argent de la bêta est de l'argent de test. Les vrais dépôts ouvriront avec la version définitive.",
+        "Money in the Beta is test money. Real deposits will open with the final version."),
+      recommencer: false,
+    },
+    "marché fermé": { // langue-ok
+      titre: t("Le marché est fermé pour le moment", "The market is closed for now"),
+      argent: aucunOrdre(),
+      suite: t("Réessayez dans quelques minutes.", "Try again in a few minutes."),
+    },
+    "cet ordre ne peut plus être annulé": { // langue-ok
+      titre: t("Cet ordre est déjà exécuté ou annulé", "This order has already been filled or canceled"),
+      argent: t("Ses fonds sont déjà réglés ou libérés.", "Its funds have already been settled or released."),
+      suite: t("Regardez son détail dans Mes ordres.", "See its details in My orders."),
+      recommencer: false,
+    },
+    "code secret incorrect": { // langue-ok
+      titre: t("Code secret incorrect", "Incorrect PIN"),
+      argent: rienNaBouge(),
+      suite: t("Réessayez. Après trois erreurs, le compte se verrouille 15 minutes.", "Try again. After three wrong attempts, your account locks for 15 minutes."),
+    },
+    "compte verrouillé": { // langue-ok
+      titre: t("Compte verrouillé 15 minutes", "Account locked for 15 minutes"),
+      argent: rienNaBouge(),
+      suite: t("Trois codes faux : attendez avant de réessayer.", "Three wrong PINs: please wait before trying again."),
+    },
+    "ce dépôt ne peut plus être annulé": { // langue-ok
+      titre: t("Ce dépôt est déjà réglé", "This deposit has already been settled"),
+      argent: t("S'il a été crédité, vos XAFe sont là.", "If it was credited, your XAFe are in your account."),
+      suite: t("Regardez-le dans Historique.", "Check it in History."),
+      recommencer: false,
+    },
+    "aucun boîtier en ligne pour cet opérateur": { // langue-ok
+      titre: t("Nos cartes de cet opérateur ne répondent pas en ce moment", "Our SIM cards for this operator aren't responding right now"),
+      argent: t("Rien n'a bougé : aucun XAFe n'a été bloqué.", "Nothing has changed: no XAFe has been locked."),
+      suite: t("Réessayez dans quelques minutes, ou sortez vers un numéro de l'autre opérateur.",
+        "Try again in a few minutes, or withdraw to a number with the other operator."),
+    },
+    "aucun float disponible pour cet opérateur": { // langue-ok
+      titre: t("Aucun numéro de cet opérateur n'est ouvert aux dépôts", "No number for this operator is open for deposits"),
+      argent: t("Rien n'a bougé. Ne payez aucun numéro pour l'instant.", "Nothing has changed. Don't pay any number for now."),
+      suite: t("Réessayez dans quelques minutes ou passez par l'autre opérateur.", "Try again in a few minutes, or use the other operator."),
+    },
+    "compte désactivé": { // langue-ok
+      titre: t("Votre compte est suspendu", "Your account is suspended"),
+      argent: t("Vos soldes restent à vous ; aucun geste d'argent n'est possible pour l'instant.",
+        "Your balances are still yours; no money transactions are possible for now."),
+      suite: t("Écrivez au support Glisil, depuis Compte → Aide.", "Contact Glisil support from Account → Help."),
+      recommencer: false,
+    },
+    "compte fermé": { // langue-ok
+      titre: t("Votre compte est fermé", "Your account is closed"),
+      argent: t("Aucune opération n'est possible.", "No transactions are possible."),
+      suite: t("Pour le rouvrir, écrivez au support depuis l'adresse de ce compte.", "To reopen it, contact support from this account's email address."),
+      recommencer: false,
+    },
+    "compte déjà fermé": { // langue-ok
+      titre: t("Votre compte est déjà fermé", "Your account is already closed"),
+      argent: rienNaBouge(),
+      suite: t("Pour le rouvrir, écrivez au support.", "To reopen it, contact support."),
+      recommencer: false,
+    },
+    "il reste de l'argent sur le compte": { // langue-ok
+      titre: t("Il reste de l'argent sur votre compte", "There's still money in your account"),
+      argent: t("Rien n'a été fermé : votre argent est toujours là.", "Nothing was closed: your money is still there."),
+      suite: t("Sortez d'abord vos XAF et vos USDT, puis revenez fermer le compte.", "Withdraw your XAF and USDT first, then come back to close the account."),
+      recommencer: false,
+    },
+    "une opération est en cours": { // langue-ok
+      titre: t("Une opération est encore en cours", "A transaction is still in progress"),
+      argent: t("Rien n'a été fermé.", "Nothing was closed."),
+      suite: t("Attendez qu'elle se termine — ou annulez vos ordres ouverts — puis revenez.",
+        "Wait for it to finish — or cancel your open orders — then come back."),
+      recommencer: false,
+    },
+    "un remboursement vous est dû": { // langue-ok
+      titre: t("Un remboursement vous est dû", "You're owed a refund"),
+      argent: t("Rien n'a été fermé : l'équipe doit d'abord vous rendre cet argent.", "Nothing was closed: our team must first return this money to you."),
+      suite: t("Écrivez au support pour qu'il soit fait, puis revenez fermer le compte.", "Contact support to have it sent, then come back to close the account."),
+      recommencer: false,
+    },
+    "conditions non acceptées": { // langue-ok
+      titre: t("Les conditions n'ont pas été acceptées", "The terms haven't been accepted"),
+      argent: rienNaBouge(),
+      suite: t("Lisez les conditions d'utilisation en vigueur, cochez la case, puis recommencez. Si l'écran insiste, rechargez l'application : une nouvelle version est peut-être sortie.",
+        "Read the current terms of use, check the box, then try again. If this screen keeps appearing, reload the app: a new version may be out."),
+    },
+    "transaction id déjà utilisé": { // langue-ok
+      titre: t("Ce transaction ID a déjà été crédité", "This transaction ID has already been credited"),
+      argent: t("Ce paiement ne peut créditer qu'une fois.", "A payment can only be credited once."),
+      suite: t("Vérifiez l'ID dans le SMS de l'opérateur. Si c'est bien le vôtre, écrivez à l'équipe.",
+        "Check the ID in the operator's SMS. If it really is yours, contact our team."),
+      recommencer: false,
+    },
+    "transaction id déjà déclaré": { // langue-ok
+      titre: t("Vous avez déjà tapé ce transaction ID", "You've already entered this transaction ID"),
+      argent: t("Il attend sur un autre de vos dépôts : rien n'est perdu.", "It's waiting on another of your deposits: nothing is lost."),
+      suite: t("Regardez vos dépôts en attente dans Historique.", "Check your pending deposits in History."),
+      recommencer: false,
+    },
+    "cette déclaration ne se retire plus": { // langue-ok
+      titre: t("Cet ID ne se retire plus", "This ID can no longer be removed"),
+      argent: t("Il a été crédité, ou l'équipe le vérifie : rien n'est perdu.", "It has been credited, or our team is checking it: nothing is lost."),
+      suite: t("Regardez son état dans le dépôt.", "Check its status in the deposit."),
+      recommencer: false,
+    },
+    "transaction id inconnu sur ce dépôt": { // langue-ok
+      titre: t("Cet ID n'est plus sur ce dépôt", "This ID is no longer on this deposit"),
+      argent: rienNaBouge(),
+      suite: t("La liste se met à jour.", "The list is updating."),
+      recommencer: false,
+    },
+    "transaction id invalide": { // langue-ok
+      titre: t("Ce transaction ID n'est pas lisible", "This transaction ID can't be read"),
+      argent: rienNaBouge(),
+      suite: t("Recopiez-le tel qu'il est écrit dans le SMS de l'opérateur, au moins six caractères.",
+        "Copy it exactly as it appears in the operator's SMS, at least six characters."),
+    },
+    "trop de transaction id": { // langue-ok
+      titre: t("Trop de transaction ID en attente", "Too many transaction IDs pending"),
+      argent: t("Les ID déjà tapés restent valables : ils seront crédités dès leur SMS.",
+        "The IDs you already entered are still valid: they'll be credited as soon as their SMS arrives."),
+      suite: t("Attendez que les premiers soient lus. L'équipe peut rapprocher les autres.", "Wait for the first ones to be read. Our team can match the others."),
+      recommencer: false,
+    },
+    "retraits crypto pas encore ouverts": { // langue-ok
+      titre: t("L'envoi sur la chaîne n'est pas encore ouvert", "On-chain withdrawals aren't open yet"),
+      argent: t("Rien n'a été bloqué : vos fonds restent disponibles.", "Nothing was locked: your funds are still available."),
+      suite: t("Vous pouvez sortir vers MoMo, ou vendre au marché.", "You can withdraw to MoMo, or sell on the market."),
+      recommencer: false,
+    },
+    "pas de cours de référence": { // langue-ok
+      titre: t("Le marché n'a pas encore de cours", "The market doesn't have a price yet"),
+      argent: rienNaBouge(),
+      suite: t("Le plafond de votre palier se compte en XAF : il faut un premier échange pour convertir.",
+        "Your tier limit is counted in XAF: a first trade is needed to convert."),
+      recommencer: false,
+    },
+    "code secret déjà choisi": { // langue-ok
+      titre: t("Votre code secret est déjà choisi", "You've already set your PIN"),
+      argent: rienNaChange(),
+      suite: t("Il se change dans Compte → Code secret, avec l'ancien.", "You can change it in Account → PIN, using your current one."),
+      recommencer: false,
+    },
+    "code secret invalide": { // langue-ok
+      titre: t("Le code secret doit faire quatre chiffres", "Your PIN must be four digits"),
+      argent: rienNaChange(),
+      suite: t("Tapez quatre chiffres, sans lettres.", "Enter four digits, no letters."),
+    },
+    "code sms incorrect": { // langue-ok
+      titre: t("Ce code SMS n'est pas le bon", "This SMS code is incorrect"),
+      argent: rienNaBouge(),
+      suite: t("Tapez les six chiffres reçus par SMS. Après cinq erreurs, demandez un nouveau code.",
+        "Enter the six digits you received by SMS. After five wrong attempts, request a new code."),
+    },
+    "code sms expiré": { // langue-ok
+      titre: t("Ce code SMS n'est plus valable", "This SMS code has expired"),
+      argent: rienNaBouge(),
+      suite: t("Appuyez sur « Renvoyer le code » : un nouveau SMS part.", "Tap \"Resend code\": a new SMS will be sent."),
+    },
+    "un code vient de partir": { // langue-ok
+      titre: t("Un code vient de partir", "A code was just sent"),
+      argent: rienNaBouge(),
+      suite: t("Attendez une minute : le SMS peut mettre un peu de temps.", "Wait a minute: the SMS can take a little while."),
+    },
+    "trop de codes demandés": { // langue-ok
+      titre: t("Trop de codes demandés pour ce numéro", "Too many codes requested for this number"),
+      argent: rienNaBouge(),
+      suite: t("Réessayez dans une heure.", "Try again in an hour."),
+      recommencer: false,
+    },
+    "trop de numéros en attente de code": { // langue-ok
+      titre: t("Trois numéros attendent déjà leur code", "Three numbers are already waiting for their code"),
+      argent: rienNaBouge(),
+      suite: t("Confirmez-les, ou retirez ceux qui ne sont pas à vous, dans Compte → Mes numéros MoMo.",
+        "Confirm them, or remove the ones that aren't yours, in Account → My MoMo numbers."),
+      recommencer: false,
+    },
+    "ce numéro est déjà sur un autre compte": { // langue-ok
+      titre: t("Ce numéro est déjà vérifié sur un autre compte", "This number is already verified on another account"),
+      argent: rienNaBouge(),
+      suite: t("Un numéro n'appartient qu'à un compte. S'il est à vous, écrivez à l'équipe.", "A number can belong to only one account. If it's yours, contact our team."),
+      recommencer: false,
+    },
+    "numéro invalide": { // langue-ok
+      titre: t("Ce numéro n'est pas un numéro MoMo de cet opérateur", "This isn't a MoMo number for this operator"),
+      argent: rienNaBouge(),
+      suite: t("Neuf chiffres. MTN : 650 à 654, 67…, 68… ; Orange : 655 à 659, 69….", "Nine digits. MTN: 650 to 654, 67…, 68…; Orange: 655 to 659, 69…."),
+    },
+    "pièce invalide": { // langue-ok
+      titre: t("Une pièce jointe n'a pas pu être lue", "An attachment couldn't be read"),
+      argent: rienNaBouge(),
+      suite: t("Reprenez les photos depuis cet écran.", "Retake the photos from this screen."),
+    },
+    "non connecté": { // langue-ok
+      titre: t("Votre session a expiré", "Your session has expired"),
+      argent: rienNaBouge(),
+      suite: t("Reconnectez-vous pour continuer.", "Sign in again to continue."),
+    },
+    "réseau": { // langue-ok
+      titre: t("Pas de réseau", "No connection"),
+      argent: t("On ne sait pas si la demande est partie. Ne la refaites pas tout de suite.",
+        "We can't tell if your request went through. Don't repeat it right away."),
+      suite: t("Regardez Historique dans une minute : si rien n'y est, recommencez.", "Check History in a minute: if nothing is there, try again."),
+      recommencer: false,
+    },
+  };
+}
+
+/** Les messages de l'application elle-même (pas du moteur) qui n'ont pas de fiche : dits tels quels, dans la langue de l'écran. */
+function messageConnu(message: string): string | null {
+  switch (message.toLowerCase()) {
+    case "les inscriptions sont fermées pour le moment": // langue-ok
+      return t("les inscriptions sont fermées pour le moment", "Sign-ups are closed for now.");
+    case "dépôt inconnu": // langue-ok
+      return t("dépôt inconnu", "Unknown deposit.");
+    default:
+      return null;
+  }
+}
 
 export function lisible(e: unknown): ErreurLisible {
   const message = (e instanceof Error ? e.message : typeof e === "string" ? e : String((e as { message?: string })?.message ?? "")).trim();
   const minuscule = message.toLowerCase();
-  for (const cle of Object.keys(DICTIONNAIRE)) {
+  const dico = dictionnaire();
+  for (const cle of Object.keys(dico)) {
     if (minuscule.startsWith(cle)) {
-      const d = DICTIONNAIRE[cle];
+      const d = dico[cle];
       return { ...d, recommencer: d.recommencer ?? true };
     }
   }
   if (/fetch|network|réseau|timeout|failed to/i.test(message)) {
-    const d = DICTIONNAIRE["réseau"];
+    const d = dico["réseau"];
     return { ...d, recommencer: false };
   }
   return {
-    titre: "Ça n'a pas marché",
-    argent: "Rien n'a bougé si l'écran ne dit pas le contraire.",
-    suite: message || "Réessayez dans un instant.",
+    titre: t("Ça n'a pas marché", "That didn't work"),
+    argent: t("Rien n'a bougé si l'écran ne dit pas le contraire.", "Nothing has changed unless the screen says otherwise."),
+    suite: messageConnu(message) ?? (message || t("Réessayez dans un instant.", "Please try again in a moment.")),
     recommencer: true,
   };
 }

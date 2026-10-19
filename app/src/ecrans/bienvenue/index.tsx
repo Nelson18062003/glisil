@@ -18,10 +18,12 @@ import { useGuichet } from "../../guichet";
 import { CODE_DEMO, EMAIL_VITRINE } from "../../guichet/demo";
 import type { Compte } from "../../guichet/types";
 import { lisible } from "../../noyau/erreurs";
+import { heure } from "../../noyau/format";
 import { emailNormalise, emailValide } from "../../noyau/identite";
+import { t } from "../../noyau/langue";
 import { useSession } from "../../session/session";
 import { tones } from "../../theme";
-import { FeuilleErreur, Keypad, Marque, NomGlisil, Points, Screen } from "../../ui";
+import { ChoixDeLangue, FeuilleErreur, Keypad, Marque, NomGlisil, Points, Screen } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
 
 /** la longueur du code envoyé par e-mail (réglage « Email OTP Length » de Supabase) */
@@ -71,15 +73,22 @@ export function Bienvenue() {
       <Box sx={{ bgcolor: "primary.main", color: "#FFFFFF", px: { xs: 3, md: 8 }, pt: { xs: "calc(env(safe-area-inset-top) + 48px)", md: 8 }, pb: { xs: 5, md: 8 },
                  borderBottomLeftRadius: { xs: 32, md: 0 }, borderBottomRightRadius: { xs: 32, md: 0 }, display: "flex", flexDirection: "column", justifyContent: { md: "center" } }}>
         <Stack gap={2.5}>
+          {/* la langue AVANT l'inscription : un anglophone choisit avant d'avoir rien à lire. Les pastilles,
+              faites pour un fond clair, se redessinent en blanc sur le vert de la marque. */}
+          <Box sx={{ alignSelf: "flex-end", mb: -1, "& .MuiChip-root": { color: "#FFFFFF", borderColor: "rgba(255,255,255,0.6)", fontWeight: 600 },
+                     "& .MuiChip-filled": { bgcolor: "#FFFFFF", color: "primary.main", "&:hover": { bgcolor: "rgba(255,255,255,0.9)" } },
+                     "& .MuiChip-outlined:hover": { bgcolor: "rgba(255,255,255,0.12)" } }}>
+            <ChoixDeLangue />
+          </Box>
           <Stack direction="row" alignItems="center" gap={1.25}>
             <Marque size={52} />
             <NomGlisil size={36} couleur="#FFFFFF" />
           </Stack>
           <Typography component="h1" sx={{ fontSize: { xs: 26, md: 40 }, fontWeight: 600, lineHeight: 1.2, color: "#FFFFFF", textWrap: "balance", maxWidth: 520 }}>
-            Le XAFe, et le marché où il s'échange.
+            {t("Le XAFe, et le marché où il s'échange.", "XAFe, and the market where it trades.")}
           </Typography>
           <Typography sx={{ fontSize: 15, color: "rgba(255,255,255,0.86)" }}>
-            Vos francs CFA sur la blockchain, au même prix pour tout le monde.
+            {t("Vos francs CFA sur la blockchain, au même prix pour tout le monde.", "Your CFA francs on the blockchain, at the same price for everyone.")}
           </Typography>
         </Stack>
       </Box>
@@ -88,11 +97,11 @@ export function Bienvenue() {
         sx={{ flex: 1, px: 2, pt: { xs: 3, md: 0 }, pb: "calc(env(safe-area-inset-bottom) + 24px)", display: "flex", flexDirection: "column", gap: 2.5,
               justifyContent: { md: "center" }, width: "100%", maxWidth: { md: 440 }, mx: { md: "auto" } }}>
         <Stack gap={0.5}>
-          <Typography variant="h5">Entrer ou créer un compte</Typography>
-          <Typography variant="body2">Votre adresse e-mail suffit. Pas de mot de passe : nous vous envoyons un code à six chiffres.</Typography>
+          <Typography variant="h5">{t("Entrer ou créer un compte", "Sign in or create an account")}</Typography>
+          <Typography variant="body2">{t("Votre adresse e-mail suffit. Pas de mot de passe : nous vous envoyons un code à six chiffres.", "All you need is your email address. No password: we'll send you a six-digit code.")}</Typography>
         </Stack>
         <TextField
-          label="Adresse e-mail"
+          label={t("Adresse e-mail", "Email address")}
           value={email}
           onChange={(e) => setEmail(e.target.value.replace(/\s/g, ""))}
           onBlur={() => setVu(true)}
@@ -104,16 +113,16 @@ export function Bienvenue() {
           fullWidth
           autoFocus
           error={vu && email.length > 0 && !valide}
-          helperText={vu && email.length > 0 && !valide ? "Écrivez l'adresse en entier, par exemple awa@exemple.com." : guichet.mode === "demo" ? `Démonstration : ${EMAIL_VITRINE} arrive avec une vie déjà écrite ; le code sera ${CODE_DEMO}.` : " "}
+          helperText={vu && email.length > 0 && !valide ? t("Écrivez l'adresse en entier, par exemple awa@exemple.com.", "Enter the full address, for example awa@example.com.") : guichet.mode === "demo" ? t(`Démonstration : ${EMAIL_VITRINE} arrive avec une vie déjà écrite ; le code sera ${CODE_DEMO}.`, `Demo: ${EMAIL_VITRINE} comes with a ready-made history; the code will be ${CODE_DEMO}.`) : " "}
           slotProps={{ input: { sx: { fontSize: 18 } } }}
         />
         <Button type="submit" variant="contained" disabled={!valide || enCours}>
-          {enCours ? "Envoi du code…" : "Recevoir mon code"}
+          {enCours ? t("Envoi du code…", "Sending code…") : t("Recevoir mon code", "Get my code")}
         </Button>
         <Stack gap={2} sx={{ mt: 1 }}>
-          <Promesse icone={<VisibilityOutlined fontSize="small" />} titre="Transparent" texte="Un seul carnet d'ordres, le même prix affiché pour tous." />
-          <Promesse icone={<ShieldOutlined fontSize="small" />} titre="Sécurisé" texte="Chaque XAFe est couvert un pour un ; chaque sortie d'argent demande votre code secret." />
-          <Promesse icone={<BoltRounded fontSize="small" />} titre="Rapide" texte="Vos XAF crédités dès que le paiement MoMo arrive." />
+          <Promesse icone={<VisibilityOutlined fontSize="small" />} titre={t("Transparent", "Transparent")} texte={t("Un seul carnet d'ordres, le même prix affiché pour tous.", "One order book, the same price shown to everyone.")} />
+          <Promesse icone={<ShieldOutlined fontSize="small" />} titre={t("Sécurisé", "Secure")} texte={t("Chaque XAFe est couvert un pour un ; chaque sortie d'argent demande votre code secret.", "Every XAFe is backed one to one; every withdrawal requires your PIN.")} />
+          <Promesse icone={<BoltRounded fontSize="small" />} titre={t("Rapide", "Fast")} texte={t("Vos XAF crédités dès que le paiement MoMo arrive.", "Your XAF are credited as soon as the MoMo payment arrives.")} />
         </Stack>
       </Box>
       <FeuilleErreur erreur={erreur} onFermer={effacerErreur} onRecommencer={() => void continuer()} />
@@ -130,7 +139,7 @@ export function BienvenueCode() {
   const [code, setCode] = useState("");
   const [faux, setFaux] = useState(false);
   const [reste, setReste] = useState(() => {
-    try { const t = Number(sessionStorage.getItem(`${CLE_EMAIL}.envoye`) ?? 0); return Math.max(0, ATTENTE_RENVOI_S - Math.floor((Date.now() - t) / 1000)); } catch { return ATTENTE_RENVOI_S; }
+    try { const envoye = Number(sessionStorage.getItem(`${CLE_EMAIL}.envoye`) ?? 0); return Math.max(0, ATTENTE_RENVOI_S - Math.floor((Date.now() - envoye) / 1000)); } catch { return ATTENTE_RENVOI_S; }
   });
   const [renvoye, setRenvoye] = useState(false);
   const champ = useRef<HTMLInputElement>(null);
@@ -139,8 +148,8 @@ export function BienvenueCode() {
   useEffect(() => { if (!email) navigate("/bienvenue", { replace: true }); }, [email, navigate]);
   useEffect(() => {
     if (reste <= 0) return;
-    const t = setTimeout(() => setReste((r) => r - 1), 1000);
-    return () => clearTimeout(t);
+    const minuterie = setTimeout(() => setReste((r) => r - 1), 1000);
+    return () => clearTimeout(minuterie);
   }, [reste]);
 
   const valider = (c: string) =>
@@ -152,7 +161,7 @@ export function BienvenueCode() {
         setFaux(true);
         setCode("");
         champ.current?.focus();
-        if (lisible(e).titre !== "Ce code ne marche pas") throw e;
+        if (lisible(e).titre !== t("Ce code ne marche pas", "This code doesn't work")) throw e; // le titre de noyau/erreurs, dans la langue de l'écran
       }
     });
 
@@ -176,9 +185,9 @@ export function BienvenueCode() {
     <Screen back="/bienvenue" gap={2.5}>
       <Avatar sx={{ width: 64, height: 64, bgcolor: tones.green.bg, color: "primary.main" }}><MarkEmailReadOutlined sx={{ fontSize: 32 }} /></Avatar>
       <Stack gap={0.75}>
-        <Typography variant="h5">Vérifiez votre boîte e-mail</Typography>
+        <Typography variant="h5">{t("Vérifiez votre boîte e-mail", "Check your inbox")}</Typography>
         <Typography variant="body1">
-          Nous avons envoyé un code à six chiffres à <Box component="b" sx={{ overflowWrap: "anywhere" }}>{email}</Box>.
+          {t("Nous avons envoyé un code à six chiffres à ", "We sent a six-digit code to ")}<Box component="b" sx={{ overflowWrap: "anywhere" }}>{email}</Box>.
         </Typography>
       </Stack>
       <TextField
@@ -192,19 +201,19 @@ export function BienvenueCode() {
         fullWidth
         error={faux}
         disabled={enCours}
-        helperText={faux ? "Ce code n'est pas le bon, ou il a expiré. Réessayez ou demandez-en un nouveau." : guichet.mode === "demo" ? `Démonstration : le code est ${CODE_DEMO}.` : "Le code arrive en moins d'une minute. Regardez aussi vos courriers indésirables."}
-        slotProps={{ htmlInput: { maxLength: LONGUEUR_CODE, "aria-label": "Code reçu par e-mail", style: { textAlign: "center", fontSize: 34, letterSpacing: "0.5em", fontVariantNumeric: "tabular-nums", paddingLeft: "0.5em" } } }}
+        helperText={faux ? t("Ce code n'est pas le bon, ou il a expiré. Réessayez ou demandez-en un nouveau.", "This code is wrong or has expired. Try again or request a new one.") : guichet.mode === "demo" ? t(`Démonstration : le code est ${CODE_DEMO}.`, `Demo: the code is ${CODE_DEMO}.`) : t("Le code arrive en moins d'une minute. Regardez aussi vos courriers indésirables.", "The code arrives in under a minute. Check your spam folder too.")}
+        slotProps={{ htmlInput: { maxLength: LONGUEUR_CODE, "aria-label": t("Code reçu par e-mail", "Code received by email"), style: { textAlign: "center", fontSize: 34, letterSpacing: "0.5em", fontVariantNumeric: "tabular-nums", paddingLeft: "0.5em" } } }}
       />
       <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
         <Button variant="text" size="small" disabled={reste > 0 || enCours} onClick={() => void renvoyer()}>
-          {reste > 0 ? `Renvoyer le code dans ${reste} s` : "Renvoyer le code"}
+          {reste > 0 ? t(`Renvoyer le code dans ${reste} s`, `Resend code in ${reste}s`) : t("Renvoyer le code", "Resend code")}
         </Button>
-        <Button variant="text" size="small" color="inherit" sx={{ color: "text.secondary" }} onClick={() => navigate("/bienvenue")}>Changer d'adresse</Button>
+        <Button variant="text" size="small" color="inherit" sx={{ color: "text.secondary" }} onClick={() => navigate("/bienvenue")}>{t("Changer d'adresse", "Change address")}</Button>
       </Stack>
-      {renvoye && reste > 0 && <Typography variant="body2" role="status" sx={{ color: "primary.main" }}>Un nouveau code est parti.</Typography>}
+      {renvoye && reste > 0 && <Typography variant="body2" role="status" sx={{ color: "primary.main" }}>{t("Un nouveau code est parti.", "A new code is on its way.")}</Typography>}
       <Box sx={{ flex: 1 }} />
       <Button variant="contained" disabled={code.length < LONGUEUR_CODE || enCours} onClick={() => void valider(code)}>
-        {enCours ? "Vérification…" : "Valider"}
+        {enCours ? t("Vérification…", "Verifying…") : t("Valider", "Confirm")}
       </Button>
       <FeuilleErreur erreur={erreur} onFermer={effacerErreur} />
     </Screen>
@@ -253,26 +262,26 @@ export function BienvenueProfil() {
           <Avatar sx={{ width: 88, height: 88, bgcolor: "primary.main", color: "#FFFFFF", "@media (prefers-reduced-motion: no-preference)": { animation: "glisil-pop 420ms cubic-bezier(.2,.9,.3,1.3)" }, "@keyframes glisil-pop": { from: { transform: "scale(.6)", opacity: 0 }, to: { transform: "scale(1)", opacity: 1 } } }}>
             <CheckRounded sx={{ fontSize: 48 }} />
           </Avatar>
-          <Typography variant="h5" sx={{ textWrap: "balance" }}>Bienvenue sur Glisil, {ouvert.prenom ?? ouvert.nom?.split(" ")[0]}</Typography>
+          <Typography variant="h5" sx={{ textWrap: "balance" }}>{t(`Bienvenue sur Glisil, ${ouvert.prenom ?? ouvert.nom?.split(" ")[0] ?? ""}`, `Welcome to Glisil, ${ouvert.prenom ?? ouvert.nom?.split(" ")[0] ?? ""}`)}</Typography>
           <Typography variant="body1" sx={{ maxWidth: 340 }}>
-            Votre compte est ouvert. Commencez par entrer des XAF par Mobile Money : ils deviennent des XAFe sur votre solde.
+            {t("Votre compte est ouvert. Commencez par entrer des XAF par Mobile Money : ils deviennent des XAFe sur votre solde.", "Your account is open. Start by adding XAF via Mobile Money: they become XAFe in your balance.")}
           </Typography>
         </Box>
-        <Button variant="contained" onClick={() => session.profilComplete(ouvert)}>Découvrir mon compte</Button>
+        <Button variant="contained" onClick={() => session.profilComplete(ouvert)}>{t("Découvrir mon compte", "Explore my account")}</Button>
       </Screen>
     );
   }
 
   return (
-    <Screen title={etape === "code" ? "Votre code secret" : "Confirmez le code"} onBack={etape === "confirmer" ? () => { setEtape("code"); setConfirmation(""); } : undefined} gap={1.5}>
+    <Screen title={etape === "code" ? t("Votre code secret", "Your PIN") : t("Confirmez le code", "Confirm the code")} onBack={etape === "confirmer" ? () => { setEtape("code"); setConfirmation(""); } : undefined} gap={1.5}>
       <Typography variant="body2">
-        {etape === "code" ? "Quatre chiffres, que vous seul connaissez. Il protège chaque sortie d'argent et l'ouverture de l'application." : "Tapez-le une seconde fois."}
+        {etape === "code" ? t("Quatre chiffres, que vous seul connaissez. Il protège chaque sortie d'argent et l'ouverture de l'application.", "Four digits that only you know. It protects every withdrawal and unlocks the app.") : t("Tapez-le une seconde fois.", "Enter it a second time.")}
       </Typography>
       <Points longueur={4} saisis={etape === "code" ? code.length : confirmation.length} erreur={faux} />
-      {faux && <Typography variant="body2" color="error" textAlign="center">Les deux codes ne sont pas les mêmes. On recommence.</Typography>}
+      {faux && <Typography variant="body2" color="error" textAlign="center">{t("Les deux codes ne sont pas les mêmes. On recommence.", "The two codes don't match. Let's start over.")}</Typography>}
       <Box sx={{ flex: 1 }} />
       <Keypad onKey={touche} triple={null} />
-      {enCours && <Typography variant="body2" textAlign="center">Enregistrement…</Typography>}
+      {enCours && <Typography variant="body2" textAlign="center">{t("Enregistrement…", "Saving…")}</Typography>}
       <FeuilleErreur erreur={erreur} onFermer={effacerErreur} />
     </Screen>
   );
@@ -292,8 +301,8 @@ export function Verrouillage() {
       if (!r.ok) {
         setFaux(true);
         setCode("");
-        if (r.verrouJusqua) setMessage(`Trois codes faux : le compte est verrouillé jusqu'à ${new Date(r.verrouJusqua).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}.`);
-        else setMessage(`Code incorrect. ${r.essaisRestants ?? ""} essai${(r.essaisRestants ?? 0) > 1 ? "s" : ""} avant verrouillage.`);
+        if (r.verrouJusqua) setMessage(t(`Trois codes faux : le compte est verrouillé jusqu'à ${heure(r.verrouJusqua)}.`, `Three wrong codes: your account is locked until ${heure(r.verrouJusqua)}.`));
+        else setMessage(t(`Code incorrect. ${r.essaisRestants ?? ""} essai${(r.essaisRestants ?? 0) > 1 ? "s" : ""} avant verrouillage.`, `Wrong code. ${r.essaisRestants ?? ""} attempt${(r.essaisRestants ?? 0) > 1 ? "s" : ""} left before lockout.`));
       }
     }).catch((e) => { setCode(""); setMessage(lisible(e).titre); });
 
@@ -308,15 +317,15 @@ export function Verrouillage() {
     <Screen>
       <Box sx={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: 1 }}>
         <Avatar sx={{ width: 72, height: 72, bgcolor: "#CDEFD9", color: "primary.main" }}><LockOutlined sx={{ fontSize: 36 }} /></Avatar>
-        <Typography variant="h6" mt={1}>Bonjour {session.compte?.nom?.split(" ")[0] ?? ""}</Typography>
-        <Typography variant="body2">Votre code secret pour continuer.</Typography>
+        <Typography variant="h6" mt={1}>{t(`Bonjour ${session.compte?.nom?.split(" ")[0] ?? ""}`, `Hello ${session.compte?.nom?.split(" ")[0] ?? ""}`)}</Typography>
+        <Typography variant="body2">{t("Votre code secret pour continuer.", "Enter your PIN to continue.")}</Typography>
         <Points longueur={4} saisis={code.length} erreur={faux} />
         {message && <Typography variant="body2" color="error" textAlign="center">{message}</Typography>}
-        {enCours && <Typography variant="body2">Vérification…</Typography>}
+        {enCours && <Typography variant="body2">{t("Vérification…", "Verifying…")}</Typography>}
       </Box>
       <Keypad onKey={touche} triple={null} />
       <Button variant="text" color="inherit" startIcon={<LogoutRounded />} onClick={() => void session.deconnecter()} sx={{ color: "text.secondary" }}>
-        Changer de compte
+        {t("Changer de compte", "Switch account")}
       </Button>
     </Screen>
   );

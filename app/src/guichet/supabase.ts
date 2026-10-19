@@ -7,6 +7,7 @@
  */
 import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
 import { ErreurMoteur } from "../noyau/erreurs";
+import { t } from "../noyau/langue";
 import { emailNormalise } from "../noyau/identite";
 import { numeroSaisi, transactionIdNormalise } from "../noyau/format";
 import type { Guichet } from "./guichet";
@@ -22,11 +23,11 @@ const nn = (v: unknown): number | null => (v === null || v === undefined ? null 
 const s = (v: unknown): string => (v === null || v === undefined ? "" : String(v));
 const sn = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
 
-/** Les refus de Supabase Auth, dits en français : trop de codes demandés, adresse refusée. */
+/** Les refus de Supabase Auth, ramenés aux clés françaises que noyau/erreurs.ts sait dire (dans la langue de l'écran). */
 function messageAuth(m: string): string {
-  if (/rate limit|too many|seconds/i.test(m)) return "trop de codes demandés : attendez une minute";
-  if (/invalid.*email|email.*invalid/i.test(m)) return "adresse e-mail invalide";
-  if (/signups? not allowed|disabled/i.test(m)) return "les inscriptions sont fermées pour le moment";
+  if (/rate limit|too many|seconds/i.test(m)) return "trop de codes demandés : attendez une minute"; // langue-ok
+  if (/invalid.*email|email.*invalid/i.test(m)) return "adresse e-mail invalide"; // langue-ok
+  if (/signups? not allowed|disabled/i.test(m)) return "les inscriptions sont fermées pour le moment"; // langue-ok
   return m;
 }
 
@@ -150,7 +151,7 @@ export class GuichetSupabase implements Guichet {
     /* un code secret faux ne LÈVE pas côté moteur (l'échec doit être compté) : il rend {"erreur": …} */
     if (data && typeof data === "object" && !Array.isArray(data) && typeof (data as J).erreur === "string") {
       const j = data as J;
-      throw new ErreurMoteur(String(j.erreur), j.essais_restants != null ? `${j.essais_restants} essai(s) restant(s)` : undefined);
+      throw new ErreurMoteur(String(j.erreur), j.essais_restants != null ? t(`${j.essais_restants} essai(s) restant(s)`, `${j.essais_restants} attempt(s) left`) : undefined);
     }
     return data as T;
   }
@@ -194,7 +195,7 @@ export class GuichetSupabase implements Guichet {
 
   async verifierCode(email: string, code: string) {
     const { data, error } = await this.sb.auth.verifyOtp({ email: emailNormalise(email), token: code, type: "email" });
-    if (error || !data.user) throw new ErreurMoteur("code incorrect ou expiré", "demandez-en un nouveau si besoin");
+    if (error || !data.user) throw new ErreurMoteur("code incorrect ou expiré", t("demandez-en un nouveau si besoin", "request a new one if needed")); // langue-ok
     return { nouveau: (await this.monCompte()) === null };
   }
 
@@ -205,7 +206,7 @@ export class GuichetSupabase implements Guichet {
 
   /* ============================================================= compte */
 
-  async compte() { return compte(trouve(await this.rpc<J | null>("mon_compte"), "compte pas encore ouvert")); }
+  async compte() { return compte(trouve(await this.rpc<J | null>("mon_compte"), "compte pas encore ouvert")); } // langue-ok
   async monCompte() { const j = await this.rpc<J | null>("mon_compte"); return j ? compte(j) : null; }
   async ouvrirCompte(p: ProfilInscription) {
     return compte(await this.rpc<J>("ouvrir_mon_compte", { p_prenom: p.prenom, p_nom: p.nom, p_naissance: p.naissance, p_telephone: p.telephone, p_ville: p.ville, p_pays: p.pays, p_conditions: p.conditions }));
@@ -229,7 +230,7 @@ export class GuichetSupabase implements Guichet {
   async demanderVerification({ type, pieces }: { type: "identite" | "entreprise"; pieces: File[] }) {
     const { data } = await this.sb.auth.getUser();
     const id = data.user?.id;
-    if (!id) throw new ErreurMoteur("non connecté");
+    if (!id) throw new ErreurMoteur("non connecté"); // langue-ok
     const chemins: string[] = [];
     for (const [i, f] of pieces.entries()) {
       const chemin = `${id}/${type}/${Date.now()}-${i}-${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
@@ -257,7 +258,7 @@ export class GuichetSupabase implements Guichet {
   /* ============================================================= entrer */
 
   async ouvrirDepot({ operateur, cle }: { operateur: IdOperateur; cle: string }) { return depot(await this.rpc<J>("ouvrir_depot", { p_operateur: operateur, p_cle: cle })); }
-  async depot(reference: string) { return depot(trouve(await this.rpc<J>("mon_depot", { p_reference: reference }), "dépôt inconnu")); }
+  async depot(reference: string) { return depot(trouve(await this.rpc<J>("mon_depot", { p_reference: reference }), "dépôt inconnu")); } // langue-ok
   async declarerTransaction({ reference, transactionId, numero, montant, nom }: { reference: string; transactionId: string; numero: string; montant: number; nom: string }) {
     return declaration(await this.rpc<J>("declarer_transaction", {
       p_reference: reference, p_transaction_id: transactionIdNormalise(transactionId), p_numero: numeroSaisi(numero), p_montant: montant, p_nom: nom.trim(),

@@ -4,17 +4,20 @@
  * on le dit : « 1 000 000 », « 618,40 », « 6 77 12 34 56 ».
  */
 
+import { langue, t } from "./langue";
+
 const ESPACE = " ";
 
-/** « 1234567 » → « 1 234 567 » ; décimales séparées par une virgule. */
+/** « 1234567 » → « 1 234 567 », décimales après une virgule ; en anglais « 1,234,567.50 ». */
 export function enTranches(n: number, decimales = 0): string {
   if (!Number.isFinite(n)) return "—";
   const signe = n < 0 ? "−" : "";
   const abs = Math.abs(n);
   const fixe = abs.toFixed(decimales);
   const [ent, dec] = fixe.split(".");
-  const tranches = ent.replace(/\B(?=(\d{3})+(?!\d))/g, ESPACE);
-  return signe + (dec !== undefined ? `${tranches},${dec}` : tranches);
+  const en = langue() === "en";
+  const tranches = ent.replace(/\B(?=(\d{3})+(?!\d))/g, en ? "," : ESPACE);
+  return signe + (dec !== undefined ? `${tranches}${en ? "." : ","}${dec}` : tranches);
 }
 
 /** Un montant en XAF / XAFe : entier, en tranches. */
@@ -99,7 +102,8 @@ export function montantDepuisSaisie(saisie: string): number {
 
 /* ----------------------------------------------------------------- dates */
 
-const MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+const MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."]; // langue-ok
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]; // langue-ok
 
 export function heure(iso: string | Date): string {
   const d = typeof iso === "string" ? new Date(iso) : iso;
@@ -115,22 +119,31 @@ function memeJour(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-/** « Aujourd'hui », « Hier », sinon « 12 oct. » (et l'année si elle diffère). */
-export function jourRelatif(iso: string | Date, maintenant = new Date()): string {
-  const d = typeof iso === "string" ? new Date(iso) : iso;
-  if (memeJour(d, maintenant)) return "Aujourd'hui";
+type Jour = "aujourdhui" | "hier" | "date";
+function quelJour(d: Date, maintenant: Date): Jour {
+  if (memeJour(d, maintenant)) return "aujourdhui";
   const hier = new Date(maintenant);
   hier.setDate(hier.getDate() - 1);
-  if (memeJour(d, hier)) return "Hier";
-  const base = `${d.getDate()} ${MOIS[d.getMonth()]}`;
+  return memeJour(d, hier) ? "hier" : "date";
+}
+function dateCourte(d: Date, maintenant: Date): string {
+  const base = langue() === "en" ? `${d.getDate()} ${MONTHS[d.getMonth()]}` : `${d.getDate()} ${MOIS[d.getMonth()]}`;
   return d.getFullYear() === maintenant.getFullYear() ? base : `${base} ${d.getFullYear()}`;
 }
 
-/** « aujourd'hui à 14:02 » — pour une fiche. */
+/** « Aujourd'hui », « Hier », sinon « 12 oct. » (et l'année si elle diffère) ; « Today », « Yesterday », « 12 Oct ». */
+export function jourRelatif(iso: string | Date, maintenant = new Date()): string {
+  const d = typeof iso === "string" ? new Date(iso) : iso;
+  const j = quelJour(d, maintenant);
+  return j === "aujourdhui" ? t("Aujourd'hui", "Today") : j === "hier" ? t("Hier", "Yesterday") : dateCourte(d, maintenant);
+}
+
+/** « aujourd'hui à 14:02 » — pour une fiche ; « today at 14:02 ». */
 export function quand(iso: string | Date, maintenant = new Date()): string {
-  const j = jourRelatif(iso, maintenant);
-  const jour = j === "Aujourd'hui" ? "aujourd'hui" : j === "Hier" ? "hier" : `le ${j}`;
-  return `${jour} à ${heure(iso)}`;
+  const d = typeof iso === "string" ? new Date(iso) : iso;
+  const j = quelJour(d, maintenant);
+  const jour = j === "aujourdhui" ? t("aujourd'hui", "today") : j === "hier" ? t("hier", "yesterday") : t(`le ${dateCourte(d, maintenant)}`, `on ${dateCourte(d, maintenant)}`);
+  return t(`${jour} à ${heure(d)}`, `${jour} at ${heure(d)}`);
 }
 
 /** Une durée en secondes → « 40 s », « 2 min 05 ». */
@@ -158,5 +171,6 @@ export function adresseCourte(adresse: string): string {
 
 /** Un taux tel qu'on le dit : 0.005 → « 0,5 % », 0.001 → « 0,1 % ». */
 export function pourcent(taux: number): string {
-  return `${(Math.round(taux * 100_000) / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 3 })} %`;
+  const v = (Math.round(taux * 100_000) / 1000).toLocaleString(langue() === "en" ? "en-US" : "fr-FR", { maximumFractionDigits: 3 });
+  return langue() === "en" ? `${v}%` : `${v} %`;
 }

@@ -253,3 +253,43 @@ test("achat max : sans prix, on ne sait pas — jamais une division par 1", () =
   assert.equal(achatMax(1000, 0), 0);
   assert.equal(achatMax(1000, 618.4), 1.61);
 });
+
+test("en anglais, les montants et les dates se lisent à l'anglaise", async () => {
+  const { poserLangue } = await import("./langue.ts");
+  const f = await import("./format.ts");
+  poserLangue("en");
+  try {
+    assert.equal(f.xaf(1250000), "1,250,000");
+    assert.equal(f.prix(588.15), "588.15");
+    assert.equal(f.pourcent(0.005), "0.5%");
+    const maintenant = new Date(2026, 9, 19, 15, 0);
+    assert.equal(f.jourRelatif(new Date(2026, 9, 19, 9, 0), maintenant), "Today");
+    assert.equal(f.jourRelatif(new Date(2026, 9, 18, 9, 0), maintenant), "Yesterday");
+    assert.equal(f.jourRelatif(new Date(2026, 9, 12, 9, 0), maintenant), "12 Oct");
+    assert.equal(f.quand(new Date(2026, 9, 19, 9, 5), maintenant), "today at 09:05");
+  } finally {
+    poserLangue("fr");
+  }
+  assert.equal(f.xaf(1250000), "1 250 000", "le français revient tel quel");
+});
+
+test("les textes de la base se lisent en anglais, et un texte imprévu reste tel quel", async () => {
+  const { poserLangue } = await import("./langue.ts");
+  const s = await import("./serveur.ts");
+  assert.equal(s.texteDuServeur("+80,000,000 XAFe reçus par MTN MoMo."), "+80,000,000 XAFe reçus par MTN MoMo.", "en français, rien ne bouge");
+  poserLangue("en");
+  try {
+    assert.equal(s.titreDuServeur("XAFe crédités"), "XAFe credited");
+    assert.equal(s.titreDuServeur("Palier 1"), "Tier 1");
+    assert.equal(s.texteDuServeur("+80,000,000 XAFe reçus par MTN MoMo."), "+80,000,000 XAFe received via MTN MoMo.");
+    assert.equal(s.texteDuServeur("12,760,000 XAF envoyés au 600000003. Transaction ID : 18300000003."), "12,760,000 XAF sent to 600000003. Transaction ID: 18300000003.");
+    assert.equal(s.texteDuServeur("90,000,000 XAFe sont revenus sur votre compte. Démo : Solde insuffisant : 0 FCFA."),
+      "90,000,000 XAFe are back in your account. Demo: Insufficient balance: 0 FCFA.");
+    assert.equal(s.texteDuServeur("Achat de 221.77 USDT à 575.65."), "Bought 221.77 USDT at 575.65.");
+    assert.equal(s.motifLisible("le montant déclaré ne correspond pas au paiement reçu : vérifiez-le."),
+      "The amount you entered does not match the payment received: please check it.");
+    assert.equal(s.motifLisible("Le client a demandé l'annulation."), "Le client a demandé l'annulation.", "un motif tapé par l'équipe n'est pas inventé");
+  } finally {
+    poserLangue("fr");
+  }
+});

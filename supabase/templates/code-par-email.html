@@ -4,11 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>Votre code Glisil</title>
+<title>Votre code Glisil · Your Glisil code</title>
 </head>
 <body style="margin:0;padding:0;background:#F4F7F4;font-family:Arial,Helvetica,sans-serif;color:#191C1A;">
   <!-- Le code d'entrée de Glisil (Supabase Auth : « Magic Link » et « Confirm signup »).
-       {{ .Token }} est le code à six chiffres. Aucun lien à cliquer : on recopie le code. -->
+       {{ .Token }} est le code à six chiffres. Aucun lien à cliquer : on recopie le code.
+       Un seul modèle pour tout le monde : Supabase ne choisit pas la langue d'un e-mail.
+       Il parle donc les deux, le français d'abord, l'anglais ensuite. -->
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F7F4;">
     <tr><td align="center" style="padding:32px 16px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#FFFFFF;border-radius:24px;">
@@ -21,8 +23,13 @@
           <p style="margin:0 0 24px 0;padding:18px 0;background:#CDEFD9;border-radius:16px;text-align:center;font-size:36px;font-weight:bold;letter-spacing:10px;color:#06331B;font-family:'Courier New',Courier,monospace;">{{ .Token }}</p>
           <p style="margin:0 0 24px 0;font-size:14px;line-height:21px;color:#5B615E;">Si vous n'avez pas demandé ce code, ignorez cet e-mail : personne ne peut entrer sans lui. L'équipe Glisil ne vous demandera <b>jamais</b> ce code, ni par téléphone, ni par WhatsApp.</p>
         </td></tr>
+        <tr><td lang="en" style="padding:0 32px 8px 32px;border-top:1px solid #E3E7E3;">
+          <p style="margin:20px 0 8px 0;font-size:18px;font-weight:bold;">Your sign-in code</p>
+          <p style="margin:0 0 12px 0;font-size:15px;line-height:22px;color:#5B615E;">Enter the six digits above in Glisil. The code is valid for 10 minutes and works only once.</p>
+          <p style="margin:0 0 24px 0;font-size:14px;line-height:21px;color:#5B615E;">If you did not request this code, ignore this email: no one can sign in without it. The Glisil team will <b>never</b> ask you for this code, by phone or on WhatsApp.</p>
+        </td></tr>
         <tr><td style="padding:0 32px 28px 32px;border-top:1px solid #E3E7E3;">
-          <p style="margin:20px 0 0 0;font-size:12px;line-height:18px;color:#5B615E;">Glisil · le XAFe, et le marché où il s'échange.</p>
+          <p style="margin:20px 0 0 0;font-size:12px;line-height:18px;color:#5B615E;">Glisil · le XAFe, et le marché où il s'échange · XAFe, and the market where it trades.</p>
         </td></tr>
       </table>
     </td></tr>

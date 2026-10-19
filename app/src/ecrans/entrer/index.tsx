@@ -21,6 +21,8 @@ import type { Declaration, IdOperateur } from "../../guichet/types";
 import { BETA, montantValide, nombreDeTransferts, OPERATEURS, PALIERS, operateur as opDe } from "../../noyau/argent";
 import { codeDeRetrait, lienUssd } from "../../noyau/depot";
 import { apresFrappe, heure, montantDepuisSaisie, numeroEnTranches, numeroSaisi, numeroValide, operateurDuNumero, quand, transactionIdNormalise, xaf } from "../../noyau/format";
+import { motifLisible } from "../../noyau/serveur";
+import { t } from "../../noyau/langue";
 import { useParcours } from "../../navigation/parcours";
 import { tones } from "../../theme";
 import { Amount, Attente, Card, Chips, FeuilleErreur, Keypad, Line, List, Row, Screen, Success } from "../../ui";
@@ -38,23 +40,23 @@ export function EntrerOperateur() {
   const choisir = (operateur: IdOperateur) => { poser({ operateur, montant: 0 }); navigate("/entrer/montant"); };
 
   return (
-    <Screen title="Entrer des XAF" back="/">
+    <Screen title={t("Entrer des XAF", "Add XAF")} back="/">
       {/* pendant la bêta, on paie depuis une carte de DÉMO TOTEM : de faux francs, de vrais gestes (0028) */}
       {BETA.actif && BETA.demoTotem && !BETA.depotsReels && (
         <Typography variant="body2" color="text.secondary">
-          Pendant la bêta, vous payez depuis votre carte de démo TOTEM (un numéro en 600), avec ses francs de démo.
+          {t("Pendant la bêta, vous payez depuis votre carte de démo TOTEM (un numéro en 600), avec ses francs de démo.", "During the beta, you pay from your TOTEM demo card (a number starting with 600), using its demo francs.")}
         </Typography>
       )}
-      <Typography variant="body2">Par où payez-vous ?</Typography>
+      <Typography variant="body2">{t("Par où payez-vous ?", "How will you pay?")}</Typography>
       <List>
         {OPERATEURS.map((o) => (
-          <Row key={o.id} badge={o.id} primary={o.nom} secondary={o.plafondParTransfert !== null ? `${xaf(o.plafondParTransfert)} XAF max par transfert` : "Le montant de votre choix"} onClick={() => choisir(o.id)} />
+          <Row key={o.id} badge={o.id} primary={o.nom} secondary={o.plafondParTransfert !== null ? t(`${xaf(o.plafondParTransfert)} XAF max par transfert`, `${xaf(o.plafondParTransfert)} XAF max per transfer`) : t("Le montant de votre choix", "Any amount you choose")} onClick={() => choisir(o.id)} />
         ))}
-        <Row icon={<AccountBalanceRounded />} tone="neutral" primary="Virement bancaire" secondary="Bientôt" disabled />
+        <Row icon={<AccountBalanceRounded />} tone="neutral" primary={t("Virement bancaire", "Bank transfer")} secondary={t("Bientôt", "Coming soon")} disabled />
       </List>
       {palier?.entreeJour != null && (
         <Typography variant="body2" textAlign="center">
-          {palier.nom.split(" · ")[0]} : au plus {xaf(palier.entreeJour)} XAF par jour. Au-delà, l'argent est retenu et remboursé.
+          {t(`${palier.nom.split(" · ")[0]} : au plus ${xaf(palier.entreeJour)} XAF par jour. Au-delà, l'argent est retenu et remboursé.`, `${palier.nom.split(" · ")[0]}: up to ${xaf(palier.entreeJour)} XAF per day. Anything above that is held and refunded.`)}
         </Typography>
       )}
     </Screen>
@@ -78,10 +80,10 @@ export function EntrerMontant() {
   const transferts = nombreDeTransferts(montant, op.plafondParTransfert);
   const auDela = reste !== null && montant > reste;
 
-  const aide = montant <= 0 ? (reste !== null ? `Reste à entrer aujourd'hui : ${xaf(reste)} XAF` : "Vous recevez autant de XAFe · sans frais")
-    : auDela ? `Votre palier : ${xaf(reste!)} XAF encore aujourd'hui. Au-delà, l'argent est retenu et remboursé.`
-    : transferts > 1 && op.plafondParTransfert !== null ? `Vous recevez ${xaf(montant)} XAFe · en ${transferts} transferts de ${xaf(op.plafondParTransfert)} au plus`
-    : `Vous recevez ${xaf(montant)} XAFe · sans frais`;
+  const aide = montant <= 0 ? (reste !== null ? t(`Reste à entrer aujourd'hui : ${xaf(reste)} XAF`, `Left to add today: ${xaf(reste)} XAF`) : t("Vous recevez autant de XAFe · sans frais", "You receive the same amount in XAFe · no fees"))
+    : auDela ? t(`Votre palier : ${xaf(reste!)} XAF encore aujourd'hui. Au-delà, l'argent est retenu et remboursé.`, `Your tier: ${xaf(reste!)} XAF left today. Anything above that is held and refunded.`)
+    : transferts > 1 && op.plafondParTransfert !== null ? t(`Vous recevez ${xaf(montant)} XAFe · en ${transferts} transferts de ${xaf(op.plafondParTransfert)} au plus`, `You receive ${xaf(montant)} XAFe · in ${transferts} transfers of up to ${xaf(op.plafondParTransfert)}`)
+    : t(`Vous recevez ${xaf(montant)} XAFe · sans frais`, `You receive ${xaf(montant)} XAFe · no fees`);
 
   const continuer = () => lancer(async (cle) => {
     poser({ montant });
@@ -90,12 +92,12 @@ export function EntrerMontant() {
   });
 
   return (
-    <Screen title="Montant" back="/entrer/operateur" gap={1.5}>
+    <Screen title={t("Montant", "Amount")} back="/entrer/operateur" gap={1.5}>
       <Amount value={saisie ? xaf(montant) : "0"} unit="XAF" hint={aide} hintColor={auDela ? "error.main" : undefined} />
-      <Chips items={["500 000", "1 000 000", "5 000 000"]} selected={xaf(montant)} onSelect={(c) => setSaisie(c.replace(/\D/g, ""))} />
+      <Chips items={[xaf(500000), xaf(1000000), xaf(5000000)]} selected={xaf(montant)} onSelect={(c) => setSaisie(c.replace(/\D/g, ""))} />
       <Box sx={{ flex: 1 }} />
       <Keypad onKey={(k) => setSaisie(apresFrappe(saisie, k))} />
-      <Button variant="contained" disabled={!montantValide(montant, 100) || enCours} onClick={() => void continuer()}>Continuer</Button>
+      <Button variant="contained" disabled={!montantValide(montant, 100) || enCours} onClick={() => void continuer()}>{t("Continuer", "Continue")}</Button>
       <FeuilleErreur erreur={erreur} onFermer={effacerErreur} />
     </Screen>
   );
@@ -133,7 +135,7 @@ export function EntrerPayer() {
     } else navigate("/entrer/operateur");
   };
 
-  if (!depot || !op) return <Attente erreur={erreurDepot} title="Payez" back="/entrer/operateur" hauteur={260} />;
+  if (!depot || !op) return <Attente erreur={erreurDepot} title={t("Payez", "Pay")} back="/entrer/operateur" hauteur={260} />;
 
   /* Le numéro ne reçoit plus : sans rien de déclaré, on referme ce dossier et on en ouvre un autre — un autre float. */
   const ailleurs = () => void lancer(async () => {
@@ -145,20 +147,20 @@ export function EntrerPayer() {
   const composer = code ? lienUssd(code) : null;
 
   return (
-    <Screen title={`Payez par ${op.nom}`} onBack={retour} fermer="/">
+    <Screen title={t(`Payez par ${op.nom}`, `Pay with ${op.nom}`)} onBack={retour} fermer="/">
       {depot.reception !== "ouverte" && (
         <Stack direction="row" gap={1.5} role="alert" sx={{ p: 1.75, borderRadius: 3, bgcolor: tones[ferme ? "red" : "amber"].bg, color: tones[ferme ? "red" : "amber"].fg }}>
           {ferme ? <ErrorOutlineRounded /> : <HourglassTopRounded />}
           <Stack gap={0.5}>
             <Typography variant="body1" sx={{ fontWeight: 600, color: "inherit" }}>
-              {ferme ? "Ce numéro ne reçoit plus : ne payez pas ici" : "Notre boîtier est hors ligne pour l'instant"}
+              {ferme ? t("Ce numéro ne reçoit plus : ne payez pas ici", "This number no longer receives payments: don't pay here") : t("Notre boîtier est hors ligne pour l'instant", "Our device is offline for now")}
             </Typography>
             <Typography variant="body2" sx={{ color: "inherit" }}>
               {ferme
                 ? depot.declarations.length === 0
-                  ? "Si vous avez déjà payé, déclarez votre paiement : il sera traité. Sinon, payez à un autre numéro."
-                  : "Votre paiement déjà fait sera traité. Pour un nouveau paiement, ouvrez un autre dépôt."
-                : "Vous pouvez payer : le SMS sera lu à son retour, et votre crédit arrivera à ce moment-là."}
+                  ? t("Si vous avez déjà payé, déclarez votre paiement : il sera traité. Sinon, payez à un autre numéro.", "If you already paid, declare your payment: it will be processed. Otherwise, pay to another number.")
+                  : t("Votre paiement déjà fait sera traité. Pour un nouveau paiement, ouvrez un autre dépôt.", "The payment you already made will be processed. For a new payment, start another deposit.")
+                : t("Vous pouvez payer : le SMS sera lu à son retour, et votre crédit arrivera à ce moment-là.", "You can still pay: the SMS will be read when it's back online, and you'll be credited then.")}
             </Typography>
           </Stack>
         </Stack>
@@ -166,28 +168,28 @@ export function EntrerPayer() {
 
       {!ferme && <>
       <Stack alignItems="center" sx={{ py: 1 }}>
-        <Typography variant="body2">Envoyez</Typography>
-        <Typography variant="h4">{prevu ? `${xaf(prevu)} XAF` : "le montant de votre choix"}</Typography>
-        <Typography variant="body2">d'une de ces deux façons</Typography>
+        <Typography variant="body2">{t("Envoyez", "Send")}</Typography>
+        <Typography variant="h4">{prevu ? `${xaf(prevu)} XAF` : t("le montant de votre choix", "the amount of your choice")}</Typography>
+        <Typography variant="body2">{t("d'une de ces deux façons", "in one of these two ways")}</Typography>
       </Stack>
 
       <Card>
-        <Typography variant="caption" sx={{ fontWeight: 700, color: "primary.main" }}>1 · TRANSFERT VERS NOTRE NUMÉRO</Typography>
+        <Typography variant="caption" sx={{ fontWeight: 700, color: "primary.main" }}>{t("1 · TRANSFERT VERS NOTRE NUMÉRO", "1 · TRANSFER TO OUR NUMBER")}</Typography>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ bgcolor: "background.default", borderRadius: 3, px: 2, py: 1 }}>
           <Stack sx={{ minWidth: 0 }}>
             <Typography variant="caption">{op.nom}</Typography>
             <Typography variant="h5" sx={{ fontVariantNumeric: "tabular-nums" }}>{numeroEnTranches(depot.floatNumero)}</Typography>
           </Stack>
-          <IconButton aria-label="Copier le numéro" onClick={() => void copier("numero", depot.floatNumero)} color={copie === "numero" ? "primary" : "default"}>
+          <IconButton aria-label={t("Copier le numéro", "Copy number")} onClick={() => void copier("numero", depot.floatNumero)} color={copie === "numero" ? "primary" : "default"}>
             {copie === "numero" ? <CheckCircleRounded /> : <ContentCopyRounded />}
           </IconButton>
         </Stack>
         {depot.titulaire && (
           <>
-            <Line label="Au nom de" value={depot.titulaire} strong />
+            <Line label={t("Au nom de", "Account holder")} value={depot.titulaire} strong />
             <Stack direction="row" gap={1} alignItems="center" sx={{ bgcolor: tones.amber.bg, color: tones.amber.fg, borderRadius: 2, px: 1.5, py: 1 }}>
               <ErrorOutlineRounded fontSize="small" />
-              <Typography variant="body2" sx={{ color: "inherit" }}>Votre téléphone affiche un autre nom ? <b>Ne confirmez pas.</b></Typography>
+              <Typography variant="body2" sx={{ color: "inherit" }}>{t("Votre téléphone affiche un autre nom ?", "Your phone shows another name?")} <b>{t("Ne confirmez pas.", "Don't confirm.")}</b></Typography>
             </Stack>
           </>
         )}
@@ -195,31 +197,31 @@ export function EntrerPayer() {
 
       {code && (
         <>
-          <Typography variant="body2" textAlign="center" sx={{ fontWeight: 600 }}>ou</Typography>
+          <Typography variant="body2" textAlign="center" sx={{ fontWeight: 600 }}>{t("ou", "or")}</Typography>
           <Card>
-            <Typography variant="caption" sx={{ fontWeight: 700, color: "primary.main" }}>2 · RETRAIT À NOTRE POINT</Typography>
-            <Typography variant="body2">Depuis votre compte {op.nom}, composez :</Typography>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: "primary.main" }}>{t("2 · RETRAIT À NOTRE POINT", "2 · WITHDRAWAL AT OUR AGENT POINT")}</Typography>
+            <Typography variant="body2">{t(`Depuis votre compte ${op.nom}, composez :`, `From your ${op.nom} account, dial:`)}</Typography>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ bgcolor: "background.default", borderRadius: 3, px: 2, py: 1.25 }}>
               <Typography sx={{ fontFamily: "Roboto Mono, monospace", fontSize: 17, fontWeight: 600, overflowWrap: "anywhere", minWidth: 0 }}>{code}</Typography>
-              <IconButton aria-label="Copier le code" onClick={() => void copier("code", code)} color={copie === "code" ? "primary" : "default"}>
+              <IconButton aria-label={t("Copier le code", "Copy code")} onClick={() => void copier("code", code)} color={copie === "code" ? "primary" : "default"}>
                 {copie === "code" ? <CheckCircleRounded /> : <ContentCopyRounded />}
               </IconButton>
             </Stack>
             {composer
-              ? <Button variant="outlined" href={composer}>Composer le code</Button>
-              : <Typography variant="caption">Remplacez MONTANT par le montant, en chiffres, sans espace.</Typography>}
+              ? <Button variant="outlined" href={composer}>{t("Composer le code", "Dial the code")}</Button>
+              : <Typography variant="caption">{t("Remplacez MONTANT par le montant, en chiffres, sans espace.", "Replace MONTANT with the amount, in digits, without spaces.")}</Typography>}
           </Card>
         </>
       )}
 
       <Typography variant="body2" textAlign="center">
-        Gardez le SMS de {op.nom.split(" ")[0]} : son <b>transaction ID</b> vous sera demandé.
+        {t(`Gardez le SMS de ${op.nom.split(" ")[0]} : son`, `Keep the ${op.nom.split(" ")[0]} SMS: you'll be asked for its`)} <b>{t("transaction ID", "transaction ID")}</b>{t(" vous sera demandé.", ".")}
       </Typography>
       </>}
       <Box sx={{ flex: 1 }} />
       <Stack gap={1}>
-        {ferme && depot.declarations.length === 0 && <Button variant="contained" onClick={ailleurs}>Payer à un autre numéro</Button>}
-        <Button variant={ferme ? "outlined" : "contained"} onClick={() => navigate(`/entrer/transaction/${depot.reference}`)}>J'ai payé</Button>
+        {ferme && depot.declarations.length === 0 && <Button variant="contained" onClick={ailleurs}>{t("Payer à un autre numéro", "Pay to another number")}</Button>}
+        <Button variant={ferme ? "outlined" : "contained"} onClick={() => navigate(`/entrer/transaction/${depot.reference}`)}>{t("J'ai payé", "I've paid")}</Button>
       </Stack>
       <FeuilleErreur erreur={erreur} onFermer={effacerErreur} />
     </Screen>
@@ -251,7 +253,7 @@ export function EntrerTransaction() {
   const { lancer, enCours, erreur, effacerErreur } = useGesteUnique();
   const { lancer: lancerFin, enCours: finEnCours } = useGesteUnique();
 
-  if (!depot) return <Attente erreur={erreurDepot} title="J'ai payé" back="/entrer/operateur" hauteur={200} />;
+  if (!depot) return <Attente erreur={erreurDepot} title={t("J'ai payé", "I've paid")} back="/entrer/operateur" hauteur={200} />;
   const op = opDe(depot.operateur);
 
   /* ce qu'on sait déjà : un numéro vérifié de cet opérateur, sinon le téléphone du compte s'il est de cet opérateur ; le nom du compte ; le montant tapé avant */
@@ -291,13 +293,13 @@ export function EntrerTransaction() {
   const enAttente = depot.declarations.filter((d) => d.etat === "attendu");
 
   return (
-    <Screen title="J'ai payé" back={`/entrer/payer/${depot.reference}`} fermer="/" gap={1.5}>
+    <Screen title={t("J'ai payé", "I've paid")} back={`/entrer/payer/${depot.reference}`} fermer="/" gap={1.5}>
       <Typography variant="body2">
-        {correction ? `Corrigez ce paiement : le SMS de ${op.nom} reçu ne dit pas la même chose.` : `Recopiez le SMS de ${op.nom}. Un formulaire par paiement : si vous avez payé en trois fois, faites-le trois fois.`}
+        {correction ? t(`Corrigez ce paiement : le SMS de ${op.nom} reçu ne dit pas la même chose.`, `Correct this payment: the ${op.nom} SMS we received says something different.`) : t(`Recopiez le SMS de ${op.nom}. Un formulaire par paiement : si vous avez payé en trois fois, faites-le trois fois.`, `Copy the details from your ${op.nom} SMS. One form per payment: if you paid in three goes, fill it in three times.`)}
       </Typography>
       <Stack component="form" gap={1.5} onSubmit={(e) => { e.preventDefault(); if (pret) void valider(); }}>
         <TextField
-          label="Transaction ID"
+          label={t("Transaction ID", "Transaction ID")}
           value={tx}
           onChange={(e) => setTx(e.target.value)}
           disabled={Boolean(correction)}
@@ -305,31 +307,31 @@ export function EntrerTransaction() {
           autoFocus
           autoComplete="off"
           autoCapitalize="characters"
-          helperText="Le numéro de l'opération, écrit dans le SMS."
-          placeholder={depot.operateur === "mtn" ? "ex. 20394817104" : "ex. MP261012.1402.A12345"}
+          helperText={t("Le numéro de l'opération, écrit dans le SMS.", "The transaction number shown in the SMS.")}
+          placeholder={depot.operateur === "mtn" ? t("ex. 20394817104", "e.g. 20394817104") : t("ex. MP261012.1402.A12345", "e.g. MP261012.1402.A12345")}
           slotProps={{ input: { sx: { fontFamily: "Roboto Mono, monospace", fontSize: 18 } } }}
         />
         <TextField
-          label="Numéro qui a payé"
+          label={t("Numéro qui a payé", "Number that paid")}
           value={numeroEnTranches(vNumero)}
           onChange={(e) => setNumero(numeroSaisi(e.target.value))}
           fullWidth
           inputMode="tel"
           autoComplete="tel-national"
           error={vNumero.length === 9 && !numeroOk}
-          helperText={vNumero.length === 9 && !numeroOk ? `Un numéro ${op.nom}, neuf chiffres.` : "Le numéro d'où est parti l'argent."}
+          helperText={vNumero.length === 9 && !numeroOk ? t(`Un numéro ${op.nom}, neuf chiffres.`, `A ${op.nom} number, nine digits.`) : t("Le numéro d'où est parti l'argent.", "The number the money was sent from.")}
           slotProps={{ input: { startAdornment: <InputAdornment position="start">+237</InputAdornment> } }}
         />
         <TextField
-          label="Nom exact du compte qui a payé"
+          label={t("Nom exact du compte qui a payé", "Exact name on the paying account")}
           value={vNom}
           onChange={(e) => setNom(e.target.value)}
           fullWidth
           autoComplete="name"
-          helperText="Tel qu'il apparaît chez l'opérateur."
+          helperText={t("Tel qu'il apparaît chez l'opérateur.", "As it appears with the operator.")}
         />
         <TextField
-          label="Montant exact envoyé"
+          label={t("Montant exact envoyé", "Exact amount sent")}
           value={vMontant ? xaf(montantNombre) : ""}
           onChange={(e) => setMontant(e.target.value.replace(/\D/g, "").slice(0, 10))}
           fullWidth
@@ -337,9 +339,9 @@ export function EntrerTransaction() {
           slotProps={{ input: { endAdornment: <InputAdornment position="end">XAF</InputAdornment> } }}
         />
         <Button type="submit" variant="contained" disabled={!pret || enCours} startIcon={correction ? undefined : <AddRounded />}>
-          {enCours ? "Un instant…" : correction ? "Envoyer la correction" : "Valider ce paiement"}
+          {enCours ? t("Un instant…", "One moment…") : correction ? t("Envoyer la correction", "Send correction") : t("Valider ce paiement", "Submit this payment")}
         </Button>
-        {correction && <Button variant="text" onClick={() => { setCorrection(null); setTx(""); }}>Annuler la correction</Button>}
+        {correction && <Button variant="text" onClick={() => { setCorrection(null); setTx(""); }}>{t("Annuler la correction", "Cancel correction")}</Button>}
       </Stack>
 
       {depot.declarations.length > 0 && (
@@ -357,20 +359,20 @@ export function EntrerTransaction() {
 
       {depot.montantRecu > 0 && (
         <Stack direction="row" justifyContent="space-between" alignItems="baseline" sx={{ px: 1 }}>
-          <Typography variant="body2">Crédité jusqu'ici</Typography>
+          <Typography variant="body2">{t("Crédité jusqu'ici", "Credited so far")}</Typography>
           <Typography variant="h5" color="primary.main" sx={{ fontVariantNumeric: "tabular-nums" }}>+{xaf(depot.montantRecu)} XAFe</Typography>
         </Stack>
       )}
 
       {depot.declarations.length === 0 && (
         <Typography variant="caption" textAlign="center" sx={{ px: 2 }}>
-          Dès que notre boîtier retrouve votre paiement, vos XAFe arrivent — en général en quelques secondes. Si le SMS n'est pas encore arrivé, votre déclaration attend et se crédite toute seule.
+          {t("Dès que notre boîtier retrouve votre paiement, vos XAFe arrivent — en général en quelques secondes. Si le SMS n'est pas encore arrivé, votre déclaration attend et se crédite toute seule.", "As soon as our device matches your payment, your XAFe arrive, usually within seconds. If the SMS hasn't arrived yet, your declaration waits and is credited automatically.")}
         </Typography>
       )}
 
       <Box sx={{ flex: 1 }} />
       <Button variant="outlined" disabled={credites.length === 0 || finEnCours} onClick={() => void terminer()}>
-        {credites.length === 0 ? "Terminer" : enAttente.length > 0 ? `Terminer (${enAttente.length} en attente)` : "Terminer"}
+        {credites.length === 0 ? t("Terminer", "Finish") : enAttente.length > 0 ? t(`Terminer (${enAttente.length} en attente)`, `Finish (${enAttente.length} pending)`) : t("Terminer", "Finish")}
       </Button>
       <FeuilleErreur erreur={erreur} onFermer={effacerErreur} />
     </Screen>
@@ -382,8 +384,8 @@ function LigneDeclaration({ d, onRetirer, onCorriger }: { d: Declaration; onReti
   const etat = d.etat === "credite"
     ? { icone: <CheckCircleRounded />, tone: "green" as const, texte: `+${xaf(d.montant ?? 0)} XAFe · ${heure(d.crediteLe ?? d.declareLe)}` }
     : d.etat === "refuse"
-      ? { icone: <ErrorOutlineRounded />, tone: d.corrigible ? "amber" as const : "red" as const, texte: d.motif ?? "retenu" }
-      : { icone: <HourglassTopRounded />, tone: "amber" as const, texte: "On cherche votre paiement… quelques instants." };
+      ? { icone: <ErrorOutlineRounded />, tone: d.corrigible ? "amber" as const : "red" as const, texte: d.motif ? motifLisible(d.motif) : t("retenu", "held") }
+      : { icone: <HourglassTopRounded />, tone: "amber" as const, texte: t("On cherche votre paiement… quelques instants.", "Looking for your payment… just a moment.") };
   return (
     <Stack direction="row" alignItems="center" gap={1.5} sx={{ px: 1.5, py: 1.25 }}>
       <Box sx={{ width: 44, height: 44, flexShrink: 0, borderRadius: 22, display: "grid", placeItems: "center", bgcolor: tones[etat.tone].bg, color: tones[etat.tone].fg }}>
@@ -392,14 +394,14 @@ function LigneDeclaration({ d, onRetirer, onCorriger }: { d: Declaration; onReti
       <Stack sx={{ flex: 1, minWidth: 0 }}>
         <Typography fontWeight={500} sx={{ fontFamily: "Roboto Mono, monospace", fontSize: 15, overflowWrap: "anywhere" }}>{d.transactionId}</Typography>
         {d.montantDeclare != null && d.etat !== "credite" && (
-          <Typography variant="caption">{xaf(d.montantDeclare)} XAF · {numeroEnTranches(d.numeroDeclare ?? "")}</Typography>
+          <Typography variant="caption">{`${xaf(d.montantDeclare)} XAF · ${numeroEnTranches(d.numeroDeclare ?? "")}`}</Typography>
         )}
         <Typography variant="body2" sx={{ color: etat.tone === "red" ? "error.main" : undefined }}>{etat.texte}</Typography>
-        {onRetirer && <Typography variant="caption">Mal recopié ? Touchez × pour le retirer.</Typography>}
+        {onRetirer && <Typography variant="caption">{t("Mal recopié ? Touchez × pour le retirer.", "Typo? Tap × to remove it.")}</Typography>}
       </Stack>
-      {d.etat === "credite" && <Chip label="Crédité" size="small" sx={{ bgcolor: tones.green.bg, color: tones.green.fg, height: 26 }} />}
-      {onCorriger && <Button size="small" variant="outlined" onClick={onCorriger}>Corriger</Button>}
-      {onRetirer && <IconButton aria-label={`Retirer l'ID ${d.transactionId}`} onClick={onRetirer} sx={{ width: 48, height: 48 }}><CloseRounded /></IconButton>}
+      {d.etat === "credite" && <Chip label={t("Crédité", "Credited")} size="small" sx={{ bgcolor: tones.green.bg, color: tones.green.fg, height: 26 }} />}
+      {onCorriger && <Button size="small" variant="outlined" onClick={onCorriger}>{t("Corriger", "Correct")}</Button>}
+      {onRetirer && <IconButton aria-label={t(`Retirer l'ID ${d.transactionId}`, `Remove ID ${d.transactionId}`)} onClick={onRetirer} sx={{ width: 48, height: 48 }}><CloseRounded /></IconButton>}
     </Stack>
   );
 }
@@ -415,21 +417,21 @@ export function EntrerCredite() {
   const dernier = depot.crediteLe ?? depot.creeLe;
   return (
     <Success
-      title="XAFe crédités"
+      title={t("XAFe crédités", "XAFe credited")}
       amount={`+${xaf(depot.montantRecu)} XAFe`}
-      caption={`${credites.length > 1 ? `${credites.length} transferts, ` : ""}${quand(dernier)}, par ${opDe(depot.operateur).nom}.`}
+      caption={t(`${credites.length > 1 ? `${credites.length} transferts, ` : ""}${quand(dernier)}, par ${opDe(depot.operateur).nom}.`, `${credites.length > 1 ? `${credites.length} transfers, ` : ""}${quand(dernier)}, via ${opDe(depot.operateur).nom}.`)}
       /* le marché fermé, la suite naturelle est un autre dépôt — pas un écran « bientôt » */
-      primary={ouvert.marche ? { label: "Aller au marché", to: "/marche" } : { label: "Retour à l'accueil", to: "/" }}
-      secondary={ouvert.marche ? { label: "Retour à l'accueil", to: "/" } : { label: "Ajouter d'autres XAFe", to: "/entrer/operateur" }}
+      primary={ouvert.marche ? { label: t("Aller au marché", "Go to the Market"), to: "/marche" } : { label: t("Retour à l'accueil", "Back to home"), to: "/" }}
+      secondary={ouvert.marche ? { label: t("Retour à l'accueil", "Back to home"), to: "/" } : { label: t("Ajouter d'autres XAFe", "Add more XAFe"), to: "/entrer/operateur" }}
     >
       <Stack gap={1.5} sx={{ textAlign: "left" }}>
         <Card>
-          <Line label="Dossier XAFe" value={depot.reference} mono />
-          {credites.map((d) => <Line key={d.id} label={`Transaction ID ${opDe(depot.operateur).nom}`} value={d.transactionId} mono />)}
+          <Line label={t("Dossier XAFe", "XAFe file")} value={depot.reference} mono />
+          {credites.map((d) => <Line key={d.id} label={t(`Transaction ID ${opDe(depot.operateur).nom}`, `${opDe(depot.operateur).nom} transaction ID`)} value={d.transactionId} mono />)}
         </Card>
         {/* le XAFe est un jeton : ses XAFe viennent d'être créés sur la blockchain, la transaction le prouve */}
         <SurLaChaine traces={depot.chaine} />
-        <Button variant="text" component={Link} to={`/historique/${depot.reference}`}>Voir le reçu</Button>
+        <Button variant="text" component={Link} to={`/historique/${depot.reference}`}>{t("Voir le reçu", "View receipt")}</Button>
       </Stack>
     </Success>
   );

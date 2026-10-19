@@ -82,6 +82,8 @@ TEMOINS = {
     "0031_sans_plafond_par_transfert.sql": ("false", "rejouable telle quelle"),
     # 0032 : fonctions « or replace », paramètre inséré s'il manque, déclencheur retiré puis reposé.
     "0032_retraits_de_demo_automatiques.sql": ("false", "rejouable telle quelle"),
+    # 0033 : parametres_publics « or replace » (après 0029), la version anglaise posée seulement si elle manque.
+    "0033_bandeau_beta_en_anglais.sql": ("false", "rejouable telle quelle"),
 }
 
 

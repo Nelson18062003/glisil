@@ -20,6 +20,7 @@ import { VERSION_CONDITIONS } from "../../noyau/conditions";
 import { CaseConditions } from "../legal";
 import { lisible } from "../../noyau/erreurs";
 import { dateDepuis, nomPropre, nomValide, PAYS, paysDe, telephoneE164, telephoneEnDirect, telephoneLisible, verdictNaissance, VILLES, type Pays } from "../../noyau/identite";
+import { t } from "../../noyau/langue";
 import { useSession } from "../../session/session";
 import { FeuilleErreur, Screen } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
@@ -39,7 +40,11 @@ const oublier = () => { try { sessionStorage.removeItem(CLE); } catch { /* idem 
 const ETAPES = ["identite", "naissance", "telephone", "residence", "verifier"] as const;
 type Etape = (typeof ETAPES)[number];
 
-const MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+const MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"]; // langue-ok
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]; // langue-ok : les mois anglais
+/** « 5 mars 2000 » ; en anglais « March 5, 2000 ». */
+const dateLisible = (jour: string, mois: string, annee: string) =>
+  t(`${Number(jour)} ${MOIS[Number(mois) - 1]} ${annee}`, `${MONTHS[Number(mois) - 1]} ${Number(jour)}, ${annee}`);
 
 /* ------------------------------------------------------------ morceaux */
 
@@ -52,7 +57,7 @@ function Question({ titre, texte }: { titre: string; texte: string }) {
   );
 }
 
-const Bon = () => <CheckCircleRounded sx={{ color: "primary.main" }} aria-label="valide" />;
+const Bon = () => <CheckCircleRounded sx={{ color: "primary.main" }} aria-label={t("valide", "valid")} />;
 
 function ChoixPays({ label, valeur, onChange, avecIndicatif }: { label: string; valeur: CountryCode; onChange: (c: CountryCode) => void; avecIndicatif?: boolean }) {
   const p = paysDe(valeur) ?? null;
@@ -135,12 +140,12 @@ export function Inscription() {
         session.compteOuvert(compte);
         navigate("/bienvenue/profil", { replace: true });
       } catch (e) {
-        /* on ramène la personne à l'étape qui pèche */
-        const t = lisible(e).titre.toLowerCase();
-        if (t.includes("numéro")) aller("telephone");
-        else if (t.includes("18 ans") || t.includes("naissance")) aller("naissance");
-        else if (t.includes("prénom") || t.startsWith("ce nom")) aller("identite");
-        else if (t.includes("ville") || t.includes("pays")) aller("residence");
+        /* on ramène la personne à l'étape qui pèche — d'après le titre de noyau/erreurs, dans l'une ou l'autre langue */
+        const titre = lisible(e).titre.toLowerCase();
+        if (titre.includes("numéro") || titre.includes("number")) aller("telephone"); // langue-ok
+        else if (titre.includes("18 ans") || titre.includes("naissance") || titre.includes("18 or older") || titre.includes("date of birth")) aller("naissance");
+        else if (titre.includes("prénom") || titre.startsWith("ce nom") || titre.includes("first name") || titre.startsWith("this last name")) aller("identite"); // langue-ok
+        else if (titre.includes("ville") || titre.includes("pays") || titre.includes("city") || titre.includes("country")) aller("residence");
         throw e;
       }
     });
@@ -151,45 +156,45 @@ export function Inscription() {
   if (etape === "identite") {
     contenu = (
       <>
-        <Question titre="Comment vous appelez-vous ?" texte="Comme sur votre pièce d'identité : c'est le nom qui figurera sur vos reçus." />
-        <TextField label="Prénom" value={b.prenom} onChange={(e) => maj({ prenom: nomPropre(e.target.value) })} onBlur={() => voir("prenom")}
+        <Question titre={t("Comment vous appelez-vous ?", "What's your name?")} texte={t("Comme sur votre pièce d'identité : c'est le nom qui figurera sur vos reçus.", "As shown on your ID: this is the name that will appear on your receipts.")} />
+        <TextField label={t("Prénom", "First name")} value={b.prenom} onChange={(e) => maj({ prenom: nomPropre(e.target.value) })} onBlur={() => voir("prenom")}
           autoComplete="given-name" autoFocus fullWidth error={vu.prenom && !prenomOk}
-          helperText={vu.prenom && !prenomOk ? "Des lettres seulement, au moins deux." : " "}
+          helperText={vu.prenom && !prenomOk ? t("Des lettres seulement, au moins deux.", "Letters only, at least two.") : " "}
           slotProps={{ input: { endAdornment: prenomOk ? <InputAdornment position="end"><Bon /></InputAdornment> : null } }} />
-        <TextField label="Nom de famille" value={b.nom} onChange={(e) => maj({ nom: nomPropre(e.target.value) })} onBlur={() => voir("nom")}
+        <TextField label={t("Nom de famille", "Last name")} value={b.nom} onChange={(e) => maj({ nom: nomPropre(e.target.value) })} onBlur={() => voir("nom")}
           autoComplete="family-name" fullWidth error={vu.nom && !nomOk}
-          helperText={vu.nom && !nomOk ? "Des lettres seulement, au moins deux." : " "}
+          helperText={vu.nom && !nomOk ? t("Des lettres seulement, au moins deux.", "Letters only, at least two.") : " "}
           slotProps={{ input: { endAdornment: nomOk ? <InputAdornment position="end"><Bon /></InputAdornment> : null } }} />
       </>
     );
   } else if (etape === "naissance") {
     const message = naissance.ok
-      ? `Vous avez ${naissance.age} ans.`
-      : naissance.raison === "incomplete" ? "Le jour, le mois, puis l'année en quatre chiffres."
-      : naissance.raison === "inexistante" ? "Cette date n'existe pas : vérifiez le jour et le mois."
-      : naissance.raison === "future" ? "Cette date est dans le futur."
-      : naissance.raison === "mineur" ? "Glisil est réservé aux personnes de 18 ans et plus."
-      : "Vérifiez l'année.";
+      ? t(`Vous avez ${naissance.age} ans.`, `You are ${naissance.age} years old.`)
+      : naissance.raison === "incomplete" ? t("Le jour, le mois, puis l'année en quatre chiffres.", "Day, month, then the year in four digits.")
+      : naissance.raison === "inexistante" ? t("Cette date n'existe pas : vérifiez le jour et le mois.", "This date doesn't exist: check the day and month.")
+      : naissance.raison === "future" ? t("Cette date est dans le futur.", "This date is in the future.")
+      : naissance.raison === "mineur" ? t("Glisil est réservé aux personnes de 18 ans et plus.", "Glisil is only for people aged 18 and over.")
+      : t("Vérifiez l'année.", "Check the year.");
     const enErreur = !naissance.ok && naissance.raison !== "incomplete";
     const chiffres = (v: string, n: number) => v.replace(/\D/g, "").slice(0, n);
     contenu = (
       <>
-        <Question titre="Quelle est votre date de naissance ?" texte="Glisil est un service financier : il faut avoir 18 ans pour ouvrir un compte." />
+        <Question titre={t("Quelle est votre date de naissance ?", "What's your date of birth?")} texte={t("Glisil est un service financier : il faut avoir 18 ans pour ouvrir un compte.", "Glisil is a financial service: you must be 18 to open an account.")} />
         <Stack direction="row" gap={1.5}>
-          <TextField label="Jour" value={b.jour} placeholder="JJ" inputMode="numeric" autoComplete="bday-day" autoFocus
+          <TextField label={t("Jour", "Day")} value={b.jour} placeholder={t("JJ", "DD")} inputMode="numeric" autoComplete="bday-day" autoFocus
             onChange={(e) => { const v = chiffres(e.target.value, 2); maj({ jour: v }); if (v.length === 2) refMois.current?.focus(); }}
             sx={{ flex: 1 }} error={enErreur} slotProps={{ htmlInput: { style: { textAlign: "center", fontSize: 20 } } }} />
-          <TextField label="Mois" value={b.mois} placeholder="MM" inputMode="numeric" autoComplete="bday-month" inputRef={refMois}
+          <TextField label={t("Mois", "Month")} value={b.mois} placeholder="MM" inputMode="numeric" autoComplete="bday-month" inputRef={refMois}
             onChange={(e) => { const v = chiffres(e.target.value, 2); maj({ mois: v }); if (v.length === 2) refAnnee.current?.focus(); }}
             sx={{ flex: 1 }} error={enErreur} slotProps={{ htmlInput: { style: { textAlign: "center", fontSize: 20 } } }} />
-          <TextField label="Année" value={b.annee} placeholder="AAAA" inputMode="numeric" autoComplete="bday-year" inputRef={refAnnee}
+          <TextField label={t("Année", "Year")} value={b.annee} placeholder={t("AAAA", "YYYY")} inputMode="numeric" autoComplete="bday-year" inputRef={refAnnee}
             onChange={(e) => maj({ annee: chiffres(e.target.value, 4) })}
             sx={{ flex: 1.4 }} error={enErreur} slotProps={{ htmlInput: { style: { textAlign: "center", fontSize: 20 } } }} />
         </Stack>
         <Stack direction="row" gap={1} alignItems="center" role="status">
           {naissance.ok && <Bon />}
           <Typography variant="body2" sx={{ color: enErreur ? "error.main" : naissance.ok ? "primary.main" : "text.secondary", fontWeight: naissance.ok ? 600 : 400 }}>
-            {naissance.ok ? `${Number(b.jour)} ${MOIS[Number(b.mois) - 1]} ${b.annee} · ${message}` : message}
+            {naissance.ok ? `${dateLisible(b.jour, b.mois, b.annee)} · ${message}` : message}
           </Typography>
         </Stack>
       </>
@@ -198,13 +203,13 @@ export function Inscription() {
     const p = paysDe(b.paysTel);
     contenu = (
       <>
-        <Question titre="Votre numéro de téléphone" texte="Pour vous joindre si quelque chose demande votre attention. Il ne sert qu'à un seul compte." />
-        <ChoixPays label="Pays du numéro" valeur={b.paysTel} avecIndicatif onChange={(c) => maj({ paysTel: c, tel: "", pays: b.ville ? b.pays : c })} />
-        <TextField label="Numéro de téléphone" value={telephoneEnDirect(b.paysTel, b.tel)} onChange={(e) => maj({ tel: e.target.value.replace(/[^\d]/g, "").slice(0, 15) })}
+        <Question titre={t("Votre numéro de téléphone", "Your phone number")} texte={t("Pour vous joindre si quelque chose demande votre attention. Il ne sert qu'à un seul compte.", "So we can reach you if something needs your attention. It can only be used for one account.")} />
+        <ChoixPays label={t("Pays du numéro", "Phone number country")} valeur={b.paysTel} avecIndicatif onChange={(c) => maj({ paysTel: c, tel: "", pays: b.ville ? b.pays : c })} />
+        <TextField label={t("Numéro de téléphone", "Phone number")} value={telephoneEnDirect(b.paysTel, b.tel)} onChange={(e) => maj({ tel: e.target.value.replace(/[^\d]/g, "").slice(0, 15) })}
           onBlur={() => voir("tel")} type="tel" inputMode="tel" autoComplete="tel-national" autoFocus fullWidth
           placeholder={b.paysTel === "CM" ? "6 77 12 34 56" : undefined}
           error={vu.tel && b.tel.length > 0 && !e164}
-          helperText={vu.tel && b.tel.length > 0 && !e164 ? (b.paysTel === "CM" ? "Au Cameroun : 9 chiffres, commençant par 6 (mobile) ou 2 (fixe)." : "Ce numéro n'est pas valide pour ce pays.") : e164 ? `Sera enregistré : ${telephoneLisible(e164)}` : " "}
+          helperText={vu.tel && b.tel.length > 0 && !e164 ? (b.paysTel === "CM" ? t("Au Cameroun : 9 chiffres, commençant par 6 (mobile) ou 2 (fixe).", "In Cameroon: 9 digits, starting with 6 (mobile) or 2 (landline).") : t("Ce numéro n'est pas valide pour ce pays.", "This number isn't valid for this country.")) : e164 ? t(`Sera enregistré : ${telephoneLisible(e164)}`, `Will be saved as: ${telephoneLisible(e164)}`) : " "}
           slotProps={{
             input: {
               startAdornment: <InputAdornment position="start"><Typography sx={{ color: "text.secondary", fontVariantNumeric: "tabular-nums" }}>{p?.indicatif}</Typography></InputAdornment>,
@@ -217,16 +222,16 @@ export function Inscription() {
   } else if (etape === "residence") {
     contenu = (
       <>
-        <Question titre="Où vivez-vous ?" texte="Votre pays et votre ville de résidence aujourd'hui." />
-        <ChoixPays label="Pays de résidence" valeur={b.pays} onChange={(c) => maj({ pays: c, ville: "" })} />
+        <Question titre={t("Où vivez-vous ?", "Where do you live?")} texte={t("Votre pays et votre ville de résidence aujourd'hui.", "Your current country and city of residence.")} />
+        <ChoixPays label={t("Pays de résidence", "Country of residence")} valeur={b.pays} onChange={(c) => maj({ pays: c, ville: "" })} />
         <Autocomplete<string, false, false, true>
           freeSolo
           options={villes}
           inputValue={b.ville}
           onInputChange={(_, v) => maj({ ville: nomPropre(v) })}
           renderInput={(params) => (
-            <TextField {...params} label="Ville" autoComplete="address-level2" onBlur={() => voir("ville")}
-              error={vu.ville && !villeOk} helperText={vu.ville && !villeOk ? "Le nom de votre ville, en lettres." : villes.length ? "Tapez les premières lettres, ou une ville qui n'est pas dans la liste." : " "} />
+            <TextField {...params} label={t("Ville", "City")} autoComplete="address-level2" onBlur={() => voir("ville")}
+              error={vu.ville && !villeOk} helperText={vu.ville && !villeOk ? t("Le nom de votre ville, en lettres.", "Your city's name, in letters.") : villes.length ? t("Tapez les premières lettres, ou une ville qui n'est pas dans la liste.", "Type the first few letters, or a city that isn't on the list.") : " "} />
           )}
         />
       </>
@@ -239,22 +244,22 @@ export function Inscription() {
           <Typography variant="caption" component="div">{label}</Typography>
           <Typography variant="subtitle1" sx={{ overflowWrap: "anywhere" }}>{valeur}</Typography>
         </Box>
-        <Typography variant="body2" sx={{ color: "primary.main", fontWeight: 600 }}>Modifier</Typography>
+        <Typography variant="body2" sx={{ color: "primary.main", fontWeight: 600 }}>{t("Modifier", "Edit")}</Typography>
         <ChevronRightRounded sx={{ color: "text.secondary" }} />
       </Box>
     );
     contenu = (
       <>
-        <Question titre="Vérifiez vos informations" texte="Elles servent à vérifier votre identité. Touchez une ligne pour la corriger." />
+        <Question titre={t("Vérifiez vos informations", "Check your details")} texte={t("Elles servent à vérifier votre identité. Touchez une ligne pour la corriger.", "They're used to verify your identity. Tap a line to correct it.")} />
         <Box sx={{ bgcolor: "background.paper", borderRadius: 4, px: 2 }}>
-          {ligne("Prénom et nom", `${nomPropre(b.prenom).trim()} ${nomPropre(b.nom).trim()}`, "identite")}
-          {ligne("Date de naissance", naissance.ok ? `${Number(b.jour)} ${MOIS[Number(b.mois) - 1]} ${b.annee}` : "—", "naissance")}
-          {ligne("Téléphone", e164 ? telephoneLisible(e164) : "—", "telephone")}
-          {ligne("Résidence", `${nomPropre(b.ville).trim()}, ${paysDe(b.pays)?.nom ?? b.pays}`, "residence")}
+          {ligne(t("Prénom et nom", "Full name"), `${nomPropre(b.prenom).trim()} ${nomPropre(b.nom).trim()}`, "identite")}
+          {ligne(t("Date de naissance", "Date of birth"), naissance.ok ? dateLisible(b.jour, b.mois, b.annee) : "—", "naissance")}
+          {ligne(t("Téléphone", "Phone"), e164 ? telephoneLisible(e164) : "—", "telephone")}
+          {ligne(t("Résidence", "Residence"), `${nomPropre(b.ville).trim()}, ${paysDe(b.pays)?.nom ?? b.pays}`, "residence")}
         </Box>
         <FormControlLabel
           control={<Checkbox checked={certifie} onChange={(e) => setCertifie(e.target.checked)} />}
-          label={<Typography variant="body2" sx={{ color: "text.primary" }}>Je certifie que ces informations sont exactes et qu'elles sont les miennes.</Typography>}
+          label={<Typography variant="body2" sx={{ color: "text.primary" }}>{t("Je certifie que ces informations sont exactes et qu'elles sont les miennes.", "I certify that this information is accurate and is my own.")}</Typography>}
           sx={{ alignItems: "flex-start", "& .MuiCheckbox-root": { pt: 0.5 } }}
         />
         <CaseConditions coche={accepte} onChange={setAccepte} />
@@ -266,10 +271,10 @@ export function Inscription() {
     <Screen onBack={precedent} gap={2.5}>
       <Stack gap={1} sx={{ mt: -1 }}>
         <Stack direction="row" justifyContent="space-between">
-          <Typography variant="caption">{etape === "verifier" ? "Dernière étape" : `Étape ${index + 1} sur 4`}</Typography>
-          <Typography variant="caption">Ouverture de votre compte</Typography>
+          <Typography variant="caption">{etape === "verifier" ? t("Dernière étape", "Last step") : t(`Étape ${index + 1} sur 4`, `Step ${index + 1} of 4`)}</Typography>
+          <Typography variant="caption">{t("Ouverture de votre compte", "Opening your account")}</Typography>
         </Stack>
-        <LinearProgress variant="determinate" value={((index + 1) / ETAPES.length) * 100} sx={{ height: 6, borderRadius: 3, bgcolor: "divider" }} aria-label="Avancement de l'inscription" />
+        <LinearProgress variant="determinate" value={((index + 1) / ETAPES.length) * 100} sx={{ height: 6, borderRadius: 3, bgcolor: "divider" }} aria-label={t("Avancement de l'inscription", "Sign-up progress")} />
       </Stack>
       <Box key={etape} component="form" onSubmit={(e) => { e.preventDefault(); if (etape === "verifier") { if (certifie && accepte) void ouvrir(); } else suivant(); }}
         sx={{ flex: 1, display: "flex", flexDirection: "column", gap: 2.5,
@@ -278,7 +283,7 @@ export function Inscription() {
         {contenu}
         <Box sx={{ flex: 1 }} />
         <Button type="submit" variant="contained" disabled={!pret[etape] || enCours}>
-          {etape === "verifier" ? (enCours ? "Ouverture du compte…" : "Ouvrir mon compte") : "Continuer"}
+          {etape === "verifier" ? (enCours ? t("Ouverture du compte…", "Opening account…") : t("Ouvrir mon compte", "Open my account")) : t("Continuer", "Continue")}
         </Button>
       </Box>
       <FeuilleErreur erreur={erreur} onFermer={effacerErreur} />

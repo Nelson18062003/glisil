@@ -4,6 +4,8 @@ import { PDFDocument } from "pdf-lib";
 import type { TraceChaine } from "../guichet/types";
 import { etatDeTrace, hashCourt, lienContrat, lienTransaction } from "./chaine";
 import { enWinAnsi, fabriquerRecu } from "./recu-pdf";
+import { lisible } from "./erreurs";
+import { poserLangue } from "./langue";
 
 const TRACE: TraceChaine = {
   reseau: "bep20", operation: "frapper", montant: 1000, reference: "XAFe-DP-000003", etat: "confirme",
@@ -47,4 +49,26 @@ test("le reçu est un vrai PDF, qui porte la transaction, son bloc et l'empreint
   const texte = Buffer.from(await PDFDocument.load(octets).then((p) => p.save({ useObjectStreams: false }))).toString("latin1");
   assert.ok(octets.length > 4000, "un QR code et une page entière, pas un fichier vide");
   assert.ok(texte.includes("%PDF"), "relisible");
+});
+
+test("en anglais : le moteur parle toujours français, l'écran et le reçu parlent anglais", async () => {
+  poserLangue("en");
+  try {
+    /* la clé reste la phrase française du moteur ; seule la phrase montrée change */
+    assert.equal(lisible(new Error("solde insuffisant")).titre, "Your balance isn't enough");
+    assert.equal(lisible(new Error("transaction ID déjà utilisé")).recommencer, false);
+    assert.equal(lisible(new TypeError("Failed to fetch")).titre, "No connection");
+    assert.equal(lisible(new Error("dépôt inconnu")).suite, "Unknown deposit.");
+    assert.equal(etatDeTrace(TRACE).titre, "XAFe minted on the blockchain");
+    assert.match(etatDeTrace(TRACE).phrase, /block 137,261,987/);
+    const octets = await fabriquerRecu({
+      reference: "XAFe-DP-000003", titre: "MTN MoMo deposit", montant: "+1,000 XAFe", quand: "Oct 17 at 05:31",
+      client: "Lisa Gelie", lignes: [["Transaction ID MTN", "20394817101"]], chaine: [TRACE],
+      preuve: "https://app.glisil.com/preuve", emisLe: new Date("2026-10-17T06:00:00Z"),
+    });
+    assert.equal((await PDFDocument.load(octets)).getTitle(), "Receipt XAFe-DP-000003");
+  } finally {
+    poserLangue("fr");
+  }
+  assert.equal(lisible(new Error("solde insuffisant")).titre, "Le solde ne suffit pas", "retour au français");
 });
