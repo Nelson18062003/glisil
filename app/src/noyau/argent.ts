@@ -49,7 +49,9 @@ export const NUMEROS = { verificationSms: true, delaiHeures: 24 };
  * bandeau le dit, la dotation d'inscription s'annonce, et les dépôts réels
  * sont fermés sauf pour un compte autorisé (depotsReels, calculé pour CE compte).
  */
-export const BETA = { actif: false, message: "", dotation: { XAFe: 0, USDT: 0 }, depotsReels: true };
+/* `demoTotem` : un float de la démo vivante de TOTEM est branché (0028, 0029) — pendant la bêta,
+   on entre et on sort des XAF de DÉMO, vers et depuis les cartes de démo. */
+export const BETA = { actif: false, message: "", dotation: { XAFe: 0, USDT: 0 }, depotsReels: true, demoTotem: false };
 /** « tout de suite », « 24 h après vérification » */
 export const delaiDuNumero = () => (NUMEROS.delaiHeures <= 0 ? "tout de suite" : `${NUMEROS.delaiHeures} h après ${NUMEROS.verificationSms ? "vérification" : "son ajout"}`);
 
@@ -445,6 +447,7 @@ export function appliquerParametres(p: unknown): boolean {
     poser(BETA.dotation, "XAFe", nombre(r.beta.dotation?.XAFe, 0, 1e9));
     poser(BETA.dotation, "USDT", nombre(r.beta.dotation?.USDT, 0, 1e9));
     if (typeof r.beta.depots_reels === "boolean") BETA.depotsReels = r.beta.depots_reels;
+    BETA.demoTotem = r.beta.demo_totem === true;
   }
   if (typeof r.marche?.ouvert === "boolean") MARCHE.ouvert = r.marche.ouvert;
   // un plafond vide (null) : il n'y en a pas (0027)

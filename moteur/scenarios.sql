@@ -2733,6 +2733,8 @@ begin
   select id into n_demo from numeros where compte_id = c and numero = '600000005';
   select id into n_vrai from numeros where compte_id = c and numero = '677149002';
   assert n_demo is not null and n_vrai is not null, 'les deux numéros s''ajoutent';
+  -- l'écran l'apprend (0029) : il ouvre Entrer et Sortir vers la démo, au lieu de « Fermé (bêta) »
+  assert (parametres_publics() -> 'beta' ->> 'demo_totem')::boolean, parametres_publics() -> 'beta';
 
   -- le dépôt : SEUL le float de démo est proposé, et il est « ouvert » sans boîtier qui parle
   r := ouvrir_depot('mtn', 'k-demo-1');

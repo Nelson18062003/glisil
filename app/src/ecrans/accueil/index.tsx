@@ -183,7 +183,10 @@ function PremiersPas({ compte, soldes, historique, numeros, sorties }: { compte?
     ...(sorties ? [{ fait: numeros.some((n) => n.verifieLe && !n.retireLe),
       titre: "Ajoutez votre numéro MoMo", texte: "C'est vers lui que vous sortirez vos XAF. Il devient actif 24 h après sa vérification : faites-le dès maintenant.", label: "Ajouter mon numéro", to: "/compte/numeros/ajouter" }] : []),
     { fait: compte.palier >= 1 || Boolean(compte.verificationEnCours) || plusTard,
-      titre: "Vérifiez votre identité", texte: `Votre plafond passe de ${xaf(PALIERS[0].entreeJour ?? 0)} à ${xaf(PALIERS[1].entreeJour ?? 0)} XAF par jour. Une pièce d'identité et un selfie suffisent.`, label: "Vérifier mon identité", to: "/compte/paliers/identite", plusTard: true },
+      titre: "Vérifiez votre identité", texte: PALIERS[1].entreeJour == null
+        /* sans plafond (0027), il n'y a pas de plafond à relever : on dit pourquoi vérifier, pas un « 0 à 0 » */
+        ? "Glisil doit savoir qui est derrière chaque compte. Une pièce d'identité et un selfie suffisent."
+        : `Votre plafond passe de ${xaf(PALIERS[0].entreeJour ?? 0)} à ${xaf(PALIERS[1].entreeJour)} XAF par jour. Une pièce d'identité et un selfie suffisent.`, label: "Vérifier mon identité", to: "/compte/paliers/identite", plusTard: true },
   ];
   const faites = etapes.filter((e) => e.fait).length;
   const suivante = etapes.find((e) => !e.fait);

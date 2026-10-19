@@ -19,7 +19,7 @@ import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useCompte, useGuichet, useNumeros, useOuvertures, useRafraichir, useSoldes, useSortie } from "../../guichet";
 import { decouperSortie, delaiDuNumero, FRAIS, fraisSortieManuelle, montantValide, nomsDesReseaux, NUMEROS, operateur as opDe } from "../../noyau/argent";
-import { apresFrappe, duree, jourRelatif, montantDepuisSaisie, numeroEnTranches, numeroSaisi, numeroValide, operateurDuNumero, pourcent, quand, xaf } from "../../noyau/format";
+import { apresFrappe, duree, jourRelatif, montantDepuisSaisie, numeroDeDemo, numeroEnTranches, numeroSaisi, numeroValide, operateurDuNumero, pourcent, quand, xaf } from "../../noyau/format";
 import { parcours, useParcours } from "../../navigation/parcours";
 import { Amount, Attente, Card, Chips, Dot, EtatVide, FeuilleErreur, Keypad, Line, List, Points, Row, Screen, Squelette, Success } from "../../ui";
 import { tones } from "../../theme";
@@ -110,7 +110,8 @@ export function SortirDestination() {
   const navigate = useNavigate();
   const guichet = useGuichet();
   const rafraichir = useRafraichir();
-  useOuvertures();   // se redessine quand le réglage « numeros » arrive
+  /* pendant la bêta, seuls les numéros de démo TOTEM reçoivent : la base refuse les autres (0028) */
+  const { sortiesDemoSeulement } = useOuvertures();   // et se redessine quand le réglage « numeros » arrive
   const { data: numeros } = useNumeros();
   const [etat, poser] = useParcours("sortir");
   /* Sans code SMS (0020), le numéro se tape ICI : il est retenu, choisi, et l'on continue. */
@@ -124,11 +125,18 @@ export function SortirDestination() {
       poser({ numeroId: n.id });
       setNouveau("");
     });
-  const actif = (n: { verifieLe: string | null; actifDes: string }) => Boolean(n.verifieLe) && new Date(n.actifDes).getTime() <= Date.now();
+  const actif = (n: { numero: string; verifieLe: string | null; actifDes: string }) =>
+    Boolean(n.verifieLe) && new Date(n.actifDes).getTime() <= Date.now() && (!sortiesDemoSeulement || numeroDeDemo(n.numero));
+  const horsDemo = sortiesDemoSeulement && numeroValide(nouveau) && !numeroDeDemo(nouveau);
   const choisi = numeros?.find((n) => n.id === etat.numeroId) ?? null;
 
   return (
     <Screen title="Vers quel numéro ?" back="/sortir/montant">
+      {sortiesDemoSeulement && (
+        <Typography variant="body2" color="text.secondary">
+          Pendant la bêta, vos XAFe de test sortent vers une carte de démo TOTEM (un numéro en 600). Les vrais numéros restent fermés.
+        </Typography>
+      )}
       {!numeros ? <Squelette hauteur={180} /> : (
         <List>
           {numeros.map((n) => (
@@ -136,7 +144,7 @@ export function SortirDestination() {
               key={n.id}
               badge={n.operateur}
               primary={numeroEnTranches(n.numero)}
-              secondary={!n.verifieLe ? `${opDe(n.operateur).nom} · à vérifier` : actif(n) ? `${opDe(n.operateur).nom}${NUMEROS.verificationSms ? " · vérifié" : ""}` : `${opDe(n.operateur).nom} · actif ${jourRelatif(n.actifDes).toLowerCase()} à ${new Date(n.actifDes).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`}
+              secondary={sortiesDemoSeulement && !numeroDeDemo(n.numero) ? `${opDe(n.operateur).nom} · fermé pendant la bêta` : !n.verifieLe ? `${opDe(n.operateur).nom} · à vérifier` : actif(n) ? `${opDe(n.operateur).nom}${NUMEROS.verificationSms ? " · vérifié" : ""}` : `${opDe(n.operateur).nom} · actif ${jourRelatif(n.actifDes).toLowerCase()} à ${new Date(n.actifDes).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`}
               selected={n.id === etat.numeroId}
               disabled={!actif(n)}
               onClick={() => poser({ numeroId: n.id })}
@@ -150,10 +158,10 @@ export function SortirDestination() {
           <Typography variant="body2" fontWeight={500}>{numeros.length ? "Ou un autre numéro" : "Le numéro Mobile Money qui reçoit"}</Typography>
           <Stack direction="row" gap={1} alignItems="flex-start">
             <TextField label="Numéro MoMo ou Orange Money" value={numeroEnTranches(nouveau)} onChange={(e) => setNouveau(numeroSaisi(e.target.value))} type="tel" inputMode="numeric" fullWidth
-              helperText={nouveau.length >= 9 && !opNouveau ? "Ce n'est ni un numéro MTN ni un numéro Orange" : opNouveau ? opDe(opNouveau).nom : " "}
-              error={nouveau.length >= 9 && !opNouveau}
+              helperText={horsDemo ? "Pendant la bêta : seulement une carte de démo TOTEM (600 …)" : nouveau.length >= 9 && !opNouveau ? "Ce n'est ni un numéro MTN ni un numéro Orange" : opNouveau ? opDe(opNouveau).nom : " "}
+              error={horsDemo || (nouveau.length >= 9 && !opNouveau)}
               slotProps={{ input: { startAdornment: <Typography sx={{ mr: 1, color: "text.secondary" }}>+237</Typography>, sx: { fontVariantNumeric: "tabular-nums" } } }} />
-            <Button variant="outlined" disabled={!numeroValide(nouveau) || !opNouveau || enCours} onClick={() => void ajouter()} sx={{ minHeight: 56, flexShrink: 0 }}>Ajouter</Button>
+            <Button variant="outlined" disabled={!numeroValide(nouveau) || !opNouveau || horsDemo || enCours} onClick={() => void ajouter()} sx={{ minHeight: 56, flexShrink: 0 }}>Ajouter</Button>
           </Stack>
         </Stack>
       )}

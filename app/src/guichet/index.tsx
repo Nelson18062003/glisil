@@ -59,7 +59,9 @@ export function useOuvertures() {
   return useMemo(() => ({
     /* tant que la première lecture n'est pas revenue, on ne sait pas : ni « ouvert », ni « bientôt » */
     pret: !isPending,
-    sorties: SORTIES.ouvertes,
+    /* pendant la bêta, la démo TOTEM branchée ouvre les sorties — vers ses numéros seulement */
+    sorties: SORTIES.ouvertes || (BETA.actif && BETA.demoTotem),
+    sortiesDemoSeulement: !SORTIES.ouvertes && BETA.actif && BETA.demoTotem,
     /* l'équipe paie à la main : on demande le nom du compte, et on ne promet pas « 40 secondes » */
     sortieManuelle: SORTIES.mode === "manuel",
     marche: MARCHE.ouvert,
@@ -68,7 +70,7 @@ export function useOuvertures() {
     cryptoRetraits: CRYPTO.retraitsOuverts,
     /* la bêta : de l'argent de test ; les dépôts réels fermés, sauf pour un compte autorisé */
     beta: BETA.actif,
-    entrees: !BETA.actif || BETA.depotsReels,
+    entrees: !BETA.actif || BETA.depotsReels || BETA.demoTotem,
     /* l'entrée « Crypto » mène à l'un de ces trois : fermée s'ils le sont tous */
     crypto: CRYPTO.depotsOuverts || CRYPTO.retraitsOuverts || (RAPIDE.ouvert && MARCHE.ouvert),
   }), [dataUpdatedAt, isPending]); // les valeurs vivent hors de React : la date de la lecture suffit à les relire

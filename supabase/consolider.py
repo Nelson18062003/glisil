@@ -72,6 +72,8 @@ TEMOINS = {
     # 0028 redéfinit des fonctions de 0001, 0014, 0015 et 0021 (la garde des dépôts) : rejouée APRÈS
     # elles, ou une seconde passe remettrait l'ancienne garde et fermerait les floats de démo.
     "0028_totem_demo.sql": ("false", "rejouable telle quelle"),
+    # 0029 redéfinit parametres_publics, posée par 0021 (rejouable) : rejouée après elle.
+    "0029_demo_dans_l_ecran.sql": ("false", "rejouable telle quelle"),
 }
 
 
