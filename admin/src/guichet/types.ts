@@ -7,7 +7,7 @@ import type { Droit, Role } from "../noyau/droits";
 
 export type Profil = { id: string; email: string; nom: string; role: Role; actif: boolean; droits: Droit[] };
 
-export type Terminal = { id: string; nom: string; lieu: string | null; vu_le: string | null; muet: boolean; a_cle?: boolean; floats?: Float[]; commandes_en_attente?: number };
+export type Terminal = { id: string; nom: string; lieu: string | null; vu_le: string | null; muet: boolean; demo?: boolean; a_cle?: boolean; floats?: Float[]; commandes_en_attente?: number };
 export type Float = { id: number; operateur: string; numero: string; terminal: string | null; code_agent: string | null; titulaire?: string | null; actif: boolean; dossiers_ouverts?: number };
 
 export type Tableau = {

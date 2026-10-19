@@ -53,7 +53,7 @@ export function Terminaux() {
           <Typography fontWeight={600} key="n">{t.nom} <Typography component="span" variant="caption">({t.id})</Typography></Typography>,
           t.lieu ?? "—",
           t.vu_le ? `${jourRelatif(t.vu_le)} ${heure(t.vu_le)}` : "jamais",
-          <Etat valeur={t.muet ? "muet" : "actif"} key="e" />,
+          <Etat valeur={t.demo ? "demo" : t.muet ? "muet" : "actif"} key="e" />,
           <Stack key="f" gap={0.5}>
             {(t.floats ?? []).map((x) => (
               <Stack key={x.id} direction="row" alignItems="center" gap={1}>
@@ -71,7 +71,7 @@ export function Terminaux() {
           ) : "",
         ])}
       />
-      <Typography variant="body2">Un boîtier est « muet » quand il n'a rien dit depuis dix minutes : ses floats reçoivent encore, mais aucun dossier neuf ne leur est attribué tant qu'un autre boîtier parle. La clé d'un boîtier signe chacun de ses appels ; elle se pose dans TOTEM et ne se relit pas ici.</Typography>
+      <Typography variant="body2">Un boîtier est « muet » quand il n'a rien dit depuis dix minutes : ses floats reçoivent encore, mais aucun dossier neuf ne leur est attribué tant qu'un autre boîtier parle. Un terminal « démo » est la démo vivante de TOTEM : il ne parle que lorsqu'un testeur fait un geste, et ses floats sont toujours ouverts — aux seuls comptes de la bêta, jamais à l'argent réel. La clé d'un boîtier signe chacun de ses appels ; elle se pose dans TOTEM et ne se relit pas ici.</Typography>
 
       {/* Renouveler coupe le boîtier tout de suite : sans confirmation, un clic de travers arrêtait les dépôts et les sorties de toute une boutique. */}
       <Dialogue ouvert={Boolean(aRenouveler)} titre={`Renouveler la clé de ${aRenouveler ?? ""} ?`} onFermer={() => setARenouveler(null)} onValider={() => aRenouveler && void renouveler(aRenouveler)} libelle="Renouveler la clé" couleur="error" enCours={enCours}>
