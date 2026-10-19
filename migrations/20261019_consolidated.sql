@@ -9285,10 +9285,10 @@ $sql$;
 end $consolide$;
 
 -- ─── 0028_totem_demo.sql (md5 92f8566dbafe893b328525afa769387c) ───
--- déjà en place si : la colonne demo des terminaux
+-- déjà en place si : rejouable telle quelle
 do $consolide$
 begin
-  if exists (select 1 from information_schema.columns where table_name = 'terminaux' and column_name = 'demo') then
+  if false then
     raise notice '0028_totem_demo.sql : déjà en place, rien à faire';
   else
     execute $sql$
