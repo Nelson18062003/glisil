@@ -2733,6 +2733,8 @@ begin
   select id into n_demo from numeros where compte_id = c and numero = '600000005';
   select id into n_vrai from numeros where compte_id = c and numero = '677149002';
   assert n_demo is not null and n_vrai is not null, 'les deux numéros s''ajoutent';
+  -- l'écran l'apprend (0029) : il ouvre Entrer et Sortir vers la démo, au lieu de « Fermé (bêta) »
+  assert (parametres_publics() -> 'beta' ->> 'demo_totem')::boolean, parametres_publics() -> 'beta';
 
   -- le dépôt : SEUL le float de démo est proposé, et il est « ouvert » sans boîtier qui parle
   r := ouvrir_depot('mtn', 'k-demo-1');
@@ -2759,6 +2761,51 @@ begin
   update parametres set valeur = valeur || '{"actif": false}' where cle = 'beta';
   assert operateur_du_numero('600000005') is null, 'hors bêta, les tranches de démo ne sont à personne';
   raise notice '✓ 11.49 la démo vivante de TOTEM : numéros de démo pendant la bêta seulement, le float de démo seul proposé et toujours entendu, son SMS reconnu, un vrai float toujours fermé, un retrait de démo passe la porte, un vrai non';
+end $$;
+rollback;
+
+-- 11.50 · la démo et l'argent réel ne se croisent jamais (0030). Un compte
+-- « argent réel » ne se voit jamais proposer un float de démo, même quand le
+-- vrai boîtier se tait ; il ne retire pas ses vrais XAFe vers un numéro de
+-- démo. L'administration dit « démo », pas « muet », d'un terminal de démo.
+begin;
+update parametres set valeur = valeur || '{"actif": true, "depots_reels": false}' where cle = 'beta';
+update parametres set valeur = valeur || '{"ouvertes": false}' where cle = 'sortie';
+insert into terminaux (id, nom) values ('totem-demo', 'TOTEM démo');
+insert into floats (operateur, numero, terminal) values ('mtn', '600000001', 'totem-demo');
+-- le vrai boîtier se tait : c'est là qu'un float de démo, « toujours entendu », passait devant
+update terminaux set vu_le = now() - interval '1 day' where not demo;
+do $$
+declare reel uuid := 'b1500000-0000-0000-0000-000000000001'; essai uuid := 'b1500000-0000-0000-0000-000000000002';
+        r jsonb; n uuid; t jsonb;
+begin
+  insert into comptes (id, telephone, nom, palier, argent_reel) values (reel, '670150001', 'Compte réel', 0, true);
+  insert into comptes (id, telephone, nom, palier) values (essai, '670150002', 'Testeur', 0);
+
+  perform set_config('xafe.compte', reel::text, true);
+  r := ouvrir_depot('mtn', 'k-reel-1');
+  assert r ->> 'float_numero' <> '600000001', format('un compte réel envoyé payer un float de démo : %s', r);
+  begin
+    insert into depots (reference, compte_id, operateur, float_id, expire_le)
+    values ('XAFe-DP-T11500', reel, 'mtn', (select id from floats where numero = '600000001'), now() + interval '1 hour');
+    raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'un float de démo ne reçoit que l''argent de test', sqlerrm; end;
+  perform ajouter_numero('mtn', '600000007');
+  select id into n from numeros where compte_id = reel and numero = '600000007';
+  begin perform demander_sortie(5000, n, 'k-reel-s1', '0000', 'REEL');
+        raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'un numéro de démo ne reçoit que l''argent de test', sqlerrm; end;
+
+  -- le testeur, lui, a toujours le float de démo
+  perform set_config('xafe.compte', essai::text, true);
+  r := ouvrir_depot('mtn', 'k-essai-1');
+  assert r ->> 'float_numero' = '600000001', r;
+
+  -- l'administration
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);  -- le super admin
+  select x into t from jsonb_array_elements(admin_terminaux()) x where x ->> 'id' = 'totem-demo';
+  assert (t ->> 'demo')::boolean and not (t ->> 'muet')::boolean, t;
+  raise notice '✓ 11.50 la démo et l''argent réel ne se croisent pas : float de démo refusé au compte réel (même boîtier muet), retrait réel vers un numéro de démo refusé, le terminal de démo dit « démo »';
 end $$;
 rollback;
 

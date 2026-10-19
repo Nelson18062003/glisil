@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { achatMax, bandeDePrix, decouperSortie, fraisOrdre, nombreDeTransferts, prixValide, quantiteValide, raisonDuRefus, simulerMarche } from "./argent.ts";
 import { lisible } from "./erreurs.ts";
-import { apresFrappe, enTranches, jourRelatif, numeroEnTranches, numeroSaisi, operateurDuNumero, pourcent, prix, signe, usdt } from "./format.ts";
+import { apresFrappe, enTranches, jourRelatif, numeroDeDemo, numeroEnTranches, numeroSaisi, operateurDuNumero, pourcent, prix, signe, usdt } from "./format.ts";
 
 test("un montant se lit en tranches", () => {
   assert.equal(enTranches(1000000), "1 000 000");
@@ -27,6 +27,9 @@ test("un numéro se lit en tranches et part nu", () => {
   assert.equal(operateurDuNumero("600000005"), "mtn", "démo TOTEM, MTN");
   assert.equal(operateurDuNumero("600900005"), "om", "démo TOTEM, Orange");
   assert.equal(operateurDuNumero("600500005"), null, "hors des tranches de démo");
+  assert.equal(numeroDeDemo("+237 600 00 00 05"), true);
+  assert.equal(numeroDeDemo("600900005"), true);
+  assert.equal(numeroDeDemo("677123456"), false, "un vrai numéro n'est pas de démo");
 });
 
 test("le pavé n'accepte que des chiffres et efface", () => {

@@ -18,7 +18,7 @@ import { useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useCompte, useDepot, useGuichet, useNumeros, useOuvertures, useRafraichir } from "../../guichet";
 import type { Declaration, IdOperateur } from "../../guichet/types";
-import { montantValide, OPERATEURS, PALIERS, operateur as opDe } from "../../noyau/argent";
+import { BETA, montantValide, OPERATEURS, PALIERS, operateur as opDe } from "../../noyau/argent";
 import { codeDeRetrait, lienUssd } from "../../noyau/depot";
 import { apresFrappe, heure, montantDepuisSaisie, numeroEnTranches, numeroSaisi, numeroValide, operateurDuNumero, quand, transactionIdNormalise, xaf } from "../../noyau/format";
 import { useParcours } from "../../navigation/parcours";
@@ -39,6 +39,12 @@ export function EntrerOperateur() {
 
   return (
     <Screen title="Entrer des XAF" back="/">
+      {/* pendant la bêta, on paie depuis une carte de DÉMO TOTEM : de faux francs, de vrais gestes (0028) */}
+      {BETA.actif && BETA.demoTotem && !BETA.depotsReels && (
+        <Typography variant="body2" color="text.secondary">
+          Pendant la bêta, vous payez depuis votre carte de démo TOTEM (un numéro en 600), avec ses francs de démo.
+        </Typography>
+      )}
       <Typography variant="body2">Par où payez-vous ?</Typography>
       <List>
         {OPERATEURS.map((o) => (

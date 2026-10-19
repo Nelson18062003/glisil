@@ -180,7 +180,7 @@ const ETATS: Record<string, { label: string; tone: Tone }> = {
   concorde: { label: "concorde", tone: "green" }, en_route: { label: "en route", tone: "blue" }, en_retard: { label: "en retard", tone: "amber" },
   refusee: { label: "refusée par la chaîne", tone: "red" }, ecart: { label: "écart", tone: "red" }, inconnue: { label: "inconnue du registre", tone: "red" },
   pret: { label: "prêt", tone: "amber" }, ferme: { label: "fermé", tone: "neutral" },
-  ouvert: { label: "ouvert", tone: "blue" }, partiel: { label: "partiel", tone: "amber" }, execute: { label: "exécuté", tone: "green" }, muet: { label: "muet", tone: "red" }, actif: { label: "actif", tone: "green" }, inactif: { label: "en pause", tone: "neutral" },
+  ouvert: { label: "ouvert", tone: "blue" }, partiel: { label: "partiel", tone: "amber" }, execute: { label: "exécuté", tone: "green" }, muet: { label: "muet", tone: "red" }, demo: { label: "démo", tone: "blue" }, actif: { label: "actif", tone: "green" }, inactif: { label: "en pause", tone: "neutral" },
   nouveau: { label: "nouveau", tone: "amber" }, vu: { label: "vu", tone: "blue" }, regle: { label: "réglé", tone: "green" },
 };
 

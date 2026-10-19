@@ -55,6 +55,11 @@ export function numeroValide(brut: string): boolean {
   return /^6\d{8}$/.test(numeroSaisi(brut));
 }
 
+/** Un numéro de la démo vivante de TOTEM (600 0x, 600 9x) : une tranche qu'aucun opérateur n'attribue. */
+export function numeroDeDemo(brut: string): boolean {
+  return /^600[09]/.test(numeroSaisi(brut));
+}
+
 /** L'opérateur qu'un numéro camerounais laisse deviner, d'après son préfixe. */
 export function operateurDuNumero(brut: string): "mtn" | "om" | null {
   const n = numeroSaisi(brut);
