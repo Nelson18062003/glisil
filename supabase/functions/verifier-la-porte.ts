@@ -163,6 +163,7 @@ const ok = (texte: string) => { n++; console.log(`✓ ${texte}`); };
 {
   const appels: { nom: string; args: Record<string, unknown> }[] = [];
   let prise = false;
+  let sortiePrise = false;
   const rpc = async (nom: string, args: Record<string, unknown>) => {
     appels.push({ nom, args });
     if (nom === "totem_commandes_en_attente") return [{ id: 7, parametres: { operateur: "mtn", numero: "677123456", montant: 746250 } }];
@@ -173,6 +174,10 @@ const ok = (texte: string) => { n++; console.log(`✓ ${texte}`); };
     if (nom === "totem_remboursements_en_attente") return [{ id: 5, numero: "670999333", montant: 15000 }];
     if (nom === "totem_reclamer_remboursement") return { id: 5, etat: "en_cours" };
     if (nom === "totem_resultat_remboursement") return { remboursement: args.p_ok ? "fait" : "echoue" };
+    if (nom === "totem_sorties_demo") return [{ reference: "XAFe-WD-000002", operateur: "mtn", numero: "600000003", montant: 12760000 }];
+    if (nom === "totem_prendre_sortie_demo") { if (sortiePrise) throw new Error("sortie déjà prise"); sortiePrise = true; return { reference: args.p_reference, pris: true }; }
+    if (nom === "totem_sortie_demo_payee") return { reference: args.p_reference, etat: "envoyee" };
+    if (nom === "totem_sortie_demo_echouee") return { reference: args.p_reference, etat: "annulee" };
     throw new Error(`rpc inattendue ${nom}`);
   };
   const url = (chemin: string) => new URL(`https://x.supabase.co/functions/v1/totem-commandes${chemin}`);
@@ -220,6 +225,22 @@ const ok = (texte: string) => { n++; console.log(`✓ ${texte}`); };
   assert.deepEqual(appels[appels.length - 1], { nom: "totem_resultat_remboursement", args: { p_id: 5, p_terminal: "akwa-1", p_ok: true, p_resultat: "Transfert reussi", p_reference_operateur: "20394817999" } });
   assert.deepEqual(rendu.corps, { remboursement: "fait" });
   ok("les remboursements ont leur guichet : relevés, réclamés, rendus — l'argent retenu repart vraiment au payeur");
+
+  const sd = await traiterCommandes(rpc, "totem-demo", "GET", url("?type=sorties_demo"), null);
+  assert.deepEqual(appels[appels.length - 1], { nom: "totem_sorties_demo", args: { p_terminal: "totem-demo" } });
+  assert.equal((sd.corps as unknown[]).length, 1);
+  const p1 = await traiterCommandes(rpc, "totem-demo", "PATCH", url(""), { type: "sorties_demo", reference: "XAFe-WD-000002", etat: "en_cours" });
+  const p2 = await traiterCommandes(rpc, "totem-demo", "PATCH", url(""), { type: "sorties_demo", reference: "XAFe-WD-000002", etat: "en_cours" });
+  assert.deepEqual([p1.statut, p2.statut], [200, 409], "une sortie de démo ne se prend qu'une fois");
+  await traiterCommandes(rpc, "totem-demo", "PATCH", url(""), { type: "sorties_demo", reference: "XAFe-WD-000002", etat: "envoyee", transaction_id: "18300000009" });
+  assert.deepEqual(appels[appels.length - 1], { nom: "totem_sortie_demo_payee", args: { p_terminal: "totem-demo", p_reference: "XAFe-WD-000002", p_transaction_id: "18300000009" } });
+  await traiterCommandes(rpc, "totem-demo", "PATCH", url(""), { type: "sorties_demo", reference: "XAFe-WD-000002", etat: "echouee", motif: "Solde insuffisant" });
+  assert.deepEqual(appels[appels.length - 1], { nom: "totem_sortie_demo_echouee", args: { p_terminal: "totem-demo", p_reference: "XAFe-WD-000002", p_motif: "Solde insuffisant" } });
+  const avantSd = appels.length;
+  assert.equal((await traiterCommandes(rpc, "totem-demo", "PATCH", url(""), { type: "sorties_demo", etat: "envoyee" })).statut, 400);
+  assert.equal((await traiterCommandes(rpc, "totem-demo", "PATCH", url(""), { type: "sorties_demo", reference: "X", etat: "faite" })).statut, 400);
+  assert.equal(appels.length, avantSd, "sans référence, ou d'un état inconnu : refusé avant le moteur");
+  ok("les sorties de démo ont leur guichet : relevées, prises une fois, payées ou échouées, par leur référence");
 
   assert.equal((await traiterCommandes(rpc, "akwa-1", "PATCH", url("/7"), { etat: "bizarre" })).statut, 400);
   assert.equal((await traiterCommandes(rpc, "akwa-1", "DELETE", url("/7"), null)).statut, 405);

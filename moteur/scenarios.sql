@@ -2833,6 +2833,66 @@ begin
 end $$;
 rollback;
 
+-- 11.52 · les retraits de démo se paient tout seuls (0032). Le terminal de démo
+-- relève les sorties de démo, en prend une (une seule fois), la paie et rend
+-- l'ID — ou rend l'échec, et les XAFe reviennent. Un vrai terminal n'y touche
+-- pas ; un réveil impossible ne fait jamais tomber la demande.
+begin;
+update parametres set valeur = valeur || '{"actif": true, "depots_reels": false}' where cle = 'beta';
+update parametres set valeur = valeur || '{"ouvertes": false, "mode": "manuel"}' where cle = 'sortie';
+update parametres set valeur = '{"reveil": "https://totem.exemple.test/api/demo/reveil"}' where cle = 'demo_totem';
+insert into terminaux (id, nom, cle) values ('totem-demo', 'TOTEM démo', 'cle-de-demo-assez-longue');
+insert into floats (operateur, numero, terminal) values ('mtn', '600000001', 'totem-demo');
+insert into numeros (compte_id, operateur, numero, verifie_le, actif_des)
+values ('11111111-1111-1111-1111-111111111111', 'mtn', '600000007', now() - interval '3 days', now() - interval '2 days');
+do $$
+declare
+  a uuid := '11111111-1111-1111-1111-111111111111';
+  nid uuid := (select id from numeros where numero = '600000007');
+  r jsonb; ref1 text; ref2 text; dispo0 numeric; bloque0 numeric; detruit0 numeric;
+begin
+  perform set_config('xafe.compte', a::text, true);
+  perform _mouvement(a, 'XAFe', 100000, 0, 'test', 'test', 'T-11.52');
+  dispo0 := solde(a, 'XAFe', 'dispo'); bloque0 := solde(a, 'XAFe', 'bloque');
+  detruit0 := (select coalesce(sum(montant), 0) from emissions where sens = 'destruction');
+
+  -- la demande passe, même avec un réveil qui ne peut pas partir (pas de pg_net ici)
+  r := demander_sortie(20000, nid, 'k-1152-1', '1234', 'Alice Demo');
+  ref1 := r ->> 'reference';
+  assert r ->> 'etat' = 'en_attente' and r ->> 'mode' = 'manuel', r;
+
+  -- relevée par le terminal de démo seulement
+  assert jsonb_array_length(totem_sorties_demo('akwa-1')) = 0, 'un vrai terminal ne voit pas les sorties de démo';
+  assert (select count(*) from jsonb_array_elements(totem_sorties_demo('totem-demo')) x where x ->> 'reference' = ref1) = 1, totem_sorties_demo('totem-demo');
+  begin perform totem_prendre_sortie_demo('akwa-1', ref1); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'seul un terminal de démo paie les sorties de démo', sqlerrm; end;
+
+  -- prise une fois
+  perform totem_prendre_sortie_demo('totem-demo', ref1);
+  begin perform totem_prendre_sortie_demo('totem-demo', ref1); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'sortie déjà prise', sqlerrm; end;
+  assert jsonb_array_length(totem_sorties_demo('totem-demo')) = 0, 'une sortie prise ne se relève plus';
+
+  -- payée : close comme « J'ai payé », ses XAFe détruits
+  r := totem_sortie_demo_payee('totem-demo', ref1, '18300000077');
+  assert r ->> 'etat' = 'envoyee' and r ->> 'transaction_id' = '18300000077', r;
+  assert solde(a, 'XAFe', 'dispo') = dispo0 - 20000 and solde(a, 'XAFe', 'bloque') = bloque0, 'les XAFe mis de côté sont partis';
+  assert (select coalesce(sum(montant), 0) from emissions where sens = 'destruction') = detruit0 + (r ->> 'montant_xaf')::numeric, 'détruits';
+  assert (totem_sortie_demo_payee('totem-demo', ref1, '18300000077') ->> 'deja')::boolean, 'le même ID rendu deux fois ne clôt pas deux fois';
+
+  -- échouée : rien n'est parti, les XAFe reviennent avec le motif
+  r := demander_sortie(30000, nid, 'k-1152-2', '1234', 'Alice Demo');
+  ref2 := r ->> 'reference';
+  perform totem_prendre_sortie_demo('totem-demo', ref2);
+  begin perform totem_sortie_demo_payee('totem-demo', ref2, '18300000077'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'ce transaction ID prouve déjà une autre sortie', sqlerrm; end;
+  r := totem_sortie_demo_echouee('totem-demo', ref2, 'Solde insuffisant : 0 FCFA.');
+  assert r ->> 'etat' = 'annulee' and r ->> 'motif' like 'Démo : Solde insuffisant%', r;
+  assert solde(a, 'XAFe', 'dispo') = dispo0 - 20000 and solde(a, 'XAFe', 'bloque') = bloque0, 'les 30 000 sont revenus';
+  raise notice '✓ 11.52 les retraits de démo se paient tout seuls : relevés par le terminal de démo seul, pris une fois, payés (XAFe détruits) ou échoués (XAFe rendus) ; un réveil impossible ne fait pas tomber la demande';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

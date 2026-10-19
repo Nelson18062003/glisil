@@ -137,6 +137,20 @@ export async function donnerLesRoles(s: Signataire, xafe: string, chaud: string)
   }
   return donnes;
 }
+/**
+ * RÉSEAU D'ESSAI SEULEMENT : le plafond de frappe du jour que le propriétaire
+ * a fixé — 100 milliards de XAFe (« mets à 100 milliards »). Un dépôt de
+ * 80 000 000 restait « bientôt sur la blockchain » : le contrat d'essai avait
+ * été déployé à 50 000 000 par jour. En production, le plafond se règle depuis
+ * le wallet matériel de l'admin, jamais d'ici. Rend vrai s'il a fallu l'écrire.
+ */
+export const PLAFOND_JOUR_ESSAI_XAFE = 100_000_000_000n;
+export async function fixerLePlafondDEssai(s: Signataire, xafe: string, plafondXafe = PLAFOND_JOUR_ESSAI_XAFE): Promise<boolean> {
+  const voulu = plafondXafe * 1_000_000n;
+  if (BigInt(await s.lire(xafe, "plafondJour()", [], [])) === voulu) return false;
+  await s.ecrire(xafe, "fixerPlafondJour(uint256)", ["uint256"], [voulu]);
+  return true;
+}
 /** inscrire au registre du contrat les adresses de dépôt XAFe (le seul endroit où des XAFe se détruisent) */
 export async function inscrire(s: Signataire, xafe: string, adresses: string[]) {
   for (let i = 0; i < adresses.length; i += 100) {

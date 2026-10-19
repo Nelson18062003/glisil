@@ -50,6 +50,8 @@ export type ConfigVeilleur = {
    * est un wallet matériel : l'inscription est un geste de l'équipe.
    */
   inscrire?: (adresses: string[]) => Promise<void>;
+  /** RÉSEAU D'ESSAI SEULEMENT : tenir le plafond de frappe du jour au chiffre du propriétaire (vrai s'il a fallu l'écrire) */
+  plafondDEssai?: () => Promise<boolean>;
 };
 type Attribuee = { adresse: string; actif: Actif; indice: number | null; compte_id: string };
 type Retrait = { reference: string; actif: Actif; adresse: string; montant: number; tx_hash: string | null; tx_brut: string | null };
@@ -396,6 +398,10 @@ export class Veilleur {
     const balayees = await etape("balayage", () => this.balayer(rpc), 0);
     const retraits = await etape("retraits", () => this.envoyerRetraits(rpc), { envoyes: 0, confirmes: 0, echoues: 0 });
     const auFroid = await etape("froid", () => this.mettreAuFroid(rpc), 0);
+    // avant la réserve : une frappe au-delà du plafond du jour serait refusée par le contrat
+    if (this.c.plafondDEssai && await etape("plafond du jour", () => this.c.plafondDEssai!(), false)) {
+      this.journal("plafond de frappe du jour réglé au chiffre du propriétaire (clé admin d'essai)");
+    }
     const reserve = await etape("réserve", () => this.jouerReserve(rpc), { frappees: 0, detruites: 0 });
     const jeton = await etape("lecture du jeton", () => this.lireLeJeton(rpc), null);
     const ch = this.chaine;
