@@ -91,7 +91,7 @@ export function SortirMontant() {
       <Amount
         value={saisie ? xaf(montant) : "0"}
         unit="XAFe"
-        hint={soldes ? (trop ? `Vous n'avez que ${xaf(Math.trunc(dispo))} XAFe disponibles` : `Disponible : ${xaf(Math.trunc(dispo))} XAFe`) : " "}
+        hint={soldes ? (trop ? `Vous n'avez que ${xaf(Math.trunc(dispo))} XAFe disponibles` : `Disponible : ${xaf(Math.trunc(dispo))} XAFe${soldes.USDT.disponible > 0 ? " · vos USDT se vendent d'abord au Marché" : ""}`) : " "}
         hintColor={trop ? "error.main" : undefined}
       />
       <Chips items={["100 000", "500 000", "Tout"]} selected={saisie === String(Math.trunc(dispo)) && dispo > 0 ? "Tout" : xaf(montant)} onSelect={choisir} />
