@@ -120,7 +120,7 @@ const ECRANS_ANONYMES = [
     await p.getByLabel(L("Code reçu par e-mail", "Code received by email")).fill("123456"); await p.waitForURL(/inscription$/);
     await p.getByLabel(L("Prénom", "First name")).fill("Awa"); await p.getByLabel(L("Nom de famille", "Last name")).fill("Ngono-Mballa"); await p.getByRole("button", { name: L("Continuer", "Continue") }).click();
     await p.getByLabel(L("Jour", "Day")).fill("12"); await p.getByLabel(L("Mois", "Month")).fill("03"); await p.getByLabel(L("Année", "Year")).fill("1994"); await p.getByRole("button", { name: L("Continuer", "Continue") }).click();
-    await p.getByLabel(L("Numéro de téléphone", "Phone number")).fill("677998811"); await p.getByRole("button", { name: L("Continuer", "Continue") }).click();
+    await p.getByLabel(L("Numéro de téléphone", "Phone number"), { exact: true }).fill("677998811"); await p.getByRole("button", { name: L("Continuer", "Continue") }).click();
     await p.getByLabel(L("Ville", "City")).fill("Douala"); await p.keyboard.press("Escape"); await p.getByRole("button", { name: L("Continuer", "Continue") }).click();
   } },
 ];
