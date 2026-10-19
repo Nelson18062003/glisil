@@ -132,7 +132,7 @@ export type Marche = {
   frais: { placeur: number; preneur: number; sortie: number };
   chandelles: { t: string; o: number; h: number; l: number; c: number; v: number }[];
 };
-export type Parametres = Record<string, unknown> & { operateurs?: { id: string; nom: string; plafond_par_transfert: number; plafond_jour: number | null }[] };
+export type Parametres = Record<string, unknown> & { operateurs?: { id: string; nom: string; plafond_par_transfert: number | null; plafond_jour: number | null }[] };
 export type LigneJournal = { id: number; admin: string | null; action: string; cible: string | null; detail: unknown; quand: string };
 
 /** Ce que le veilleur de chaîne a publié à son dernier tour, réseau par réseau (admin_wallets). */

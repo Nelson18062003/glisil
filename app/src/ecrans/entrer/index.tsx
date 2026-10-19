@@ -18,7 +18,7 @@ import { useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useCompte, useDepot, useGuichet, useNumeros, useOuvertures, useRafraichir } from "../../guichet";
 import type { Declaration, IdOperateur } from "../../guichet/types";
-import { BETA, montantValide, OPERATEURS, PALIERS, operateur as opDe } from "../../noyau/argent";
+import { BETA, montantValide, nombreDeTransferts, OPERATEURS, PALIERS, operateur as opDe } from "../../noyau/argent";
 import { codeDeRetrait, lienUssd } from "../../noyau/depot";
 import { apresFrappe, heure, montantDepuisSaisie, numeroEnTranches, numeroSaisi, numeroValide, operateurDuNumero, quand, transactionIdNormalise, xaf } from "../../noyau/format";
 import { useParcours } from "../../navigation/parcours";
@@ -48,7 +48,7 @@ export function EntrerOperateur() {
       <Typography variant="body2">Par où payez-vous ?</Typography>
       <List>
         {OPERATEURS.map((o) => (
-          <Row key={o.id} badge={o.id} primary={o.nom} secondary={`${xaf(o.plafondParTransfert)} XAF max par transfert`} onClick={() => choisir(o.id)} />
+          <Row key={o.id} badge={o.id} primary={o.nom} secondary={o.plafondParTransfert !== null ? `${xaf(o.plafondParTransfert)} XAF max par transfert` : "Le montant de votre choix"} onClick={() => choisir(o.id)} />
         ))}
         <Row icon={<AccountBalanceRounded />} tone="neutral" primary="Virement bancaire" secondary="Bientôt" disabled />
       </List>
@@ -75,12 +75,12 @@ export function EntrerMontant() {
   const montant = montantDepuisSaisie(saisie);
   const palier = compte ? PALIERS[compte.palier] : null;
   const reste = palier?.entreeJour != null && compte ? Math.max(0, palier.entreeJour - compte.entreDuJour) : null;
-  const transferts = Math.max(1, Math.ceil(montant / op.plafondParTransfert));
+  const transferts = nombreDeTransferts(montant, op.plafondParTransfert);
   const auDela = reste !== null && montant > reste;
 
   const aide = montant <= 0 ? (reste !== null ? `Reste à entrer aujourd'hui : ${xaf(reste)} XAF` : "Vous recevez autant de XAFe · sans frais")
     : auDela ? `Votre palier : ${xaf(reste!)} XAF encore aujourd'hui. Au-delà, l'argent est retenu et remboursé.`
-    : transferts > 1 ? `Vous recevez ${xaf(montant)} XAFe · en ${transferts} transferts de ${xaf(op.plafondParTransfert)} au plus`
+    : transferts > 1 && op.plafondParTransfert !== null ? `Vous recevez ${xaf(montant)} XAFe · en ${transferts} transferts de ${xaf(op.plafondParTransfert)} au plus`
     : `Vous recevez ${xaf(montant)} XAFe · sans frais`;
 
   const continuer = () => lancer(async (cle) => {

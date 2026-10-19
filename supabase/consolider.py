@@ -77,6 +77,9 @@ TEMOINS = {
     # 0030 redéfinit ouvrir_depot, la garde des dépôts et demander_sortie (0028) et admin_terminaux (0013) :
     # rejouée après elles.
     "0030_demo_et_argent_reel.sql": ("false", "rejouable telle quelle"),
+    # 0031 : colonne rendue facultative, plafonds retirés seulement s'ils sont encore ceux de 0001,
+    # demander_sortie « or replace » (posée par 0001).
+    "0031_sans_plafond_par_transfert.sql": ("false", "rejouable telle quelle"),
 }
 
 

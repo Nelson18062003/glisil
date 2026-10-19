@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { achatMax, bandeDePrix, decouperSortie, fraisOrdre, nombreDeTransferts, prixValide, quantiteValide, raisonDuRefus, simulerMarche } from "./argent.ts";
+import { achatMax, bandeDePrix, decouperSortie, fraisOrdre, nombreDeTransferts, OPERATEURS, prixValide, quantiteValide, raisonDuRefus, simulerMarche } from "./argent.ts";
 import { lisible } from "./erreurs.ts";
 import { apresFrappe, enTranches, jourRelatif, numeroDeDemo, numeroEnTranches, numeroSaisi, operateurDuNumero, pourcent, prix, signe, usdt } from "./format.ts";
 
@@ -38,6 +38,12 @@ test("le pavé n'accepte que des chiffres et efface", () => {
   assert.equal(apresFrappe("12", "000"), "12000");
   assert.equal(apresFrappe("12000", "⌫"), "1200");
   assert.equal(apresFrappe("1234567890", "1"), "1234567890");
+});
+
+test("sans plafond par transfert, un seul transfert, quel que soit le montant", () => {
+  assert.equal(nombreDeTransferts(6_000_000, null), 1);
+  assert.equal(decouperSortie(6_000_000, null).transferts.length, 1);
+  assert.equal(OPERATEURS.every((o) => o.plafondParTransfert === null && o.plafondParJour === null), true, "aucun plafond par défaut");
 });
 
 test("le découpage d'une sortie est celui du moteur", () => {
@@ -124,11 +130,15 @@ test("les paramètres de l'équipe remplacent ceux de la migration, et une valeu
   assert.equal(a.MARCHE.pasPrix, 0.1);
   assert.equal(a.MARCHE.quantiteMin, 20);
   assert.equal(a.PALIERS[0].sortieJour, 250_000);
-  assert.equal(a.PALIERS[1].entreeJour, 5_000_000, "une valeur abîmée laisse la précédente");
+  assert.equal(a.PALIERS[1].entreeJour, null, "une valeur abîmée laisse la précédente (aucun plafond par défaut)");
   assert.equal(a.PALIERS[2].entreeJour, null);
   assert.equal(a.FRAIS_CRYPTO.USDT, 2);
   assert.equal(a.CRYPTO.retraitsOuverts, false);
   assert.equal(a.operateur("om").plafondParTransfert, 750_000);
+  // le plafond retiré par l'équipe (0031) : null se pose, il n'est pas ignoré
+  a.appliquerParametres({ operateurs: [{ id: "om", plafond_par_transfert: null, plafond_jour: null }] });
+  assert.equal(a.operateur("om").plafondParTransfert, null);
+  assert.equal(a.operateur("om").plafondParJour, null);
   assert.equal(a.appliquerParametres({ frais: { sortie: 0.9 } }), true);
   assert.equal(a.FRAIS.sortie, 0.01, "des frais à 90 % ne s'affichent pas");
   assert.equal(a.appliquerParametres(null), false);
