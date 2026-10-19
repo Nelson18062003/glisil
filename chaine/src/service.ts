@@ -7,7 +7,7 @@
 import { estReseau, fiche, graineValide, prefixe, RESEAUX, variableDuNoeud, type Reseau } from "./cles.ts";
 import { ChaineEvm } from "./evm.ts";
 import { moteur, type Rpc } from "./moteur.ts";
-import { inscrire, signataireEvm, signataireTron } from "./signataire.ts";
+import { fixerLePlafondDEssai, inscrire, signataireEvm, signataireTron } from "./signataire.ts";
 import { ChaineTron } from "./tron.ts";
 import { Veilleur, type ConfigVeilleur } from "./veilleur.ts";
 
@@ -105,6 +105,10 @@ export async function veilleursDepuis(env: Env, seulement?: Reseau[], journal?: 
       froid: env[`${p}_FROID`] ? { adresse: env[`${p}_FROID`]!, plafondChaud: Number(env[`${p}_PLAFOND_CHAUD_USDT`] ?? 20000), garderChaud: Number(env[`${p}_GARDER_CHAUD_USDT`] ?? 10000) } : undefined,
       inscrire: cleEssai
         ? (adresses) => inscrire(f.famille === "evm" ? signataireEvm(noeud, cleEssai, id) : signataireTron(noeud, cleEssai, env.TRC20_CLE_API), env[`${p}_XAFE`]!, adresses)
+        : undefined,
+      // la même clé d'essai tient le plafond de frappe du jour au chiffre fixé par le propriétaire
+      plafondDEssai: cleEssai && env[`${p}_XAFE`]
+        ? () => fixerLePlafondDEssai(f.famille === "evm" ? signataireEvm(noeud, cleEssai, id) : signataireTron(noeud, cleEssai, env.TRC20_CLE_API), env[`${p}_XAFE`]!)
         : undefined,
     };
   };
