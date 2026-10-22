@@ -84,6 +84,8 @@ TEMOINS = {
     "0032_retraits_de_demo_automatiques.sql": ("false", "rejouable telle quelle"),
     # 0033 : parametres_publics « or replace » (après 0029), la version anglaise posée seulement si elle manque.
     "0033_bandeau_beta_en_anglais.sql": ("false", "rejouable telle quelle"),
+    # 0034 : fonctions « or replace », _apparier retirée (« if exists ») puis reposée avec le monde du SMS.
+    "0034_revue_d_attaque.sql": ("false", "rejouable telle quelle"),
 }
 
 

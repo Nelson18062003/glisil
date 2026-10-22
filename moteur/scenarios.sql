@@ -2756,7 +2756,8 @@ begin
   -- les retraits : la porte fermée des sorties s'ouvre pour un numéro de démo, pas pour un vrai
   begin perform demander_sortie(5000, n_vrai, 'k-demo-s1', '0000', 'TESTEUR');
         raise exception 'aurait dû refuser';
-  exception when others then assert sqlerrm = 'sorties pas encore ouvertes', sqlerrm; end;
+  -- (0034) l'argent de test ne sort pas en vrai, porte ouverte ou non : c'est ce refus-là qui tombe d'abord
+  exception when others then assert sqlerrm = 'l''argent de test ne sort pas en vrai', sqlerrm; end;
   begin perform demander_sortie(5000, n_demo, 'k-demo-s2', '0000', 'TESTEUR');
   exception when others then assert sqlerrm <> 'sorties pas encore ouvertes', 'un numéro de démo passe la porte : ' || sqlerrm; end;
 
@@ -2890,6 +2891,104 @@ begin
   assert r ->> 'etat' = 'annulee' and r ->> 'motif' like 'Démo : Solde insuffisant%', r;
   assert solde(a, 'XAFe', 'dispo') = dispo0 - 20000 and solde(a, 'XAFe', 'bloque') = bloque0, 'les 30 000 sont revenus';
   raise notice '✓ 11.52 les retraits de démo se paient tout seuls : relevés par le terminal de démo seul, pris une fois, payés (XAFe détruits) ou échoués (XAFe rendus) ; un réveil impossible ne fait pas tomber la demande';
+end $$;
+rollback;
+
+-- 11.53 · la revue d'attaque du 22/10 (0034). Chaque attaque est rejouée
+-- telle que la revue l'a prouvée, et doit échouer :
+--  a. un compte de la bêta retire son argent de test vers un VRAI numéro ;
+--  b. un vrai retrait, faute de vrai boîtier en ligne, part au terminal de démo ;
+--  c. un SMS du terminal de démo crédite un VRAI dépôt (même transaction ID) ;
+--  d. deux comptes s'échangent quelques USDT au bord de la bande pour la promener ;
+--  e. un compte gelé garde des ordres qui s'exécutent.
+begin;
+update parametres set valeur = valeur || '{"actif": true, "depots_reels": false}' where cle = 'beta';
+update parametres set valeur = valeur || '{"ouvertes": true, "mode": "totem"}' where cle = 'sortie';
+insert into terminaux (id, nom, cle) values ('totem-demo', 'TOTEM démo', 'cle-de-demo-assez-longue') on conflict (id) do nothing;
+update terminaux set demo = true, vu_le = now() where id = 'totem-demo';
+insert into floats (operateur, numero, terminal) values ('mtn', '600000001', 'totem-demo');
+do $$
+declare
+  a uuid := '11111111-1111-1111-1111-111111111111';          -- un testeur : argent de test seulement
+  reel uuid := 'b1530000-0000-0000-0000-000000000001';       -- un compte d'argent réel
+  x uuid := 'b1530000-0000-0000-0000-000000000002'; y uuid := 'b1530000-0000-0000-0000-000000000003';
+  v uuid := 'b1530000-0000-0000-0000-000000000004'; g uuid := 'b1530000-0000-0000-0000-000000000005';
+  nid uuid; r jsonb; dep text; i int; p numeric; avant numeric;
+begin
+  -- a. l'argent de test ne sort pas vers un vrai numéro…
+  update terminaux set vu_le = now() where id = 'akwa-1';
+  perform set_config('xafe.compte', a::text, true);
+  perform _mouvement(a, 'XAFe', 1000000, 0, 'test', 'test', 'T-11.53');
+  begin perform demander_sortie(900000, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-1153-a', '1234', 'TESTEUR');
+        raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'l''argent de test ne sort pas en vrai', sqlerrm; end;
+  -- … et le témoin : le même compte, passé à l'argent réel, retire normalement
+  update comptes set argent_reel = true where id = a;
+  r := demander_sortie(900000, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-1153-a', '1234', 'TESTEUR');
+  assert r ->> 'etat' = 'en_attente', r;
+  assert (select t.demo from commandes c join terminaux t on t.id = c.terminal
+           join sorties s on s.id = c.sortie_id where s.reference = r ->> 'reference' limit 1) = false, 'payé par un vrai boîtier';
+
+  -- b. le vrai boîtier se tait : le vrai retrait ne part PAS au terminal de démo
+  update terminaux set vu_le = now() - interval '1 day' where not demo;   -- tous les vrais boîtiers se taisent
+  begin perform demander_sortie(5000, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-1153-b');
+        raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'aucun boîtier en ligne pour cet opérateur', sqlerrm; end;
+  update terminaux set vu_le = now() where not demo;
+
+  -- c. un SMS de la démo ne paie pas un vrai dépôt, même avec le bon transaction ID
+  insert into comptes (id, telephone, nom, palier, argent_reel) values (reel, '670153001', 'Compte réel', 0, true);
+  avant := solde(reel, 'XAFe', 'dispo');   -- la dotation de bienvenue de la bêta, s'il y en a une
+  perform set_config('xafe.compte', reel::text, true);
+  r := ouvrir_depot('mtn', 'k-1153-c');
+  dep := r ->> 'reference';
+  assert r ->> 'float_numero' not like '600%', format('un compte réel ne paie qu''un vrai float : %s', r);
+  perform declarer_transaction(dep, 'DEMO1153TX', '600000002', 7500000, 'Payeur Demo');
+  r := totem_sms_recu('totem-demo', 115301, 'mtn', '600000001', '600000002', 7500000, 'DEMO1153TX',
+                      'You have received 7500000 FCFA from 600000002. Transaction Id: DEMO1153TX.', now());
+  assert r ->> 'resultat' = 'retenue', format('un SMS de démo a payé un vrai dépôt : %s', r);
+  assert (select etat from depot_declarations where transaction_id = 'DEMO1153TX') = 'attendu', 'la déclaration attend toujours SON paiement';
+  assert solde(reel, 'XAFe', 'dispo') = avant, 'aucun vrai XAFe crédité';
+  -- dans l'autre sens, la déclaration faite APRÈS le SMS de démo ne le reprend pas non plus
+  perform set_config('xafe.compte', reel::text, true);
+  r := ouvrir_depot('mtn', 'k-1153-c2');
+  r := totem_sms_recu('totem-demo', 115302, 'mtn', '600000001', '600000002', 6000000, 'DEMO1153TY',
+                      'You have received 6000000 FCFA from 600000002. Transaction Id: DEMO1153TY.', now());
+  r := declarer_transaction((select reference from depots where cle = 'k-1153-c2'), 'DEMO1153TY', '600000002', 6000000, 'Payeur Demo');
+  assert r ->> 'etat' = 'attendu' and solde(reel, 'XAFe', 'dispo') = avant, format('la démo a payé le vrai : %s', r);
+
+  -- d. la référence ne se promène pas : huit échanges entre deux comptes du même joueur
+  update ordres set etat = 'annule', restant = 0, bloque = 0 where etat in ('ouvert', 'partiel');
+  delete from executions;
+  update parametres set valeur = valeur || '{"prix_reference": 600}' where cle = 'marche';
+  insert into comptes (id, telephone, nom, palier) values (x, '670153002', 'Joueur X', 2), (y, '670153003', 'Joueur Y', 2),
+                                                          (v, '670153004', 'Vendeur honnête', 2);
+  perform _mouvement(x, 'XAFe', 10000000, 0, 'test', 'test', 'T-11.53x');
+  perform _mouvement(y, 'USDT', 1000, 0, 'test', 'test', 'T-11.53y');
+  perform _mouvement(v, 'USDT', 100, 0, 'test', 'test', 'T-11.53v');
+  for i in 1..8 loop
+    p := floor(_prix_reference() * 1.1 / 0.05) * 0.05;
+    perform set_config('xafe.compte', x::text, true);
+    begin perform placer_ordre('achat', 'limite', 10, p, null); exception when others then null; end;
+    perform set_config('xafe.compte', y::text, true);
+    begin perform placer_ordre('vente', 'limite', 10, p, null); exception when others then null; end;
+  end loop;
+  assert _prix_reference() <= 660, format('la référence s''est promenée jusqu''à %s', _prix_reference());
+  perform set_config('xafe.compte', v::text, true);
+  r := placer_ordre('vente', 'limite', 10, 600, 'k-1153-v');       -- vendre au vrai cours reste possible
+  assert r -> 'ordre' ->> 'etat' in ('ouvert', 'partiel', 'execute'), r;
+
+  -- e. un compte gelé n'a plus d'ordres au carnet
+  insert into comptes (id, telephone, nom, palier) values (g, '670153005', 'Compte volé', 2);
+  perform _mouvement(g, 'USDT', 100, 0, 'test', 'test', 'T-11.53g');
+  avant := solde(g, 'USDT', 'dispo');
+  perform set_config('xafe.compte', g::text, true);
+  r := placer_ordre('vente', 'limite', 50, 640, 'k-1153-g');
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);   -- le super admin
+  perform admin_desactiver_compte(g, false, 'compte volé');
+  assert not exists (select 1 from ordres where compte_id = g and etat in ('ouvert', 'partiel')), 'ordre du compte gelé encore au carnet';
+  assert solde(g, 'USDT', 'dispo') = avant and solde(g, 'USDT', 'bloque') = 0, 'ses USDT lui sont rendus, rien ne s''exécute';
+  raise notice '✓ 11.53 la revue d''attaque : argent de test bloqué vers un vrai numéro, vrai retrait jamais confié à la démo, SMS de démo sans effet sur un vrai dépôt (dans les deux ordres), référence tenue à 10 %% du cours externe, compte gelé sorti du carnet';
 end $$;
 rollback;
 

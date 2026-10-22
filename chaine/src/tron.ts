@@ -11,7 +11,7 @@
  *     entrer dans un bloc, elle ne pourra plus jamais y entrer, et c'est le seul
  *     cas où l'on a le droit d'en signer une autre pour le même retrait.
  */
-import { AbiCoder, decodeBase58, getBytes, hexlify, sha256, SigningKey, toBeHex, zeroPadValue } from "ethers";
+import { AbiCoder, decodeBase58, getBytes, hexlify, id, sha256, SigningKey, toBeHex, zeroPadValue } from "ethers";
 import type { Actif, Appel, Chaine, JournalBrut, MouvementJeton, Transfert } from "./chaine.ts";
 import { mouvementsDepuisJournaux, SUJETS } from "./chaine.ts";
 import { adresseTron, CHAUD, deriver, type Reseau } from "./cles.ts";
@@ -73,6 +73,64 @@ export function avecEcheance(rawHex: string, echeance: number): string {
   }
   if (!posee) throw new Error("tron : raw_data sans échéance");
   return hexlify(new Uint8Array(sortie)).slice(2);
+}
+
+/* ------------------------------------------- ce que l'on signe, relu
+ * Le nœud FABRIQUE la transaction ; on la signe ici. Vérifier que txID est
+ * le sha256 de raw_data_hex ne prouve rien de ce qu'elle FAIT : un nœud
+ * menteur (ou un intermédiaire) rendait « transfer(voleur, 1 000 000 USDT) »
+ * à la place de « transfer(client, 10 USDT) », avec un txID cohérent, et le
+ * chaud signait (revue d'attaque du 22/10/2026). On relit donc les octets :
+ * UN seul contrat, du bon type, du bon signataire, vers le bon contrat, avec
+ * exactement les données demandées — et des frais au plus ce qu'on a permis. */
+type Champs = Map<number, (bigint | Uint8Array)[]>;
+function lireChamps(o: Uint8Array): Champs {
+  const m: Champs = new Map();
+  let i = 0;
+  while (i < o.length) {
+    const [cle, j] = varint(o, i); i = j;
+    const champ = Number(cle >> 3n), type = Number(cle & 7n);
+    let v: bigint | Uint8Array;
+    if (type === 0) [v, i] = varint(o, i);
+    else if (type === 2) { const [n, k] = varint(o, i); v = o.slice(k, k + Number(n)); i = k + Number(n); }
+    else if (type === 1) { v = o.slice(i, i + 8); i += 8; }
+    else if (type === 5) { v = o.slice(i, i + 4); i += 4; }
+    else throw new Error(`tron : champ protobuf de type ${type} inattendu`);
+    if (i > o.length) throw new Error("tron : raw_data tronqué");
+    m.set(champ, [...(m.get(champ) ?? []), v]);
+  }
+  return m;
+}
+const seul = (m: Champs, champ: number) => { const v = m.get(champ); if (!v || v.length !== 1) throw new Error(`tron : champ ${champ} absent ou répété`); return v[0]; };
+const octetsDe = (v: bigint | Uint8Array) => { if (!(v instanceof Uint8Array)) throw new Error("tron : octets attendus"); return v; };
+const entierDe = (v: bigint | Uint8Array) => { if (typeof v !== "bigint") throw new Error("tron : entier attendu"); return v; };
+const adresse21 = (base58: string) => { const h = vingtOctets(base58); if (!h) throw new Error(`tron : adresse invalide ${base58}`); return `0x41${h.slice(2)}`.toLowerCase(); };
+
+export type Attendu =
+  | { type: "appel"; depuis: string; contrat: string; donnees: string; plafondFrais: number }
+  | { type: "natif"; depuis: string; vers: string; montant: bigint };
+
+/** Lève si raw_data_hex ne fait pas EXACTEMENT ce qui a été demandé. */
+export function verifierCeQuOnSigne(rawHex: string, a: Attendu): void {
+  const raw = lireChamps(getBytes(`0x${rawHex}`));
+  const contrat = lireChamps(octetsDe(seul(raw, 11)));
+  const genre = entierDe(seul(contrat, 1));
+  const valeur = lireChamps(octetsDe(seul(lireChamps(octetsDe(seul(contrat, 2))), 2)));
+  const egal = (v: bigint | Uint8Array, hex: string) => hexlify(octetsDe(v)).toLowerCase() === hex.toLowerCase();
+  if (a.type === "appel") {
+    if (genre !== 31n) throw new Error("tron : ce n'est pas l'appel de contrat demandé");
+    if (!egal(seul(valeur, 1), adresse21(a.depuis))) throw new Error("tron : signataire inattendu");
+    if (!egal(seul(valeur, 2), adresse21(a.contrat))) throw new Error("tron : contrat inattendu");
+    if (!egal(seul(valeur, 4), a.donnees)) throw new Error("tron : l'appel ne fait pas ce qui a été demandé");
+    if ((valeur.get(3) ?? [0n]).some((v) => entierDe(v) !== 0n)) throw new Error("tron : des TRX joints à l'appel");
+    const frais = raw.get(18)?.[0];
+    if (frais === undefined || entierDe(frais) > BigInt(a.plafondFrais)) throw new Error("tron : plafond de frais au-delà de ce qui est permis");
+  } else {
+    if (genre !== 1n) throw new Error("tron : ce n'est pas l'envoi de TRX demandé");
+    if (!egal(seul(valeur, 1), adresse21(a.depuis))) throw new Error("tron : signataire inattendu");
+    if (!egal(seul(valeur, 2), adresse21(a.vers))) throw new Error("tron : destinataire inattendu");
+    if (entierDe(seul(valeur, 3)) !== a.montant) throw new Error("tron : montant inattendu");
+  }
 }
 
 export type TxTron = { txID: string; raw_data: { expiration: number } & Record<string, unknown>; raw_data_hex: string; signature?: string[]; visible?: boolean; contract_address?: string };
@@ -246,16 +304,24 @@ export class ChaineTron implements Chaine {
   async signer(indice: number, appel: Appel) {
     const depuis = deriver(this.graine, this.reseau, indice);
     let tx: TxTron;
+    let attendu: Attendu;
     if (appel.type === "natif") {
       tx = await this.noeud.api("/wallet/createtransaction", { owner_address: depuis.adresse, to_address: appel.vers, amount: Number(appel.montant), visible: true });
+      attendu = { type: "natif", depuis: depuis.adresse, vers: appel.vers, montant: BigInt(appel.montant) };
     } else {
       const [contrat, selecteur, types, valeurs] =
         appel.type === "jeton" ? [this.contrat(appel.actif), "transfer(address,uint256)", ["address", "uint256"], [vingtOctets(appel.vers), appel.montant]]
         : appel.type === "frapper" ? [this.c.xafe, "frapper(address,uint256,bytes32)", ["address", "uint256", "bytes32"], [vingtOctets(appel.vers), appel.montant, appel.empreinte]]
         : appel.type === "detruire" ? [this.c.xafe, "detruire(uint256,bytes32)", ["uint256", "bytes32"], [appel.montant, appel.empreinte]]
         : [this.c.xafe, "detruireDepot(address,uint256,bytes32)", ["address", "uint256", "bytes32"], [vingtOctets(appel.adresse), appel.montant, appel.empreinte]];
-      tx = await this.noeud.fabriquerAppel(depuis.adresse, contrat as string, selecteur as string, types as string[], valeurs as unknown[], this.c.plafondFraisSun ?? 100_000_000);
+      const plafondFrais = this.c.plafondFraisSun ?? 100_000_000;
+      tx = await this.noeud.fabriquerAppel(depuis.adresse, contrat as string, selecteur as string, types as string[], valeurs as unknown[], plafondFrais);
+      const donnees = id(selecteur as string).slice(0, 10) + ABI.encode(types as string[], valeurs as unknown[]).slice(2);
+      attendu = { type: "appel", depuis: depuis.adresse, contrat: contrat as string, donnees, plafondFrais };
     }
+    // avant la clé : les octets que le nœud a fabriqués font-ils ce qu'on a demandé ?
+    if (!tx?.raw_data_hex) throw new Error(`tron : la transaction n'a pas été fabriquée (${JSON.stringify(tx)})`);
+    verifierCeQuOnSigne(tx.raw_data_hex, attendu);
     return this.noeud.signer(tx, depuis.portefeuille.privateKey, this.c.echeanceSecondes ?? 120);
   }
 
