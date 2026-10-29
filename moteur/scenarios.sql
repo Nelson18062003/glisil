@@ -4382,6 +4382,152 @@ begin
 end $$;
 rollback;
 
+-- 11.89 · deux carnets (0045) : un ordre d'USDC/XAFe ne rencontre jamais un
+-- ordre d'USDT/XAFe ; chaque paire a son carnet, sa cotation, ses bougies, son
+-- achat rapide, ses règles. Témoin : l'appariement d'avant (sans « paire = »)
+-- servirait l'acheteur d'USDT avec les USDC de la vente posée ici.
+begin;
+do $$
+declare a uuid := '11111111-1111-1111-1111-111111111111'; b uuid := '22222222-2222-2222-2222-222222222222';
+        r jsonb; v_vente uuid; xa numeric; xb numeric; m jsonb; d jsonb;
+begin
+  perform crediter_crypto(b, 'USDC', 'bep20', 500, '0xusdc-11.89-b', '0x00000000000000000000000000000000000000b0');
+  assert solde(b, 'USDC', 'dispo') = 500 and total('USDC') = 500, 'cinq cents USDC arrivés';
+  -- Bob vend 100 USDC à 600 sur le carnet USDC
+  perform set_config('xafe.compte', b::text, true);
+  r := placer_ordre('vente', 'limite', 100, 600.00, 'k-11.89-v', 'USDC/XAFe');
+  v_vente := (r -> 'ordre' ->> 'id')::uuid;
+  assert r -> 'ordre' ->> 'paire' = 'USDC/XAFe' and solde(b, 'USDC', 'bloque') = 100 and solde(b, 'USDT', 'bloque') >= 0, r;
+  -- Alice achète de l'USDT à 650, au marché : la vente d'USDC à 600 n'est pas dans SON carnet
+  perform set_config('xafe.compte', a::text, true);
+  r := placer_ordre('achat', 'limite', 10, 650.00, 'k-11.89-a0');
+  assert (select restant from ordres where id = v_vente) = 100, 'la vente d''USDC n''a pas servi un achat d''USDT';
+  assert coalesce(solde(a, 'USDC', 'dispo'), 0) = 0, 'aucun USDC chez Alice';
+  if r -> 'ordre' ->> 'etat' in ('ouvert', 'partiel') then perform annuler_ordre((r -> 'ordre' ->> 'id')::uuid); end if;
+  assert not exists (select 1 from executions where paire = 'USDC/XAFe'), 'rien ne s''est échangé en USDC';
+  -- les lectures d'une paire ne montrent que la sienne
+  assert jsonb_array_length(carnet(20, 'USDC/XAFe') -> 'ventes') = 1 and (carnet(20, 'USDC/XAFe') -> 'ventes' -> 0 ->> 'quantite')::numeric = 100,
+         carnet(20, 'USDC/XAFe');
+  assert not exists (select 1 from jsonb_array_elements(carnet(50) -> 'ventes') x where (x ->> 'quantite')::numeric = 100 and (x ->> 'prix')::numeric = 600),
+         'le carnet USDT ne montre pas la vente d''USDC';
+  -- Alice achète 40 USDC à 600 : elle paie 24 000 XAFe, reçoit 40 moins 0,1 % ; Bob reçoit 24 000 moins 0,05 %
+  xa := solde(a, 'XAFe', 'dispo'); xb := solde(b, 'XAFe', 'dispo');
+  r := placer_ordre('achat', 'limite', 40, 600.00, 'k-11.89-a1', 'USDC/XAFe');
+  assert r -> 'ordre' ->> 'etat' = 'execute' and jsonb_array_length(r -> 'executions') = 1 and r -> 'executions' -> 0 ->> 'paire' = 'USDC/XAFe', r;
+  assert solde(a, 'XAFe', 'dispo') = xa - 24000 and solde(a, 'USDC', 'dispo') = 39.96, format('Alice : %s XAFe, %s USDC', solde(a, 'XAFe', 'dispo') - xa, solde(a, 'USDC', 'dispo'));
+  assert solde(b, 'XAFe', 'dispo') = xb + 23988 and solde(b, 'USDC', 'bloque') = 60, format('Bob : %s XAFe, %s USDC bloqués', solde(b, 'XAFe', 'dispo') - xb, solde(b, 'USDC', 'bloque'));
+  assert solde(compte_maison(), 'USDC', 'dispo') = 0.04, 'les frais de l''acheteur, en USDC, vont à la maison';
+  assert total('USDC') = 500, 'un échange ne crée ni ne détruit d''USDC';
+  -- la cotation, les échanges récents, les bougies : par paire
+  assert cotation('USDC/XAFe') ->> 'paire' = 'USDC/XAFe' and cotation('USDC/XAFe') ->> 'base' = 'USDC'
+         and (cotation('USDC/XAFe') ->> 'dernier')::numeric = 600 and (cotation('USDC/XAFe') ->> 'volume_base')::numeric = 40, cotation('USDC/XAFe');
+  assert cotation() ->> 'paire' = 'USDT/XAFe'
+         and (cotation() ->> 'dernier')::numeric is not distinct from (select prix from executions where paire = 'USDT/XAFe' order by cree_le desc, id desc limit 1)
+         and (cotation() ->> 'volume_base')::numeric = (select coalesce(sum(quantite), 0) from executions where paire = 'USDT/XAFe' and cree_le > now() - interval '24 hours'),
+         'la cotation USDT ne lit pas l''USDC';
+  assert jsonb_array_length(transactions_recentes(50, 'USDC/XAFe')) = 1, transactions_recentes(50, 'USDC/XAFe');
+  assert (select (x ->> 'v')::numeric from jsonb_array_elements(bougies('1m', null, 300, 'USDC/XAFe') -> 'bougies') x where x ->> 'source' = 'marche') = 40,
+         bougies('1m', null, 300, 'USDC/XAFe');
+  assert jsonb_array_length(chandelles(60, 28, 'USDC/XAFe')) = 1;
+  -- l'achat rapide sur le carnet USDC : le devis porte sa paire, et se rejoue sur SON carnet
+  d := devis_rapide('achat', 12000, true, 'USDC/XAFe');
+  assert d ->> 'paire' = 'USDC/XAFe' and (d ->> 'quantite')::numeric between 19 and 20, d;
+  r := executer_devis((d ->> 'id')::uuid);
+  assert r ->> 'etat' = 'execute' and solde(a, 'USDC', 'dispo') = 39.96 + (d ->> 'quantite')::numeric, r;
+  -- l'annulation libère des USDC, pas des USDT
+  perform set_config('xafe.compte', b::text, true);
+  r := annuler_ordre(v_vente);
+  assert r ->> 'etat' = 'annule' and solde(b, 'USDC', 'bloque') = 0 and solde(b, 'USDC', 'dispo') = 500 - 40 - (d ->> 'quantite')::numeric, r;
+  assert total('USDC') = 500 and total('XAFe') = circulation(), 'rien de créé';
+  -- une paire qui n'existe pas
+  begin perform placer_ordre('achat', 'limite', 10, 600.00, null, 'BTC/XAFe'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paire inconnue', sqlerrm; end;
+  begin perform carnet(20, 'XAFe/USDT'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paire inconnue', sqlerrm; end;
+  -- les règles d'une paire : « marche.paires » change ce qu'il nomme, le reste vient de « marche »
+  m := parametre('marche');
+  perform _verifier_parametre('marche', m || '{"paires": {"USDC/XAFe": {"ouvert": false, "quantite_min": 1}}}');
+  begin perform _verifier_parametre('marche', m || '{"paires": {"BTC/XAFe": {"ouvert": false}}}'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
+  begin perform _verifier_parametre('marche', m || '{"paires": {"USDC/XAFe": {"pas": 1}}}'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
+  begin perform _verifier_parametre('marche', m || '{"paires": {"USDC/XAFe": {"bande_execution": 2}}}'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
+  update parametres set valeur = m || '{"paires": {"USDC/XAFe": {"ouvert": false, "quantite_min": 1}}}' where cle = 'marche';
+  assert not (_marche('USDC/XAFe') ->> 'ouvert')::boolean and (_marche('USDC/XAFe') ->> 'quantite_min')::numeric = 1, _marche('USDC/XAFe');
+  assert (_marche() ->> 'ouvert')::boolean and (_marche() ->> 'quantite_min')::numeric = (m ->> 'quantite_min')::numeric and _marche() ->> 'paire' = 'USDT/XAFe', _marche();
+  assert not (_marche() ? 'paires'), 'les règles d''une paire ne fuient pas dans une autre';
+  begin perform placer_ordre('vente', 'limite', 10, 600.00, null, 'USDC/XAFe'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'marché fermé', sqlerrm; end;
+  -- l'écran reçoit les deux paires, chacune avec ses règles et sa référence
+  r := parametres_publics();
+  assert r -> 'paires' = '["USDT/XAFe", "USDC/XAFe"]'::jsonb and r -> 'marches' ? 'USDC/XAFe'
+         and not (r -> 'marches' -> 'USDC/XAFe' ->> 'ouvert')::boolean and (r -> 'marches' -> 'USDT/XAFe' ->> 'ouvert')::boolean, r -> 'marches';
+  assert r -> 'marche' ->> 'paire' = 'USDT/XAFe', 'l''écran d''hier lit toujours sa paire';
+  raise notice '✓ 11.89 deux carnets : USDC/XAFe et USDT/XAFe ne se rencontrent jamais ; carnet, cotation, bougies, achat rapide et règles par paire';
+end $$;
+rollback;
+
+-- 11.90 · l'USDC passe par BNB Chain et Ethereum, jamais par Tron (0045).
+-- Témoin : sans « reseaux.actifs », une adresse d'USDC se donnerait sur Tron
+-- et un envoi d'USDC n'y arriverait nulle part.
+begin;
+set local xafe.compte = '22222222-2222-2222-2222-222222222222';
+do $$
+declare b uuid := '22222222-2222-2222-2222-222222222222'; r jsonb; v_pub jsonb;
+begin
+  assert _actif_sur_reseau('USDC', 'bep20') and _actif_sur_reseau('USDC', 'erc20') and not _actif_sur_reseau('USDC', 'trc20');
+  assert _actif_sur_reseau('USDT', 'trc20') and _actif_sur_reseau('XAFe', 'trc20') and not _actif_sur_reseau('BTC', 'bep20');
+  -- les adresses : une réserve par actif, jamais d'USDC sur Tron
+  assert chaine_ajouter_adresses('USDC', 'bep20', '[{"adresse": "0xc0c0000000000000000000000000000000000001", "indice": 901}]') = 1;
+  begin perform chaine_ajouter_adresses('USDC', 'trc20', '[{"adresse": "TUsdcSurTron000000000000000000001", "indice": 902}]'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'actif absent de ce réseau', sqlerrm; end;
+  insert into adresses_libres (actif, reseau, adresse, indice) values ('USDC', 'trc20', 'TUsdcGlisseeALaMain00000000000001', 903);
+  assert adresse_depot('USDC', 'trc20') is null, 'une adresse glissée à la main ne se montre pas';
+  assert adresse_depot('USDC', 'bep20') = '0xc0c0000000000000000000000000000000000001';
+  assert adresse_depot('USDC', 'bep20') = '0xc0c0000000000000000000000000000000000001', 'la même à chaque fois';
+  assert adresse_depot('USDT', 'bep20') <> '0xc0c0000000000000000000000000000000000001', 'l''USDT garde la sienne';
+  assert (chaine_adresses('bep20') -> 'libres') ? 'USDC' and not ((chaine_adresses('trc20') -> 'libres') ? 'USDC'), chaine_adresses('trc20') -> 'libres';
+  -- un dépôt d'USDC sur Tron ne crédite personne
+  begin perform crediter_crypto(b, 'USDC', 'trc20', 10, 'tx-usdc-tron', 'TUsdcGlisseeALaMain00000000000001'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'actif absent de ce réseau', sqlerrm; end;
+  perform crediter_crypto(b, 'USDC', 'bep20', 100, '0xusdc-11.90', '0xc0c0000000000000000000000000000000000001');
+  assert solde(b, 'USDC', 'dispo') = 100;
+  -- les retraits : l'actif sur SON réseau, au centime, avec ses frais
+  begin perform _demander_retrait_crypto('USDC', 'trc20', 'TXYZ', 10, null); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'actif absent de ce réseau', sqlerrm; end;
+  begin perform _demander_retrait_crypto('BTC', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 10, null); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'actif inconnu', sqlerrm; end;
+  begin perform _demander_retrait_crypto('USDC', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 10.005, null); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'montant invalide', sqlerrm; end;
+  assert (parametre('crypto') -> 'frais' ->> 'USDC')::numeric = (parametre('crypto') -> 'frais' ->> 'USDT')::numeric, 'l''USDC a les frais de l''USDT';
+  r := _demander_retrait_crypto('USDC', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 10.5, 'k-11.90');
+  assert r ->> 'actif' = 'USDC' and (r ->> 'frais')::numeric = (parametre('crypto') -> 'frais' ->> 'USDC')::numeric
+         and solde(b, 'USDC', 'bloque') = 10.5 + (r ->> 'frais')::numeric, r;
+  assert exists (select 1 from jsonb_array_elements(chaine_retraits_a_envoyer('bep20')) x where x ->> 'reference' = r ->> 'reference' and x ->> 'actif' = 'USDC'),
+         'le veilleur de BNB Chain reçoit le retrait d''USDC à envoyer';
+  -- les frais d'un réseau : Ethereum peut coûter plus que BNB Chain
+  begin perform _verifier_parametre('crypto', parametre('crypto') || '{"frais_reseaux": {"trc20": {"USDC": 1}}}'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
+  begin perform _verifier_parametre('crypto', parametre('crypto') || '{"frais_reseaux": {"erc20": {"USDC": 5000}}}'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
+  perform _verifier_parametre('crypto', parametre('crypto') || '{"frais_reseaux": {"erc20": {"USDC": 4, "USDT": 4, "XAFe": 2500}}}');
+  update parametres set valeur = valeur || '{"frais_reseaux": {"erc20": {"USDC": 4}}}' where cle = 'crypto';
+  assert _frais_retrait('USDC', 'erc20') = 4 and _frais_retrait('USDC', 'bep20') = (parametre('crypto') -> 'frais' ->> 'USDC')::numeric
+         and _frais_retrait('USDT', 'erc20') = (parametre('crypto') -> 'frais' ->> 'USDT')::numeric;
+  -- l'écran sait ce que chaque réseau porte, avec ses frais
+  v_pub := (select x from jsonb_array_elements(parametres_publics() -> 'crypto' -> 'reseaux') x where x ->> 'id' = 'trc20');
+  assert v_pub -> 'actifs' = '["XAFe", "USDT"]'::jsonb and not (v_pub -> 'frais' ? 'USDC'), v_pub;
+  v_pub := (select x from jsonb_array_elements(parametres_publics() -> 'crypto' -> 'reseaux') x where x ->> 'id' = 'bep20');
+  assert v_pub -> 'actifs' = '["XAFe", "USDT", "USDC"]'::jsonb and v_pub -> 'contrats' ? 'USDC', v_pub;
+  assert (select count(*) from jsonb_array_elements(parametres_publics() -> 'actifs')) = 3;
+  -- la liste des actifs tient les tables : un actif inconnu n'a pas de solde
+  begin insert into soldes (compte_id, actif) values (b, 'BTC'); raise exception 'aurait dû refuser';
+  exception when foreign_key_violation then null; end;
+  raise notice '✓ 11.90 l''USDC passe par BNB Chain et Ethereum, jamais par Tron : adresse, dépôt, retrait et frais par réseau';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

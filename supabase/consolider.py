@@ -102,6 +102,8 @@ TEMOINS = {
     "0043_pg_net_hors_de_public.sql": ("false", "rejouable telle quelle"),
     # 0044 : politiques retirées « if exists » puis reposées.
     "0044_politiques_une_lecture.sql": ("false", "rejouable telle quelle"),
+    # 0045 : anciennes signatures retirées « if exists », tout le reste « or replace » ou « if not exists ».
+    "0045_usdc_et_deux_carnets.sql": ("false", "rejouable telle quelle"),
 }
 
 
