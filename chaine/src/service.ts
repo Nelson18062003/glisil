@@ -67,7 +67,40 @@ export function envDepuisConfiguration(c: ConfigurationMoteur, env: Env): Env {
   if (c.jeton) e.VEILLEUR_JETON = c.jeton;
   const resultat: Env = { ...e };
   for (const [k, v] of Object.entries(env)) if (v !== undefined && v !== "") resultat[k] = v;
-  return resultat;
+  return c.essai ? resultat : { ...resultat, ...noeudsDesCles(resultat) };
+}
+
+/** Les nœuds des réseaux PRINCIPAUX, tirés des clés d'API que le propriétaire a rangées dans Infisical. */
+export const NOEUDS_PRINCIPAUX = {
+  bep20: (cle: string) => `https://bnb-mainnet.g.alchemy.com/v2/${cle}`,
+  erc20: (cle: string) => `https://eth-mainnet.g.alchemy.com/v2/${cle}`,
+  trc20: "https://api.trongrid.io",
+} as const;
+
+/**
+ * EVM_RPC_KEY (une clé Alchemy : BNB Chain et Ethereum) et TRONGRID_KEY (TronGrid) donnent les nœuds des
+ * réseaux principaux, sans qu'on ait à écrire leurs adresses. Une variable posée à la main passe toujours
+ * avant. L'offre gratuite d'Alchemy ne lit les journaux que dix blocs à la fois : sans réglage explicite,
+ * on lit donc par dix, et le jeton par cinq cents blocs au plus par tour (cinquante lectures).
+ * Rend seulement ce qu'il faut AJOUTER.
+ */
+export function noeudsDesCles(env: Env): Env {
+  const e: Env = {};
+  const evm = env.EVM_RPC_KEY, tron = env.TRONGRID_KEY;
+  if (evm) {
+    for (const r of ["bep20", "erc20"] as const) {
+      const p = prefixe(r);
+      if (env[variableDuNoeud(r)]) continue;
+      e[variableDuNoeud(r)] = NOEUDS_PRINCIPAUX[r](evm);
+      if (!env[`${p}_BLOCS_PAR_REQUETE`]) e[`${p}_BLOCS_PAR_REQUETE`] = "10";
+      if (!env[`${p}_BLOCS_JETON_PAR_TOUR`]) e[`${p}_BLOCS_JETON_PAR_TOUR`] = "500";
+    }
+  }
+  if (tron) {
+    if (!env.TRC20_NOEUD) e.TRC20_NOEUD = NOEUDS_PRINCIPAUX.trc20;
+    if (!env.TRC20_CLE_API) e.TRC20_CLE_API = tron;
+  }
+  return e;
 }
 
 /**
@@ -128,7 +161,8 @@ export async function veilleursDepuis(env: Env, seulement?: Reseau[], journal?: 
     const p = prefixe(id), f = fiche(id);
     const confirmations = Number(env[`${p}_CONFIRMATIONS`] ?? f.confirmations);
     const ch = f.famille === "evm"
-      ? new ChaineEvm({ reseau: id, rpcUrl: noeud, usdt: env[`${p}_USDT`] ?? "", xafe: env[`${p}_XAFE`] ?? "", graine, confirmations })
+      ? new ChaineEvm({ reseau: id, rpcUrl: noeud, usdt: env[`${p}_USDT`] ?? "", xafe: env[`${p}_XAFE`] ?? "", graine, confirmations,
+                        blocsParRequete: env[`${p}_BLOCS_PAR_REQUETE`] ? Number(env[`${p}_BLOCS_PAR_REQUETE`]) : undefined })
       : new ChaineTron({ reseau: id, noeud, usdt: env[`${p}_USDT`] ?? "", xafe: env[`${p}_XAFE`] ?? "", graine, confirmations, cleApi: env.TRC20_CLE_API });
     await ch.demarrer();
     veilleurs.push(new Veilleur(ch, commun(id)));

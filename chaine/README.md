@@ -190,7 +190,11 @@ coller). `ADMIN_CLE` n'est faite que pour les réseaux d'essai.
 
 Les secrets ne se tapent nulle part : ils vivent dans Infisical et se
 synchronisent vers les secrets des fonctions Supabase (`XAFE_GRAINE`,
-`BEP20_RPC`, `BEP20_BLOCS_JETON_PAR_TOUR`, `TRC20_NOEUD`, `TRC20_CLE_API`).
+`EVM_RPC_KEY` — une clé Alchemy, BNB Chain et Ethereum —, `TRONGRID_KEY`) :
+le veilleur en tire les nœuds des réseaux principaux (`noeudsDesCles`), et lit
+les journaux dix blocs à la fois sauf réglage contraire
+(`BEP20_BLOCS_PAR_REQUETE`) — la limite de l'offre gratuite d'Alchemy. Une
+adresse posée à la main (`BEP20_RPC`, `TRC20_NOEUD`) passe toujours avant.
 Le **nœud** (avec sa clé d'API) ne va jamais dans le paramètre `chaine` : les
 paramètres sont lisibles par tout client connecté ; le veilleur prend alors le
 nœud du secret et le reste (contrat, USDT, bloc de départ) de la base.

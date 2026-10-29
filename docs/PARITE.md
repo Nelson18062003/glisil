@@ -135,10 +135,11 @@ Le passage aux réseaux principaux suit [PRODUCTION.md](PRODUCTION.md), étape K
    de frappe d'un milliard de XAF par jour et par chaîne, que l'admin change à
    tout moment, les rôles posés au déploiement, la clé de mise en service qui
    renonce à tout et se jette.
-2. **L'admin** : un compte MetaMask (BSC) et un compte TronLink (Tron) du
-   propriétaire, en attendant un **Safe 2 sur 3** et une permission
-   multisignature sur Tron (la transmission de l'admin a déjà un délai de deux
-   jours). Pauseur et geleur distincts plus tard.
+2. **L'admin** : dès le déploiement, un **Safe 2 sur 3** (trois comptes
+   MetaMask du propriétaire) sur BSC, et un compte TronLink dont la permission
+   propriétaire est à 2 sur 3 sur Tron (la transmission de l'admin a en plus un
+   délai de deux jours). Pauseur et geleur : un compte du propriétaire, seul,
+   pour arrêter vite.
 3. **La graine de production** n'est jamais dans la base : un secret des
    fonctions (Infisical), et deux copies papier.
 4. **Les floats dédiés** à Glisil, et une consultation de solde par puce avant

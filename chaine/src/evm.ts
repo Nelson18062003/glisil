@@ -26,11 +26,15 @@ const TRANSFER = IFACE.getEvent("Transfer")!.topicHash;
 
 export type ConfigEvm = { rpcUrl: string; usdt: string; xafe: string; confirmations: number; graine: string;
   /** le réseau EVM : BSC par défaut, Ethereum, Base, Polygon… — il décide du compte de dérivation */
-  reseau?: Reseau };
+  reseau?: Reseau;
+  /** au plus combien de blocs par lecture de journaux (eth_getLogs) : l'offre gratuite d'Alchemy n'en accepte que 10 */
+  blocsParRequete?: number };
 
 export class ChaineEvm implements Chaine {
   readonly reseau: Reseau;
   readonly confirmations: number;
+  private readonly pasDepots: number;
+  private readonly pasJeton: number;
   readonly fournisseur: JsonRpcProvider;
   readonly chaud: string;
   readonly reserve: string;
@@ -41,6 +45,9 @@ export class ChaineEvm implements Chaine {
   constructor(c: ConfigEvm) {
     this.reseau = c.reseau ?? "bep20";
     this.confirmations = c.confirmations;
+    const pas = c.blocsParRequete && c.blocsParRequete > 0 ? Math.floor(c.blocsParRequete) : undefined;
+    this.pasDepots = Math.min(pas ?? 2000, 2000);
+    this.pasJeton = Math.min(pas ?? 5000, 5000);
     this.graine = c.graine;
     // cacheTimeout -1 : ethers garde sinon 250 ms la réponse « pas de reçu », et un tour qui suit de près croit
     // jamais partie une transaction déjà minée — sur de l'argent, une réponse d'avant ne vaut rien
@@ -61,8 +68,8 @@ export class ChaineEvm implements Chaine {
     const valables = vers.filter((x) => /^0x[0-9a-fA-F]{40}$/.test(x)).map((x) => zeroPadValue(x.toLowerCase(), 32));
     const contrat = await this.jetons[actif].getAddress();
     for (let i = 0; i < valables.length; i += 50) {
-      for (let b = de; b <= a; b += 2000) {
-        const journaux = await this.fournisseur.getLogs({ address: contrat, topics: [TRANSFER, null, valables.slice(i, i + 50)], fromBlock: b, toBlock: Math.min(a, b + 1999) });
+      for (let b = de; b <= a; b += this.pasDepots) {
+        const journaux = await this.fournisseur.getLogs({ address: contrat, topics: [TRANSFER, null, valables.slice(i, i + 50)], fromBlock: b, toBlock: Math.min(a, b + this.pasDepots - 1) });
         for (const j of journaux) {
           const e = IFACE.parseLog(j)!;
           vus.push({ adresse: String(e.args.to), brut: BigInt(e.args.value), preuve: `${j.transactionHash}:${j.index}` });
@@ -87,8 +94,8 @@ export class ChaineEvm implements Chaine {
   async mouvementsXafe(de: number, a: number): Promise<MouvementJeton[]> {
     const contrat = await this.jetons.XAFe.getAddress();
     const journaux = [];
-    for (let b = de; b <= a; b += 5000) {
-      for (const j of await this.fournisseur.getLogs({ address: contrat, topics: [Object.values(SUJETS)], fromBlock: b, toBlock: Math.min(a, b + 4999) })) {
+    for (let b = de; b <= a; b += this.pasJeton) {
+      for (const j of await this.fournisseur.getLogs({ address: contrat, topics: [Object.values(SUJETS)], fromBlock: b, toBlock: Math.min(a, b + this.pasJeton - 1) })) {
         journaux.push({ tx: j.transactionHash, index: j.index, bloc: j.blockNumber, topics: [...j.topics], data: j.data });
       }
     }

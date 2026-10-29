@@ -66,11 +66,17 @@ page), ou `select verifier_le_profil_production(false);`.
 
 | Dossier | Synchronisé vers | Contenu |
 |---|---|---|
-| `/supabase-fonctions` | secrets des fonctions de `dfixghiwqlwulmzixlpf` (Auto-Sync, **Disable Secret Deletion**) | `XAFE_GRAINE`, `BEP20_RPC`, `BEP20_BLOCS_JETON_PAR_TOUR`, `TRC20_NOEUD`, `TRC20_CLE_API`, `RESEND_API_KEY`, `COURRIEL_JETON` |
+| `/supabase-fonctions` | secrets des fonctions de `dfixghiwqlwulmzixlpf` (Auto-Sync, **Disable Secret Deletion**) | `XAFE_GRAINE`, `EVM_RPC_KEY` (Alchemy : BNB Chain et Ethereum), `TRONGRID_KEY`, `RESEND_API_KEY`, `COURRIEL_JETON` |
 | `/vercel-app` | Vercel `glisil-app`, Production | `VITE_SUPABASE_URL=https://dfixghiwqlwulmzixlpf.supabase.co`, `VITE_SUPABASE_ANON_KEY`, `VITE_PROFIL=production`, `VITE_SUPPORT_WHATSAPP` |
 | `/vercel-admin` | Vercel `glisil-admin`, Production | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_PROFIL=production` |
 | `/outils` | rien (`infisical run` seulement) | `PROD_DB_URL`, `MOTEUR_URL=https://dfixghiwqlwulmzixlpf.supabase.co/rest/v1`, `MOTEUR_CLE` (service), `SUPABASE_ACCESS_TOKEN`, `CLE_BSCSCAN`, `CLE_DE_MISE_EN_SERVICE` |
 | `/auth`, `/totem` | rien (archive) | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, la clé SMTP Resend ; `XAFE_TERMINAL_CLE` |
+
+`EVM_RPC_KEY`, `TRONGRID_KEY` et `PROD_DB_PASSWORD` sont **déjà** dans
+Production (fait le 29/10, à la racine). Créer le dossier `supabase-fonctions`
+et y **déplacer** `EVM_RPC_KEY` et `TRONGRID_KEY` ; `PROD_DB_PASSWORD` reste à
+la racine, jamais synchronisé. Le veilleur fabrique lui-même les adresses des
+nœuds à partir de ces deux clés (`chaine/src/service.ts`, `noeudsDesCles`).
 
 **Jamais** dans Infisical : les phrases de récupération MetaMask / TronLink,
 les futurs signataires du Safe, quoi que ce soit de la bêta. **Jamais**
@@ -88,7 +94,12 @@ synchronisé : `VEILLEUR_JETON` (le coffre de la base en est la seule source).
    (adresses publiques).
 5. `clear`, et vider l'historique du terminal.
 
-## F [P] L'installation : UNE commande
+## F [C] L'installation : UNE instruction
+
+Claude installe par la connexion Supabase du chantier, en **une seule
+instruction SQL** (`supabase/production/installer.py` la fabrique : l'annonce,
+chaque migration, puis le constat, dans un même bloc) — une instruction est
+toujours tout ou rien. Le même résultat, par `psql`, si besoin :
 
 ```sh
 infisical run --env=prod --path=/outils -- sh -c 'psql "$PROD_DB_URL" -X -v ON_ERROR_STOP=1 --single-transaction \
@@ -137,11 +148,15 @@ Jamais `essai_graine` ni `essai_admin_cle` : le constat les refuse.
 
 ## H [P] Les fournisseurs
 
-- Une clé TronGrid, un nœud BSC payant (NodeReal, QuickNode, Alchemy) →
-  Infisical `/supabase-fonctions` : `BEP20_RPC`, `BEP20_BLOCS_JETON_PAR_TOUR`
-  (la portée `eth_getLogs` du fournisseur, par exemple 5000), `TRC20_NOEUD=https://api.trongrid.io`,
-  `TRC20_CLE_API`. Le nœud ne va **jamais** dans les paramètres : ils sont
-  lisibles par tout client connecté.
+- Alchemy (BNB Chain + Ethereum) et TronGrid : **faits le 29/10**
+  (`EVM_RPC_KEY`, `TRONGRID_KEY`). Le nœud ne va **jamais** dans les
+  paramètres : ils sont lisibles par tout client connecté.
+- **L'offre gratuite d'Alchemy ne lit les journaux que 10 blocs à la fois**
+  (et 30 millions d'unités par mois). Le veilleur s'y adapte seul (lectures
+  par dix), mais il consomme alors davantage, un tour par minute : prévoir de
+  passer Alchemy en « Pay As You Go » si le tableau d'Alchemy approche de la
+  limite — on règle ensuite `BEP20_BLOCS_PAR_REQUETE=2000` pour lire moins
+  souvent. À regarder la première semaine.
 - Resend (domaine `glisil.com` vérifié) : deux clés « Sending », l'une pour les
   fonctions (`RESEND_API_KEY`), l'autre pour le SMTP d'Auth (`/auth`). Passer
   à l'offre Pro avant l'ouverture (l'offre gratuite : 100 e-mails par jour).
@@ -164,7 +179,9 @@ appel à `totem-sms` sans signature reçoit 401.
 Les réglages exacts sont dans [CONNEXION.md](CONNEXION.md) : SMTP Resend
 (`smtp.resend.com:465`, expéditeur `code@glisil.com`), les modèles d'e-mail,
 « Confirm email » activé, la double authentification TOTP, la protection des
-mots de passe divulgués, au moins 100 e-mails par heure. URL : Site URL
+mots de passe divulgués, au moins 100 e-mails par heure. **Sessions**
+(Authentication → Sessions) : « Inactivity timeout » **7 jours**,
+« Time-box user sessions » **30 jours** (votre décision du 29/10). URL : Site URL
 `https://app.glisil.com` ; Redirect URLs `https://app.glisil.com/**`,
 `https://admin.glisil.com/**` — **aucun domaine de la bêta**. Google Cloud :
 écran de consentement « Glisil », client Web (origines app et admin ; retour
@@ -177,21 +194,30 @@ Le contrat corrigé tient lui-même la réserve, intransférable ; le constructe
 pose tous les rôles et le plafond du jour (1 000 000 000 XAF). Voir
 [chaine/README.md](../chaine/README.md).
 
-1. [P] Un compte MetaMask « Glisil admin » (BSC) et un compte TronLink
-   (Tron) : l'admin, le pauseur et le geleur, en attendant le Safe. Donner à
-   Claude leurs adresses publiques.
+1. [P + C] **Le patron des contrats, AVANT le déploiement** (décidé le 29/10) :
+   - trois comptes MetaMask (votre ordinateur, vos deux téléphones), chacun
+     avec sa phrase de récupération sur papier ;
+   - un **Safe** sur BNB Chain (app.safe.global) avec ces trois comptes, **2
+     signatures sur 3** ; son adresse est l'**admin** du contrat BSC (et plus
+     tard d'Ethereum) ;
+   - Tron n'a pas de Safe : un compte TronLink, dont la permission
+     « propriétaire » passe à 2 sur 3 (trois clés) ; il est l'admin du contrat
+     Tron ;
+   - le **pauseur** et le **geleur** : l'un de vos comptes MetaMask (BSC) et
+     votre compte TronLink — il faut pouvoir arrêter vite, seul.
+   Donner à Claude les adresses PUBLIQUES (Safe, MetaMask, TronLink).
 2. [P] Une clé de mise en service NEUVE (`CLE_DE_MISE_EN_SERVICE`, `/outils`),
    financée : ≈ 0,01 BNB ; ≈ 300 TRX. Le wallet chaud : 0,06 BNB ; 900 TRX.
 Chaque commande de mise en service lit deux dossiers d'Infisical (la clé et
 la base dans `/outils`, la graine et les nœuds dans `/supabase-fonctions`) :
 `PROD="infisical run --env=prod --path=/supabase-fonctions -- infisical run --env=prod --path=/outils --"`.
 
-3. [P] `$PROD npm --prefix chaine run mise-en-service -- deployer --production --reseau bep20 --chaud <chaud BEP20> --admin <MetaMask> --pauseur <MetaMask> --geleur <MetaMask> --usdt 0x55d398326f99059fF775485246999027B3197955`
+3. [P] `$PROD npm --prefix chaine run mise-en-service -- deployer --production --reseau bep20 --chaud <chaud BEP20> --admin <Safe> --pauseur <MetaMask> --geleur <MetaMask> --usdt 0x55d398326f99059fF775485246999027B3197955`
    — un réseau principal sans `--production` est refusé. Noter l'adresse et le
    bloc.
 4. [P] `$PROD npm --prefix chaine run mise-en-service -- preinscrire --reseau bep20 --xafe <contrat> --de 1 --a 2000 --renoncer` (avec `XAFE_GRAINE`).
 5. [C] `cd contracts && npx hardhat verify --network bsc <contrat> <les sept arguments imprimés>`.
-6. Tron : les mêmes pas, `--reseau trc20`, l'admin TronLink,
+6. Tron : les mêmes pas, `--reseau trc20`, l'admin = le compte TronLink 2 sur 3,
    `--usdt TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t`, `--a 600` ; vérifier sur
    Tronscan (solc 0.8.28, optimiseur 200).
 7. [C] Le paramètre `chaine` (sans nœud) :
@@ -205,9 +231,10 @@ la base dans `/outils`, la graine et les nœuds dans `/supabase-fonctions`) :
 8. [C] `$PROD npm --prefix chaine run mise-en-service -- verifier` : tout vert (la clé de mise en service n'a plus aucun rôle), puis `select chaine_etat('bep20')`.
 9. [P] Jeter la clé de mise en service.
 
-Le plafond se change à tout moment depuis le wallet de l'admin
-(`fixerPlafondJour(n × 1 000 000)` ; `mise-en-service plafond --xaf N`
-imprime le nombre exact), sans borne haute, effet immédiat, chaîne par chaîne.
+Le plafond se change à tout moment par l'admin — sur BSC, une transaction du
+Safe (deux signatures) : `fixerPlafondJour(n × 1 000 000)` ;
+`mise-en-service plafond --xaf N` imprime le nombre exact. Sans borne haute,
+effet immédiat, chaîne par chaîne.
 
 ## L [P] Vercel
 
@@ -278,10 +305,7 @@ La démonstration de TOTEM reste sur le projet de la bêta.
 
 ## Q Plus tard
 
-- L'admin des contrats en Safe 2 sur 3 (BSC : `beginDefaultAdminTransfer`,
-  deux jours, `acceptDefaultAdminTransfer`) ; une permission multisignature sur
-  Tron.
-- Un pauseur et un geleur distincts de l'admin.
+- Un pauseur et un geleur confiés à d'autres personnes.
 - Livraison 2 : Ethereum, USDC.
 
 ## Ce qui reste à surveiller
@@ -289,8 +313,9 @@ La démonstration de TOTEM reste sur le projet de la bêta.
 - Une clé chaude volée ne peut plus vider la réserve (le contrat la tient) ;
   elle peut frapper vers un wallet jusqu'au plafond du jour — visible à la
   parité, ligne « inconnue » ; geler, puis l'admin détruit les fonds gelés.
-- Tant que le Safe n'existe pas, un seul compte MetaMask / TronLink est admin :
-  un profil de navigateur dédié, la phrase de récupération sur papier seulement.
+- Le Safe (BSC) et le compte TronLink 2 sur 3 : un téléphone volé ne suffit
+  pas. Les phrases de récupération sur papier seulement, jamais en photo ni
+  dans Infisical.
 - `XAFE_GRAINE` vit dans Infisical et dans les secrets des fonctions :
   quiconque est propriétaire de l'un ou de l'autre peut déplacer les wallets
   chauds et de dépôt. Double authentification partout, membres au minimum.

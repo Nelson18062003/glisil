@@ -4354,6 +4354,34 @@ begin
 end $$;
 rollback;
 
+-- 11.88 · cent déclarations par compte et par jour (0042, décision du 29/10). Témoin : le
+-- code d'avant (0034) refusait dès la trente et unième.
+begin;
+set local xafe.compte = '11111111-1111-1111-1111-111111111111';
+do $$
+declare v_ref text := ouvrir_depot('mtn', 'k-11.88') ->> 'reference'; v_d uuid; i int;
+begin
+  select id into v_d from depots where reference = v_ref;
+  -- 99 déclarations déjà faites aujourd'hui (refusées : aucune n'est « en attente »)
+  -- celles d'Alice dans les scénarios d'avant : d'hier, et plus en attente
+  update depot_declarations set declare_le = now() - interval '2 days',
+         etat = case when etat = 'attendu' then 'refuse' else etat end
+   where compte_id = '11111111-1111-1111-1111-111111111111';
+  for i in 1..99 loop
+    insert into depot_declarations (depot_id, compte_id, operateur, transaction_id, etat)
+    values (v_d, '11111111-1111-1111-1111-111111111111', 'mtn', 'TX11880000' || lpad(i::text, 3, '0'), 'refuse');
+  end loop;
+  perform declarer_transaction(v_ref, 'TX11889999100');
+  assert exists (select 1 from depot_declarations where transaction_id = normaliser_transaction_id('TX11889999100')), 'la centième passe';
+  begin perform declarer_transaction(v_ref, 'TX11889999101'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'trop de transaction ID aujourd''hui', sqlerrm; end;
+  -- le nombre se règle
+  update parametres set valeur = valeur || '{"declarations_jour": 150}' where cle = 'depot';
+  perform declarer_transaction(v_ref, 'TX11889999102');
+  raise notice '✓ 11.88 cent déclarations par jour passent, la cent et unième attend (réglable : depot.declarations_jour)';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

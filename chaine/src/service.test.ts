@@ -41,3 +41,20 @@ test("en production, sans nœud dans la base : contrats et départ viennent quan
   assert.equal(e.BEP20_DEPART, "1");
   assert.equal(e.BEP20_RPC, "https://n", "le nœud vient du secret de la fonction");
 });
+
+test("les clés du propriétaire (EVM_RPC_KEY, TRONGRID_KEY) donnent les nœuds des réseaux principaux — jamais en essai", () => {
+  const prod: ConfigurationMoteur = { essai: false, reseaux: { bep20: { xafe: "0xX", usdt: "0xU", depart: 1 } } } as ConfigurationMoteur;
+  const e = envDepuisConfiguration(prod, { EVM_RPC_KEY: "k", TRONGRID_KEY: "t" });
+  assert.equal(e.BEP20_RPC, "https://bnb-mainnet.g.alchemy.com/v2/k");
+  assert.equal(e.ERC20_RPC, "https://eth-mainnet.g.alchemy.com/v2/k");
+  assert.equal(e.BEP20_BLOCS_PAR_REQUETE, "10", "l'offre gratuite d'Alchemy : dix blocs par lecture");
+  assert.equal(e.BEP20_BLOCS_JETON_PAR_TOUR, "500");
+  assert.equal(e.TRC20_NOEUD, "https://api.trongrid.io");
+  assert.equal(e.TRC20_CLE_API, "t");
+  // une adresse posée à la main passe avant, et son réglage avec
+  const m = envDepuisConfiguration(prod, { EVM_RPC_KEY: "k", BEP20_RPC: "https://autre", BEP20_BLOCS_PAR_REQUETE: "2000" });
+  assert.equal(m.BEP20_RPC, "https://autre");
+  assert.equal(m.BEP20_BLOCS_PAR_REQUETE, "2000");
+  // sur un réseau d'essai, jamais un nœud principal
+  assert.equal(envDepuisConfiguration({ ...prod, essai: true }, { EVM_RPC_KEY: "k" }).BEP20_RPC, undefined);
+});

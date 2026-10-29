@@ -96,6 +96,8 @@ TEMOINS = {
     "0040_reserve_dans_le_contrat.sql": ("false", "rejouable telle quelle"),
     # 0041 : inerte hors production ; sur la production, re-tient le profil après 0021/0023/0032 rejouées.
     "0041_profil_production.sql": ("false", "rejouable telle quelle"),
+    # 0042 : declarer_transaction « or replace ».
+    "0042_cent_declarations_par_jour.sql": ("false", "rejouable telle quelle"),
 }
 
 

@@ -69,9 +69,11 @@ import { ChaineEvm } from "./evm.ts";
 import { moteur } from "./moteur.ts";
 import { aLeRole, donnerLesRoles, INSCRIPTEUR, inscrire, preinscrire, renoncer, ROLES, ROLES_DE_GARDE, signataireEvm, signataireTron, type Artefact, type Signataire } from "./signataire.ts";
 import { estReseauPrincipal, USDT_OFFICIEL, verifierLesOptions } from "./options-de-deploiement.ts";
+import { noeudsDesCles } from "./service.ts";
 import { ChaineTron, vingtOctets } from "./tron.ts";
 
-const env = process.env;
+// EVM_RPC_KEY et TRONGRID_KEY (Infisical) donnent les nœuds des réseaux principaux (service.ts, noeudsDesCles)
+const env: NodeJS.ProcessEnv = { ...process.env, ...noeudsDesCles(process.env) };
 const NATIF = (r: Reseau) => {
   const f = fiche(r);
   return { nom: f.natif, decimales: f.decimalesNatif, defaut: f.natifEssai, minimum: String(f.natifMinimum) };
