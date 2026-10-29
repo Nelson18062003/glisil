@@ -99,7 +99,10 @@ synchronisé : `VEILLEUR_JETON` (le coffre de la base en est la seule source).
 Claude installe par la connexion Supabase du chantier, en **une seule
 instruction SQL** (`supabase/production/installer.py` la fabrique : l'annonce,
 chaque migration, puis le constat, dans un même bloc) — une instruction est
-toujours tout ou rien. Le même résultat, par `psql`, si besoin :
+toujours tout ou rien. Le fichier fait près d'un mégaoctet : la base le
+télécharge elle-même (extension `http`), à un commit précis, vérifie son
+empreinte md5, puis l'exécute — dans la même instruction. Le même résultat,
+par `psql`, si besoin :
 
 ```sh
 infisical run --env=prod --path=/outils -- sh -c 'psql "$PROD_DB_URL" -X -v ON_ERROR_STOP=1 --single-transaction \
