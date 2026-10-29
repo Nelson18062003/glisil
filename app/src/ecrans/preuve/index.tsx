@@ -152,18 +152,21 @@ export function Preuve() {
             </Paper>
 
             <Stack direction="row" gap={2} flexWrap="wrap">
-              <Colonne numero={1} titre={t("Les floats", "Floats")} phrase={t("L'argent posé chez MTN et Orange, tel que l'opérateur l'annonce.", "The money held with MTN and Orange, as reported by the operator.")} valeur={r.floats != null ? xaf(r.floats) : t("non connu", "unknown")} unite={r.floats != null ? "XAF" : ""}
+              <Colonne numero={1} titre={t("Les floats", "Floats")} phrase={t("L'argent posé chez MTN et Orange, tel que l'opérateur l'annonce.", "The money held with MTN and Orange, as reported by the operator.")} valeur={r.floats != null ? (r.floats_arrondi ? t(`au moins ${xaf(r.floats)}`, `at least ${xaf(r.floats)}`) : xaf(r.floats)) : t("non connu", "unknown")} unite={r.floats != null ? "XAF" : ""}
                 tone={r.couverture == null ? "amber" : r.couverture >= 0 ? "green" : "red"}>
                 {(r.floats_detail ?? []).map((f) => (
                   <Stack key={f.operateur} direction="row" alignItems="center" gap={1}>
                     <Badge kind={f.operateur} size={28} />
                     <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Line label={opDe(f.operateur).nom} value={f.solde != null ? `${xaf(f.solde)} XAF` : "—"} />
+                      <Line label={opDe(f.operateur).nom} value={f.solde != null ? (r.floats_arrondi ? t(`au moins ${xaf(f.solde)} XAF`, `at least ${xaf(f.solde)} XAF`) : `${xaf(f.solde)} XAF`) : "—"} />
                       {f.annonce_le && <Typography variant="caption">{t(`annoncé ${quand(f.annonce_le)}`, `reported ${quand(f.annonce_le)}`)}</Typography>}
                     </Box>
                   </Stack>
                 ))}
-                {r.couverture != null && <Typography variant="caption">{r.couverture >= 0 ? t(`${xaf(r.couverture)} XAF de plus que ce qui est dû : les frais gagnés et les fonds propres de Glisil.`, `${xaf(r.couverture)} XAF more than what is owed: fees earned and Glisil's own funds.`) : t(`Il manque ${xaf(-r.couverture)} XAF.`, `${xaf(-r.couverture)} XAF short.`)}</Typography>}
+                {r.couverture != null && <Typography variant="caption">{r.floats_arrondi
+                  ? (r.couverture === 0 ? t("Ce qui est dû est couvert.", "What is owed is covered.") : r.couverture > 0 ? t(`Au moins ${xaf(r.couverture)} XAF de plus que ce qui est dû : les frais gagnés et les fonds propres de Glisil.`, `At least ${xaf(r.couverture)} XAF more than what is owed: fees earned and Glisil's own funds.`) : t(`Il manque jusqu'à ${xaf(-r.couverture)} XAF.`, `Up to ${xaf(-r.couverture)} XAF short.`))
+                  : (r.couverture >= 0 ? t(`${xaf(r.couverture)} XAF de plus que ce qui est dû : les frais gagnés et les fonds propres de Glisil.`, `${xaf(r.couverture)} XAF more than what is owed: fees earned and Glisil's own funds.`) : t(`Il manque ${xaf(-r.couverture)} XAF.`, `${xaf(-r.couverture)} XAF short.`))}</Typography>}
+                {r.floats_arrondi ? <Typography variant="caption">{t("Arrondi au million inférieur : le solde exact d'un float ne se publie pas.", "Rounded down to the million: a float's exact balance is not published.")}</Typography> : null}
               </Colonne>
               <Colonne numero={2} titre={t("Le registre", "The ledger")} phrase={t("Ce que Glisil doit à ses clients : chaque XAFe crédité, moins chaque XAFe payé.", "What Glisil owes its customers: every XAFe credited, minus every XAFe paid out.")} valeur={xaf(r.registre)} unite="XAFe" tone="blue">
                 <Line label={t("dans les comptes Glisil", "in Glisil accounts")} value={xaf(r.dans_comptes)} />

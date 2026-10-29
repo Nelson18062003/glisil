@@ -351,6 +351,8 @@ export type PreuveDeReserve = {
     fait_le: string; statut: StatutParite; registre: number; dans_comptes: number; sur_wallets: number;
     chaine: number | null; offre_lue: number | null; en_route: number; ecart: number | null;
     floats: number | null; couverture: number | null; anomalies: number;
+    /** 0039 : les floats et la couverture sont arrondis à ce pas (le million), vers le bas — le solde exact d'un float ne se publie pas */
+    floats_arrondi?: number;
     reseaux: { reseau: Reseau; offre: number | null; reserve: number | null; bloc: number | null; a_jour: boolean; lu_le: string | null }[];
     /** null si l'équipe ne publie pas le détail des floats */
     floats_detail: { operateur: IdOperateur; solde: number | null; annonce_le: string | null; connu: boolean }[] | null;

@@ -288,6 +288,9 @@ test("les textes de la base se lisent en anglais, et un texte imprévu reste tel
   try {
     assert.equal(s.titreDuServeur("XAFe crédités"), "XAFe credited");
     assert.equal(s.titreDuServeur("Palier 1"), "Tier 1");
+    assert.equal(s.titreDuServeur("Paiement en vérification"), "Payment under review");
+    assert.equal(s.texteDuServeur("Votre paiement de 7,500,000 XAF est arrivé : l'équipe le vérifie avant de créditer vos XAFe."),
+      "Your payment of 7,500,000 XAF has arrived: the team is checking it before crediting your XAFe.");
     assert.equal(s.texteDuServeur("+80,000,000 XAFe reçus par MTN MoMo."), "+80,000,000 XAFe received via MTN MoMo.");
     assert.equal(s.texteDuServeur("12,760,000 XAF envoyés au 600000003. Transaction ID : 18300000003."), "12,760,000 XAF sent to 600000003. Transaction ID: 18300000003.");
     /* 0038 : un remboursement payé en plusieurs transferts dit tous ses ID */

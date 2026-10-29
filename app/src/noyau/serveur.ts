@@ -17,6 +17,7 @@ const TITRES: Record<string, string> = {
   "Envoi non parti": "Transfer not sent",
   "Ordre exécuté": "Order filled",
   "Paiement retenu": "Payment held",
+  "Paiement en vérification": "Payment under review",
   "Pièces reçues": "Documents received",
   "Sortie annulée": "Withdrawal canceled",
   "Sortie envoyée": "Withdrawal sent",
@@ -52,6 +53,7 @@ const MOTIFS: Forme[] = [
 
 const TEXTES: Forme[] = [
   [/^\+([\d\s  ,.]+) XAFe reçus par (.+)\.$/, (_, n, op) => `+${nombre(n)} XAFe received via ${op}.`],
+  [/^Votre paiement de ([\d\s  ,.]+) XAF est arrivé : l'équipe le vérifie avant de créditer vos XAFe\.$/, (_, n) => `Your payment of ${nombre(n)} XAF has arrived: the team is checking it before crediting your XAFe.`],
   [/^([\d\s  ,.]+) XAF reçus au-delà de votre palier : ils vous seront remboursés\.$/, (_, n) => `${nombre(n)} XAF received above your tier limit: they will be refunded.`],
   [/^([\d\s  ,.]+) XAF envoyés au (\d+)\. Transaction ID : (.+)\.$/, (_, n, num, id) => `${nombre(n)} XAF sent to ${num}. Transaction ID: ${id}.`],
   [/^([\d\s  ,.]+) XAF envoyés au (\d+)\.$/, (_, n, num) => `${nombre(n)} XAF sent to ${num}.`],

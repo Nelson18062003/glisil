@@ -1089,12 +1089,12 @@ export class GuichetDemo implements Guichet {
     return {
       releve: {
         fait_le: iso(t - 70_000), statut: "en_cours", registre, dans_comptes: registre - 750_000, sur_wallets: 750_000,
-        chaine: registre - enRoute, offre_lue: registre - enRoute, en_route: enRoute, ecart: 0, floats: 13_120_000, couverture: 13_120_000 - registre, anomalies: 0,
+        chaine: registre - enRoute, offre_lue: registre - enRoute, en_route: enRoute, ecart: 0, floats: 14_000_000, couverture: Math.floor((14_620_000 - registre) / 1e6) * 1e6, floats_arrondi: 1_000_000, anomalies: 0,
         reseaux: [{ reseau: "bep20", offre: registre - enRoute, reserve: registre - enRoute - 750_000, bloc: 137_263_410, a_jour: true, lu_le: iso(t - 30_000) },
                   { reseau: "trc20", offre: 0, reserve: 0, bloc: 71_897_120, a_jour: true, lu_le: iso(t - 45_000) }],
-        floats_detail: [{ operateur: "mtn", solde: 8_420_000, annonce_le: iso(t - 6 * 60_000), connu: true }, { operateur: "om", solde: 4_700_000, annonce_le: iso(t - 41 * 60_000), connu: true }],
+        floats_detail: [{ operateur: "mtn", solde: 9_000_000, annonce_le: iso(t - 6 * 60_000), connu: true }, { operateur: "om", solde: 4_000_000, annonce_le: iso(t - 41 * 60_000), connu: true }],
       },
-      historique: Array.from({ length: 48 }, (_, i) => ({ fait_le: iso(t - (48 - i) * 3600_000), statut: "juste" as const, registre: registre - (48 - i) * 60_000, chaine: registre - (48 - i) * 60_000, ecart: 0, floats: 13_120_000 - (48 - i) * 50_000 })),
+      historique: Array.from({ length: 48 }, (_, i) => ({ fait_le: iso(t - (48 - i) * 3600_000), statut: "juste" as const, registre: registre - (48 - i) * 60_000, chaine: registre - (48 - i) * 60_000, ecart: 0, floats: Math.floor((14_620_000 - (48 - i) * 50_000) / 1e6) * 1e6 })),
       contrats: [{ reseau: "bep20", contrat: "0x750E774368240063BD5CF52b30b91183Efa4dAf3", explorateur: "https://testnet.bscscan.com", reserve: "0x771C971497E4409d0225350C49609691E955465C" },
                  { reseau: "trc20", contrat: "TFtfFFmagGUjxGrG3cM4MX4kTv8YvBgLnk", explorateur: "https://nile.tronscan.org/#", reserve: "TEW4N3ZiF23GxHTYu8pen6r8uhHeZpALYZ" }],
       essai: true, lignes, alertes: 0,
