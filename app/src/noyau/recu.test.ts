@@ -10,7 +10,7 @@ import { poserLangue } from "./langue";
 const TRACE: TraceChaine = {
   reseau: "bep20", operation: "frapper", montant: 1000, reference: "XAFe-DP-000003", etat: "confirme",
   txHash: "0xbe6acf4f541e732a5b4edbdb23777e7f6701fc47581214064c4b8ec1ba57c917", bloc: 137261987, essai: true,
-  contrat: "0x750E774368240063BD5CF52b30b91183Efa4dAf3", reserve: "0x771C971497E4409d0225350C49609691E955465C",
+  contrat: "0x750E774368240063BD5CF52b30b91183Efa4dAf3", reserve: "0x750E774368240063BD5CF52b30b91183Efa4dAf3",
   explorateur: "https://testnet.bscscan.com", empreinte: "0x8032a35a8ea63cb2215340ea154d627a97727bf251507c72ef921741832b9a35", relue: true, confirmeLe: null,
 };
 

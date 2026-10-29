@@ -58,16 +58,32 @@ function Reseau({ r }: { r: ReseauWallets }) {
       <Stack gap={1.5}>
         {r.muet && e && <Alert severity="error" sx={{ borderRadius: 4 }}>Le veilleur ne publie plus rien depuis plus de deux minutes : les dépôts ne sont plus crédités et les retraits ne partent plus sur ce réseau. Vérifiez le service (npm run veilleur).</Alert>}
         {(e?.alertes ?? []).map((a, i) => <Alert key={i} severity="warning" sx={{ borderRadius: 4 }}>{phrase(a)}</Alert>)}
+        {e?.en_pause && <Alert severity="error" sx={{ borderRadius: 4 }}><b>Le contrat XAFe est en pause.</b> Aucune frappe, aucune destruction, aucun transfert de XAFe sur ce réseau : les dépôts et retraits XAFe attendent. Seul l'admin du contrat (le wallet matériel du propriétaire) peut reprendre : <code>reprendre()</code>, sur l'explorateur.</Alert>}
+        {e?.xafe_chaud != null && e.xafe_chaud > 0 && <Alert severity="error" sx={{ borderRadius: 4 }}><b>Le wallet chaud tient {enTranches(e.xafe_chaud, 2)} XAFe.</b> Il ne devrait jamais en tenir : la réserve est au contrat, et un retrait frappe directement chez le client. Chercher d'où ils viennent avant tout autre geste.</Alert>}
+        {e?.reste_du_jour != null && e.plafond_jour != null && e.reste_du_jour <= 0 && <Alert severity="warning" sx={{ borderRadius: 4 }}><b>Le plafond de frappe du jour est atteint</b> ({enTranches(e.plafond_jour, 0)} XAFe vers l'extérieur). Les retraits XAFe suivants attendent minuit UTC, dans l'ordre, ou que l'admin du contrat relève le plafond (<code>fixerPlafondJour</code>).</Alert>}
+        {e?.stock_xafe_ok === false && <Alert severity="warning" sx={{ borderRadius: 4 }}><b>Le stock d'adresses de dépôt XAFe inscrites d'avance s'épuise.</b> Une adresse neuve ne peut être donnée à un client qu'une fois inscrite au contrat : préinscrire le stock suivant avec la clé de mise en service (<code>npm run mise-en-service -- preinscrire --reseau {r.reseau} --xafe …</code>), puis la faire renoncer.</Alert>}
         {e && e.a_inscrire.length > 0 && (
           <Alert severity="info" sx={{ borderRadius: 4 }} action={
             <IconButton aria-label="Copier les adresses à inscrire" onClick={async () => { try { await navigator.clipboard.writeText(e.a_inscrire.join(" ")); setCopie(true); } catch { /* refusé */ } }} color={copie ? "primary" : "default"}><ContentCopyRounded /></IconButton>
           }>
-            <b>{e.a_inscrire.length} adresse{e.a_inscrire.length > 1 ? "s" : ""} de dépôt XAFe</b> attend{e.a_inscrire.length > 1 ? "ent" : ""} leur inscription au contrat. Tant qu'elles ne sont pas inscrites, aucun client ne reçoit d'adresse XAFe neuve. Elles s'inscrivent avec la clé de l'admin du contrat : <code>npm run mise-en-service -- inscrire --reseau {r.reseau} --xafe …</code>
+            <b>{e.a_inscrire.length} adresse{e.a_inscrire.length > 1 ? "s" : ""} de dépôt XAFe</b> attend{e.a_inscrire.length > 1 ? "ent" : ""} leur inscription au contrat. Tant qu'elles ne sont pas inscrites, aucun client ne reçoit d'adresse XAFe neuve. Une adresse neuve s'inscrit d'avance avec la clé de mise en service (<code>npm run mise-en-service -- preinscrire --reseau {r.reseau} --xafe …</code>) ; une adresse qui a déjà reçu des XAFe, seulement avec la clé de l'admin du contrat (<code>inscrire</code>).
           </Alert>
         )}
         {!e && <Typography variant="body2">Aucun état publié. Le veilleur n'a pas encore tourné sur ce réseau — voir chaine/README.md, « Mise en service ».</Typography>}
         {e && (
           <Paper sx={{ p: 2.5, borderRadius: 5 }}>
+            {e.reserve_adresse && (
+              <Ligne label="Réserve XAFe">
+                <Adresse valeur={e.reserve_adresse} />
+                <Typography variant="caption">Tenue par le contrat lui-même, intransférable : elle ne fait que se frapper et se détruire, au fil des dépôts et des sorties.{e.reserve_xafe != null ? ` ${enTranches(e.reserve_xafe, 2)} XAFe au dernier bloc lu.` : ""}</Typography>
+              </Ligne>
+            )}
+            {e.plafond_jour != null && (
+              <Ligne label="Frappe du jour">
+                <Typography>{e.reste_du_jour != null ? `${enTranches(e.reste_du_jour, 0)} XAFe encore permis` : "—"} sur {enTranches(e.plafond_jour, 0)}</Typography>
+                <Typography variant="caption">Le plafond ne compte que les XAFe frappés vers des wallets externes (les retraits), jamais la réserve. Il se remet à zéro à minuit UTC ; l'admin du contrat le change quand il veut.</Typography>
+              </Ligne>
+            )}
             <Ligne label="Wallet chaud"><Adresse valeur={e.chaud} /></Ligne>
             <Ligne label="Au chaud">
               <Typography>{enTranches(e.usdt_chaud, 2)} USDT · {enTranches(e.natif_chaud, decimalesNatif(r.reseau))} {NATIF[r.reseau] ?? ""} pour les frais</Typography>

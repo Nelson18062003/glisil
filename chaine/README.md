@@ -92,11 +92,17 @@ servent qu'à la monnaie d'essai, **jamais** à de l'argent réel.
 |---|---|---|
 | **La graine** (`XAFE_GRAINE`) | sur papier (deux exemplaires, deux lieux), et dans la configuration du service — ni dans le dépôt, ni dans la base, ni au journal | tout : elle refait toutes les adresses et le wallet chaud des deux réseaux |
 | **Le wallet chaud** (adresse n° 0 de la graine, une par réseau) | dérivé de la graine | envoyer les retraits, payer les frais, frapper et détruire des XAFe (rôles `FRAPPEUR` et `DESTRUCTEUR` du contrat) |
-| **L'admin du contrat XAFe** | un wallet matériel, chez vous | donner les rôles, inscrire les adresses de dépôt XAFe, geler, mettre en pause |
+| **L'admin du contrat XAFe** | un wallet matériel, chez vous | donner et retirer les rôles, changer le plafond de frappe du jour (`fixerPlafondJour`), reprendre après une pause (`reprendre`), inscrire une adresse qui a déjà reçu des XAFe |
+| **Le pauseur, le geleur** | des wallets du propriétaire, jamais le chaud | mettre le contrat en pause (sans pouvoir reprendre) ; geler une adresse |
+| **La clé de mise en service** (`CLE_DE_MISE_EN_SERVICE`) | neuve, le temps du déploiement | déployer, inscrire d'avance les adresses de dépôt XAFe NEUVES (`INSCRIPTEUR`), puis renoncer : elle ne garde aucun rôle, `verifier` le prouve, on la jette |
 | **Le wallet froid** | hors ligne, une adresse par réseau | garder le gros des USDT ; le veilleur y envoie, il n'en retire jamais |
 
 Perdre la graine, c'est perdre l'accès aux adresses de dépôt ; la voler, c'est
-pouvoir tout vider.
+pouvoir vider les USDT des adresses et du chaud. **Pas la réserve de XAFe** :
+elle est tenue par le contrat lui-même (`address(this)`), intransférable ; le
+chaud ne peut que frapper vers des wallets dans la limite du plafond du jour
+(visible à la parité, ligne « inconnue » ; gel, puis destruction des fonds
+gelés par l'admin).
 
 ## La mise en service, dans l'ordre
 
@@ -129,9 +135,14 @@ Sur Nile, l'USDT d'essai de Tron existe déjà (`TXYZopYRdj2D9XRtbG411XZZ3kM5VkA
 6 décimales, donné par le robinet) : on peut remplacer `--usdt-essai` par
 `--usdt TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf`. La BSC testnet n'a pas d'USDT
 officiel : `--usdt-essai` y déploie le nôtre.
-Chaque commande déploie XAFe (et un USDT d'essai), donne au chaud
-`FRAPPEUR` et `DESTRUCTEUR`, lui envoie 0,05 BNB ou 200 TRX, et écrit les
-lignes de configuration du veilleur.
+Chaque commande déploie XAFe (et un USDT d'essai) — le constructeur donne au
+chaud `FRAPPEUR` et `DESTRUCTEUR`, pose le pauseur, le geleur, l'inscripteur et
+le plafond du jour —, envoie au chaud 0,05 BNB ou 200 TRX, et écrit les lignes
+de configuration du veilleur. Puis le stock d'adresses de dépôt XAFe s'inscrit
+d'avance, et la clé renonce à l'inscripteur :
+```sh
+npm run mise-en-service -- preinscrire --reseau bep20 --xafe <contrat> --de 1 --a 2000 --renoncer
+```
 
 **4. Vérifier, puis lancer.**
 ```sh
@@ -145,8 +156,10 @@ contrats et leurs décimales, les rôles du chaud, ses frais, le froid. Il dit
 précisément ce qui manque.
 
 **5. Inscrire les adresses XAFe.** Le veilleur prépare les adresses de dépôt
-XAFe ; tant que l'admin ne les a pas inscrites au contrat, aucun client n'en
-reçoit. La page « Wallets » les compte ; elles s'inscrivent ainsi :
+XAFe ; tant qu'elles ne sont pas inscrites au contrat, aucun client n'en
+reçoit. Le stock préinscrit (étape 3) les couvre ; quand il s'épuise, la page
+« Wallets » le dit et un nouveau `preinscrire` s'en charge. Une adresse qui a
+déjà reçu des XAFe ne s'inscrit qu'avec la clé de l'admin :
 ```sh
 ADMIN_CLE=… BEP20_RPC=… MOTEUR_URL=… MOTEUR_CLE=… npm run mise-en-service -- inscrire --reseau bep20 --xafe <contrat>
 ```
@@ -168,9 +181,27 @@ que `verifier` est vert et qu'un dépôt et un retrait d'essai sont passés.
 | `VEILLEUR_JETON` | — | la fonction Supabase : le jeton qu'apporte le réveil (32 caractères au moins) |
 | `BEP20_ADMIN_CLE_ESSAI`, `TRC20_ADMIN_CLE_ESSAI` | — | **réseau d'essai seulement** : inscrire soi-même les adresses XAFe |
 
-En **production**, l'admin du contrat est un wallet matériel : le déploiement
-et les rôles s'y signent (BscScan / TronScan, « Write contract »). `ADMIN_CLE`
-n'est faite que pour les réseaux d'essai.
+En **production**, l'admin du contrat est un wallet matériel : le plafond du
+jour, la reprise et les rôles s'y signent (BscScan / TronScan, « Write
+contract » ; `mise-en-service plafond --xaf N` imprime le nombre exact à
+coller). `ADMIN_CLE` n'est faite que pour les réseaux d'essai.
+
+### La bêta change de contrat
+
+Le veilleur d'aujourd'hui ne parle plus aux contrats d'avant le correctif de la
+réserve. Pour passer la bêta sur de nouveaux contrats d'essai : `pauser()` les
+anciens, arrêter le veilleur, `deployer` sur les deux réseaux, `inscrire
+--toutes-attribuees`, puis, sur la base de la BÊTA seulement :
+```sh
+psql "$BETA_DB" --single-transaction -v ON_ERROR_STOP=1 \
+  -v bep20_xafe=0x… -v bep20_depart=<bloc> -v trc20_xafe=T… -v trc20_depart=<bloc> \
+  -f supabase/beta/changer-de-contrat.sql
+```
+Le script refuse hors bêta et hors réseau d'essai. Les XAFe d'essai restés sur
+des wallets externes de l'ancien contrat reviennent au compte maison, la
+réserve se rejoue sur le nouveau contrat, le jeton se relit depuis le
+déploiement. Relancer le veilleur, puis `verifier` ; dire aux testeurs, sur le
+bandeau, que les jetons de l'ancien contrat ne valent plus rien.
 
 ## L'épreuve
 

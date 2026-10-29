@@ -28,6 +28,15 @@ La réserve de XAFe vit sur **un** réseau, le réseau maison : **BSC** (BEP20).
 Chaque XAF reçu sur un float MoMo/OM devient un XAFe **frappé dans la réserve**
 (migration 0015) ; chaque XAF rendu détruit un XAFe de la réserve.
 
+**La réserve est tenue par le contrat lui-même** (`address(this)`), et elle est
+**intransférable** : elle ne fait que se frapper (`frapperReserve`) et se
+détruire (`detruireReserve`). Rien n'y entre par transfert, rien n'en sort
+sinon brûlé — une clé chaude volée ne peut pas la vider. Son adresse, sur la
+page de preuve et dans la trace de chaque mouvement, est celle du contrat
+(0040). Le contrat borne aussi la frappe vers les wallets externes : un
+**plafond par jour et par chaîne** (1 000 000 000 XAF au départ), que l'admin
+du contrat change à tout moment ; la réserve n'y est pas soumise.
+
 Un retrait de XAFe vers le wallet d'un client, sur un réseau R :
 
 1. les XAFe sont **détruits** dans la réserve, sur BSC ;
@@ -85,8 +94,10 @@ une clé ne se retrouverait plus.
 
 1. **Essai** : sur Base Sepolia,
    `npm run mise-en-service -- deployer --reseau base --chaud <adresse>` (avec
-   `BASE_RPC` et `ADMIN_CLE`). La commande déploie le contrat XAFe, donne les
-   rôles au wallet chaud, lui envoie de l'ETH pour les frais.
+   `BASE_RPC` et `ADMIN_CLE`). La commande déploie le contrat XAFe — le
+   constructeur pose tous les rôles et le plafond du jour —, envoie de l'ETH au
+   wallet chaud pour les frais ; puis `preinscrire … --renoncer` inscrit le
+   stock d'adresses de dépôt XAFe neuves.
 2. **Configurer** : le paramètre `chaine` reçoit
    `"base": { "noeud": …, "xafe": …, "usdt": … }`. Le déclencheur de 0018
    recalcule les tâches : le veilleur de Base tourne dans la minute.

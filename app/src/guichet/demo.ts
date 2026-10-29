@@ -124,7 +124,7 @@ function avecChaine(dep: Depot): Depot {
     chaine: [{
       reseau: "bep20", operation: "frapper", montant: dep.montantRecu, reference: dep.reference, etat: confirme ? "confirme" : "envoye",
       txHash: hex64(`tx:${dep.reference}`), bloc: confirme ? 137_261_987 + (parseInt(dep.reference.slice(-3), 10) || 0) : null, essai: true,
-      contrat: "0x750E774368240063BD5CF52b30b91183Efa4dAf3", reserve: "0x771C971497E4409d0225350C49609691E955465C",
+      contrat: "0x750E774368240063BD5CF52b30b91183Efa4dAf3", reserve: "0x750E774368240063BD5CF52b30b91183Efa4dAf3",
       explorateur: "https://testnet.bscscan.com", empreinte: hex64(`empreinte:${dep.reference}`), relue: confirme,
       confirmeLe: confirme ? iso(new Date(dep.crediteLe).getTime() + 25_000) : null,
     }],
@@ -1095,8 +1095,8 @@ export class GuichetDemo implements Guichet {
         floats_detail: [{ operateur: "mtn", solde: 9_000_000, annonce_le: iso(t - 6 * 60_000), connu: true }, { operateur: "om", solde: 4_000_000, annonce_le: iso(t - 41 * 60_000), connu: true }],
       },
       historique: Array.from({ length: 48 }, (_, i) => ({ fait_le: iso(t - (48 - i) * 3600_000), statut: "juste" as const, registre: registre - (48 - i) * 60_000, chaine: registre - (48 - i) * 60_000, ecart: 0, floats: Math.floor((14_620_000 - (48 - i) * 50_000) / 1e6) * 1e6 })),
-      contrats: [{ reseau: "bep20", contrat: "0x750E774368240063BD5CF52b30b91183Efa4dAf3", explorateur: "https://testnet.bscscan.com", reserve: "0x771C971497E4409d0225350C49609691E955465C" },
-                 { reseau: "trc20", contrat: "TFtfFFmagGUjxGrG3cM4MX4kTv8YvBgLnk", explorateur: "https://nile.tronscan.org/#", reserve: "TEW4N3ZiF23GxHTYu8pen6r8uhHeZpALYZ" }],
+      contrats: [{ reseau: "bep20", contrat: "0x750E774368240063BD5CF52b30b91183Efa4dAf3", explorateur: "https://testnet.bscscan.com", reserve: "0x750E774368240063BD5CF52b30b91183Efa4dAf3" },
+                 { reseau: "trc20", contrat: "TFtfFFmagGUjxGrG3cM4MX4kTv8YvBgLnk", explorateur: "https://nile.tronscan.org/#", reserve: "TFtfFFmagGUjxGrG3cM4MX4kTv8YvBgLnk" }],
       essai: true, lignes, alertes: 0,
     };
   }

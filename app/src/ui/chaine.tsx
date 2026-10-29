@@ -36,8 +36,8 @@ export function SurLaChaine({ traces }: { traces: TraceChaine[] | undefined }) {
             </Stack>
             <Collapse in={explique}>
               <Typography variant="body2" sx={{ bgcolor: "background.default", p: 1.5, borderRadius: 3 }}>
-                {t("Le XAFe est un jeton sur la blockchain : chaque XAFe crédité sur votre compte y est créé, au même instant, par le contrat XAFe, dans la réserve de Glisil. 1 XAFe = 1 XAF, et le total sur la blockchain vaut toujours ce que Glisil doit à ses clients —",
-                  "XAFe is a token on the blockchain: every XAFe credited to your account is minted there at the same moment, by the XAFe contract, in Glisil's reserve. 1 XAFe = 1 XAF, and the total on the blockchain always equals what Glisil owes its customers —")}{" "}
+                {t("Le XAFe est un jeton sur la blockchain : chaque XAFe crédité sur votre compte y est créé, au même instant, par le contrat XAFe, dans la réserve de Glisil — une réserve que le contrat tient lui-même et que personne ne peut en sortir. 1 XAFe = 1 XAF, et le total sur la blockchain vaut toujours ce que Glisil doit à ses clients —",
+                  "XAFe is a token on the blockchain: every XAFe credited to your account is minted there at the same moment, by the XAFe contract, in Glisil's reserve — a reserve the contract holds itself, which no one can move out of it. 1 XAFe = 1 XAF, and the total on the blockchain always equals what Glisil owes its customers —")}{" "}
                 <LienMui component={Link} to="/preuve">{t("la preuve est publique", "the proof is public")}</LienMui>.
               </Typography>
             </Collapse>

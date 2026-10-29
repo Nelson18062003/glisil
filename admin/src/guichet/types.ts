@@ -177,6 +177,12 @@ export type EtatChaine = {
   chaud: string; usdt_chaud: number; natif_chaud: number;
   froid: string | null; usdt_froid: number | null; plafond_chaud: number | null; garder_chaud: number | null;
   a_inscrire: string[]; alertes: string[];
+  /* le contrat corrigé (0040) : la réserve tenue par le contrat lui-même, intransférable ; le plafond
+     de frappe du jour (frappes vers l'extérieur seulement) ; la pause ; des XAFe au wallet chaud
+     (il ne devrait jamais en tenir) ; le stock d'adresses de dépôt inscrites d'avance. Absents
+     d'un veilleur d'avant le correctif. */
+  reserve_adresse?: string | null; reserve_xafe?: number | null; xafe_chaud?: number | null;
+  plafond_jour?: number | null; reste_du_jour?: number | null; en_pause?: boolean | null; stock_xafe_ok?: boolean | null;
 };
 /** Un réseau du registre (0018) : ouvert aux clients ou non, configuré, lisible par un veilleur. */
 export type ReseauRegistre = {

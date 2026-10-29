@@ -102,6 +102,31 @@ de solde depuis TOTEM (bouton Solde) — avec le robot à jour, qui l'étiquette
 échappe au robot (un virement de commissions, un achat de crédit), la chaîne
 se rompt : refaire une consultation de solde suffit à la réparer.
 
+## La réserve tenue par le contrat, le plafond du jour (0040)
+
+La réserve de XAFe n'est plus sur un wallet : **le contrat la tient lui-même**
+(`address(this)`), intransférable — elle se frappe et se détruit, rien d'autre.
+La page de preuve et la trace de chaque mouvement montrent donc l'adresse du
+CONTRAT comme réserve, avec le plafond de frappe du jour et l'état de pause.
+
+| Rôle | Qui | Ce qu'il peut |
+|---|---|---|
+| admin (`DEFAULT_ADMIN_ROLE`) | le wallet matériel du propriétaire, seul | rôles, `fixerPlafondJour`, `reprendre`, inscrire une adresse déjà servie, détruire des fonds gelés |
+| frappeur, destructeur | le wallet chaud | frapper vers un wallet (sous le plafond du jour) ou dans la réserve (sans plafond) ; détruire dans la réserve ou sur une adresse de dépôt inscrite |
+| pauseur, geleur | wallets du propriétaire | arrêter (sans reprendre) ; geler une adresse |
+| inscripteur | la clé de mise en service, le temps du stock | inscrire des adresses de dépôt neuves, puis renoncer |
+
+Le plafond du jour ne compte que les frappes vers des wallets externes. Quand
+il est atteint, le veilleur garde les retraits XAFe suivants **dans l'ordre**,
+jusqu'à minuit UTC ou jusqu'à ce que l'admin relève le plafond ; la page
+Wallets le dit. Elle dit aussi, en rouge, la pause du contrat et tout XAFe
+qui dormirait sur le wallet chaud (il ne doit jamais en tenir).
+
+Un réseau qui change de contrat (la bêta seulement) porte
+`chaine.<réseau>.depuis_le` : les retraits et retours faits sur l'ancien ne
+sont plus attendus sur le nouveau ; la réserve, rejouée, l'est. En production,
+le réglage n'existe pas et rien n'est filtré.
+
 ## Avant le vrai réseau (mainnet) — à faire, pas encore fait
 
 Aujourd'hui tout tourne sur les **réseaux d'essai** (BSC testnet, Tron Nile) :
@@ -115,8 +140,9 @@ les jetons n'y ont pas de valeur. Avant d'émettre de vrais XAFe :
      sur Tron, une permission multi-signature du compte admin. La
      transmission de l'admin a déjà un délai de deux jours.
    - `PAUSEUR_ROLE` et `GELEUR_ROLE` → personnes distinctes du signataire chaud.
-   - Le signataire chaud (`FRAPPEUR`/`DESTRUCTEUR`) garde le **plafond de
-     frappe par jour** ; le fixer au volume réel attendu, pas plus.
+   - Le signataire chaud (`FRAPPEUR`/`DESTRUCTEUR`) est borné par le **plafond
+     de frappe par jour** (1 000 000 000 XAF au départ, décision du
+     propriétaire) ; l'admin le change à tout moment.
 3. **La graine de production** n'est jamais dans la base : un secret de la
    fonction `veilleur`, saisi par le propriétaire (`chaine/README.md`).
 4. **Les floats dédiés** : tant qu'un float sert aussi à Bonzini, la colonne 1

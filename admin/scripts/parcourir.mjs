@@ -363,6 +363,12 @@ try {
   await voir("attendent leur inscription au contrat");
   await voir("manque de TRX");
   await voir("jamais attribuée à un client");
+  // le contrat corrigé (0040) : la réserve est au contrat, le plafond du jour se dit, ce qui manque se dit
+  await voir("Tenue par le contrat lui-même, intransférable");
+  await voir(/873.500.000 XAFe encore permis/);
+  await voir("Le plafond de frappe du jour est atteint");
+  await voir("stock d'adresses de dépôt XAFe inscrites d'avance s'épuise");
+  exiger(!(await page.getByText("Le contrat XAFe est en pause").count()), "pas de pause annoncée quand le contrat tourne");
   exiger(await page.locator('[data-tuile="Couverture"]').count() === 1, "la couverture des USDT dus est dite");
   await capturer("wallets");
 
