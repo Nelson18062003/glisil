@@ -42,9 +42,6 @@ begin
     insert into numeros (compte_id, operateur, numero, verifie_le, actif_des)
     values (('f0000000-0000-0000-0000-00000000000' || i)::uuid, 'mtn', '67890000' || i, now() - interval '2 days', now() - interval '1 day')
     on conflict do nothing;
-    insert into codes_secrets (compte_id, empreinte)
-    values (('f0000000-0000-0000-0000-00000000000' || i)::uuid, extensions.crypt('1234', extensions.gen_salt('bf', 4)))
-    on conflict do nothing;
   end loop;
   insert into administrateurs (id, email, nom, role)
   values ('f0000000-0000-0000-0000-0000000000ad', 'hasard@xafe.exchange', 'Hasard', 'super_admin') on conflict do nothing;
@@ -167,8 +164,8 @@ begin
       when 'usdt' then
         perform crediter_crypto(c, 'USDT', 'bep20', round((50 + random() * 2000)::numeric, 2), '0xh' || floor(random() * 1e9)::text, 'x');
       when 'retrait' then
-        perform demander_retrait_crypto((array['USDT', 'XAFe'])[1 + floor(random() * 2)::int], 'bep20',
-                                        '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', (array[10, 100, 5000])[1 + floor(random() * 3)::int], null, '1234');
+        perform _demander_retrait_crypto((array['USDT', 'XAFe'])[1 + floor(random() * 2)::int], 'bep20',
+                                        '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', (array[10, 100, 5000])[1 + floor(random() * 3)::int], null);
       when 'chaine' then
         select reference into ref from retraits_crypto where etat = 'en_attente' order by random() limit 1;
         if ref is null then raise exception 'rien à faire' using errcode = 'P0001'; end if;

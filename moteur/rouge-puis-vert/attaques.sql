@@ -37,7 +37,10 @@ declare d text;
 begin
   insert into comptes (id, telephone, nom) values ('a0000000-0000-0000-0000-000000000010', '677100010', 'Dix');
   perform _qui('a0000000-0000-0000-0000-000000000010');
-  begin perform completer_profil('Dix', '1010'); d := null; exception when others then d := sqlerrm; end;
+  -- (0036) le code secret n'existe plus aujourd'hui : il n'y a plus rien à choisir, donc plus ce défaut
+  if to_regprocedure('public.completer_profil(text,text)') is null then d := null;
+  else begin perform completer_profil('Dix', '1010'); d := null; exception when others then d := sqlerrm; end;
+  end if;
   insert into _attaques values ('#10', 'aucun code secret ne se choisit (crypt introuvable hors de public)', d is not null, d);
 end $$;
 
@@ -115,8 +118,11 @@ do $$
 declare d text;
 begin
   perform _qui('a0000000-0000-0000-0000-000000000001');
-  perform completer_profil('Alice', '1111');
-  begin perform completer_profil('Alice', '2222'); d := null; exception when others then d := sqlerrm; end;
+  if to_regprocedure('public.completer_profil(text,text)') is null then d := 'plus de code secret (0036)';
+  else
+    perform completer_profil('Alice', '1111');
+    begin perform completer_profil('Alice', '2222'); d := null; exception when others then d := sqlerrm; end;
+  end if;
   insert into _attaques values ('#20', 'le code secret se rechoisit sans l''ancien', d is null, d);
 end $$;
 
@@ -150,9 +156,14 @@ begin
   update parametres set valeur = valeur || '{"retraits_ouverts": true}' where cle = 'crypto';
   perform crediter_crypto('a0000000-0000-0000-0000-000000000003', 'USDT', 'bep20', 5000, '0xr24', 'x');
   perform _qui('a0000000-0000-0000-0000-000000000003');
-  perform completer_profil('Bob', '3333');
   begin
-    perform demander_retrait_crypto('USDT', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 4000, null, '3333');
+    -- le code d'avant : avec son code secret ; aujourd'hui (0036) : la sortie interne, sans facteur, est rejouée telle quelle
+    if to_regprocedure('public._demander_retrait_crypto(text,text,text,numeric,text)') is null then
+      perform completer_profil('Bob', '3333');
+      execute $x$select demander_retrait_crypto('USDT', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 4000, null, '3333')$x$;
+    else
+      perform _demander_retrait_crypto('USDT', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 4000, null);
+    end if;
     d := null;
   exception when others then d := sqlerrm;
   end;

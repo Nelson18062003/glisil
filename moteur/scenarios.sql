@@ -24,6 +24,19 @@ $$;
 create function total(p_actif text) returns numeric language sql set search_path = public as $$
   select coalesce(sum(disponible + bloque), 0) from soldes where actif = p_actif
 $$;
+-- 0035 : une personne prête à ouvrir son compte (ou à entrer dans l'administration) a un mot
+-- de passe posé et des codes de secours notés. Le mot de passe d'essai est un vrai bcrypt « $2a$ »,
+-- comme ceux de GoTrue (coût 4 : le harnais n'a pas à attendre).
+create function _essai_pret(p_id uuid, p_mdp boolean default true) returns void language sql set search_path = public, extensions, pg_temp as $$
+  update auth.users set encrypted_password = case when p_mdp then extensions.crypt('Mot-de-passe-2026', extensions.gen_salt('bf', 4)) else '' end
+   where id = p_id;
+  insert into lots_de_secours (utilisateur_id, confirme_le) values (p_id, now())
+  on conflict (utilisateur_id) do update set confirme_le = now();
+$$;
+create function _essai_utilisateur(p_id uuid, p_email text, p_mdp boolean default true) returns void language sql set search_path = public as $$
+  insert into auth.users (id, email, email_confirmed_at) values (p_id, p_email, now()) on conflict (id) do nothing;
+  select _essai_pret(p_id, p_mdp);
+$$;
 
 -- ────────────────────── 1 · un dépôt en trois transaction ID ───────────────
 begin;
@@ -338,19 +351,17 @@ set local xafe.compte = '11111111-1111-1111-1111-111111111111';
 do $$
 declare r jsonb; a uuid := '11111111-1111-1111-1111-111111111111'; avant numeric := solde(a, 'XAFe', 'dispo');
 begin
-  perform completer_profil('Alice Ngo', '1234');
-  r := demander_sortie(1500000, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-s1', '0000');
-  assert r ->> 'erreur' = 'code secret incorrect' and (r ->> 'essais_restants')::int = 2, r;
-  assert solde(a, 'XAFe', 'bloque') = 0, 'un code faux ne bloque rien';
-  r := demander_sortie(1500000, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-s1', '1234');
+  -- (0036) le code secret est parti : la vérification avant sortie a ses propres scénarios (11.60+)
+  update comptes set nom = 'Alice Ngo' where id = a;
+  r := _demander_sortie(1500000, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-s1');
   assert (r ->> 'transferts')::int = 2, r;
   assert (r ->> 'frais')::numeric = 7500 and (r ->> 'montant_xaf')::numeric = 1492500, r;
   assert solde(a, 'XAFe', 'dispo') = avant - 1500000 and solde(a, 'XAFe', 'bloque') = 1500000, 'les XAFe sont bloqués';
-  assert (demander_sortie(1500000, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-s1', '1234') ->> 'reference') = (r ->> 'reference'), 'la même clé rend la même sortie';
+  assert (_demander_sortie(1500000, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-s1') ->> 'reference') = (r ->> 'reference'), 'la même clé rend la même sortie';
   assert jsonb_array_length(ma_sortie(r ->> 'reference') -> 'transferts') = 2, ma_sortie(r ->> 'reference');
   assert (select count(*) from commandes) = 2, 'toujours deux transferts';
   begin
-    perform demander_sortie(1000, 'aaaaaaaa-0000-0000-0000-000000000003', null, '1234');
+    perform _demander_sortie(1000, 'aaaaaaaa-0000-0000-0000-000000000003', null);
     raise exception 'aurait dû refuser';
   exception when others then
     assert sqlerrm = 'numéro pas encore actif', sqlerrm;
@@ -478,20 +489,11 @@ set local xafe.compte = '22222222-2222-2222-2222-222222222222';
 do $$
 declare r jsonb; b uuid := '22222222-2222-2222-2222-222222222222';
 begin
-  assert (mon_compte() ->> 'a_code')::boolean = false, mon_compte();
-  r := completer_profil('Bob Essomba', '2468');
-  assert (r ->> 'a_code')::boolean and r ->> 'nom' = 'Bob Essomba', r;
-  assert (verifier_code_secret('2468') ->> 'ok')::boolean, 'le bon code passe';
-  r := verifier_code_secret('0000'); assert not (r ->> 'ok')::boolean and (r ->> 'essais_restants')::int = 2, r;
-  r := verifier_code_secret('0000'); assert (r ->> 'essais_restants')::int = 1, r;
-  r := verifier_code_secret('0000'); assert r ->> 'erreur' = 'compte verrouillé' and r ->> 'verrou_jusqua' is not null, r;
-  r := verifier_code_secret('2468'); assert r ->> 'erreur' = 'compte verrouillé', 'même le bon code ne passe plus pendant le verrou';
-  assert (mon_compte() ->> 'verrou_jusqua') is not null;
-  update comptes set code_verrou_jusqua = now() - interval '1 minute' where id = b;
-  assert (verifier_code_secret('2468') ->> 'ok')::boolean, 'le verrou levé, le bon code passe';
-  r := changer_code_secret('2468', '1357'); assert (r ->> 'ok')::boolean, r;
-  assert (verifier_code_secret('1357') ->> 'ok')::boolean and not (verifier_code_secret('2468') ->> 'ok')::boolean;
-  raise notice '✓ 9.1 le code secret : trois erreurs verrouillent 15 minutes, et l''échec se compte même quand on refuse';
+  -- (0036) le code secret à 4 chiffres n'existe plus : ses fonctions sont parties, sans reste
+  assert to_regprocedure('public.verifier_code_secret(text)') is null and to_regprocedure('public.completer_profil(text,text)') is null
+     and to_regprocedure('public._controler_code(uuid,text)') is null, 'le code secret a des restes';
+  update comptes set nom = 'Bob Essomba' where id = b;
+  raise notice '✓ 9.1 le code secret à 4 chiffres est parti : la vérification avant sortie le remplace (11.60+)';
 end $$;
 commit;
 
@@ -509,7 +511,7 @@ begin
   assert (select texte like 'Glisil : %' from messages_sortants where numero = '699112233'), 'le SMS du code se signe Glisil';
   assert (select nom from comptes where maison) = 'Glisil', 'le compte de la maison s''appelle Glisil';
   begin
-    perform demander_sortie(1000, v_id, null, '1357');
+    perform _demander_sortie(1000, v_id, null);
     raise exception 'aurait dû refuser';
   exception when others then
     assert sqlerrm = 'numéro pas encore vérifié', sqlerrm;
@@ -520,7 +522,7 @@ begin
   r := confirmer_numero(v_id, v_code);
   assert r ->> 'verifie_le' is not null and (r ->> 'actif_des')::timestamptz > now() + interval '23 hours', r;
   begin
-    perform demander_sortie(1000, v_id, null, '1357');
+    perform _demander_sortie(1000, v_id, null);
     raise exception 'aurait dû refuser';
   exception when others then
     assert sqlerrm = 'numéro pas encore actif', sqlerrm;
@@ -531,10 +533,10 @@ begin
   exception when others then
     assert sqlerrm = 'ce numéro est déjà sur votre compte', sqlerrm;
   end;
-  r := retirer_numero(v_id, '1357'); assert (r ->> 'ok')::boolean, r;
+  r := _retirer_numero(auth.uid(),v_id); assert (r ->> 'ok')::boolean, r;
   assert jsonb_array_length(mes_numeros()) = 1;
   begin
-    perform retirer_numero('bbbbbbbb-0000-0000-0000-000000000001', '1357');
+    perform _retirer_numero(auth.uid(),'bbbbbbbb-0000-0000-0000-000000000001');
     raise exception 'aurait dû refuser';
   exception when others then
     assert sqlerrm = 'le dernier numéro ne se retire pas', sqlerrm;
@@ -573,19 +575,19 @@ begin
   assert adresse_depot('USDT', 'bep20') = '0x1111111111111111111111111111111111111111', 'la même adresse à chaque fois';
   assert adresse_depot('USDT', 'trc20') is null, 'aucune adresse préparée : rien à inventer';
   begin
-    perform demander_retrait_crypto('USDT', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 100, 'k-cr-0', '1357');
+    perform _demander_retrait_crypto('USDT', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 100, 'k-cr-0');
     raise exception 'aurait dû refuser';
   exception when others then
     assert sqlerrm = 'retraits crypto pas encore ouverts', sqlerrm;
   end;
   assert solde(b, 'USDT', 'bloque') = 0, 'fermés : rien ne se bloque sans issue';
   update parametres set valeur = valeur || '{"retraits_ouverts": true}' where cle = 'crypto';
-  r := demander_retrait_crypto('USDT', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 100, 'k-cr-1', '1357');
+  r := _demander_retrait_crypto('USDT', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 100, 'k-cr-1');
   assert r ->> 'etat' = 'en_attente' and (r ->> 'frais')::numeric = 1, r;
   assert solde(b, 'USDT', 'dispo') = usdt_avant - 101 and solde(b, 'USDT', 'bloque') = 101, 'montant et frais bloqués';
-  assert (demander_retrait_crypto('USDT', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 100, 'k-cr-1', '1357') ->> 'reference') = (r ->> 'reference'), 'la même clé rend le même retrait';
+  assert (_demander_retrait_crypto('USDT', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 100, 'k-cr-1') ->> 'reference') = (r ->> 'reference'), 'la même clé rend le même retrait';
   begin
-    perform demander_retrait_crypto('USDT', 'trc20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 100, null, '1357');
+    perform _demander_retrait_crypto('USDT', 'trc20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 100, null);
     raise exception 'aurait dû refuser';
   exception when others then
     assert sqlerrm = 'adresse invalide', sqlerrm;
@@ -593,7 +595,7 @@ begin
   r := chaine_resultat_retrait(r ->> 'reference', true, '0xtx-1');
   assert r ->> 'etat' = 'envoye' and solde(b, 'USDT', 'bloque') = 0 and solde(b, 'USDT', 'dispo') = usdt_avant - 101, r;
   assert solde(compte_maison(), 'USDT', 'dispo') >= 1, 'les frais vont à la maison';
-  r := demander_retrait_crypto('USDT', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 50, 'k-cr-2', '1357');
+  r := _demander_retrait_crypto('USDT', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 50, 'k-cr-2');
   r := chaine_resultat_retrait(r ->> 'reference', false, null, 'gas insuffisant');
   assert r ->> 'etat' = 'echoue' and solde(b, 'USDT', 'dispo') = usdt_avant - 101 and solde(b, 'USDT', 'bloque') = 0, 'un envoi refusé par la chaîne revient entier';
   raise notice '✓ 9.3 une adresse de dépôt se prend dans la réserve, un retrait bloque montant et frais, un échec rend tout';
@@ -745,7 +747,7 @@ commit;
 -- Clients : les pièces de Chantal sont validées, elle passe au palier 2 et le sait.
 begin;
 set local xafe.compte = '33333333-3333-3333-3333-333333333333';
-select completer_profil('Chantal Mbarga', '9876') \gset ch_
+update comptes set nom = 'Chantal Mbarga' where id = '33333333-3333-3333-3333-333333333333';
 select demander_verification('entreprise', '["33333333-3333-3333-3333-333333333333/entreprise/rccm.jpg"]'::jsonb) \gset chv_
 commit;
 begin;
@@ -817,11 +819,13 @@ begin
   select string_agg(p.oid::regprocedure::text, ', ') into v from pg_proc p
    where p.pronamespace = 'public'::regnamespace and has_function_privilege('anon', p.oid, 'execute')
      -- la seule exception, voulue : la preuve de réserve se lit sans compte (0016) — des totaux, aucun nom
-     and p.oid <> 'preuve_de_reserve()'::regprocedure;
+     and p.oid <> 'preuve_de_reserve()'::regprocedure
+     -- et le crochet de PostgREST (0035), que PostgREST appelle avant CHAQUE requête, anon compris : il ne lit rien
+     and p.oid <> 'avant_chaque_requete()'::regprocedure;
   assert v is null, 'anon exécute : ' || v;
   select string_agg(p.oid::regprocedure::text, ', ') into v from pg_proc p
    where p.pronamespace = 'public'::regnamespace and has_function_privilege('authenticated', p.oid, 'execute')
-     and p.proname !~ '^(carnet|transactions_recentes|cotation|chandelles|bougies|preuve_de_reserve)$'
+     and p.proname !~ '^(carnet|transactions_recentes|cotation|chandelles|bougies|preuve_de_reserve|session_forte|avant_chaque_requete)$'
      and p.prosrc !~ 'auth\.uid\(\)' and p.prosrc !~ '_exiger_droit';
   assert v is null, 'authenticated exécute sans lire la session : ' || v;
   select string_agg(p.oid::regprocedure::text, ', ') into v from pg_proc p
@@ -836,8 +840,9 @@ begin
   assert v is null, 'une table s''ouvre à anon ou s''écrit en direct : ' || v;
   select string_agg(c.relname, ', ') into v from pg_class c
    where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and has_table_privilege('authenticated', c.oid, 'select')
-     and c.relname in ('codes_secrets', 'numeros_codes', 'terminaux', 'floats', 'entrees_retenues', 'commandes', 'messages_sortants',
-                       'remboursements', 'journal_admin', 'adresses_libres', 'emissions');
+     and c.relname in ('verifications', 'verification_echecs', 'courriels_a_envoyer', 'numeros_codes', 'terminaux', 'floats', 'entrees_retenues', 'commandes', 'messages_sortants',
+                       'remboursements', 'journal_admin', 'adresses_libres', 'emissions',
+                       'lots_de_secours', 'codes_de_secours', 'journal_securite', 'reinitialisations_2fa');
   assert v is null, 'un client lit une table de service : ' || v;
   -- le témoin : une fonction née APRÈS les migrations n'est ouverte à personne (le robinet par défaut est coupé)
   create function _temoin_droits() returns int language sql as $f$ select 1 $f$;
@@ -860,7 +865,7 @@ begin
   exception when insufficient_privilege then null; end;
   begin perform * from totem_messages_en_attente('akwa-1'); raise exception 'aurait dû refuser';
   exception when insufficient_privilege then null; end;
-  begin perform * from codes_secrets; raise exception 'aurait dû refuser';
+  begin perform * from codes_de_secours; raise exception 'aurait dû refuser';
   exception when insufficient_privilege then null; end;
   raise notice '✓ 11.1b un client ne frappe pas d''USDT, n''écrit pas un solde, ne joue ni la chaîne ni TOTEM, ne lit aucune empreinte';
 end $$;
@@ -871,7 +876,7 @@ rollback;
 do $$
 begin
   assert not exists (select 1 from pg_proc where proname = 'crypt' and pronamespace = 'public'::regnamespace), 'le harnais doit garder pgcrypto hors de public';
-  assert exists (select 1 from codes_secrets where empreinte like '$2a$%'), 'les codes secrets sont des empreintes bcrypt';
+  assert to_regclass('public.codes_secrets') is null, '(0036) la table des codes secrets est partie';
   assert not exists (select 1 from information_schema.columns where table_schema = 'public' and column_name = 'code_hash'), 'plus aucune empreinte dans une table lisible';
   raise notice '✓ 11.2 pgcrypto hors de public, et aucune empreinte dans une table que le client lit';
 end $$;
@@ -1053,7 +1058,7 @@ do $$
 declare v text; f text;
 begin
   foreach f in array array['ouvrir_depot(''mtn'')', 'placer_ordre(''achat'', ''limite'', 10, 600.00)',
-                           'demander_sortie(1000, ''cccccccc-0000-0000-0000-000000000001'', null, ''9876'')',
+                           'demander_sortie(1000, ''cccccccc-0000-0000-0000-000000000001'', null, gen_random_uuid(), ''x'', ''000000'')',
                            'ajouter_numero(''mtn'', ''677888777'')', 'declarer_transaction((select reference from depots where cle = ''k-ch-11''), ''20394900099'')'] loop
     begin
       execute 'select ' || f;
@@ -1077,13 +1082,6 @@ set local xafe.compte = '22222222-2222-2222-2222-222222222222';
 do $$
 declare r jsonb;
 begin
-  begin
-    perform completer_profil('Bob', '0000');
-    raise exception 'aurait dû refuser';
-  exception when others then
-    assert sqlerrm = 'code secret déjà choisi', sqlerrm;
-  end;
-  assert (verifier_code_secret('1357') ->> 'ok')::boolean, 'l''ancien code tient toujours';
   begin
     perform ajouter_numero('om', '677111222');
     raise exception 'aurait dû refuser';
@@ -1117,23 +1115,20 @@ begin
 end $$;
 rollback;
 
--- 11.8 · le déclencheur de naissance : un administrateur par e-mail n'est pas un client, et rien ne fait échouer une inscription.
+-- 11.8 · un compte ne naît que dans ouvrir_mon_compte (0035) : ni d'une ligne
+-- auth.users, ni d'un téléphone prouvé (plus de connexion par SMS). Témoin : sur
+-- le code d'avant, le téléphone prouvé faisait naître le compte « 677333444 ».
 do $$
 begin
   insert into auth.users (id, email) values ('eeeeeeee-0000-0000-0000-000000000001', 'a@xafe.exchange'), ('eeeeeeee-0000-0000-0000-000000000002', 'b@xafe.exchange');
-  assert not exists (select 1 from comptes where id::text like 'eeeeeeee-%'), 'pas de compte client pour un administrateur';
-  -- le code est DEMANDÉ : GoTrue crée l'utilisateur, le téléphone n'est pas encore prouvé
   insert into auth.users (id, phone) values ('eeeeeeee-0000-0000-0000-000000000003', '+237677333444');
-  assert not exists (select 1 from comptes where id = 'eeeeeeee-0000-0000-0000-000000000003'), 'pas de compte sur une simple demande de code';
-  -- le bon code revient : GoTrue pose phone_confirmed_at
   update auth.users set phone_confirmed_at = now() where id = 'eeeeeeee-0000-0000-0000-000000000003';
-  assert (select telephone from comptes where id = 'eeeeeeee-0000-0000-0000-000000000003') = '677333444';
-  assert (select verifie_le from numeros where compte_id = 'eeeeeeee-0000-0000-0000-000000000003') is not null, 'le téléphone de connexion est son premier numéro';
-  -- l'utilisateur est supprimé de l'auth (sa ligne « comptes » reste : pas de clé étrangère), puis se réinscrit
-  delete from auth.users where id = 'eeeeeeee-0000-0000-0000-000000000003';
-  insert into auth.users (id, phone, phone_confirmed_at) values ('eeeeeeee-0000-0000-0000-000000000004', '+237677333444', now());
-  assert not exists (select 1 from comptes where id = 'eeeeeeee-0000-0000-0000-000000000004'), 'le téléphone garde son compte : pas un second';
-  raise notice '✓ 11.8 un compte naît quand le téléphone est prouvé, pas quand le code est demandé ; deux administrateurs par e-mail, un téléphone qui se réinscrit : aucune inscription ne tombe';
+  insert into auth.users (id, email, email_confirmed_at) values ('eeeeeeee-0000-0000-0000-000000000004', 'c@xafe.exchange', now());
+  assert not exists (select 1 from comptes where id::text like 'eeeeeeee-%'), 'un compte est né hors de ouvrir_mon_compte';
+  assert not exists (select 1 from comptes where telephone = '677333444'), 'le téléphone prouvé a fait naître un compte';
+  assert to_regprocedure('handle_nouvel_utilisateur()') is null, 'le déclencheur de naissance est encore là';
+  delete from auth.users where id::text like 'eeeeeeee-%';
+  raise notice '✓ 11.8 un compte ne naît que dans ouvrir_mon_compte : ni d''une inscription, ni d''un téléphone prouvé';
 end $$;
 
 -- 11.9 · un remboursement : jamais d'un SMS déjà crédité, relançable après un échec, un résultat rejoué ne compte pas.
@@ -1166,7 +1161,7 @@ commit;
 -- 11.10 · un « échouée » renvoyé faute d'accusé ne compte pas comme un second échec.
 begin;
 set local xafe.compte = '11111111-1111-1111-1111-111111111111';
-select demander_sortie(10000, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-s-11', '1234') \gset s11_
+select _demander_sortie(10000, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-s-11') \gset s11_
 commit;
 do $$
 declare c commandes; r jsonb; v_id bigint := (select k.id from commandes k join sorties s on s.id = k.sortie_id where s.cle = 'k-s-11');
@@ -1216,12 +1211,12 @@ do $$
 declare r jsonb;
 begin
   begin
-    perform demander_retrait_crypto('USDT', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 1000, null, '1357');
+    perform _demander_retrait_crypto('USDT', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 1000, null);
     raise exception 'aurait dû refuser';
   exception when others then
     assert sqlerrm = 'plafond du palier atteint', 'Bob (palier 0) ne sort pas 600 000 XAF par la chaîne : ' || sqlerrm;
   end;
-  r := demander_retrait_crypto('XAFe', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 20000, 'k-cr-x', '1357');
+  r := _demander_retrait_crypto('XAFe', 'bep20', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 20000, 'k-cr-x');
   r := chaine_resultat_retrait(r ->> 'reference', true, '0xtx-x');
   assert total('XAFe') = circulation() and circulation_chaine() = 20000, format('soldes %s, circulation %s, chaîne %s', total('XAFe'), circulation(), circulation_chaine());
   raise notice '✓ 11.12 un retrait crypto compte dans le plafond ; des XAFe partis sur la chaîne restent dus et comptés';
@@ -1251,7 +1246,7 @@ do $$
 declare avant numeric := solde('11111111-1111-1111-1111-111111111111', 'XAFe', 'dispo');
 begin
   begin
-    perform demander_sortie(10000, 'aaaaaaaa-0000-0000-0000-000000000001', null, '1234');
+    perform _demander_sortie(10000, 'aaaaaaaa-0000-0000-0000-000000000001', null);
     raise exception 'aurait dû refuser';
   exception when others then
     assert sqlerrm = 'aucun boîtier en ligne pour cet opérateur', sqlerrm;
@@ -1303,7 +1298,7 @@ commit;
 select totem_sms_recu('akwa-1', 190, 'mtn', '677000000', '677123456', 2000000, '20390000190', 'Vous avez recu 2,000,000 FCFA (19)', now()) \gset sms19_
 begin;
 set local xafe.compte = '11111111-1111-1111-1111-111111111111';
-select demander_sortie(1500000, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-s-19', '1234') \gset s19_
+select _demander_sortie(1500000, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-s-19') \gset s19_
 commit;
 begin;
 set local xafe.compte = 'dddddddd-0000-0000-0000-000000000002';
@@ -1400,7 +1395,7 @@ do $$
 declare c jsonb := mon_compte();
 begin
   begin
-    perform demander_sortie(1, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-s-23', '1234');
+    perform _demander_sortie(1, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-s-23');
     raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'montant trop petit', sqlerrm; end;
   assert extract(hour from debut_du_jour() at time zone 'Africa/Douala') = 0 and debut_du_jour() <= now()
@@ -1498,7 +1493,7 @@ set local xafe.compte = '22222222-2222-2222-2222-222222222222';
 do $$
 declare r jsonb; ref text; dus jsonb;
 begin
-  r := demander_retrait_crypto('USDT', 'trc20', 'TPL66VK2gCXNCD7EJg9pgJRfqcRazjhUZY', 10, 'k-11.25', '1357');
+  r := _demander_retrait_crypto('USDT', 'trc20', 'TPL66VK2gCXNCD7EJg9pgJRfqcRazjhUZY', 10, 'k-11.25');
   ref := r ->> 'reference';
   dus := chaine_retraits_en_attente('trc20');
   assert dus @> jsonb_build_array(jsonb_build_object('reference', ref)), 'en attente, il est dû au chaud : ' || dus;
@@ -1547,39 +1542,39 @@ insert into auth.users (id, email, email_confirmed_at) values
   ('f1000000-0000-0000-0000-000000000001', 'Awa.Ngono@Example.com', now()),
   ('f1000000-0000-0000-0000-000000000002', 'pas-prouve@example.com', null),
   ('f1000000-0000-0000-0000-000000000003', 'jules@example.fr', now());
+select _essai_pret(id) from auth.users where id::text like 'f%';  -- 0035 : un mot de passe et des codes notés
 do $$
 declare r jsonb;
 begin
   perform set_config('xafe.compte', 'f1000000-0000-0000-0000-000000000002', true);
-  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'CM', '2026-10-16'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'adresse e-mail non vérifiée', sqlerrm; end;
 
   perform set_config('xafe.compte', 'f1000000-0000-0000-0000-000000000001', true);
-  begin perform ouvrir_mon_compte('Awa', 'Ngono', ((now() at time zone 'Africa/Douala')::date - interval '17 years')::date, '+237677123499', 'Douala', 'CM', '2026-10-16'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', ((now() at time zone 'Africa/Douala')::date - interval '17 years')::date, '+237677123499', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'il faut avoir 18 ans', sqlerrm; end;
-  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+23767712349', 'Douala', 'CM', '2026-10-16'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+23767712349', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'numéro de téléphone invalide', sqlerrm; end;
-  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237577123499', 'Douala', 'CM', '2026-10-16'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237577123499', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'numéro de téléphone invalide', sqlerrm; end;
-  begin perform ouvrir_mon_compte('A1', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'CM', '2026-10-16'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('A1', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'prénom invalide', sqlerrm; end;
-  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'Cameroun', '2026-10-16'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'Cameroun', '2026-11-01'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'pays invalide', sqlerrm; end;
   assert not exists (select 1 from comptes where id = 'f1000000-0000-0000-0000-000000000001'), 'un refus n''ouvre rien';
 
-  r := ouvrir_mon_compte('  awa ', 'NGONO-MBALLA', date '1990-05-14', '+237 6 77 12 34 99', 'douala', 'cm', '2026-10-16');
+  r := ouvrir_mon_compte('  awa ', 'NGONO-MBALLA', date '1990-05-14', '+237 6 77 12 34 99', 'douala', 'cm', '2026-11-01');
   assert r ->> 'prenom' = 'Awa' and r ->> 'nom_de_famille' = 'Ngono-Mballa' and r ->> 'nom' = 'Awa Ngono-Mballa', r;
   assert r ->> 'telephone' = '+237677123499' and r ->> 'email' = 'awa.ngono@example.com', r;
-  assert r ->> 'ville' = 'Douala' and r ->> 'pays' = 'CM' and r ->> 'date_naissance' = '1990-05-14' and not (r ->> 'a_code')::boolean, r;
-  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123400', 'Douala', 'CM', '2026-10-16'); raise exception 'aurait dû refuser';
+  assert r ->> 'ville' = 'Douala' and r ->> 'pays' = 'CM' and r ->> 'date_naissance' = '1990-05-14', r;
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123400', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'compte déjà ouvert', sqlerrm; end;
-  r := completer_profil('Awa Ngono-Mballa', '2580');
-  assert (r ->> 'a_code')::boolean and mon_compte() ->> 'email' = 'awa.ngono@example.com', r;
+  assert mon_compte() ->> 'email' = 'awa.ngono@example.com', mon_compte();
 
   perform set_config('xafe.compte', 'f1000000-0000-0000-0000-000000000003', true);
-  begin perform ouvrir_mon_compte('Jules', 'Martin', date '1985-01-02', '+237677123499', 'Paris', 'FR', '2026-10-16'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Jules', 'Martin', date '1985-01-02', '+237677123499', 'Paris', 'FR', '2026-11-01'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'ce numéro est déjà utilisé', sqlerrm; end;
-  r := ouvrir_mon_compte('jules', 'd''almeida', date '1985-01-02', '+33 6 12 34 56 78', 'saint-étienne', 'FR', '2026-10-16');
+  r := ouvrir_mon_compte('jules', 'd''almeida', date '1985-01-02', '+33 6 12 34 56 78', 'saint-étienne', 'FR', '2026-11-01');
   assert r ->> 'nom' = 'Jules D''Almeida' and r ->> 'ville' = 'Saint-Étienne' and r ->> 'telephone' = '+33612345678', r;
   raise notice '✓ 11.26 l''inscription par e-mail : une adresse non prouvée n''ouvre rien ; mineur, numéro, nom ou pays faux sont refusés par la base ; le profil est mis en forme ; un numéro ne sert qu''à un compte';
 end $$;
@@ -1593,6 +1588,7 @@ insert into auth.users (id, email, email_confirmed_at) values
   ('f2000000-0000-0000-0000-000000000001', 'fatou@example.com', now()),
   ('f2000000-0000-0000-0000-000000000002', 'curieux@example.com', now()),
   ('f2000000-0000-0000-0000-000000000003', 'zoe@example.com', null);
+select _essai_pret(id) from auth.users where id::text like 'f%';  -- 0035 : un mot de passe et des codes notés
 do $$
 declare r jsonb;
 begin
@@ -1632,11 +1628,12 @@ begin;
 insert into auth.users (id, email, email_confirmed_at, last_sign_in_at) values
   ('f3000000-0000-0000-0000-000000000001', 'mireille@example.com', now(), now()),
   ('f3000000-0000-0000-0000-000000000002', 'inacheve@example.com', now(), now());
+select _essai_pret(id) from auth.users where id::text like 'f%';  -- 0035 : un mot de passe et des codes notés
 do $$
 declare s jsonb; l jsonb; f jsonb;
 begin
   perform set_config('xafe.compte', 'f3000000-0000-0000-0000-000000000001', true);
-  perform ouvrir_mon_compte('Mireille', 'Essomba', date '1992-03-08', '+237699001122', 'Yaoundé', 'CM', '2026-10-16');
+  perform ouvrir_mon_compte('Mireille', 'Essomba', date '1992-03-08', '+237699001122', 'Yaoundé', 'CM', '2026-11-01');
 
   perform set_config('xafe.compte', '22222222-2222-2222-2222-222222222222', true);
   begin perform admin_statistiques_clients(); raise exception 'aurait dû refuser';
@@ -1712,6 +1709,7 @@ end $$;
 -- EN VIGUEUR ; quand elle change, le compte le sait et la réaccepte.
 begin;
 insert into auth.users (id, email, email_confirmed_at) values ('f3000000-0000-0000-0000-000000000001', 'paul@example.com', now());
+select _essai_pret(id) from auth.users where id::text like 'f%';  -- 0035 : un mot de passe et des codes notés
 do $$
 declare r jsonb;
 begin
@@ -1720,12 +1718,12 @@ begin
   exception when others then assert sqlerrm = 'conditions non acceptées', sqlerrm; end;
   begin perform ouvrir_mon_compte('Paul', 'Biya', date '1990-01-01', '+237677000111', 'Douala', 'CM', '2020-01-01'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'conditions non acceptées', sqlerrm; end;
-  r := ouvrir_mon_compte('Paul', 'Biya', date '1990-01-01', '+237677000111', 'Douala', 'CM', '2026-10-16');
-  assert r ->> 'conditions_version' = '2026-10-16' and (r ->> 'conditions_a_jour')::boolean and r ->> 'conditions_acceptees_le' is not null, r;
+  r := ouvrir_mon_compte('Paul', 'Biya', date '1990-01-01', '+237677000111', 'Douala', 'CM', '2026-11-01');
+  assert r ->> 'conditions_version' = '2026-11-01' and (r ->> 'conditions_a_jour')::boolean and r ->> 'conditions_acceptees_le' is not null, r;
   update parametres set valeur = '{"version": "2027-01-01"}' where cle = 'conditions';
   assert not (mon_compte() ->> 'conditions_a_jour')::boolean, 'une nouvelle version : à relire';
   assert parametres_publics() -> 'conditions' ->> 'version' = '2027-01-01';
-  begin perform accepter_conditions('2026-10-16'); raise exception 'aurait dû refuser';
+  begin perform accepter_conditions('2026-11-01'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'conditions non acceptées', sqlerrm; end;
   r := accepter_conditions('2027-01-01');
   assert (r ->> 'conditions_a_jour')::boolean, r;
@@ -1737,25 +1735,23 @@ rollback;
 -- en cours ; avec le code secret ; ensuite plus aucun geste ; l'équipe rouvre.
 begin;
 insert into auth.users (id, email, email_confirmed_at) values ('f3000000-0000-0000-0000-000000000002', 'marie@example.com', now());
+select _essai_pret(id) from auth.users where id::text like 'f%';  -- 0035 : un mot de passe et des codes notés
 do $$
 declare r jsonb;
 begin
   perform set_config('xafe.compte', 'f3000000-0000-0000-0000-000000000002', true);
-  perform ouvrir_mon_compte('Marie', 'Ekane', date '1991-02-02', '+237677000222', 'Douala', 'CM', '2026-10-16');
-  perform completer_profil('Marie Ekane', '4826');
+  perform ouvrir_mon_compte('Marie', 'Ekane', date '1991-02-02', '+237677000222', 'Douala', 'CM', '2026-11-01');
   insert into soldes (compte_id, actif, disponible, bloque) values ('f3000000-0000-0000-0000-000000000002', 'XAFe', 1500, 0);
-  begin perform fermer_mon_compte('4826'); raise exception 'aurait dû refuser';
+  begin perform _fermer_compte(auth.uid()); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'il reste de l''argent sur le compte', sqlerrm; end;
   update soldes set disponible = 0 where compte_id = 'f3000000-0000-0000-0000-000000000002';
-  r := fermer_mon_compte('0000', 'je n''en ai plus besoin');
-  assert not (r ->> 'ok')::boolean and r ->> 'erreur' = 'code secret incorrect', r;
-  assert (select ferme_le from comptes where id = 'f3000000-0000-0000-0000-000000000002') is null, 'un code faux ne ferme rien';
-  r := fermer_mon_compte('4826', 'je n''en ai plus besoin');
+  -- (0036) la fermeture vérifiée (mot de passe + code e-mail + 2FA) a son scénario (11.60+)
+  r := _fermer_compte(auth.uid(), 'je n''en ai plus besoin');
   assert (r ->> 'ok')::boolean and r -> 'compte' ->> 'ferme_le' is not null and (r -> 'compte' ->> 'desactive')::boolean, r;
   assert (select fermeture_motif from comptes where id = 'f3000000-0000-0000-0000-000000000002') = 'je n''en ai plus besoin';
   begin perform ouvrir_depot('mtn'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'compte fermé', sqlerrm; end;
-  begin perform fermer_mon_compte('4826'); raise exception 'aurait dû refuser';
+  begin perform _fermer_compte(auth.uid()); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'compte déjà fermé', sqlerrm; end;
   assert mon_compte() ->> 'ferme_le' is not null, 'le client voit que son compte est fermé';
 
@@ -1789,12 +1785,12 @@ begin;
 update parametres set valeur = valeur || '{"declaration_complete": true}' where cle = 'depot';
 update terminaux set vu_le = now() where id = 'akwa-1';
 insert into auth.users (id, email, email_confirmed_at) values ('f4000000-0000-0000-0000-000000000001', 'depot@example.com', now());
+select _essai_pret(id) from auth.users where id::text like 'f%';  -- 0035 : un mot de passe et des codes notés
 do $$
 declare r jsonb; ref text; c uuid := 'f4000000-0000-0000-0000-000000000001';
 begin
   perform set_config('xafe.compte', c::text, true);
-  perform ouvrir_mon_compte('Awa', 'Ngono', date '1994-03-12', '+237677555111', 'Douala', 'CM', '2026-10-16');
-  perform completer_profil('Awa Ngono', '2580');
+  perform ouvrir_mon_compte('Awa', 'Ngono', date '1994-03-12', '+237677555111', 'Douala', 'CM', '2026-11-01');
   ref := ouvrir_depot('mtn') ->> 'reference';
   assert (mon_depot(ref) ? 'titulaire'), 'l''écran reçoit le titulaire du float';
 
@@ -1854,7 +1850,7 @@ begin
   exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
 
   perform set_config('xafe.compte', '11111111-1111-1111-1111-111111111111', true);  -- Alice, qui a de l'argent et un numéro
-  begin perform demander_sortie(1000, (select id from numeros where compte_id = '11111111-1111-1111-1111-111111111111' limit 1), 'k-fermee', '1234'); raise exception 'aurait dû refuser';
+  begin perform _demander_sortie(1000, (select id from numeros where compte_id = '11111111-1111-1111-1111-111111111111' limit 1), 'k-fermee'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'sorties pas encore ouvertes', sqlerrm; end;
   assert adresse_depot('USDT', 'bep20') is null, 'dépôts crypto fermés : aucune adresse, même déjà attribuée';
   r := parametres_publics();
@@ -1887,16 +1883,16 @@ begin
   assert parametres_publics() -> 'sortie' ->> 'mode' = 'manuel', 'l''écran sait que l''équipe paie';
   dispo0 := solde(a, 'XAFe', 'dispo'); bloque0 := solde(a, 'XAFe', 'bloque');
   detruit0 := (select coalesce(sum(montant), 0) from emissions where sens = 'destruction');
-  begin perform demander_sortie(50000, nid, 'm-1', '1234'); raise exception 'aurait dû refuser';
+  begin perform _demander_sortie(50000, nid, 'm-1'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'nom du bénéficiaire invalide', sqlerrm; end;
 
   -- A · demandée : mise de côté tout de suite, aucun transfert pour un boîtier
-  r := demander_sortie(50000, nid, 'm-1', '1234', '  Alice   Mballa ');
+  r := _demander_sortie(50000, nid, 'm-1', '  Alice   Mballa ');
   ref1 := r ->> 'reference';
   assert r ->> 'mode' = 'manuel' and r ->> 'etat' = 'en_attente' and r ->> 'nom_beneficiaire' = 'Alice Mballa', r;
   assert solde(a, 'XAFe', 'dispo') = dispo0 - 50000 and solde(a, 'XAFe', 'bloque') = bloque0 + 50000, 'mis de côté à la demande';
   assert not exists (select 1 from commandes k join sorties s on s.id = k.sortie_id where s.reference = ref1), 'aucune commande pour TOTEM';
-  assert (demander_sortie(50000, nid, 'm-1', '1234', 'Alice Mballa') ->> 'deja')::boolean, 'le même geste rejoué ne demande pas deux fois';
+  assert (_demander_sortie(50000, nid, 'm-1', 'Alice Mballa') ->> 'deja')::boolean, 'le même geste rejoué ne demande pas deux fois';
 
   -- B · le support ne paie pas ; l'opérateur prend, le SMS de la puce arrive, il paie : sous le seuil, c'est clos
   perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000003', true);
@@ -1925,7 +1921,7 @@ begin
 
   -- C · au-dessus du seuil : le même ID ne prouve pas deux sorties ; payé, il attend une AUTRE personne ; il ne se refuse plus
   perform set_config('xafe.compte', a::text, true);
-  ref2 := demander_sortie(200000, nid, 'm-2', '1234', 'Alice Mballa') ->> 'reference';
+  ref2 := _demander_sortie(200000, nid, 'm-2', 'Alice Mballa') ->> 'reference';
   perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000002', true);
   begin perform admin_payer_sortie(ref2, 'MP261016.1200.A00001'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'ce transaction ID prouve déjà une autre sortie', sqlerrm; end;
@@ -1943,7 +1939,7 @@ begin
 
   -- D · refusée avant paiement : tout revient, avec le motif
   perform set_config('xafe.compte', a::text, true);
-  ref3 := demander_sortie(10000, nid, 'm-3', '1234', 'Alice Mballa') ->> 'reference';
+  ref3 := _demander_sortie(10000, nid, 'm-3', 'Alice Mballa') ->> 'reference';
   perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000002', true);
   begin perform admin_refuser_sortie(ref3, ' '); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'un motif est exigé', sqlerrm; end;
@@ -2206,11 +2202,11 @@ begin
   insert into adresses_libres (actif, reseau, adresse, indice) values ('USDT', 'base', '0xbA5e00000000000000000000000000000000ba5e', 0);
   assert adresse_depot('USDT', 'base') is null, 'réseau fermé : aucune adresse';
   begin
-    perform demander_retrait_crypto('USDT', 'base', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 10, null, '1357');
+    perform _demander_retrait_crypto('USDT', 'base', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 10, null);
     raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'réseau pas encore ouvert', sqlerrm; end;
   begin
-    perform demander_retrait_crypto('USDT', 'dogecoin', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 10, null, '1357');
+    perform _demander_retrait_crypto('USDT', 'dogecoin', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 10, null);
     raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'réseau inconnu', sqlerrm; end;
 
@@ -2243,10 +2239,10 @@ begin
   perform set_config('xafe.compte', '22222222-2222-2222-2222-222222222222', true);
   assert adresse_depot('USDT', 'base') = '0xbA5e00000000000000000000000000000000ba5e', 'Base ouvert : l''adresse préparée';
   begin
-    perform demander_retrait_crypto('USDT', 'base', 'TPL66VK2gCXNCD7EJg9pgJRfqcRazjhUZY', 10, null, '1357');
+    perform _demander_retrait_crypto('USDT', 'base', 'TPL66VK2gCXNCD7EJg9pgJRfqcRazjhUZY', 10, null);
     raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'adresse invalide', sqlerrm; end;
-  r := demander_retrait_crypto('USDT', 'base', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 10, 'k-11.40', '1357');
+  r := _demander_retrait_crypto('USDT', 'base', '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21', 10, 'k-11.40');
   assert r ->> 'reseau' = 'base' and r ->> 'etat' = 'en_attente', r;
   assert jsonb_array_length(chaine_retraits_a_envoyer('base')) = 1, 'le veilleur de Base le voit';
   assert (select array_agg(x ->> 'id' order by o) from jsonb_array_elements(parametres_publics() -> 'crypto' -> 'reseaux') with ordinality t(x, o))
@@ -2381,7 +2377,7 @@ delete from cours_externes;
 do $$
 declare c cours_externes; r jsonb;
 begin
-  c := _poser_le_cours('frankfurter', 1.1253, '2026-10-16');
+  c := _poser_le_cours('frankfurter', 1.1253, '2026-11-01');
   -- 655,957 / 1,1253 = 582,9174… ; au pas du marché
   assert c.pose and c.usd_xaf = 582.9174 and c.prix = round(582.9174 / (parametre('marche') ->> 'pas_prix')::numeric) * (parametre('marche') ->> 'pas_prix')::numeric, to_jsonb(c);
   assert (parametre('marche') ->> 'prix_reference')::numeric = c.prix, 'le cours posé devient la référence du marché';
@@ -2754,11 +2750,11 @@ begin
   assert coalesce(r ->> 'motif', '') not like '%pas un float%', r;
 
   -- les retraits : la porte fermée des sorties s'ouvre pour un numéro de démo, pas pour un vrai
-  begin perform demander_sortie(5000, n_vrai, 'k-demo-s1', '0000', 'TESTEUR');
+  begin perform _demander_sortie(5000, n_vrai, 'k-demo-s1', 'TESTEUR');
         raise exception 'aurait dû refuser';
   -- (0034) l'argent de test ne sort pas en vrai, porte ouverte ou non : c'est ce refus-là qui tombe d'abord
   exception when others then assert sqlerrm = 'l''argent de test ne sort pas en vrai', sqlerrm; end;
-  begin perform demander_sortie(5000, n_demo, 'k-demo-s2', '0000', 'TESTEUR');
+  begin perform _demander_sortie(5000, n_demo, 'k-demo-s2', 'TESTEUR');
   exception when others then assert sqlerrm <> 'sorties pas encore ouvertes', 'un numéro de démo passe la porte : ' || sqlerrm; end;
 
   -- hors bêta, la démo n'existe plus : 600 n'est le numéro de personne
@@ -2796,7 +2792,7 @@ begin
   exception when others then assert sqlerrm = 'un float de démo ne reçoit que l''argent de test', sqlerrm; end;
   perform ajouter_numero('mtn', '600000007');
   select id into n from numeros where compte_id = reel and numero = '600000007';
-  begin perform demander_sortie(5000, n, 'k-reel-s1', '0000', 'REEL');
+  begin perform _demander_sortie(5000, n, 'k-reel-s1', 'REEL');
         raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'un numéro de démo ne reçoit que l''argent de test', sqlerrm; end;
 
@@ -2858,7 +2854,7 @@ begin
   detruit0 := (select coalesce(sum(montant), 0) from emissions where sens = 'destruction');
 
   -- la demande passe, même avec un réveil qui ne peut pas partir (pas de pg_net ici)
-  r := demander_sortie(20000, nid, 'k-1152-1', '1234', 'Alice Demo');
+  r := _demander_sortie(20000, nid, 'k-1152-1', 'Alice Demo');
   ref1 := r ->> 'reference';
   assert r ->> 'etat' = 'en_attente' and r ->> 'mode' = 'manuel', r;
 
@@ -2882,7 +2878,7 @@ begin
   assert (totem_sortie_demo_payee('totem-demo', ref1, '18300000077') ->> 'deja')::boolean, 'le même ID rendu deux fois ne clôt pas deux fois';
 
   -- échouée : rien n'est parti, les XAFe reviennent avec le motif
-  r := demander_sortie(30000, nid, 'k-1152-2', '1234', 'Alice Demo');
+  r := _demander_sortie(30000, nid, 'k-1152-2', 'Alice Demo');
   ref2 := r ->> 'reference';
   perform totem_prendre_sortie_demo('totem-demo', ref2);
   begin perform totem_sortie_demo_payee('totem-demo', ref2, '18300000077'); raise exception 'aurait dû refuser';
@@ -2919,12 +2915,12 @@ begin
   update terminaux set vu_le = now() where id = 'akwa-1';
   perform set_config('xafe.compte', a::text, true);
   perform _mouvement(a, 'XAFe', 1000000, 0, 'test', 'test', 'T-11.53');
-  begin perform demander_sortie(900000, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-1153-a', '1234', 'TESTEUR');
+  begin perform _demander_sortie(900000, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-1153-a', 'TESTEUR');
         raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'l''argent de test ne sort pas en vrai', sqlerrm; end;
   -- … et le témoin : le même compte, passé à l'argent réel, retire normalement
   update comptes set argent_reel = true where id = a;
-  r := demander_sortie(900000, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-1153-a', '1234', 'TESTEUR');
+  r := _demander_sortie(900000, 'aaaaaaaa-0000-0000-0000-000000000001', 'k-1153-a', 'TESTEUR');
   assert r ->> 'etat' = 'en_attente', r;
   assert (select t.demo from commandes c join terminaux t on t.id = c.terminal
            join sorties s on s.id = c.sortie_id where s.reference = r ->> 'reference' limit 1) = false, 'payé par un vrai boîtier';
@@ -2989,6 +2985,647 @@ begin
   assert not exists (select 1 from ordres where compte_id = g and etat in ('ouvert', 'partiel')), 'ordre du compte gelé encore au carnet';
   assert solde(g, 'USDT', 'dispo') = avant and solde(g, 'USDT', 'bloque') = 0, 'ses USDT lui sont rendus, rien ne s''exécute';
   raise notice '✓ 11.53 la revue d''attaque : argent de test bloqué vers un vrai numéro, vrai retrait jamais confié à la démo, SMS de démo sans effet sur un vrai dépôt (dans les deux ordres), référence tenue à 10 %% du cours externe, compte gelé sorti du carnet';
+end $$;
+rollback;
+
+-- 11.54 · une session faible n'atteint RIEN (0035). Chaque fonction ouverte
+-- aux clients, l'une après l'autre, appelée en session aal1 — puis en aal2
+-- ouverte par un simple code e-mail (amr « otp ») — doit lever exactement
+-- « double authentification requise ». La liste est lue dans pg_proc : une
+-- fonction ajoutée demain par n'importe quelle migration y entre d'office.
+-- Cinq exceptions, chacune avec sa raison. Le contrôle statique dit, lui,
+-- QUELLE fonction a oublié sa garde en tête ; il porte son propre témoin.
+begin;
+create function _appels_faibles() returns text language plpgsql set search_path = public as $f$
+declare r record; v_args text; v_err text; v_faux text := '';
+begin
+  for r in select p.oid, p.oid::regprocedure::text sig, p.proname from pg_proc p
+            where p.pronamespace = 'public'::regnamespace and has_function_privilege('authenticated', p.oid, 'execute')
+              -- preuve_de_reserve : publique (anon), des totaux sans nom · mon_etat_d_entree : l'écran d'entrée, avant le TOTP ·
+              -- session_forte et admin_a_droit : rendent « faux » (vérifié plus bas) · avant_chaque_requete : le crochet (11.59)
+              and p.proname not in ('preuve_de_reserve', 'mon_etat_d_entree', 'session_forte', 'admin_a_droit', 'avant_chaque_requete')
+              and p.oid <> '_appels_faibles()'::regprocedure
+            order by 2 loop
+    select coalesce(string_agg('null::' || format_type(t, null), ', ' order by o), '') into v_args
+      from unnest((select proargtypes::oid[] from pg_proc where oid = r.oid)) with ordinality a(t, o);
+    begin
+      execute format('select %I(%s)', r.proname, v_args);
+      v_err := 'aucune erreur';
+    exception when others then v_err := sqlerrm;
+    end;
+    if v_err is distinct from 'double authentification requise' then v_faux := v_faux || r.sig || ' → ' || v_err || E'\n'; end if;
+  end loop;
+  return nullif(v_faux, '');
+end $f$;
+grant execute on function _appels_faibles() to authenticated;
+set local role authenticated;
+do $$
+declare v text; n int;
+begin
+  perform set_config('xafe.compte', '11111111-1111-1111-1111-111111111111', true);
+  select count(*) into n from pg_proc p where p.pronamespace = 'public'::regnamespace and has_function_privilege('authenticated', p.oid, 'execute');
+  assert n > 100, format('la liste est trop courte pour être la vraie : %s', n);
+  -- aal1 : le mot de passe, sans le code de l'application
+  perform set_config('xafe.aal', 'aal1', true);
+  perform set_config('xafe.amr', jsonb_build_array(jsonb_build_object('method', 'password', 'timestamp', extract(epoch from now())::bigint))::text, true);
+  assert not session_forte() and not admin_a_droit('voir'), 'aal1 n''est pas une session forte';
+  v := _appels_faibles();
+  assert v is null, E'en aal1, ces fonctions ne refusent pas :\n' || v;
+  -- aal2 atteint par un code e-mail (signInWithOtp) puis le TOTP : sans mot de passe, pas forte
+  perform set_config('xafe.aal', 'aal2', true);
+  perform set_config('xafe.amr', jsonb_build_array(jsonb_build_object('method', 'otp', 'timestamp', extract(epoch from now())::bigint),
+                                                   jsonb_build_object('method', 'totp', 'timestamp', extract(epoch from now())::bigint))::text, true);
+  assert not session_forte(), 'un code e-mail et le TOTP ne font pas une session forte';
+  v := _appels_faibles();
+  assert v is null, E'en aal2 ouvert par code e-mail, ces fonctions ne refusent pas :\n' || v;
+  -- le contrôle positif : la même personne, mot de passe puis TOTP (le « mfa/totp » de certaines versions de GoTrue compte aussi)
+  perform set_config('xafe.amr', jsonb_build_array(jsonb_build_object('method', 'password', 'timestamp', extract(epoch from now())::bigint),
+                                                   jsonb_build_object('method', 'mfa/totp', 'timestamp', extract(epoch from now())::bigint))::text, true);
+  assert session_forte() and mon_compte() ->> 'id' = '11111111-1111-1111-1111-111111111111', 'mot de passe + TOTP : la session est forte';
+  perform set_config('xafe.amr', jsonb_build_array(jsonb_build_object('method', 'oauth', 'timestamp', extract(epoch from now())::bigint))::text, true);
+  assert session_forte(), 'Google + TOTP : forte';
+  perform set_config('request.jwt.claims', '{"role": "anon"}', true);
+  assert not session_forte(), 'anon n''est jamais fort';
+  perform set_config('request.jwt.claims', '{"role": "service_role"}', true);
+  assert session_forte(), 'la clé de service passe';
+  perform set_config('request.jwt.claims', '', true);
+end $$;
+reset role;
+drop function _appels_faibles();
+do $$
+declare v text;
+  -- la règle, lue dans le texte : la PREMIÈRE instruction est la garde (ou une porte qui la porte)
+  c_regle constant text := '^\s*(declare[\s\S]*?)?begin\s+perform\s+(public\.)?_exiger_(aal2|droit|compte_actif)\(';
+begin
+  create function temoin_sans_garde() returns jsonb language plpgsql security definer set search_path = public as $f$
+  begin return jsonb_build_object('compte', auth.uid()); end $f$;
+  grant execute on function temoin_sans_garde() to authenticated;
+  select string_agg(p.oid::regprocedure::text, ', ' order by 1) into v from pg_proc p join pg_language l on l.oid = p.prolang
+   where p.pronamespace = 'public'::regnamespace and has_function_privilege('authenticated', p.oid, 'execute')
+     and p.proname not in ('preuve_de_reserve', 'mon_etat_d_entree', 'session_forte', 'admin_a_droit', 'avant_chaque_requete')
+     and (l.lanname <> 'plpgsql' or p.prosrc !~* c_regle);
+  assert v = 'temoin_sans_garde()', 'le témoin doit être vu, et lui seul : ' || coalesce(v, 'personne');
+  drop function temoin_sans_garde();
+  raise notice '✓ 11.54 en aal1, et en aal2 ouvert par un code e-mail, chacune des fonctions ouvertes aux clients refuse « double authentification requise » ; la garde est leur première instruction (témoin pris)';
+end $$;
+rollback;
+
+-- 11.55 · les codes de secours (0035). Dix codes distincts, montrés une fois,
+-- gardés en empreintes ; sans les avoir notés, pas de compte ; un code ne
+-- sert qu'une fois, ni à un autre, ni pendant le verrou (cinq essais, puis
+-- quinze minutes) ; un lot confirmé ne se remplace qu'avec un TOTP frais.
+-- Témoin : un code consommé qui passerait deux fois fait tomber l'assertion
+-- « ne sert qu'une fois ».
+begin;
+select _essai_utilisateur('f5500000-0000-0000-0000-000000000001', 'secours@example.com');
+select _essai_utilisateur('f5500000-0000-0000-0000-000000000002', 'autre@example.com');
+delete from lots_de_secours where utilisateur_id::text like 'f5500000-%';      -- pas encore de codes
+do $$
+declare
+  u uuid := 'f5500000-0000-0000-0000-000000000001'; v uuid := 'f5500000-0000-0000-0000-000000000002';
+  r jsonb; codes text[]; neufs text[]; autres text[]; variante text; i int;
+begin
+  perform set_config('xafe.compte', u::text, true);
+  r := generer_codes_de_secours();
+  select array_agg(x) into codes from jsonb_array_elements_text(r -> 'codes') x;
+  assert array_length(codes, 1) = 10 and (select count(distinct x) from unnest(codes) x) = 10, r;
+  assert (select bool_and(x ~ '^[0-9A-Z]{5}-[0-9A-Z]{5}$') from unnest(codes) x), r;
+  assert (select count(*) from codes_de_secours where utilisateur_id = u and empreinte ~ '^[0-9a-f]{64}$') = 10, 'dix empreintes';
+  assert not exists (select 1 from codes_de_secours k, unnest(codes) x where position(replace(x, '-', '') in k::text) > 0)
+     and not exists (select 1 from journal_securite j, unnest(codes) x where position(replace(x, '-', '') in j::text) > 0)
+     and not exists (select 1 from lots_de_secours l, unnest(codes) x where position(replace(x, '-', '') in l::text) > 0),
+         'aucune ligne ne garde un code en clair';
+  assert not (mes_codes_de_secours() ->> 'confirmes')::boolean and (mes_codes_de_secours() ->> 'restants')::int = 10;
+  begin perform ouvrir_mon_compte('Awa', 'Secours', date '1990-05-14', '+237677550001', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'codes de secours à noter', sqlerrm; end;
+  r := confirmer_codes_de_secours();
+  assert (r ->> 'restants')::int = 10, r;
+  r := ouvrir_mon_compte('Awa', 'Secours', date '1990-05-14', '+237677550001', 'Douala', 'CM', '2026-11-01');
+  assert (r ->> 'id')::uuid = u, r;
+
+  -- un lot confirmé ne se remplace pas avec un TOTP vieux de dix minutes…
+  perform set_config('xafe.amr', jsonb_build_array(jsonb_build_object('method', 'password', 'timestamp', extract(epoch from now())::bigint),
+                                                   jsonb_build_object('method', 'totp', 'timestamp', extract(epoch from now() - interval '10 minutes')::bigint))::text, true);
+  begin perform generer_codes_de_secours(); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'confirmez avec votre application d''authentification', sqlerrm; end;
+  -- …mais avec un code tout neuf : un lot neuf, et l'ancien ne vaut plus rien
+  perform set_config('xafe.amr', '', true);
+  select array_agg(x) into neufs from jsonb_array_elements_text(generer_codes_de_secours() -> 'codes') x;
+  assert not (mes_codes_de_secours() ->> 'confirmes')::boolean, 'un lot neuf se renote';
+  r := _consommer_code_de_secours(u, codes[1]);
+  assert not (r ->> 'ok')::boolean and r ->> 'erreur' = 'code de secours incorrect', 'un code de l''ancien lot passe encore : ' || r;
+
+  -- ce que la personne recopie : minuscules, espaces, O pour 0, I ou L pour 1
+  variante := translate(lower(replace(neufs[1], '-', '  ')), '01', 'ol');
+  r := _consommer_code_de_secours(u, variante);
+  assert (r ->> 'ok')::boolean and (r ->> 'restants')::int = 9, format('%s → %s', variante, r);
+  r := _consommer_code_de_secours(u, neufs[1]);
+  assert not (r ->> 'ok')::boolean and r ->> 'erreur' = 'code de secours incorrect', 'un code ne sert qu''une fois : ' || r;
+  -- rendu (GoTrue n'a pas pu retirer le facteur) : il resservira
+  perform _code_de_secours_rendu((select id from codes_de_secours where utilisateur_id = u and utilise_le is not null));
+  assert (select count(*) from codes_de_secours where utilisateur_id = u and utilise_le is null) = 10, 'le code brûlé est rendu';
+
+  -- le code d'un autre n'ouvre pas mon compte
+  perform set_config('xafe.compte', v::text, true);
+  select array_agg(x) into autres from jsonb_array_elements_text(generer_codes_de_secours() -> 'codes') x;
+  r := _consommer_code_de_secours(u, autres[1]);
+  assert not (r ->> 'ok')::boolean, 'le code d''un autre passe : ' || r;
+
+  -- cinq essais faux, puis quinze minutes de verrou, même pour le bon code
+  update lots_de_secours set essais_rates = 0 where utilisateur_id = u;
+  for i in 1 .. 4 loop
+    r := _consommer_code_de_secours(u, 'ZZZZZ-ZZZZZ');
+    assert r ->> 'erreur' = 'code de secours incorrect' and (r ->> 'essais_restants')::int = 5 - i, r;
+  end loop;
+  r := _consommer_code_de_secours(u, 'ZZZZZ-ZZZZZ');
+  assert r ->> 'erreur' = 'trop d''essais' and (r ->> 'verrou_jusqua')::timestamptz > now() + interval '14 minutes', r;
+  r := _consommer_code_de_secours(u, neufs[2]);
+  assert r ->> 'erreur' = 'trop d''essais', 'pendant le verrou, même le bon code est refusé : ' || r;
+  assert (select count(*) from journal_securite where utilisateur_id = u and evenement = 'code_de_secours_refuse') >= 6, 'chaque refus est journalisé';
+
+  -- la double authentification retirée : codes et lot partent, la personne est prévenue
+  r := _deux_facteurs_retires(u, 'code_de_secours', null, 1);
+  assert not exists (select 1 from codes_de_secours where utilisateur_id = u) and not exists (select 1 from lots_de_secours where utilisateur_id = u), r;
+  assert exists (select 1 from journal_securite where utilisateur_id = u and evenement = 'deux_facteurs_retires' and detail ->> 'cause' = 'code_de_secours');
+  assert exists (select 1 from notifications where compte_id = u and titre = 'Double authentification retirée'), 'la notification part';
+  assert exists (select 1 from courriels_a_envoyer where compte_id = u and gabarit = 'deux_facteurs_retires'
+                  and cle = 'deux_facteurs_retires:' || u || ':' || (now() at time zone 'Africa/Douala')::date), 'l''e-mail attend dans la boîte d''envoi (0036)';
+  begin perform _deux_facteurs_retires(u, 'au hasard', null, 1); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'cause inconnue', sqlerrm; end;
+  raise notice '✓ 11.55 les codes de secours : dix, distincts, en empreintes ; sans les noter, pas de compte ; un code ne sert qu''une fois, ni à un autre ni pendant le verrou ; un lot confirmé ne se remplace qu''avec un TOTP frais';
+end $$;
+-- un client n'atteint pas la consommation : seule la fonction deux-facteurs, avec la clé de service
+set local role authenticated;
+do $$
+begin
+  perform set_config('xafe.compte', 'f5500000-0000-0000-0000-000000000002', true);
+  begin perform _consommer_code_de_secours('f5500000-0000-0000-0000-000000000002', 'ABCDE-FGHJK'); raise exception 'aurait dû refuser';
+  exception when insufficient_privilege then null; end;
+  begin perform _deux_facteurs_retires('f5500000-0000-0000-0000-000000000002', 'administration', null, 0); raise exception 'aurait dû refuser';
+  exception when insufficient_privilege then null; end;
+  begin perform * from codes_de_secours; raise exception 'aurait dû refuser';
+  exception when insufficient_privilege then null; end;
+  raise notice '✓ 11.55b un client ne consomme pas de code, ne retire pas de facteur, ne lit aucune empreinte';
+end $$;
+rollback;
+
+-- 11.56 · ouvrir son compte en production (0035). Chaque manque a son refus :
+-- session faible, premier facteur « code e-mail », compte Google sans mot de
+-- passe, codes pas notés. Le téléphone reste unique parmi les comptes
+-- ouverts — même écrit autrement, même quand deux inscriptions se croisent —
+-- et celui d'un compte fermé se réutilise. Une personne créée à la main dans
+-- le tableau de bord (adresse confirmée) suit le même chemin.
+-- Témoin : l'ouverture d'avant acceptait l'aal1, le compte Google sans mot
+-- de passe et la personne sans codes.
+begin;
+select _essai_utilisateur('f5600000-0000-0000-0000-000000000001', 'prod@example.com');
+select _essai_utilisateur('f5600000-0000-0000-0000-000000000002', 'google@example.com', false);
+select _essai_utilisateur('f5600000-0000-0000-0000-000000000003', 'sanscodes@example.com');
+select _essai_utilisateur('f5600000-0000-0000-0000-000000000004', 'meme-numero@example.com');
+select _essai_utilisateur('f5600000-0000-0000-0000-000000000005', 'course@example.com');
+select _essai_utilisateur('f5600000-0000-0000-0000-000000000006', 'reprise@example.com');
+-- créée dans le tableau de bord : adresse confirmée, mot de passe posé, rien d'autre
+insert into auth.users (id, email, email_confirmed_at, encrypted_password)
+values ('f5600000-0000-0000-0000-000000000007', 'tableau@example.com', now(), extensions.crypt('Mot-de-passe-2026', extensions.gen_salt('bf', 4)));
+update lots_de_secours set confirme_le = null where utilisateur_id = 'f5600000-0000-0000-0000-000000000003';
+do $$
+declare r jsonb; e jsonb;
+  c_faible constant text := jsonb_build_array(jsonb_build_object('method', 'password', 'timestamp', extract(epoch from now())::bigint))::text;
+  c_otp constant text := jsonb_build_array(jsonb_build_object('method', 'otp', 'timestamp', extract(epoch from now())::bigint),
+                                           jsonb_build_object('method', 'totp', 'timestamp', extract(epoch from now())::bigint))::text;
+begin
+  perform set_config('xafe.compte', 'f5600000-0000-0000-0000-000000000001', true);
+  perform set_config('xafe.aal', 'aal1', true); perform set_config('xafe.amr', c_faible, true);
+  begin perform ouvrir_mon_compte('Pierre', 'Prod', date '1990-05-14', '+237677560001', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'double authentification requise', sqlerrm; end;
+  -- en session faible, l'écran d'entrée sait où en est la personne
+  e := mon_etat_d_entree();
+  assert (e ->> 'email_confirme')::boolean and (e ->> 'mot_de_passe')::boolean and not (e ->> 'session_forte')::boolean
+         and (e ->> 'codes_de_secours')::boolean and not (e ->> 'compte')::boolean, e;
+  perform set_config('xafe.aal', 'aal2', true); perform set_config('xafe.amr', c_otp, true);
+  begin perform ouvrir_mon_compte('Pierre', 'Prod', date '1990-05-14', '+237677560001', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'double authentification requise', sqlerrm; end;
+  perform set_config('xafe.amr', '', true);
+
+  perform set_config('xafe.compte', 'f5600000-0000-0000-0000-000000000002', true);
+  assert not (mon_etat_d_entree() ->> 'mot_de_passe')::boolean, 'un compte Google n''a pas de mot de passe';
+  begin perform ouvrir_mon_compte('Gaby', 'Google', date '1990-05-14', '+237677560002', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'mot de passe à choisir', sqlerrm; end;
+
+  perform set_config('xafe.compte', 'f5600000-0000-0000-0000-000000000003', true);
+  begin perform ouvrir_mon_compte('Sans', 'Codes', date '1990-05-14', '+237677560003', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'codes de secours à noter', sqlerrm; end;
+  assert not exists (select 1 from comptes where id::text like 'f5600000-%'), 'aucun refus n''a ouvert de compte';
+
+  -- le chemin entier : la session forte, et tout est mis en forme comme avant
+  perform set_config('xafe.compte', 'f5600000-0000-0000-0000-000000000001', true);
+  r := ouvrir_mon_compte('  pierre ', 'PROD', date '1990-05-14', '+237 6 77 56 00 01', 'douala', 'cm', '2026-11-01');
+  assert r ->> 'nom' = 'Pierre Prod' and r ->> 'telephone' = '+237677560001' and r ->> 'ville' = 'Douala' and r ->> 'pays' = 'CM', r;
+  -- le même numéro, écrit autrement
+  perform set_config('xafe.compte', 'f5600000-0000-0000-0000-000000000004', true);
+  begin perform ouvrir_mon_compte('Marc', 'Meme', date '1990-05-14', '+237 6 77 56 00 01', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'ce numéro est déjà utilisé', sqlerrm; end;
+
+  -- deux inscriptions qui se croisent : l'autre compte naît APRÈS la vérification (un déclencheur l'y glisse) ;
+  -- c'est l'index qui refuse, et le refus dit encore le numéro, pas un message passe-partout
+  create function _course_au_numero() returns trigger language plpgsql set search_path = public as $f$
+  begin
+    if new.id = 'f5600000-0000-0000-0000-000000000005' then
+      insert into comptes (id, telephone, nom) values ('f5600000-0000-0000-0000-0000000000aa', new.telephone, 'L''autre');
+    end if;
+    return new;
+  end $f$;
+  create trigger course_au_numero before insert on comptes for each row execute function _course_au_numero();
+  perform set_config('xafe.compte', 'f5600000-0000-0000-0000-000000000005', true);
+  begin perform ouvrir_mon_compte('Carla', 'Course', date '1990-05-14', '+237677560005', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'ce numéro est déjà utilisé', 'la course rend : ' || sqlerrm; end;
+  drop trigger course_au_numero on comptes; drop function _course_au_numero();
+  assert not exists (select 1 from comptes where telephone = '+237677560005'), 'rien n''est resté de la course';
+
+  -- le numéro d'un compte fermé se réutilise (décision du propriétaire)
+  update comptes set ferme_le = now(), desactive_le = now() where id = 'f5600000-0000-0000-0000-000000000001';
+  perform set_config('xafe.compte', 'f5600000-0000-0000-0000-000000000006', true);
+  r := ouvrir_mon_compte('Rita', 'Reprise', date '1990-05-14', '+237677560001', 'Douala', 'CM', '2026-11-01');
+  assert r ->> 'telephone' = '+237677560001', r;
+
+  -- créée dans le tableau de bord : en aal1, l'écran voit ce qui manque ; en aal2, les codes, puis le compte
+  perform set_config('xafe.compte', 'f5600000-0000-0000-0000-000000000007', true);
+  perform set_config('xafe.aal', 'aal1', true); perform set_config('xafe.amr', c_faible, true);
+  e := mon_etat_d_entree();
+  assert (e ->> 'email_confirme')::boolean and (e ->> 'mot_de_passe')::boolean and not (e ->> 'session_forte')::boolean
+         and not (e ->> 'codes_de_secours')::boolean and not (e ->> 'compte')::boolean, e;
+  perform set_config('xafe.aal', '', true); perform set_config('xafe.amr', '', true);
+  perform generer_codes_de_secours(); perform confirmer_codes_de_secours();
+  r := ouvrir_mon_compte('Tania', 'Tableau', date '1990-05-14', '+237677560007', 'Yaoundé', 'CM', '2026-11-01');
+  assert (mon_etat_d_entree() ->> 'compte')::boolean and (mon_etat_d_entree() ->> 'session_forte')::boolean, mon_etat_d_entree();
+  raise notice '✓ 11.56 ouvrir son compte : session faible, code e-mail, Google sans mot de passe ou codes pas notés, chacun refusé ; un numéro, même écrit autrement ou en course, ne sert qu''à un compte ouvert, celui d''un compte fermé se réutilise ; une personne du tableau de bord suit le même chemin';
+end $$;
+rollback;
+
+-- 11.57 · l'administration (0035). En session faible, l'équipe ne voit rien et
+-- n'entre pas ; sans mot de passe ni codes notés non plus. Réinitialiser la
+-- double authentification de quelqu'un : le super admin seul, jamais la
+-- sienne, avec un motif, trois fois par jour et par personne au plus, et
+-- c'est journalisé. La fiche « Sécurité » ne montre jamais d'empreinte.
+-- Témoin : avant 0035, admin_a_droit était vrai en aal1.
+begin;
+select _essai_utilisateur('f5700000-0000-0000-0000-000000000001', 'nouvel-admin@example.com', false);
+select _essai_utilisateur('f5700000-0000-0000-0000-000000000002', 'cible@example.com');
+insert into administrateurs_invites (email, nom, role) values ('nouvel-admin@example.com', 'Nouvel', 'support');
+insert into auth.mfa_factors (user_id, factor_type, status) values ('f5700000-0000-0000-0000-000000000002', 'totp', 'verified');
+insert into codes_de_secours (utilisateur_id, empreinte)
+values ('f5700000-0000-0000-0000-000000000002', _empreinte_de_secours('f5700000-0000-0000-0000-000000000002', 'ABCDEFGHJK'));
+do $$
+declare r jsonb; i int; a uuid := 'f5700000-0000-0000-0000-000000000001'; c uuid := 'f5700000-0000-0000-0000-000000000002';
+begin
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);   -- le super admin
+  perform set_config('xafe.aal', 'aal1', true);
+  assert not admin_a_droit('voir'), 'en aal1, aucun droit';
+  begin perform admin_tableau(); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'double authentification requise', sqlerrm; end;
+  begin perform entrer_administration(); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'double authentification requise', sqlerrm; end;
+  begin perform mon_profil_admin(); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'double authentification requise', sqlerrm; end;
+  perform set_config('xafe.aal', '', true);
+  assert admin_a_droit('voir'), 'en aal2, le droit revient';
+
+  -- une invitée sans mot de passe, puis sans codes : refusée ; avec les deux, elle entre
+  perform set_config('xafe.compte', a::text, true);
+  begin perform entrer_administration(); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'mot de passe à choisir', sqlerrm; end;
+  perform _essai_pret(a); update lots_de_secours set confirme_le = null where utilisateur_id = a;
+  begin perform entrer_administration(); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'codes de secours à noter', sqlerrm; end;
+  update lots_de_secours set confirme_le = now() where utilisateur_id = a;
+  assert entrer_administration() ->> 'role' = 'support', 'l''invitée entre';
+
+  -- la réinitialisation : le support ne peut pas
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000003', true);
+  begin perform admin_autoriser_reinitialisation_2fa(c, 'pièce d''identité vue en agence'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'accès non autorisé', sqlerrm; end;
+  r := admin_securite_utilisateur(c);
+  assert (r ->> 'deux_facteurs')::boolean and (r ->> 'codes_restants')::int = 1, r;
+  assert position((select empreinte from codes_de_secours where utilisateur_id = c) in r::text) = 0, 'la fiche montre une empreinte';
+
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);
+  begin perform admin_autoriser_reinitialisation_2fa('dddddddd-0000-0000-0000-000000000001', 'je me suis vérifié moi-même'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'vous ne réinitialisez pas votre propre double authentification', sqlerrm; end;
+  begin perform admin_autoriser_reinitialisation_2fa(c, 'vu'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'motif trop court', sqlerrm; end;
+  begin perform admin_autoriser_reinitialisation_2fa(gen_random_uuid(), 'pièce d''identité vue en agence'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'utilisateur inconnu', sqlerrm; end;
+  for i in 1 .. 3 loop
+    r := admin_autoriser_reinitialisation_2fa(c, 'pièce d''identité vue en agence, appel vidéo ' || i);
+    assert r ->> 'email' = 'cible@example.com' and (r ->> 'utilisateur_id')::uuid = c, r;
+  end loop;
+  begin perform admin_autoriser_reinitialisation_2fa(c, 'une quatrième fois dans la journée'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'trop de réinitialisations', sqlerrm; end;
+  assert (select count(*) from reinitialisations_2fa where utilisateur_id = c) = 3;
+  assert (select count(*) from journal_admin where action = 'deux_facteurs_reinitialisation' and cible = c::text) = 3, 'journalisé';
+  r := _deux_facteurs_retires(c, 'administration', (r ->> 'id')::uuid, 1);
+  assert (select count(*) from reinitialisations_2fa where utilisateur_id = c and faite_le is not null and facteurs = 1) = 1, 'la réinitialisation est notée faite';
+  assert exists (select 1 from journal_securite where utilisateur_id = c and evenement = 'deux_facteurs_retires' and par_admin = 'dddddddd-0000-0000-0000-000000000001');
+  -- c n'a pas de ligne « comptes » : l'e-mail part à son adresse d'Auth, sans clé étrangère cassée
+  assert exists (select 1 from courriels_a_envoyer where compte_id is null and destinataire = 'cible@example.com' and gabarit = 'deux_facteurs_retires');
+  -- le super admin lit le motif, le support non
+  assert admin_securite_utilisateur(c) -> 'reinitialisations' -> 0 ? 'motif';
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000003', true);
+  assert not (admin_securite_utilisateur(c) -> 'reinitialisations' -> 0 ? 'motif'), 'le motif est pour le super admin';
+  raise notice '✓ 11.57 l''administration : en aal1 rien ; sans mot de passe ni codes, pas d''entrée ; réinitialiser : le super admin seul, jamais pour lui, motif exigé, trois par jour, journalisé ; aucune empreinte montrée';
+end $$;
+rollback;
+
+-- 11.58 · les tables (0035). Toute table qu'un client peut lire porte la
+-- politique RESTRICTIVE de la session forte ; en aal1, il n'y lit rien — et
+-- en aal2 il y relit ses lignes, preuve que c'est la politique, et pas
+-- l'absence de lignes, qui filtre. Les tables des codes de secours ne se
+-- lisent pas. Témoin : une table neuve lisible sans la politique est vue.
+begin;
+do $$
+declare v text;
+  c_sans constant text := $q$
+    select string_agg(c.relname, ', ' order by c.relname) from pg_class c
+     where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and has_table_privilege('authenticated', c.oid, 'select')
+       and not exists (select 1 from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname and p.permissive = 'RESTRICTIVE'
+                        and p.cmd in ('SELECT', 'ALL') and p.qual like '%session_forte%')$q$;
+begin
+  execute c_sans into v;
+  assert v is null, 'lisibles sans la politique de la session forte : ' || v;
+  create table temoin_lisible (id int);
+  grant select on temoin_lisible to authenticated;
+  execute c_sans into v;
+  assert v = 'temoin_lisible', 'le témoin doit être vu : ' || coalesce(v, 'personne');
+  drop table temoin_lisible;
+  assert not has_table_privilege('authenticated', 'lots_de_secours', 'select') and not has_table_privilege('authenticated', 'codes_de_secours', 'select')
+     and not has_table_privilege('authenticated', 'journal_securite', 'select') and not has_table_privilege('authenticated', 'reinitialisations_2fa', 'select');
+end $$;
+set local role authenticated;
+set local xafe.compte = '11111111-1111-1111-1111-111111111111';
+do $$
+declare n_soldes int; n_comptes int; n_numeros int; n_parametres int;
+begin
+  perform set_config('xafe.aal', 'aal1', true);
+  select count(*) into n_soldes from soldes; select count(*) into n_comptes from comptes;
+  select count(*) into n_numeros from numeros; select count(*) into n_parametres from parametres;
+  assert n_soldes + n_comptes + n_numeros + n_parametres = 0, format('en aal1 : %s soldes, %s comptes, %s numéros, %s paramètres', n_soldes, n_comptes, n_numeros, n_parametres);
+  perform set_config('xafe.aal', 'aal2', true);
+  assert (select count(*) from comptes) = 1 and (select count(*) from parametres) > 0 and (select count(*) from numeros) > 0, 'en aal2, ses lignes reviennent';
+  raise notice '✓ 11.58 chaque table lisible porte la politique de la session forte (témoin pris) ; en aal1 rien ne se lit, en aal2 ses lignes reviennent';
+end $$;
+rollback;
+
+-- 11.59 · le crochet de PostgREST (0035), la troisième couche : en aal1, une
+-- requête vers /rpc/mon_compte est refusée avant la fonction ; l'écran
+-- d'entrée et la preuve de réserve passent ; anon, la clé de service et la
+-- base elle-même ne sont pas touchés. (Que PostgREST l'appelle se vérifie
+-- dans supabase/epreuve : le harnais n'a pas de rôle authenticator.)
+begin;
+do $$
+begin
+  perform set_config('request.jwt.claims', '{"role": "authenticated", "aal": "aal1", "sub": "11111111-1111-1111-1111-111111111111", "amr": [{"method": "password", "timestamp": 1}]}', true);
+  perform set_config('request.path', '/rpc/mon_compte', true);
+  begin perform avant_chaque_requete(); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'double authentification requise', sqlerrm; end;
+  perform set_config('request.path', '/rpc/mon_etat_d_entree', true);
+  perform avant_chaque_requete();
+  perform set_config('request.path', '/rpc/preuve_de_reserve', true);
+  perform avant_chaque_requete();
+  perform set_config('request.path', '/soldes', true);
+  begin perform avant_chaque_requete(); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'double authentification requise', sqlerrm; end;
+  -- le contrôle : la même requête, en session forte, passe
+  perform set_config('request.jwt.claims', format('{"role": "authenticated", "aal": "aal2", "sub": "11111111-1111-1111-1111-111111111111", "amr": [{"method": "password", "timestamp": %s}, {"method": "totp", "timestamp": %s}]}',
+                                                  extract(epoch from now())::bigint, extract(epoch from now())::bigint), true);
+  perform avant_chaque_requete();
+  perform set_config('request.jwt.claims', '{"role": "anon"}', true);
+  perform avant_chaque_requete();
+  perform set_config('request.jwt.claims', '{"role": "service_role"}', true);
+  perform avant_chaque_requete();
+  perform set_config('request.jwt.claims', '', true);
+  perform avant_chaque_requete();
+  raise notice '✓ 11.59 le crochet : en aal1 la requête est refusée avant la fonction, sauf l''écran d''entrée et la preuve ; aal2, anon, service et la base passent';
+end $$;
+rollback;
+
+-- 11.60 · la vérification avant sortie (0036), le chemin normal. Le code part
+-- par e-mail avec le montant et la destination ; un mauvais mot de passe, un
+-- mauvais code, un autre montant sont refusés ; la bonne combinaison sert UNE
+-- fois, et le code s'efface de la boîte d'envoi. Rejouer la même clé rend la
+-- sortie faite sans consommer de vérification.
+begin;
+update parametres set valeur = valeur || '{"ouvertes": true, "mode": "manuel"}' where cle = 'sortie';
+do $$
+declare
+  c uuid := 'b1600000-0000-0000-0000-000000000001'; nid uuid; v jsonb; vid uuid; code text; r jsonb; ref text;
+begin
+  insert into comptes (id, telephone, nom, palier, argent_reel) values (c, '+237677160001', 'Vérifié Un', 0, true);
+  insert into auth.users (id, email, encrypted_password) values (c, 'verifie.un@example.com', extensions.crypt('Glisil-2026-sur', extensions.gen_salt('bf', 10)));
+  insert into numeros (compte_id, operateur, numero, verifie_le, actif_des) values (c, 'mtn', '677160001', now() - interval '2 days', now() - interval '1 day')
+  returning id into nid;
+  perform _mouvement(c, 'XAFe', 100000, 0, 'test', 'test', 'T-11.60');
+  perform set_config('xafe.compte', c::text, true);
+
+  v := preparer_verification('sortie_momo', jsonb_build_object('montant', 50000, 'numero_id', nid, 'nom', 'Vérifié Un'));
+  vid := (v ->> 'id')::uuid;
+  assert v -> 'affichage' ->> 'numero' = '677160001' and (v -> 'affichage' ->> 'montant')::numeric = 50000, v;
+  assert v ->> 'email_masque' = 'v•••@example.com', v;
+  select k.donnees ->> 'code' into code from courriels_a_envoyer k join verifications w on w.courriel_id = k.id where w.id = vid;
+  assert code ~ '^[0-9]{6}$', 'le code part dans la boîte d''envoi';
+  assert (select donnees ->> 'numero' = '677160001' and (donnees ->> 'montant')::numeric = 50000
+            from courriels_a_envoyer k join verifications w on w.courriel_id = k.id where w.id = vid), 'l''e-mail dit le montant et la destination';
+  assert (select code_empreinte <> code and code_empreinte like '$2a$%' from verifications where id = vid), 'la base ne garde qu''une empreinte';
+
+  -- un autre montant : jamais ce code, et ce n'est pas un essai
+  r := demander_sortie(90000, nid, 'k-1160', vid, 'Glisil-2026-sur', code, 'Vérifié Un');
+  assert r ->> 'erreur' = 'la vérification ne correspond pas à cette opération', r;
+  assert (select essais from verifications where id = vid) = 0, 'un autre montant ne compte pas d''essai';
+  -- un mauvais mot de passe, puis un mauvais code : chacun compté, rien de bloqué
+  r := demander_sortie(50000, nid, 'k-1160', vid, 'faux-mot-de-passe', code, 'Vérifié Un');
+  assert r ->> 'erreur' = 'mot de passe incorrect' and (r ->> 'essais_restants')::int = 4, r;
+  r := demander_sortie(50000, nid, 'k-1160', vid, 'Glisil-2026-sur', case when code = '000000' then '111111' else '000000' end, 'Vérifié Un');
+  assert r ->> 'erreur' = 'code e-mail incorrect' and (r ->> 'essais_restants')::int = 3, r;
+  assert solde(c, 'XAFe', 'bloque') = 0 and not exists (select 1 from sorties where compte_id = c), 'un facteur faux ne sort rien';
+  -- la bonne combinaison
+  r := demander_sortie(50000, nid, 'k-1160', vid, 'Glisil-2026-sur', code, 'Vérifié Un');
+  ref := r ->> 'reference';
+  assert ref like 'XAFe-WD-%' and solde(c, 'XAFe', 'bloque') = 50000, r;
+  assert (select verification_id from sorties where reference = ref) = vid, 'la sortie garde sa vérification';
+  assert (select consommee_le is not null and operation_ref = ref from verifications where id = vid), 'la vérification est consommée';
+  assert not (select donnees ? 'code' from courriels_a_envoyer k join verifications w on w.courriel_id = k.id where w.id = vid), 'le code s''efface après usage';
+  -- rejouer la même clé : la sortie faite, sans « vérification déjà utilisée »
+  r := demander_sortie(50000, nid, 'k-1160', vid, 'Glisil-2026-sur', code, 'Vérifié Un');
+  assert (r ->> 'deja')::boolean and r ->> 'reference' = ref, r;
+  -- la même vérification pour une NOUVELLE sortie : refusée
+  r := demander_sortie(50000, nid, 'k-1160-bis', vid, 'Glisil-2026-sur', code, 'Vérifié Un');
+  assert r ->> 'erreur' = 'vérification déjà utilisée', r;
+  assert solde(c, 'XAFe', 'bloque') = 50000, 'une vérification ne sort qu''une fois';
+  raise notice '✓ 11.60 la vérification avant sortie : le code part avec le montant et la destination ; autre montant, mot de passe ou code faux refusés ; la bonne combinaison sert une fois, puis s''efface ; la même clé rend la sortie faite';
+end $$;
+rollback;
+
+-- 11.61 · le TOTP doit être FRAIS et la vérification reste à SA session. Un
+-- TOTP vieux de dix minutes est refusé sans compter d'essai (une session volée
+-- sans le téléphone ne devine pas le mot de passe) ; une autre session ne
+-- consomme pas le code ; en aal1, rien ne se demande.
+begin;
+update parametres set valeur = valeur || '{"ouvertes": true, "mode": "manuel"}' where cle = 'sortie';
+do $$
+declare
+  c uuid := 'b1610000-0000-0000-0000-000000000001'; nid uuid; v jsonb; vid uuid; code text; r jsonb; t bigint := extract(epoch from now())::bigint;
+begin
+  insert into comptes (id, telephone, nom, palier, argent_reel) values (c, '+237677161001', 'Vérifié Deux', 0, true);
+  insert into auth.users (id, email, encrypted_password) values (c, 'verifie.deux@example.com', extensions.crypt('Glisil-2026-sur', extensions.gen_salt('bf', 10)));
+  insert into numeros (compte_id, operateur, numero, verifie_le, actif_des) values (c, 'mtn', '677161001', now() - interval '2 days', now() - interval '1 day')
+  returning id into nid;
+  perform _mouvement(c, 'XAFe', 100000, 0, 'test', 'test', 'T-11.61');
+  perform set_config('xafe.compte', c::text, true);
+  v := preparer_verification('sortie_momo', jsonb_build_object('montant', 20000, 'numero_id', nid, 'nom', 'Vérifié Deux'));
+  vid := (v ->> 'id')::uuid;
+  select k.donnees ->> 'code' into code from courriels_a_envoyer k join verifications w on w.courriel_id = k.id where w.id = vid;
+
+  -- un TOTP d'il y a dix minutes (la session tient, le téléphone n'est plus là)
+  perform set_config('xafe.amr', jsonb_build_array(jsonb_build_object('method', 'password', 'timestamp', t - 900),
+                                                   jsonb_build_object('method', 'totp', 'timestamp', t - 600))::text, true);
+  r := demander_sortie(20000, nid, 'k-1161', vid, 'faux-mot-de-passe', code, 'Vérifié Deux');
+  assert r ->> 'facteur' = 'totp', r;
+  assert (select essais from verifications where id = vid) = 0, 'sans TOTP frais, le mot de passe n''est même pas essayé';
+  -- « mfa/totp » (l'autre écriture de GoTrue) frais : accepté
+  perform set_config('xafe.amr', jsonb_build_array(jsonb_build_object('method', 'password', 'timestamp', t - 900),
+                                                   jsonb_build_object('method', 'mfa/totp', 'timestamp', t))::text, true);
+  -- une autre session, avec tous les bons facteurs : la vérification ne lui appartient pas
+  perform set_config('xafe.session', gen_random_uuid()::text, true);
+  r := demander_sortie(20000, nid, 'k-1161', vid, 'Glisil-2026-sur', code, 'Vérifié Deux');
+  assert r ->> 'erreur' = 'vérification inconnue', r;
+  perform set_config('xafe.session', '', true);
+  -- la bonne session, TOTP frais : la sortie part
+  r := demander_sortie(20000, nid, 'k-1161', vid, 'Glisil-2026-sur', code, 'Vérifié Deux');
+  assert r ->> 'reference' like 'XAFe-WD-%', r;
+  -- aal1 (mot de passe sans TOTP) : rien ne se demande
+  perform set_config('xafe.aal', 'aal1', true);
+  begin perform preparer_verification('sortie_momo', jsonb_build_object('montant', 1000, 'numero_id', nid, 'nom', 'Vérifié Deux'));
+        raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'double authentification requise', sqlerrm; end;
+  perform set_config('xafe.aal', '', true);
+  perform set_config('xafe.amr', '', true);
+  raise notice '✓ 11.61 un TOTP vieux de dix minutes est refusé sans compter d''essai ; « mfa/totp » frais vaut « totp » ; une autre session ne consomme pas le code ; en aal1 rien ne se demande';
+end $$;
+rollback;
+
+-- 11.62 · dix échecs dans l'heure bloquent les sorties une heure : la demande
+-- comme la consommation, même avec les bons facteurs. Un e-mail prévient une
+-- fois. L'équipe lève le blocage, avec une note, et c'est journalisé.
+begin;
+update parametres set valeur = valeur || '{"ouvertes": true, "mode": "manuel"}' where cle = 'sortie';
+do $$
+declare
+  c uuid := 'b1620000-0000-0000-0000-000000000001'; nid uuid; v jsonb; vid uuid; code text; r jsonb; i int;
+begin
+  insert into comptes (id, telephone, nom, palier, argent_reel) values (c, '+237677162001', 'Vérifié Trois', 0, true);
+  insert into auth.users (id, email, encrypted_password) values (c, 'verifie.trois@example.com', extensions.crypt('Glisil-2026-sur', extensions.gen_salt('bf', 10)));
+  insert into numeros (compte_id, operateur, numero, verifie_le, actif_des) values (c, 'mtn', '677162001', now() - interval '2 days', now() - interval '1 day')
+  returning id into nid;
+  perform _mouvement(c, 'XAFe', 100000, 0, 'test', 'test', 'T-11.62');
+  perform set_config('xafe.compte', c::text, true);
+  -- deux vérifications (cinq essais chacune) : dix mots de passe faux
+  for i in 1..2 loop
+    update verifications set cree_le = cree_le - interval '2 minutes' where compte_id = c;
+    v := preparer_verification('sortie_momo', jsonb_build_object('montant', 10000, 'numero_id', nid, 'nom', 'Vérifié Trois'));
+    vid := (v ->> 'id')::uuid;
+    for j in 1..5 loop
+      r := demander_sortie(10000, nid, null, vid, 'faux-' || i || j, '123456', 'Vérifié Trois');
+    end loop;
+  end loop;
+  assert _verrou_verification(c) is not null, 'dix échecs : verrouillé';
+  assert (select count(*) from courriels_a_envoyer where compte_id = c and gabarit = 'verification_verrouillee') = 1, 'un e-mail prévient, une fois';
+  update verifications set cree_le = cree_le - interval '2 minutes' where compte_id = c;
+  begin perform preparer_verification('sortie_momo', jsonb_build_object('montant', 10000, 'numero_id', nid, 'nom', 'Vérifié Trois'));
+        raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'vérifications verrouillées', sqlerrm; end;
+
+  -- l'équipe lève le blocage (note exigée, journalisée)
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);   -- le super admin
+  begin perform admin_lever_verrou_verification(c, 'ok'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'note trop courte', sqlerrm; end;
+  r := admin_lever_verrou_verification(c, 'appel du client, identité vérifiée');
+  assert (r ->> 'echecs_effaces')::int = 10, r;
+  assert exists (select 1 from journal_admin where action = 'lever_verrou_verification' and cible = c::text), 'journalisé';
+  perform set_config('xafe.compte', c::text, true);
+  assert _verrou_verification(c) is null, 'le blocage est levé';
+  v := preparer_verification('sortie_momo', jsonb_build_object('montant', 10000, 'numero_id', nid, 'nom', 'Vérifié Trois'));
+  vid := (v ->> 'id')::uuid;
+  select k.donnees ->> 'code' into code from courriels_a_envoyer k join verifications w on w.courriel_id = k.id where w.id = vid;
+  r := demander_sortie(10000, nid, 'k-1162', vid, 'Glisil-2026-sur', code, 'Vérifié Trois');
+  assert r ->> 'reference' like 'XAFe-WD-%', r;
+  raise notice '✓ 11.62 dix échecs dans l''heure bloquent les sorties (un e-mail prévient une fois) ; l''équipe lève le blocage avec une note journalisée, et la sortie repart';
+end $$;
+rollback;
+
+-- 11.63 · les trois autres sorties d'argent passent par la même vérification :
+-- le retrait crypto (lié à l'adresse et au montant), la fermeture du compte,
+-- le retrait d'un numéro. Un compte Google sans mot de passe doit le choisir
+-- d'abord. Les anciennes entrées au code secret n'existent plus.
+begin;
+update parametres set valeur = valeur || '{"retraits_ouverts": true}' where cle = 'crypto';
+do $$
+declare
+  c uuid := 'b1630000-0000-0000-0000-000000000001'; g uuid := 'b1630000-0000-0000-0000-000000000002';
+  n1 uuid; n2 uuid; v jsonb; vid uuid; code text; r jsonb;
+  a1 text := '0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21'; a2 text := '0x1111111111111111111111111111111111111111';
+begin
+  insert into comptes (id, telephone, nom, palier, argent_reel) values (c, '+237677163001', 'Vérifié Quatre', 0, true);
+  insert into auth.users (id, email, encrypted_password) values (c, 'verifie.quatre@example.com', extensions.crypt('Glisil-2026-sur', extensions.gen_salt('bf', 10)));
+  insert into numeros (compte_id, operateur, numero, verifie_le, actif_des) values (c, 'mtn', '677163001', now() - interval '2 days', now() - interval '1 day')
+  returning id into n1;
+  insert into numeros (compte_id, operateur, numero, verifie_le, actif_des) values (c, 'om', '699163001', now() - interval '2 days', now() - interval '1 day')
+  returning id into n2;
+  perform crediter_crypto(c, 'USDT', 'bep20', 500, '0x1163', 'x');
+  perform set_config('xafe.compte', c::text, true);
+
+  -- le retrait crypto : lié à l'adresse ET au montant
+  v := preparer_verification('retrait_crypto', jsonb_build_object('actif', 'USDT', 'reseau', 'bep20', 'adresse', a1, 'montant', 100));
+  vid := (v ->> 'id')::uuid;
+  assert v -> 'affichage' ->> 'adresse' = a1, v;
+  select k.donnees ->> 'code' into code from courriels_a_envoyer k join verifications w on w.courriel_id = k.id where w.id = vid;
+  r := demander_retrait_crypto('USDT', 'bep20', a2, 100, 'k-1163', vid, 'Glisil-2026-sur', code);
+  assert r ->> 'erreur' = 'la vérification ne correspond pas à cette opération', format('une autre adresse avec le même code : %s', r);
+  r := demander_retrait_crypto('USDT', 'bep20', a1, 100, 'k-1163', vid, 'Glisil-2026-sur', code);
+  assert r ->> 'reference' like 'XAFe-CR-%' and (select verification_id from retraits_crypto where reference = r ->> 'reference') = vid, r;
+
+  -- retirer un numéro
+  update verifications set cree_le = cree_le - interval '2 minutes' where compte_id = c;
+  v := preparer_verification('retirer_numero', jsonb_build_object('numero_id', n2));
+  vid := (v ->> 'id')::uuid;
+  select k.donnees ->> 'code' into code from courriels_a_envoyer k join verifications w on w.courriel_id = k.id where w.id = vid;
+  r := retirer_numero(n1, vid, 'Glisil-2026-sur', code);
+  assert r ->> 'erreur' = 'la vérification ne correspond pas à cette opération', format('un autre numéro avec le même code : %s', r);
+  r := retirer_numero(n2, vid, 'Glisil-2026-sur', code);
+  assert (r ->> 'ok')::boolean and (select retire_le is not null from numeros where id = n2), r;
+
+  -- un compte Google sans mot de passe : il le choisit d'abord
+  insert into comptes (id, telephone, nom, palier, argent_reel) values (g, '+237677163002', 'Google Seul', 0, true);
+  insert into auth.users (id, email, encrypted_password) values (g, 'google.seul@example.com', null);
+  perform set_config('xafe.compte', g::text, true);
+  perform set_config('xafe.amr', jsonb_build_array(jsonb_build_object('method', 'oauth', 'timestamp', extract(epoch from now())::bigint),
+                                                   jsonb_build_object('method', 'totp', 'timestamp', extract(epoch from now())::bigint))::text, true);
+  v := preparer_verification('fermer_compte', '{}'::jsonb);
+  vid := (v ->> 'id')::uuid;
+  select k.donnees ->> 'code' into code from courriels_a_envoyer k join verifications w on w.courriel_id = k.id where w.id = vid;
+  r := fermer_mon_compte(vid, '', code, 'essai');
+  assert r ->> 'erreur' = 'mot de passe à choisir', r;
+  assert (select ferme_le from comptes where id = g) is null, 'rien n''est fermé';
+  -- le mot de passe choisi, la fermeture passe
+  update auth.users set encrypted_password = extensions.crypt('Glisil-2026-sur', extensions.gen_salt('bf', 10)) where id = g;
+  r := fermer_mon_compte(vid, 'Glisil-2026-sur', code, 'essai');
+  assert (r ->> 'ok')::boolean and (select ferme_le is not null from comptes where id = g), r;
+  perform set_config('xafe.amr', '', true);
+
+  -- les anciennes entrées, au code secret, n'existent plus
+  assert to_regprocedure('public.demander_sortie(numeric,uuid,text,text,text)') is null
+     and to_regprocedure('public.demander_retrait_crypto(text,text,text,numeric,text,text)') is null
+     and to_regprocedure('public.fermer_mon_compte(text,text)') is null
+     and to_regprocedure('public.retirer_numero(uuid,text)') is null, 'une sortie au code secret reste ouverte';
+  raise notice '✓ 11.63 le retrait crypto (lié à l''adresse et au montant), le retrait d''un numéro et la fermeture passent par la vérification ; un compte Google choisit d''abord son mot de passe ; aucune sortie au code secret ne reste';
 end $$;
 rollback;
 
