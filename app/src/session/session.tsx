@@ -14,7 +14,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useGuichet } from "../guichet";
 import type { Compte } from "../guichet/types";
 import { phaseDEntree, type PhaseDEntree } from "../noyau/entree";
-import { abonnerLangue, choisirLangue, choixDeLAppareil, langue, type Langue } from "../noyau/langue";
+import { abonnerLangue, langue, type Langue } from "../noyau/langue";
 
 export type Etat =
   | { phase: "chargement" }
@@ -129,10 +129,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const connecte = etat.phase === "connecte";
   useEffect(() => { guichet.tempsReel(connecte); }, [guichet, connecte]);
 
-  /* La langue suit la personne (0037) : ses e-mails partent dans celle de son COMPTE. Un choix fait
-     sur cet appareil l'emporte et monte au compte ; sans choix ici, l'écran prend celle du compte (un
-     client français sur un téléphone neuf voit le français). Un échec ne bloque rien : le prochain
-     choix, ou la prochaine ouverture, réessaie. */
+  /* La langue suit la personne (0037) : ses e-mails partent dans celle de son COMPTE, et le compte
+     prend la langue dans laquelle elle se sert de l'application — choisie ici, ou celle du téléphone.
+     L'écran ne change jamais de langue tout seul : un compte d'avant 0037 dit « anglais » sans que
+     personne l'ait choisi, et basculer un téléphone français en anglais à la connexion serait faux.
+     Un échec ne bloque rien : le prochain choix, ou la prochaine ouverture, réessaie. */
   const langueDuCompte = useRef<Langue | null>(null);
   const langueEnCompte = etat.phase === "connecte" ? etat.compte.langue : null;
   const monterLangue = useCallback((l: Langue) => {
@@ -142,10 +143,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [guichet]);
   useEffect(() => {
     langueDuCompte.current = langueEnCompte;
-    if (!langueEnCompte) return;
-    const ici = choixDeLAppareil();
-    if (ici === null) { if (langue() !== langueEnCompte) choisirLangue(langueEnCompte); }
-    else if (ici !== langueEnCompte) monterLangue(ici);
+    if (langueEnCompte && langue() !== langueEnCompte) monterLangue(langue());
   }, [langueEnCompte, monterLangue]);
   useEffect(() => abonnerLangue(() => {
     if (langueDuCompte.current !== null && langue() !== langueDuCompte.current) monterLangue(langue());

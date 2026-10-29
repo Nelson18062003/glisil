@@ -94,11 +94,15 @@ function donneesDuRecu(o: Operation, nom: string | null | undefined): Omit<RecuD
   } else if (o.nature === "sortie") {
     const op = opDe(o.detail.operateur).nom;
     titre = t(`Retrait vers ${op}`, `Withdrawal to ${op}`);
-    montant = `${xaf(o.detail.montantEnvoye)} XAF`;
+    /* en preuve, rien n'est encore « envoyé » : on dit ce qui part, pas 0 */
+    montant = `${xaf(o.detail.etat === "envoyee" || o.detail.etat === "partielle" ? o.detail.montantEnvoye : o.detail.montantXaf)} XAF`;
     lignes.push([t("Vers", "To"), numeroEnTranches(o.detail.numero)], [t("XAFe débités", "XAFe debited"), xaf(o.detail.montant)], [t("Frais", "Fees"), `${xaf(o.detail.frais)} XAFe`]);
     if (o.detail.nomBeneficiaire) lignes.push([t("Au nom de", "Recipient name"), o.detail.nomBeneficiaire]);
     for (const tr of o.detail.transferts.filter((x) => x.referenceOperateur)) lignes.push(["Transaction ID", `${tr.referenceOperateur} · ${xaf(tr.envoi)} XAF`]); // langue-ok
-    if (o.detail.transactionId) lignes.push(["Transaction ID", o.detail.transactionId]); // langue-ok
+    const paiements = o.detail.paiements ?? [];
+    if (paiements.length) for (const p of paiements) lignes.push(["Transaction ID", paiements.length > 1 ? `${p.transactionId} · ${xaf(p.montant)} XAF` : p.transactionId]); // langue-ok
+    else if (o.detail.transactionId) lignes.push(["Transaction ID", o.detail.transactionId]); // langue-ok
+    if (o.detail.prouveeLe) lignes.push([t("Vérifié", "Verified"), quand(o.detail.prouveeLe)]);
   } else if (o.nature === "ordre") {
     titre = o.detail.cote === "achat" ? t("Achat d'USDT", "USDT purchase") : t("Vente d'USDT", "USDT sale");
     montant = `${fUsdt(o.detail.executee)} USDT`;
@@ -183,8 +187,13 @@ export function HistoriqueDetail() {
           {o.detail.montantRendu > 0 && <Line label={t("Revenu sur le compte", "Returned to account")} value={`${xaf(o.detail.montantRendu)} XAFe`} color={tones.amber.fg} />}
           <Line label={t("Référence", "Reference")} value={o.reference} mono />
           {o.detail.mode === "manuel" && o.detail.nomBeneficiaire && <Line label={t("Au nom de", "Recipient name")} value={o.detail.nomBeneficiaire} />}
-          {o.detail.transactionId && <Line label={"Transaction ID" /* langue-ok */} value={o.detail.transactionId} mono />}
+          <Line label={t("État", "Status")} value={nomDeLEtat(o.detail.etat)} />
+          {(o.detail.paiements?.length ? o.detail.paiements : o.detail.transactionId ? [{ transactionId: o.detail.transactionId, montant: o.detail.montantXaf }] : []).map((p) => (
+            <Line key={p.transactionId} label={"Transaction ID" /* langue-ok */} value={(o.detail.paiements?.length ?? 0) > 1 ? `${p.transactionId} · ${xaf(p.montant)} XAF` : p.transactionId} mono />
+          ))}
           {o.detail.payeeLe && <Line label={t("Payé", "Paid")} value={quand(o.detail.payeeLe)} />}
+          {o.detail.prouveeLe && <Line label={t("Vérifié", "Verified")} value={quand(o.detail.prouveeLe)} />}
+          {o.detail.etat === "en_preuve" && <Typography variant="body2">{t("L'équipe a payé ; Glisil vérifie ce paiement auprès de l'opérateur avant de le confirmer.", "The team has paid; Glisil is checking this payment with the operator before confirming it.")}</Typography>}
           {o.detail.motif && <Typography variant="body2" color="error">{t(`Refusée : ${o.detail.motif} Vos XAFe sont revenus.`, `Declined: ${motifLisible(o.detail.motif)} Your XAFe have been returned.`)}</Typography>}
           {o.detail.transferts.map((tr, i) => (
             <Line key={i} label={t(`Transfert ${i + 1} · ${nomDeLEtat(tr.etat)}`, `Transfer ${i + 1} · ${nomDeLEtat(tr.etat)}`)} value={tr.referenceOperateur ? `ID ${tr.referenceOperateur}` : `${xaf(tr.envoi)} XAF`} mono />

@@ -682,6 +682,10 @@ try {
   await voir("Demande reçue");
   await voir("vos XAFe sont mis de côté");
   await capturer("sortir-manuel-en-cours");
+  /* (0038) payée par l'équipe, la sortie attend le SMS de la puce : rien n'est encore « envoyé » */
+  await voir("Glisil retrouve ce paiement dans les relevés de l'opérateur", 20_000);
+  exiger(await page.getByText("XAF envoyés", { exact: false }).count() === 0, "en preuve, rien n'est dit « envoyé »");
+  await capturer("sortir-manuel-en-preuve");
   await voir("XAF envoyés", 25_000);
   await voir("Transaction ID", 5_000);
   await capturer("sortir-manuel-payee");

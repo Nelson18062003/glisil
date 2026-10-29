@@ -290,6 +290,8 @@ test("les textes de la base se lisent en anglais, et un texte imprévu reste tel
     assert.equal(s.titreDuServeur("Palier 1"), "Tier 1");
     assert.equal(s.texteDuServeur("+80,000,000 XAFe reçus par MTN MoMo."), "+80,000,000 XAFe received via MTN MoMo.");
     assert.equal(s.texteDuServeur("12,760,000 XAF envoyés au 600000003. Transaction ID : 18300000003."), "12,760,000 XAF sent to 600000003. Transaction ID: 18300000003.");
+    /* 0038 : un remboursement payé en plusieurs transferts dit tous ses ID */
+    assert.equal(s.texteDuServeur("1,500,000 XAF envoyés au 677444054. Transaction ID : MP1, MP2."), "1,500,000 XAF sent to 677444054. Transaction ID: MP1, MP2.");
     assert.equal(s.texteDuServeur("90,000,000 XAFe sont revenus sur votre compte. Démo : Solde insuffisant : 0 FCFA."),
       "90,000,000 XAFe are back in your account. Demo: Insufficient balance: 0 FCFA.");
     assert.equal(s.texteDuServeur("Achat de 221.77 USDT à 575.65."), "Bought 221.77 USDT at 575.65.");

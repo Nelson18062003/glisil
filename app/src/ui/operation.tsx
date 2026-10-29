@@ -21,14 +21,14 @@ import { tones, type Tone } from "../theme";
 const NOMS_DES_ETATS: Record<string, () => string> = {
   en_attente: () => t("en attente", "pending"), partiel: () => t("partiel", "partial"), credite: () => t("crédité", "credited"),
   expire: () => t("expiré", "expired"), annule: () => t("annulé", "canceled"), en_cours: () => t("en cours", "in progress"),
-  envoyee: () => t("envoyé", "sent"), partielle: () => t("partiel", "partial"), echouee: () => t("échoué", "failed"),
+  en_preuve: () => t("en vérification", "being verified"), envoyee: () => t("envoyé", "sent"), partielle: () => t("partiel", "partial"), echouee: () => t("échoué", "failed"),
   annulee: () => t("annulé", "canceled"), ouvert: () => t("ouvert", "open"), execute: () => t("exécuté", "filled"),
   confirme: () => t("confirmé", "confirmed"), echoue: () => t("échoué", "failed"),
 };
 export function nomDeLEtat(etat: string): string {
   return NOMS_DES_ETATS[etat]?.() ?? etat;
 }
-export const enSuspens = (o: Operation) => ["en_attente", "partiel", "en_cours", "ouvert"].includes(o.etat);
+export const enSuspens = (o: Operation) => ["en_attente", "partiel", "en_cours", "en_preuve", "ouvert"].includes(o.etat);
 
 export function apparence(o: Operation): { icone: JSX.Element; tone: Tone; titre: string; sousTitre: string; droite: string; couleur?: string } {
   const heureOuEtat = enSuspens(o) ? nomDeLEtat(o.etat) : `${heure(o.quand)} · ${nomDeLEtat(o.etat)}`;

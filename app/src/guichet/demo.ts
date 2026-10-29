@@ -44,7 +44,7 @@ export const EMAIL_VITRINE = "demo@glisil.com";
 type Tache =
   | { quand: number; type: "sms"; reference: string; declarationId: string }
   | { quand: number; type: "transfert"; reference: string; index: number; etape: "en_cours" | "faite" | "echouee" }
-  | { quand: number; type: "manuelle"; reference: string; etape: "prise" | "payee" | "refusee" }
+  | { quand: number; type: "manuelle"; reference: string; etape: "prise" | "payee" | "prouvee" | "refusee" }
   | { quand: number; type: "retrait"; reference: string }
   | { quand: number; type: "expiration"; reference: string };
 
@@ -507,21 +507,30 @@ export class GuichetDemo implements Guichet {
     }
   }
 
-  /* la fausse équipe : elle prend la demande, puis paie — ou refuse, pour un nom qui finit par « refus », qu'on voie aussi ce chemin-là */
-  private manuelleAvance(d: Dossier, reference: string, etape: "prise" | "payee" | "refusee") {
+  /* la fausse équipe : elle prend la demande, la paie (la sortie passe « en preuve », rien n'est détruit), puis le
+     faux SMS de la puce la prouve (0038) — ou elle refuse, pour un nom qui finit par « refus », qu'on voie aussi ce chemin-là */
+  private manuelleAvance(d: Dossier, reference: string, etape: "prise" | "payee" | "prouvee" | "refusee") {
     const s = d.sorties.find((x) => x.reference === reference);
-    if (!s || !["en_attente", "en_cours"].includes(s.etat)) return;
+    if (!s || !["en_attente", "en_cours", "en_preuve"].includes(s.etat)) return;
     if (etape === "prise") { s.etat = "en_cours"; s.prisLe = iso(); return; }
     if (etape === "payee") {
       s.transactionId = `MP${new Date().toISOString().slice(2, 10).replace(/-/g, "")}.${String(Math.floor(1000 + Math.random() * 8999))}.A${String(Math.floor(10000 + Math.random() * 89999))}`;
       s.payeeLe = iso();
+      s.paiements = [{ transactionId: s.transactionId, montant: s.montantXaf }];
+      s.etat = "en_preuve";
+      return;
+    }
+    if (etape === "prouvee") {
+      if (s.etat !== "en_preuve") return;
       this.mouvement(d, "XAFe", 0, -s.montant);
       s.montantEnvoye = s.montantXaf;
       s.etat = "envoyee";
       s.termineeLe = iso();
+      s.prouveeLe = iso();
       this.notifier(d, "Sortie envoyée", `${s.montantXaf.toLocaleString("fr-FR")} XAF envoyés au ${s.numero}. Transaction ID : ${s.transactionId}.`, `/historique/${reference}`);
       return;
     }
+    if (s.etat === "en_preuve") return;   // payée : elle ne se refuse plus
     this.mouvement(d, "XAFe", s.montant, -s.montant);
     s.montantRendu = s.montant;
     s.etat = "annulee";
@@ -1124,12 +1133,13 @@ export class GuichetDemo implements Guichet {
       const m: Sortie & { cle: string } = {
         reference: this.reference(d, "XAFe-WD-"), operateur: n.operateur, numero: n.numero, montant, frais, montantXaf: envoi,
         montantEnvoye: 0, montantRendu: 0, etat: "en_attente", creeLe: iso(), termineeLe: null, transferts: [], cle,
-        mode: "manuel", nomBeneficiaire: nomPropre, prisLe: null, transactionId: null, payeeLe: null, motif: null,
+        mode: "manuel", nomBeneficiaire: nomPropre, prisLe: null, transactionId: null, payeeLe: null, motif: null, prouveeLe: null, paiements: [],
       };
       d.sorties.unshift(m);
       const refus = /refus$/i.test(nomPropre);
       this.planifier(d, { type: "manuelle", reference: m.reference, etape: "prise", quand: maintenant() + 4000 });
       this.planifier(d, { type: "manuelle", reference: m.reference, etape: refus ? "refusee" : "payee", quand: maintenant() + 12000 });
+      if (!refus) this.planifier(d, { type: "manuelle", reference: m.reference, etape: "prouvee", quand: maintenant() + 17000 });
       this.emettre();
       return copie(m);
     }
@@ -1139,7 +1149,7 @@ export class GuichetDemo implements Guichet {
       reference: this.reference(d, "XAFe-WD-"), operateur: n.operateur, numero: n.numero, montant, frais: dec.frais, montantXaf: dec.envoi,
       montantEnvoye: 0, montantRendu: 0, etat: "en_attente", creeLe: iso(), termineeLe: null,
       transferts: dec.transferts.map((t) => ({ etat: "en_attente" as const, montant: t.montant, envoi: t.envoi, referenceOperateur: null })), cle,
-      mode: "totem", nomBeneficiaire: null, prisLe: null, transactionId: null, payeeLe: null, motif: null,
+      mode: "totem", nomBeneficiaire: null, prisLe: null, transactionId: null, payeeLe: null, motif: null, prouveeLe: null, paiements: [],
     };
     d.sorties.unshift(s);
     /* le faux TOTEM : un numéro qui finit par 99 échoue, pour qu'on voie aussi ce chemin-là */

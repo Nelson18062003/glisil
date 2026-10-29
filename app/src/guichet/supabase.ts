@@ -118,7 +118,8 @@ function sortie(j: J): Sortie {
     montantEnvoye: n(j.montant_envoye), montantRendu: n(j.montant_rendu), etat: j.etat as Sortie["etat"], creeLe: s(j.cree_le), termineeLe: sn(j.terminee_le),
     transferts: ((Array.isArray(j.transferts) ? j.transferts : []) as J[]).map((t) => ({ etat: t.etat as Sortie["transferts"][number]["etat"], montant: n(t.montant_xafe), envoi: n(t.montant_envoye), referenceOperateur: sn(t.reference_operateur) })),
     mode: j.mode === "manuel" ? "manuel" : "totem", nomBeneficiaire: sn(j.nom_beneficiaire), prisLe: sn(j.pris_le),
-    transactionId: sn(j.transaction_id), payeeLe: sn(j.payee_le), motif: sn(j.motif),
+    transactionId: sn(j.transaction_id), payeeLe: sn(j.payee_le), motif: sn(j.motif), prouveeLe: sn(j.prouvee_le),
+    paiements: ((Array.isArray(j.paiements) ? j.paiements : []) as J[]).map((p) => ({ transactionId: String(p.transaction_id ?? ""), montant: n(p.montant) })),
   };
 }
 function ordre(j: J): Ordre {

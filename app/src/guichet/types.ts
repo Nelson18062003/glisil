@@ -130,7 +130,8 @@ export type TraceChaine = {
   confirmeLe: string | null;
 };
 
-export type EtatSortie = "en_attente" | "en_cours" | "envoyee" | "partielle" | "echouee" | "annulee";
+/** « en_preuve » (0038) : l'équipe a payé, Glisil attend le SMS de sa puce qui montre ce paiement */
+export type EtatSortie = "en_attente" | "en_cours" | "en_preuve" | "envoyee" | "partielle" | "echouee" | "annulee";
 export type Sortie = {
   reference: string;
   operateur: IdOperateur;
@@ -154,6 +155,10 @@ export type Sortie = {
   payeeLe: string | null;
   /** le motif d'un refus */
   motif: string | null;
+  /** quand le SMS de la puce a prouvé le paiement (0038) */
+  prouveeLe: string | null;
+  /** un remboursement peut partir en plusieurs transferts, un ID chacun */
+  paiements: { transactionId: string; montant: number }[];
 };
 
 export type Cote = "achat" | "vente";

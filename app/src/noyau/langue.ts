@@ -45,14 +45,6 @@ export function choisirLangue(l: Langue) {
   abonnes.forEach((f) => f());
 }
 
-/** Le choix FAIT sur cet appareil (et non deviné du navigateur), ou null s'il n'y en a pas. */
-export function choixDeLAppareil(): Langue | null {
-  try {
-    const garde = typeof window === "undefined" ? null : window.localStorage.getItem(CLE);
-    return garde === "fr" || garde === "en" ? garde : null;
-  } catch { return null; }
-}
-
 /** Pour les tests : poser la langue sans toucher au stockage. */
 export function poserLangue(l: Langue) {
   courante = l;

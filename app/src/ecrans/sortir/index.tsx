@@ -303,14 +303,17 @@ export function SortirEnvoye() {
   if (s.etat === "envoyee") {
     return (
       <Success title={t(`${xaf(s.montantEnvoye)} XAF envoyés`, `${xaf(s.montantEnvoye)} XAF sent`)} amount={t(`au ${numeroEnTranches(s.numero)}`, `to ${numeroEnTranches(s.numero)}`)}
-        caption={t(`${op.nom}, ${quand(s.termineeLe ?? s.creeLe)}${s.transferts.length > 1 ? `, en ${s.transferts.length} transferts` : ""}.`, `${op.nom}, ${quand(s.termineeLe ?? s.creeLe)}${s.transferts.length > 1 ? `, in ${s.transferts.length} transfers` : ""}.`)}
+        caption={t(`${op.nom}, ${quand(s.termineeLe ?? s.creeLe)}${s.transferts.length > 1 ? `, en ${s.transferts.length} transferts` : ""}.${s.mode === "manuel" && s.prouveeLe ? " Confirmation envoyée par e-mail." : ""}`, `${op.nom}, ${quand(s.termineeLe ?? s.creeLe)}${s.transferts.length > 1 ? `, in ${s.transferts.length} transfers` : ""}.${s.mode === "manuel" && s.prouveeLe ? " Confirmation sent by email." : ""}`)}
         primary={{ label: t("Retour à l'accueil", "Back to home"), to: "/" }} secondary={{ label: t("Voir le reçu", "View receipt"), to: `/historique/${s.reference}` }}>
         <Card>
           <Line label={t("XAFe débités", "XAFe debited")} value={xaf(s.montant)} />
           <Line label={t("XAFe détruits", "XAFe burned")} value={xaf(s.montantEnvoye)} />
           <Line label={t("Frais", "Fees")} value={xaf(s.frais)} />
           <Line label={t("Référence", "Reference")} value={s.reference} mono />
-          {s.transactionId && <Line label={t(`Transaction ID ${op.nom.split(" ")[0]}`, `${op.nom.split(" ")[0]} transaction ID`)} value={s.transactionId} mono />}
+          {(s.paiements?.length ? s.paiements : s.transactionId ? [{ transactionId: s.transactionId, montant: s.montantXaf }] : []).map((p) => (
+            <Line key={p.transactionId} label={t(`Transaction ID ${op.nom.split(" ")[0]}`, `${op.nom.split(" ")[0]} transaction ID`)} value={(s.paiements?.length ?? 0) > 1 ? `${p.transactionId} · ${xaf(p.montant)} XAF` : p.transactionId} mono />
+          ))}
+          {s.mode === "manuel" && s.payeeLe && <Line label={t("Payé le", "Paid on")} value={quand(s.payeeLe)} />}
           {s.transferts.filter((tr) => tr.referenceOperateur).map((tr, i) => <Line key={i} label={t(`Transaction ID ${op.nom.split(" ")[0]}`, `${op.nom.split(" ")[0]} transaction ID`)} value={tr.referenceOperateur!} mono />)}
         </Card>
       </Success>
@@ -343,11 +346,19 @@ export function SortirEnvoye() {
 }
 
 /* Payée à la main : trois étapes que le client voit avancer — reçue, prise en charge, payée. */
+/** Les ID du paiement : un par transfert (0038), sinon le seul ID d'avant. */
+export const idsDuPaiement = (s: import("../../guichet/types").Sortie) => (s.paiements ?? []).map((p) => p.transactionId).join(", ") || s.transactionId || "";
+
 function SortieManuelleEnCours({ s }: { s: import("../../guichet/types").Sortie }) {
+  const ids = idsDuPaiement(s);
   const etapes = [
     { fait: true, titre: t("Demande reçue", "Request received"), texte: t(`${quand(s.creeLe)} · vos XAFe sont mis de côté`, `${quand(s.creeLe)} · your XAFe are set aside`) },
     { fait: Boolean(s.prisLe), titre: t("Prise en charge", "Being processed"), texte: s.prisLe ? t(`${quand(s.prisLe)} · l'équipe Glisil s'en occupe`, `${quand(s.prisLe)} · the Glisil team is on it`) : t("l'équipe Glisil va s'en occuper", "the Glisil team will handle it") },
-    { fait: Boolean(s.payeeLe), titre: t("Payée", "Paid"), texte: s.transactionId ? t(`Transaction ID ${s.transactionId}`, `Transaction ID ${s.transactionId}`) : t("vous recevrez le transaction ID", "you'll receive the transaction ID") },
+    { fait: Boolean(s.payeeLe), titre: t("Payée", "Paid"), texte: s.payeeLe && ids ? t(`${quand(s.payeeLe)} · Transaction ID ${ids}`, `${quand(s.payeeLe)} · transaction ID ${ids}`) : t("vous recevrez le transaction ID", "you'll receive the transaction ID") },
+    /* l'argent ne quitte vraiment Glisil que lorsque le SMS de l'opérateur, sur la puce qui a payé, montre ce paiement */
+    { fait: false, titre: t("Vérifiée", "Verified"), texte: s.etat === "en_preuve"
+        ? t("Glisil retrouve ce paiement dans les relevés de l'opérateur, puis vous le confirme par notification et par e-mail.", "Glisil is matching this payment with the operator's records, then confirms it by notification and email.")
+        : t("après le paiement", "after payment") },
   ];
   return (
     <Screen title={t("Votre sortie", "Your withdrawal")} back="/">
@@ -370,6 +381,7 @@ function SortieManuelleEnCours({ s }: { s: import("../../guichet/types").Sortie 
       <Card>
         <Line label={t("XAFe mis de côté", "XAFe set aside")} value={xaf(s.montant)} />
         <Line label={t("Frais", "Fees")} value={xaf(s.frais)} />
+        {(s.paiements ?? []).map((p) => <Line key={p.transactionId} label="Transaction ID" /* langue-ok */ value={(s.paiements ?? []).length > 1 ? `${p.transactionId} · ${xaf(p.montant)} XAF` : p.transactionId} mono />)}
         <Line label={t("Référence", "Reference")} value={s.reference} mono />
       </Card>
       <Typography variant="body2" textAlign="center">{t("Cet écran avance tout seul. Vous êtes aussi prévenu par une notification.", "This screen updates automatically. You'll also get a notification.")}</Typography>
