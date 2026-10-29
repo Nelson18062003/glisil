@@ -1,7 +1,7 @@
 require("@nomicfoundation/hardhat-toolbox");
 require("dotenv").config();
 
-const { CLE_PRIVEE, RPC_BSC_TESTNET, RPC_BSC, CLE_BSCSCAN } = process.env;
+const { CLE_PRIVEE, RPC_BSC_TESTNET, RPC_BSC, RPC_ETH, RPC_ETH_SEPOLIA, CLE_ETHERSCAN, CLE_BSCSCAN } = process.env;
 
 module.exports = {
   solidity: {
@@ -21,6 +21,18 @@ module.exports = {
       accounts: CLE_PRIVEE ? [CLE_PRIVEE] : [],
       chainId: 56,
     },
+    // Ethereum (livraison 2) : le déploiement passe par `mise-en-service` ; ici, la vérification sur Etherscan.
+    mainnet: {
+      url: RPC_ETH || "https://ethereum-rpc.publicnode.com",
+      accounts: CLE_PRIVEE ? [CLE_PRIVEE] : [],
+      chainId: 1,
+    },
+    sepolia: {
+      url: RPC_ETH_SEPOLIA || "https://ethereum-sepolia-rpc.publicnode.com",
+      accounts: CLE_PRIVEE ? [CLE_PRIVEE] : [],
+      chainId: 11155111,
+    },
   },
-  etherscan: { apiKey: CLE_BSCSCAN || "" },
+  // Une clé Etherscan (API V2) vérifie sur Etherscan ET BscScan ; l'ancienne clé BscScan reste comprise.
+  etherscan: { apiKey: CLE_ETHERSCAN || CLE_BSCSCAN || "" },
 };

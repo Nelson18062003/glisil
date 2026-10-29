@@ -79,7 +79,7 @@ page), ou `select verifier_le_profil_production(false);`.
 | `/supabase-fonctions` | secrets des fonctions de `dfixghiwqlwulmzixlpf` (Auto-Sync, **Disable Secret Deletion**) | `XAFE_GRAINE`, `EVM_RPC_KEY` (Alchemy : BNB Chain et Ethereum), `TRONGRID_KEY`, `RESEND_API_KEY`, `COURRIEL_JETON` |
 | `/vercel-app` | Vercel `glisil-app`, Production | `VITE_SUPABASE_URL=https://dfixghiwqlwulmzixlpf.supabase.co`, `VITE_SUPABASE_ANON_KEY`, `VITE_PROFIL=production`, `VITE_SUPPORT_WHATSAPP` |
 | `/vercel-admin` | Vercel `glisil-admin`, Production | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_PROFIL=production` |
-| `/outils` | rien (`infisical run` seulement) | `PROD_DB_URL`, `MOTEUR_URL=https://dfixghiwqlwulmzixlpf.supabase.co/rest/v1`, `MOTEUR_CLE` (service), `SUPABASE_ACCESS_TOKEN`, `CLE_BSCSCAN`, `CLE_DE_MISE_EN_SERVICE` |
+| `/outils` | rien (`infisical run` seulement) | `PROD_DB_URL`, `MOTEUR_URL=https://dfixghiwqlwulmzixlpf.supabase.co/rest/v1`, `MOTEUR_CLE` (service), `SUPABASE_ACCESS_TOKEN`, `CLE_ETHERSCAN` (une clé Etherscan API V2 : BscScan et Etherscan), `CLE_DE_MISE_EN_SERVICE` |
 | `/auth`, `/totem` | rien (archive) | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, la clé SMTP Resend ; `XAFE_TERMINAL_CLE` |
 
 `EVM_RPC_KEY`, `TRONGRID_KEY` et `PROD_DB_PASSWORD` sont **déjà** dans
@@ -205,7 +205,7 @@ update:production`) : rien de natif n'a changé. Google Cloud :
 `https://dfixghiwqlwulmzixlpf.supabase.co/auth/v1/callback`), l'ID et le
 secret dans Supabase → Providers → Google, et dans `/auth`.
 
-## K [P + C] Les contrats, BSC puis Tron
+## K [P + C] Les contrats : BSC, Tron, puis Ethereum
 
 Le contrat corrigé tient lui-même la réserve, intransférable ; le constructeur
 pose tous les rôles et le plafond du jour (1 000 000 000 XAF). Voir
@@ -215,37 +215,57 @@ pose tous les rôles et le plafond du jour (1 000 000 000 XAF). Voir
    - trois comptes MetaMask (votre ordinateur, vos deux téléphones), chacun
      avec sa phrase de récupération sur papier ;
    - un **Safe** sur BNB Chain (app.safe.global) avec ces trois comptes, **2
-     signatures sur 3** ; son adresse est l'**admin** du contrat BSC (et plus
-     tard d'Ethereum) ;
+     signatures sur 3** ; son adresse est l'**admin** du contrat BSC ;
+   - le **même Safe sur Ethereum** (app.safe.global, réseau Ethereum, les trois
+     mêmes comptes, 2 sur 3) : un Safe vit sur UN réseau, celui de BSC n'existe
+     pas sur Ethereum ; son adresse est l'admin du contrat Ethereum ;
    - Tron n'a pas de Safe : un compte TronLink, dont la permission
      « propriétaire » passe à 2 sur 3 (trois clés) ; il est l'admin du contrat
      Tron ;
    - le **pauseur** et le **geleur** : l'un de vos comptes MetaMask (BSC) et
-     votre compte TronLink — il faut pouvoir arrêter vite, seul.
+     votre compte TronLink — il faut pouvoir arrêter vite, seul. Sur Ethereum,
+     le même compte MetaMask que sur BSC.
    Donner à Claude les adresses PUBLIQUES (Safe, MetaMask, TronLink).
 2. [P] Une clé de mise en service NEUVE (`CLE_DE_MISE_EN_SERVICE`, `/outils`),
-   financée : ≈ 0,01 BNB ; ≈ 300 TRX. Le wallet chaud : 0,06 BNB ; 900 TRX.
+   financée : ≈ 0,01 BNB ; ≈ 300 TRX ; de l'ETH pour Ethereum (le prix du gaz
+   y change d'heure en heure : Claude calcule le montant le jour même). Le
+   wallet chaud : 0,06 BNB ; 900 TRX ; de l'ETH aussi (chaque retrait
+   Ethereum en paie le gaz).
 Chaque commande de mise en service lit deux dossiers d'Infisical (la clé et
 la base dans `/outils`, la graine et les nœuds dans `/supabase-fonctions`) :
 `PROD="infisical run --env=prod --path=/supabase-fonctions -- infisical run --env=prod --path=/outils --"`.
 
-3. [P] `$PROD npm --prefix chaine run mise-en-service -- deployer --production --reseau bep20 --chaud <chaud BEP20> --admin <Safe> --pauseur <MetaMask> --geleur <MetaMask> --usdt 0x55d398326f99059fF775485246999027B3197955`
+3. [P] `$PROD npm --prefix chaine run mise-en-service -- deployer --production --reseau bep20 --chaud <chaud BEP20> --admin <Safe> --pauseur <MetaMask> --geleur <MetaMask> --usdt 0x55d398326f99059fF775485246999027B3197955 --usdc 0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d`
    — un réseau principal sans `--production` est refusé. Noter l'adresse et le
    bloc.
 4. [P] `$PROD npm --prefix chaine run mise-en-service -- preinscrire --reseau bep20 --xafe <contrat> --de 1 --a 2000 --renoncer` (avec `XAFE_GRAINE`).
 5. [C] `cd contracts && npx hardhat verify --network bsc <contrat> <les sept arguments imprimés>`.
 6. Tron : les mêmes pas, `--reseau trc20`, l'admin = le compte TronLink 2 sur 3,
    `--usdt TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t`, `--a 600` ; vérifier sur
-   Tronscan (solc 0.8.28, optimiseur 200).
+   Tronscan (solc 0.8.28, optimiseur 200). Tron ne porte **pas** d'USDC :
+   l'outil refuse `--usdc` sur ce réseau.
+6b. Ethereum : les mêmes pas, `--reseau erc20`, l'admin = le Safe Ethereum,
+   `--usdt 0xdAC17F958D2ee523a2206206994597C13D831ec7 --usdc 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`
+   (l'outil refuse tout autre USDT ou USDC en production), un stock d'adresses
+   plus petit (`--a 300` : chaque inscription coûte du gaz), puis
+   `npx hardhat verify --network mainnet …` (Etherscan).
 7. [C] Le paramètre `chaine` (sans nœud) :
    ```sql
    update parametres set valeur = jsonb_build_object('essai', false, 'reserve', 'bep20',
      'bep20', jsonb_build_object('xafe', '<0x…>', 'usdt', '0x55d398326f99059fF775485246999027B3197955', 'depart', <bloc>, 'confirmations', 15),
-     'trc20', jsonb_build_object('xafe', '<T…>', 'usdt', 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t', 'depart', <bloc>, 'confirmations', 20))
+     'trc20', jsonb_build_object('xafe', '<T…>', 'usdt', 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t', 'depart', <bloc>, 'confirmations', 20),
+     'erc20', jsonb_build_object('xafe', '<0x…>', 'usdt', '0xdAC17F958D2ee523a2206206994597C13D831ec7', 'usdc', '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', 'depart', <bloc>, 'confirmations', 12))
     where cle = 'chaine';
    ```
-   Les tâches `xafe-veilleur-bep20` et `xafe-veilleur-trc20` se posent seules.
-8. [C] `$PROD npm --prefix chaine run mise-en-service -- verifier` : tout vert (la clé de mise en service n'a plus aucun rôle), puis `select chaine_etat('bep20')`.
+   (et `'usdc', '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d'` dans l'objet
+   `bep20`). Les tâches `xafe-veilleur-bep20`, `-trc20` et `-erc20` se posent
+   seules. Le veilleur refuse un nœud dont la chaîne n'est pas la bonne
+   (identifiant 56 pour BSC, 1 pour Ethereum).
+8. [C] `$PROD npm --prefix chaine run mise-en-service -- verifier` : tout vert (la clé de mise en service n'a plus aucun rôle, l'USDC est l'officiel), puis `select chaine_etat('bep20')`, `('trc20')`, `('erc20')`.
+8b. [P] **Les frais de retrait par réseau** (admin → Paramètres, `crypto.frais_reseaux`) :
+   sans réglage, un retrait d'USDC coûte le même frais que l'USDT, sur tous
+   les réseaux. Sur Ethereum le gaz d'un envoi vaut souvent plusieurs dollars :
+   décidez le frais d'Ethereum (USDT, USDC, XAFe) avant d'ouvrir ce réseau.
 9. [P] Jeter la clé de mise en service.
 
 Le plafond se change à tout moment par l'admin — sur BSC, une transaction du
@@ -302,13 +322,15 @@ La démonstration de TOTEM reste sur le projet de la bêta.
 2. La même chose avec Orange Money.
 3. `crypto.depots_ouverts = true` (les portes restent fermées au public) :
    5 USDT BEP20 et 5 USDT TRC20 vers vos adresses → crédités après 15 / 20
-   confirmations.
-4. Un échange entre vos deux comptes.
+   confirmations ; 5 USDC BEP20 et 5 USDC ERC20 (et 5 USDT ERC20) → crédités
+   après 15 / 12.
+4. Un échange entre vos deux comptes, sur chacun des deux marchés
+   (USDT/XAFe et USDC/XAFe).
 5. Un retrait de 1 000 XAFe vers MoMo : mot de passe + code e-mail +
    application → vous payez depuis la puce → l'ID tapé → le SMS de la puce le
    prouve → détruit → e-mail reçu.
 6. `crypto.retraits_ouverts = true` : 2 USDT et 1 000 XAFe vers un wallet
-   externe, sur les deux réseaux.
+   externe, sur les trois réseaux ; 2 USDC sur BSC et sur Ethereum.
 7. 500 XAFe renvoyés à une adresse de dépôt inscrite → détruits, crédités.
 8. `select rapprocher()` : écart nul ; `select verifier_le_profil_production(false)` : aucun refus.
 
@@ -316,14 +338,15 @@ La démonstration de TOTEM reste sur le projet de la bêta.
 
 - Les conditions de production (`conditions.version`), le support (e-mail,
   WhatsApp).
-- Tron ouvert (admin → Wallets → Réseaux), crypto ouverte.
+- Tron et Ethereum ouverts (admin → Wallets → Réseaux), crypto ouverte.
+- Les deux marchés ouverts (admin → Marché, un onglet par paire) : le carnet
+  part vide, aucun teneur de marché de la maison.
 - Supabase : « Allow new users to sign up » **activé** ; Google activé.
 - Annoncer.
 
 ## Q Plus tard
 
 - Un pauseur et un geleur confiés à d'autres personnes.
-- Livraison 2 : Ethereum, USDC.
 
 ## Ce qui reste à surveiller
 
