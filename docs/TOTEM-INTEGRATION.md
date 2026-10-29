@@ -191,6 +191,48 @@ unique (`rbt-<entrée>-<essai>`). « Échoué » remet l'entrée en « retenue �
 l'équipe peut relancer, avec une nouvelle clé. Un remboursement réclamé par
 un boîtier qui s'est tu se libère depuis l'administration après cinq minutes.
 
+## (4) La preuve d'un remboursement payé à la main (0038)
+
+En mode `manuel` (le réglage de production), l'équipe paie elle-même le
+client depuis une puce de float, puis tape le transaction ID dans
+l'administration. **Taper l'ID ne détruit rien** : la sortie passe « en
+preuve ». Ses XAFe ne sont détruits que lorsque TOTEM a relevé, sur une puce
+de Glisil, le SMS de l'opérateur qui montre ce paiement :
+
+- même transaction ID (lettres et chiffres, sans les points) ;
+- même montant (le montant envoyé, pas le solde ni la commission) ;
+- même numéro de bénéficiaire (les neuf derniers chiffres) ;
+- relevé après la demande du client, par un terminal du même monde (vrai ou
+  démo), et ne prouvant pas déjà une autre sortie.
+
+Le SMS passe par la même porte que les entrées (`totem-sms`, `sens:
+"sortie"`) et finit dans `totem_sms_sortant()`, qui clôt la sortie s'il
+concorde. Peu importe l'ordre : l'ID tapé avant le SMS, ou le SMS arrivé
+avant l'ID, la sortie se clôt au second des deux (ils prennent le même
+verrou ; course 12.4). Un écart se dit en mots sur la carte de la demande
+(« le SMS dit 95,000 XAF, ce paiement 99,500 XAF ») et se corrige (« Corriger
+l'ID ») ; il ne se confirme pas. Un gros remboursement se paie en plusieurs
+transferts : chaque ID se tape avec son montant (« Payer le reste »).
+
+Le forçage (clore sans le SMS) est fermé par défaut (`sortie.forcage =
+false`). Ouvert, il est réservé au super admin, trente minutes après le
+paiement, et lève une alerte de parité.
+
+### Avant le premier remboursement réel : la liste du propriétaire
+
+1. **Chaque puce qui paie est un float Glisil** de ce terminal
+   (Administration → Terminaux) : un SMS d'une autre puce ne prouve rien.
+2. **Le numéro propre de chaque puce est déclaré dans TOTEM** (Telegram
+   `/reglages`). Sans lui, un dépôt d'agent nomme deux numéros et le robot
+   ne sait pas lequel est le sien : il ne l'envoie pas, et la sortie reste
+   en preuve (`TestLaPreuveDuRemboursement`, chez TOTEM).
+3. **`sorties = oui`** dans la section `[xafe]` de `totem.conf` (c'est le
+   défaut).
+4. **Un essai de 100 XAF** : un compte de l'équipe demande un retrait de
+   100 XAF, on le paie depuis la puce, on tape l'ID. Attendu dans la minute :
+   la demande quitte « en preuve », le client reçoit la notification et
+   l'e-mail « retrait payé ». Si elle reste en preuve, la carte dit pourquoi.
+
 ## Ce que TOTEM doit encore apprendre (côté robot)
 
 - un second destinataire pour les SMS (`nuage.py` : même charge, autre URL,
