@@ -9,7 +9,8 @@
 // journal, et la porte qui refuse sans le bon jeton. Chaque exigence a son
 // témoin : une variante fautive qui doit échouer.
 import assert from "node:assert/strict";
-import { echapper, envoyerParResend, heureDeDouala, jetonValide, montant, numero, rendre, traiterLaBoite, type Envoyer } from "./_shared/courriel.ts";
+import { readdirSync, readFileSync } from "node:fs";
+import { echapper, envoyerParResend, GABARITS_CONNUS, heureDeDouala, jetonValide, montant, numero, rendre, traiterLaBoite, type Envoyer } from "./_shared/courriel.ts";
 
 let n = 0;
 const ok = (texte: string) => { n++; console.log(`✓ ${texte}`); };
@@ -70,6 +71,32 @@ const OPERATIONS = {
   assert.ok(rendre("verification", OPERATIONS.sortie_momo, null).html.includes('lang="en"'), "sans langue : l'anglais");
   assert.ok(rendre("verification", OPERATIONS.sortie_momo, "de").html.includes('lang="en"'), "une langue inconnue : l'anglais");
   ok("l'anglais est la langue par défaut");
+}
+
+/* ------------------------------- la double authentification retirée */
+{
+  const code = rendre("deux_facteurs_retires", { cause: "code_de_secours", quand: "2026-10-29T13:00:00Z" }, "fr");
+  assert.ok(code.texte.includes("Un code de secours") && code.texte.includes("29/10/2026 à 14:00") && code.texte.includes("Ce n'est pas vous"));
+  const equipe = rendre("deux_facteurs_retires", { cause: "administration", quand: "2026-10-29T13:00:00Z" }, "en");
+  assert.ok(equipe.texte.includes("the Glisil team removed") && equipe.texte.includes("Oct 29, 2026, 14:00") && equipe.texte.includes("Not you?"));
+  ok("la double authentification retirée : par quel moyen, quand, et quoi faire si ce n'est pas vous");
+}
+
+/* ----------------- chaque e-mail que la base met en file a son rendu */
+{
+  /* Lu dans les migrations : le nom écrit juste après le compte dans un appel à _envoyer_courriel (même
+     par execute … using), ou en tête d'un « using ». Sans rendu, l'e-mail partirait en « rendu impossible ». */
+  const dossier = new URL("../migrations/", import.meta.url);
+  const sql = readdirSync(dossier).filter((f) => f.endsWith(".sql")).map((f) => readFileSync(new URL(f, dossier), "utf8")).join("\n");
+  const enFile = new Set<string>();
+  for (const m of sql.matchAll(/_envoyer_courriel\(\s*[\w.]+\s*,\s*'([a-z_]+)'/g)) enFile.add(m[1]);
+  for (const m of sql.matchAll(/_envoyer_courriel\(\$1[^']*'[\s\S]{0,120}?using\s+[\w.]+\s*,\s*'([a-z_]+)'/g)) enFile.add(m[1]);
+  assert.ok(enFile.size >= 3 && enFile.has("deux_facteurs_retires"), `les gabarits lus dans les migrations : ${[...enFile].join(", ")}`);
+  for (const g of enFile) assert.ok(GABARITS_CONNUS.includes(g), `la base met en file « ${g} », que la fonction ne sait pas écrire`);
+  /* témoin : sans le dernier gabarit ajouté, la vérification le trouve manquant */
+  const sansLui = GABARITS_CONNUS.filter((g) => g !== "deux_facteurs_retires");
+  assert.ok([...enFile].some((g) => !sansLui.includes(g)), "témoin : un gabarit retiré se voit");
+  ok(`chaque e-mail que la base met en file a son rendu (${[...enFile].sort().join(", ")}) — témoin pris`);
 }
 
 /* ------------------------------------------------- un nom piégé, échappé */

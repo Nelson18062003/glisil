@@ -110,3 +110,19 @@ n'est jamais dans l'objet, ni au journal. Un e-mail que Resend refuse
 momentanément (429, 5xx) est repris ; la même ligne ne part jamais deux fois
 (clé d'idempotence). Éprouvé par
 `node --experimental-strip-types supabase/functions/verifier-les-courriels.ts`.
+
+### Téléphone perdu : la fonction `deux-facteurs`
+
+« J'ai perdu mon téléphone » (à la connexion) : la personne donne un de ses
+codes de secours ; la base le juge (5 essais, puis 15 minutes de verrou), et
+la fonction `deux-facteurs` retire l'ancienne application d'authentification ;
+la personne en ajoute une nouvelle et reçoit dix codes neufs. Elle sert aussi
+à la réinitialisation par un super admin (après vérification d'identité).
+Une fois :
+
+- **Déployer** : `npx supabase functions deploy deux-facteurs` (avec la
+  vérification du jeton : seule une personne connectée l'appelle) ;
+- **Secret facultatif** `ORIGINES` : les adresses autorisées à l'appeler, par
+  défaut `https://app.glisil.com,https://admin.glisil.com`.
+
+Éprouvé par `node --experimental-strip-types supabase/functions/verifier-deux-facteurs.ts`.

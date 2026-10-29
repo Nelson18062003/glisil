@@ -167,10 +167,37 @@ function verificationVerrouillee(d: Donnees, l: Langue): Rendu {
   };
 }
 
+/** La double authentification retirée (0035) : par un code de secours, ou par l'équipe après vérification d'identité. */
+function deuxFacteursRetires(d: Donnees, l: Langue): Rendu {
+  const quand = heureDeDouala(d.quand, l, true);
+  const parLEquipe = d.cause === "administration";
+  const titre = t(l, "Votre application d'authentification a été retirée", "Your authenticator app was removed");
+  const corps = parLEquipe
+    ? t(l, `À votre demande, l'équipe Glisil a retiré l'application d'authentification de votre compte le ${quand} (heure de Douala), après avoir vérifié votre identité.`,
+        `At your request, the Glisil team removed the authenticator app from your account on ${quand} (Douala time), after verifying your identity.`)
+    : t(l, `Un code de secours a servi à retirer l'application d'authentification de votre compte le ${quand} (heure de Douala).`,
+        `A recovery code was used to remove the authenticator app from your account on ${quand} (Douala time).`);
+  const suite = t(l,
+    "À la prochaine connexion, Glisil vous demandera d'ajouter une nouvelle application, puis vous donnera dix nouveaux codes de secours. Les anciens ne valent plus rien.",
+    "At your next sign-in, Glisil will ask you to add a new authenticator app, then give you ten new recovery codes. The old ones no longer work.");
+  const alerte = t(l,
+    "Ce n'est pas vous ? Écrivez au support tout de suite et changez votre mot de passe : quelqu'un a peut-être accès à votre compte.",
+    "Not you? Contact support right away and change your password: someone may have access to your account.");
+  return {
+    sujet: t(l, "Glisil · votre application d'authentification a été retirée", "Glisil · your authenticator app was removed"),
+    html: habit(l, titre, paragraphe(echapper(corps)) + paragraphe(echapper(suite)) + paragraphe(echapper(alerte), true)),
+    texte: [titre, "", corps, "", suite, "", alerte].join("\n"),
+  };
+}
+
+/* Chaque gabarit que la base met en file (les migrations) a son rendu ici : verifier-les-courriels.ts le vérifie. */
 const GABARITS: Record<string, (d: Donnees, l: Langue) => Rendu> = {
   verification,
   verification_verrouillee: verificationVerrouillee,
+  deux_facteurs_retires: deuxFacteursRetires,
 };
+
+export const GABARITS_CONNUS = Object.keys(GABARITS);
 
 /** Le rendu d'une ligne de la boîte. Un gabarit inconnu LÈVE : jamais d'e-mail vide. */
 export function rendre(gabarit: string, donnees: Donnees, langue: unknown): Rendu {
