@@ -25,6 +25,8 @@ export interface Signataire {
   lire(contrat: string, signature: string, types: string[], valeurs: unknown[]): Promise<string>;
   envoyerNatif(vers: string, montant: bigint): Promise<string>;
   soldeNatif(adresse?: string): Promise<bigint>;
+  /** le numéro du dernier bloc (le départ de la lecture du jeton, noté au déploiement) */
+  bloc(): Promise<number>;
   /** une adresse du réseau → les 20 octets qu'attend l'ABI (Tron : sans le 41) */
   pourAbi(adresse: string): string;
 }
@@ -59,6 +61,7 @@ export function signataireEvm(rpcUrl: string, cle: string, reseau: Reseau = "bep
       return tx.hash;
     },
     soldeNatif: (a) => fournisseur.getBalance(a ?? w.address),
+    bloc: () => fournisseur.getBlockNumber(),
   };
 }
 
@@ -115,11 +118,17 @@ export function signataireTron(noeudUrl: string, cle: string, cleApi?: string, a
       return String(info.id);
     },
     async soldeNatif(a) { return BigInt((await noeud.api("/wallet/getaccount", { address: a ?? adresse, visible: true })).balance ?? 0); },
+    async bloc() { return (await noeud.tete()).numero; },
   };
 }
 
 /* --------------------------------------------- les gestes sur le contrat */
+/** les rôles du wallet chaud — et lui seul les a */
 export const ROLES = { FRAPPEUR: "FRAPPEUR_ROLE", DESTRUCTEUR: "DESTRUCTEUR_ROLE" } as const;
+/** les rôles de garde : arrêter (sans pouvoir reprendre) et geler — le wallet du propriétaire, jamais le chaud */
+export const ROLES_DE_GARDE = { PAUSEUR: "PAUSEUR_ROLE", GELEUR: "GELEUR_ROLE" } as const;
+/** inscrire d'avance des adresses de dépôt NEUVES : la clé de mise en service, le temps du stock, puis elle renonce */
+export const INSCRIPTEUR = "INSCRIPTEUR_ROLE";
 
 export async function role(s: Signataire, xafe: string, nom: string): Promise<string> {
   return s.lire(xafe, `${nom}()`, [], []);
@@ -151,7 +160,26 @@ export async function fixerLePlafondDEssai(s: Signataire, xafe: string, plafondX
   await s.ecrire(xafe, "fixerPlafondJour(uint256)", ["uint256"], [voulu]);
   return true;
 }
-/** inscrire au registre du contrat les adresses de dépôt XAFe (le seul endroit où des XAFe se détruisent) */
+/**
+ * L'INSCRIPTEUR inscrit d'avance un stock d'adresses de dépôt NEUVES (le contrat
+ * refuse une adresse qui porte déjà des XAFe, et ne permet pas d'en retirer).
+ * Celles déjà inscrites sont sautées. Rend combien ont été inscrites.
+ */
+export async function preinscrire(s: Signataire, xafe: string, adresses: string[], lot = s.reseau === "trc20" ? 100 : 300): Promise<number> {
+  const neuves: string[] = [];
+  for (const a of adresses) {
+    if (BigInt(await s.lire(xafe, "estAdresseDeDepot(address)", ["address"], [a])) !== 1n) neuves.push(a);
+  }
+  for (let i = 0; i < neuves.length; i += lot) {
+    await s.ecrire(xafe, "inscrireAdressesNeuves(address[])", ["address[]"], [neuves.slice(i, i + lot)]);
+  }
+  return neuves.length;
+}
+/** renoncer à un rôle : la clé ne le tient plus, et ne peut pas se le redonner */
+export async function renoncer(s: Signataire, xafe: string, nom: string) {
+  await s.ecrire(xafe, "renounceRole(bytes32,address)", ["bytes32", "address"], [await role(s, xafe, nom), s.adresse]);
+}
+/** inscrire au registre du contrat les adresses de dépôt XAFe (le seul endroit où des XAFe se détruisent) — l'ADMIN */
 export async function inscrire(s: Signataire, xafe: string, adresses: string[]) {
   for (let i = 0; i < adresses.length; i += 100) {
     await s.ecrire(xafe, "inscrireAdressesDeDepot(address[],bool)", ["address[]", "bool"], [adresses.slice(i, i + 100), true]);

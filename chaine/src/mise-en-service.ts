@@ -10,27 +10,52 @@
  *   npm run mise-en-service -- adresses             (XAFE_GRAINE)
  *       Les wallets chauds d'une graine existante (indice 0), un par réseau.
  *
- *   npm run mise-en-service -- deployer --reseau bep20|trc20|erc20|base|polygon --chaud <adresse> [--usdt-essai] [--natif 0.05]
- *       (ADMIN_CLE, et le nœud du réseau : BEP20_RPC, TRC20_NOEUD, BASE_RPC…) Sur un réseau d'ESSAI : déploie
- *       le contrat XAFe (l'admin est la clé ADMIN_CLE), un USDT d'essai si
- *       demandé, donne au wallet chaud les rôles FRAPPEUR et DESTRUCTEUR, lui
- *       envoie de quoi payer les frais, et écrit la configuration du veilleur.
+ *   npm run mise-en-service -- deployer --reseau bep20|trc20|… --chaud <adresse> [--admin <a>] [--pauseur <a>] [--geleur <a>]
+ *                                       [--plafond <XAF>] [--usdt <contrat> | --usdt-essai] [--natif 0.05] [--production]
+ *       Déploie le contrat XAFe : le constructeur pose TOUS les rôles d'un coup
+ *       — admin, frappeur et destructeur (le chaud), pauseur, geleur, et
+ *       l'inscripteur (la clé qui déploie, qui inscrira le stock d'adresses puis
+ *       y renoncera). Plafond par défaut : 1 000 000 000 XAF par jour.
+ *       Réseau d'ESSAI : la clé ADMIN_CLE, admin par défaut, un USDT d'essai si
+ *       demandé, des frais pour le chaud.
+ *       --production : la clé CLE_DE_MISE_EN_SERVICE (jetable, jamais admin),
+ *       --admin, --pauseur et --geleur exigés (le wallet matériel du
+ *       propriétaire), l'USDT officiel du réseau, jamais d'USDT d'essai.
+ *       Écrit le bloc du paramètre « chaine » (noeud, xafe, usdt, depart).
+ *
+ *   npm run mise-en-service -- preinscrire --reseau … --xafe <contrat> --de 1 --a 2000 [--lot N] [--renoncer]
+ *       (XAFE_GRAINE, et la clé qui tient INSCRIPTEUR) Inscrit d'avance au
+ *       contrat les adresses de dépôt dérivées de la graine, de l'indice --de à
+ *       --a. --renoncer : la clé renonce ensuite au rôle (vérifié).
+ *
+ *   npm run mise-en-service -- plafond --reseau … --xafe <contrat> [--xaf N]
+ *       Le plafond de frappe du jour et ce qu'il en reste ; avec --xaf, le
+ *       chiffre EXACT à coller dans BscScan / Tronscan → Write contract →
+ *       fixerPlafondJour, depuis le wallet admin. Ne signe lui-même que sur un
+ *       réseau d'essai, quand ADMIN_CLE est l'admin du contrat.
  *
  *   npm run mise-en-service -- roles --reseau … --xafe <contrat> --chaud <adresse>
- *       Les rôles seulement (un contrat déjà déployé). Ne redonne pas ce qui est donné.
+ *       Les rôles d'un contrat d'AVANT le correctif de la réserve (réseau
+ *       d'essai). Un contrat neuf naît avec ses rôles.
  *
- *   npm run mise-en-service -- inscrire --reseau … --xafe <contrat> [adresses…]
- *       Inscrit au contrat les adresses de dépôt XAFe. Sans adresse : celles
- *       que le veilleur a publiées comme « à inscrire » (MOTEUR_URL, MOTEUR_CLE).
+ *   npm run mise-en-service -- inscrire --reseau … --xafe <contrat> [adresses… | --toutes-attribuees]
+ *       L'ADMIN inscrit au contrat des adresses de dépôt XAFe. Sans adresse :
+ *       celles que le veilleur a publiées comme « à inscrire » ; avec
+ *       --toutes-attribuees : toutes celles que le moteur a déjà données à des
+ *       clients (le passage de la bêta sur un nouveau contrat).
  *
- *   npm run mise-en-service -- verifier
+ *   npm run mise-en-service -- verifier [--production]
  *       Avec la configuration du veilleur : la graine, le moteur, chaque
- *       réseau (nœud, contrats, décimales, rôles du chaud, frais, froid).
- *       Rien n'est envoyé. À relancer avant d'ouvrir les retraits.
+ *       réseau (nœud, contrats, décimales, la réserve dans le contrat, les
+ *       rôles — le chaud n'a QUE frappeur et destructeur —, le plafond, le
+ *       stock d'adresses, les frais, le froid). Rien n'est envoyé. À relancer
+ *       avant d'ouvrir les retraits.
  *
- * En PRODUCTION, l'admin du contrat est un wallet matériel : le déploiement et
- * les rôles s'y signent (BscScan / TronScan, « Write contract »), pas avec une
- * clé tapée ici. ADMIN_CLE n'est fait que pour les réseaux d'essai.
+ * En PRODUCTION, l'admin du contrat est le wallet matériel du propriétaire dès
+ * le bloc 0 (le constructeur le pose) : le plafond, la reprise après une pause,
+ * les inscriptions de l'admin s'y signent (BscScan / TronScan, « Write
+ * contract »). La clé de mise en service ne sert qu'au déploiement et au
+ * stock d'adresses, puis se jette : elle ne tient plus aucun rôle.
  */
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -39,7 +64,7 @@ import type { Actif, Chaine } from "./chaine.ts";
 import { CHAUD, deriver, estReseau, fiche, graineValide, prefixe, RESEAUX, variableDuNoeud, type Reseau } from "./cles.ts";
 import { ChaineEvm } from "./evm.ts";
 import { moteur } from "./moteur.ts";
-import { aLeRole, donnerLesRoles, inscrire, ROLES, signataireEvm, signataireTron, type Artefact, type Signataire } from "./signataire.ts";
+import { aLeRole, donnerLesRoles, INSCRIPTEUR, inscrire, preinscrire, renoncer, ROLES, ROLES_DE_GARDE, signataireEvm, signataireTron, type Artefact, type Signataire } from "./signataire.ts";
 import { ChaineTron, vingtOctets } from "./tron.ts";
 
 const env = process.env;
@@ -70,8 +95,14 @@ const reseauDe = (o: Record<string, string | true>): Reseau => {
 };
 const valable = (r: Reseau, a: string) => fiche(r).famille === "evm" ? /^0x[0-9a-fA-F]{40}$/.test(a) : vingtOctets(a) !== null;
 
-function signataire(r: Reseau): Signataire {
-  const cle = env.ADMIN_CLE ?? arreter("ADMIN_CLE manque (la clé de l'admin d'ESSAI — en production, un wallet matériel)");
+/** l'USDT officiel de chaque réseau principal (à revérifier sur tether.to avant usage) */
+const USDT_OFFICIEL: Partial<Record<Reseau, string>> = { bep20: "0x55d398326f99059fF775485246999027B3197955", trc20: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t" };
+const memeAdresse = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+function signataire(r: Reseau, production = false): Signataire {
+  const cle = production
+    ? env.CLE_DE_MISE_EN_SERVICE ?? arreter("CLE_DE_MISE_EN_SERVICE manque (une clé jetable, financée pour le déploiement : jamais l'admin)")
+    : env.ADMIN_CLE ?? env.CLE_DE_MISE_EN_SERVICE ?? arreter("ADMIN_CLE manque (la clé de l'admin d'ESSAI — en production, un wallet matériel)");
   const noeud = env[variableDuNoeud(r)] ?? arreter(`${variableDuNoeud(r)} manque${ESSAIS[r] ? ` (réseau d'essai : ${ESSAIS[r]})` : ""}`);
   if (fiche(r).famille === "evm") return signataireEvm(noeud, cle, r);
   return signataireTron(noeud, cle, env.TRC20_CLE_API);
@@ -110,30 +141,92 @@ function adresses() {
 /* -------------------------------------------------------------- deployer */
 async function deployer(o: Record<string, string | true>) {
   const r = reseauDe(o);
+  const production = o.production === true;
   const chaud = String(o.chaud ?? "");
   if (!valable(r, chaud)) arreter(`--chaud : l'adresse du wallet chaud ${PREFIXE(r)} (donnée par « graine » ou « adresses »)`);
-  const s = signataire(r);
+  const s = signataire(r, production);
+  const texte = (k: string) => (o[k] && o[k] !== true ? String(o[k]) : "");
+  if (production) {
+    for (const k of ["admin", "pauseur", "geleur"]) if (!valable(r, texte(k))) arreter(`--production : --${k} <adresse ${PREFIXE(r)}> (le wallet matériel du propriétaire)`);
+    if (o["usdt-essai"]) arreter("--production : jamais d'USDT d'essai");
+    if (!USDT_OFFICIEL[r] || !memeAdresse(texte("usdt"), USDT_OFFICIEL[r]!)) arreter(`--production : --usdt doit être l'USDT officiel du réseau (${USDT_OFFICIEL[r] ?? "inconnu ici"})`);
+  }
+  const admin = texte("admin") || s.adresse;
+  if (!valable(r, admin)) arreter("--admin : une adresse du réseau");
+  // l'admin n'est jamais une clé de serveur, et jamais la clé de mise en service (qui se jette)
+  if (memeAdresse(admin, chaud)) arreter("l'admin ne peut pas être le wallet chaud : une clé de serveur volée prendrait tout");
+  if (production && memeAdresse(admin, s.adresse)) arreter("l'admin ne peut pas être la clé de mise en service : elle se jette après le déploiement");
+  const pauseur = texte("pauseur") || admin, geleur = texte("geleur") || admin;
   const n = NATIF(r);
-  const natif = parseUnits(String(o.natif === undefined || o.natif === true ? n.defaut : o.natif), n.decimales);
+  const natif = o.natif === undefined ? (production ? 0n : parseUnits(n.defaut, n.decimales)) : parseUnits(String(o.natif === true ? n.defaut : o.natif), n.decimales);
   const solde = await s.soldeNatif();
-  console.log(`· admin ${s.adresse} : ${formatUnits(solde, n.decimales)} ${n.nom}`);
-  if (solde < natif) arreter(`l'admin n'a pas assez de ${n.nom} (il en faut au moins ${formatUnits(natif, n.decimales)} pour le chaud, plus les frais) — robinet du réseau d'essai`);
+  console.log(`· clé de déploiement ${s.adresse} : ${formatUnits(solde, n.decimales)} ${n.nom}`);
+  if (solde < natif) arreter(`la clé n'a pas assez de ${n.nom} (il en faut au moins ${formatUnits(natif, n.decimales)} pour le chaud, plus les frais)`);
 
-  const plafond = parseUnits(String(o.plafond && o.plafond !== true ? o.plafond : "50000000"), 6);
-  const xafe = await s.deployer(artefact("XAFe.sol/XAFe.json"), ["address", "uint256"], [s.adresse, plafond]);
-  console.log(`✓ contrat XAFe déployé : ${xafe} (admin ${s.adresse}, plafond ${formatUnits(plafond, 6)} XAFe)`);
-  let usdt = String(o.usdt ?? "");
+  const plafondXaf = BigInt(texte("plafond") || "1000000000");
+  const plafond = plafondXaf * 1_000_000n;
+  const depart = await s.bloc();
+  const args = [admin, plafond, chaud, chaud, pauseur, geleur, s.adresse];
+  const xafe = await s.deployer(artefact("XAFe.sol/XAFe.json"), ["address", "uint256", "address", "address", "address", "address", "address"], args);
+  console.log(`✓ contrat XAFe déployé : ${xafe} — la réserve est le contrat lui-même`);
+  console.log(`  admin ${admin} · frappeur et destructeur ${chaud} · pauseur ${pauseur} · geleur ${geleur} · inscripteur ${s.adresse} (à renoncer après le stock)`);
+  console.log(`  plafond de frappe du jour : ${plafondXaf} XAF`);
+  let usdt = texte("usdt");
   if (o["usdt-essai"]) {
     usdt = await s.deployer(artefact("essai/UsdtEssai.sol/UsdtEssai.json"), ["uint8"], [Math.max(...fiche(r).decimalesUsdt)]);
     console.log(`✓ USDT d'essai déployé : ${usdt} (${Math.max(...fiche(r).decimalesUsdt)} décimales ; « frapper(adresse, montant) » en donne à qui veut)`);
   }
-  const donnes = await donnerLesRoles(s, xafe, chaud);
-  console.log(`✓ wallet chaud ${chaud} : rôles ${donnes.join(" et ") || "déjà donnés"}`);
-  await s.envoyerNatif(chaud, natif);
-  console.log(`✓ ${formatUnits(natif, n.decimales)} ${n.nom} envoyés au chaud pour les frais`);
-  console.log(`\nConfiguration du veilleur :\n  ${variableDuNoeud(r)}=${env[variableDuNoeud(r)]}\n  ${PREFIXE(r)}_XAFE=${xafe}\n  ${PREFIXE(r)}_USDT=${usdt || "<le contrat USDT du réseau>"}`);
-  console.log(`\nDans la base : le paramètre « chaine » reçoit { "${r}": { "noeud", "xafe", "usdt" } } ; le veilleur s'y met tout seul.`);
+  if (natif > 0n) {
+    await s.envoyerNatif(chaud, natif);
+    console.log(`✓ ${formatUnits(natif, n.decimales)} ${n.nom} envoyés au chaud pour les frais`);
+  }
+  if (fiche(r).famille === "evm") console.log(`\nVérifier sur l'explorateur (0.8.28, optimiseur 200, EVM paris) : npx hardhat verify --network <réseau> ${xafe} ${args.map(String).join(" ")}`);
+  console.log(`\nLe paramètre « chaine » de la base reçoit :\n  "${r}": ${JSON.stringify({ noeud: env[variableDuNoeud(r)], xafe, usdt: usdt || "<le contrat USDT du réseau>", depart, confirmations: fiche(r).confirmations })}`);
+  console.log(`\nEnsuite : npm run mise-en-service -- preinscrire --reseau ${r} --xafe ${xafe} --de 1 --a ${r === "trc20" ? 600 : 2000} --renoncer`);
   console.log(`Le réseau reste FERMÉ aux clients jusqu'à ce que l'équipe l'ouvre (admin_activer_reseau('${r}', true)).`);
+}
+
+async function preinscrireCmd(o: Record<string, string | true>) {
+  const r = reseauDe(o);
+  const xafe = String(o.xafe ?? "");
+  if (!valable(r, xafe)) arreter("--xafe <contrat>");
+  const g = env.XAFE_GRAINE ?? "";
+  if (!graineValide(g)) arreter("XAFE_GRAINE manque ou n'est pas une graine valide (les adresses se dérivent d'elle)");
+  const de = Number(o.de ?? 1), a = Number(o.a ?? 0);
+  if (!Number.isInteger(de) || !Number.isInteger(a) || de < 1 || a < de) arreter("--de 1 --a 2000 : les indices à inscrire (l'indice 0 est le chaud)");
+  const s = signataire(r, Boolean(env.CLE_DE_MISE_EN_SERVICE));
+  if (!(await aLeRole(s, xafe, INSCRIPTEUR, s.adresse))) arreter(`la clé ${s.adresse} n'a pas le rôle ${INSCRIPTEUR} : l'admin doit le lui donner (grantRole)`);
+  const adresses = Array.from({ length: a - de + 1 }, (_, i) => deriver(g, r, de + i).adresse);
+  const n = await preinscrire(s, xafe, adresses, o.lot && o.lot !== true ? Number(o.lot) : undefined);
+  console.log(`✓ ${n} adresse(s) de dépôt inscrites d'avance (indices ${de} à ${a}, ${adresses.length - n} l'étaient déjà)`);
+  if (o.renoncer) {
+    await renoncer(s, xafe, INSCRIPTEUR);
+    const encore = await aLeRole(s, xafe, INSCRIPTEUR, s.adresse);
+    if (encore) arreter(`la clé ${s.adresse} tient encore ${INSCRIPTEUR}`);
+    console.log(`✓ la clé ${s.adresse} a renoncé à ${INSCRIPTEUR} : elle ne tient plus aucun rôle, elle peut se jeter`);
+  }
+}
+
+async function plafondCmd(o: Record<string, string | true>) {
+  const r = reseauDe(o);
+  const xafe = String(o.xafe ?? "");
+  if (!valable(r, xafe)) arreter("--xafe <contrat>");
+  const noeud = env[variableDuNoeud(r)] ?? arreter(`${variableDuNoeud(r)} manque`);
+  // lire n'a besoin d'aucune clé : une jetable
+  const lecteur = fiche(r).famille === "evm" ? signataireEvm(noeud, "0x" + "11".repeat(32), r) : signataireTron(noeud, "11".repeat(32), env.TRC20_CLE_API);
+  const lire = async (sig: string) => BigInt(await lecteur.lire(xafe, sig, [], []));
+  console.log(`· plafond de frappe du jour : ${formatUnits(await lire("plafondJour()"), 6)} XAF · reste aujourd'hui ${formatUnits(await lire("resteDuJour()"), 6)} (remis à zéro à 00:00 UTC)`);
+  if (!o.xaf || o.xaf === true) return;
+  const voulu = BigInt(String(o.xaf)) * 1_000_000n;
+  console.log(`· pour ${o.xaf} XAF : fixerPlafondJour(${voulu})  ← le chiffre exact à coller dans BscScan / Tronscan → Write contract, depuis le wallet admin`);
+  if (env.ADMIN_CLE) {
+    const s = signataire(r);
+    const admin = await s.lire(xafe, "defaultAdmin()", [], []);
+    if (BigInt(admin) === BigInt(s.pourAbi(s.adresse))) {
+      await s.ecrire(xafe, "fixerPlafondJour(uint256)", ["uint256"], [voulu]);
+      console.log(`✓ plafond écrit par la clé admin d'essai ${s.adresse}`);
+    }
+  }
 }
 
 async function roles(o: Record<string, string | true>) {
@@ -149,7 +242,11 @@ async function inscrireCmd(o: Record<string, string | true>, libres: string[]) {
   const xafe = String(o.xafe ?? "");
   if (!valable(r, xafe)) arreter("--xafe <contrat>");
   let liste = libres;
-  if (!liste.length) {
+  if (!liste.length && o["toutes-attribuees"]) {
+    if (!env.MOTEUR_URL || !env.MOTEUR_CLE) arreter("--toutes-attribuees : MOTEUR_URL et MOTEUR_CLE");
+    const etat = await moteur(env.MOTEUR_URL!, env.MOTEUR_CLE!)("chaine_adresses", { p_reseau: r });
+    liste = ((etat?.attribuees ?? []) as { adresse: string; actif: string }[]).filter((x) => x.actif === "XAFe").map((x) => x.adresse);
+  } else if (!liste.length) {
     if (!env.MOTEUR_URL || !env.MOTEUR_CLE) arreter("des adresses, ou MOTEUR_URL et MOTEUR_CLE pour prendre celles que le veilleur a publiées");
     const etat = await moteur(env.MOTEUR_URL!, env.MOTEUR_CLE!)("chaine_etat", { p_reseau: r }).catch(() => null);
     liste = (etat?.a_inscrire ?? []) as string[];
@@ -162,7 +259,8 @@ async function inscrireCmd(o: Record<string, string | true>, libres: string[]) {
 }
 
 /* -------------------------------------------------------------- verifier */
-async function verifier() {
+async function verifier(o: Record<string, string | true> = {}) {
+  const production = o.production === true;
   let echecs = 0;
   const v = (ok: unknown, texte: string, detail = "") => { console.log(`${ok ? "✓" : "✗"} ${texte}${ok || !detail ? "" : ` — ${detail}`}`); if (!ok) echecs += 1; };
   const g = env.XAFE_GRAINE ?? "";
@@ -202,10 +300,38 @@ async function verifier() {
     v(chaine.decimales.XAFe === 6, "XAFe a 6 décimales");
     v(fiche(r).decimalesUsdt.includes(chaine.decimales.USDT), `l'USDT a les décimales du réseau (${fiche(r).decimalesUsdt.join(" ou ")})`);
     const lecteur = s();
+    // le contrat d'après le correctif : la réserve vit DANS le contrat
+    const etatJ = await chaine.etatDuJeton().then((x) => x, () => null);
+    v(etatJ !== null, "le contrat tient la réserve (reserve(), resteDuJour())", "contrat d'avant le correctif de la réserve : redéployer");
+    if (etatJ) {
+      console.log(`· plafond de frappe du jour ${formatUnits(etatJ.plafondJour, 6)} XAF · reste ${formatUnits(etatJ.resteDuJour, 6)} · réserve ${formatUnits(etatJ.reserve, 6)} XAFe${etatJ.enPause ? " · EN PAUSE" : ""}`);
+      v(!etatJ.enPause, "le contrat n'est pas en pause");
+    }
+    v((await chaine.solde("XAFe" as Actif, chaine.chaud)) === 0n, "le wallet chaud ne tient aucun XAFe (rien ne doit y dormir)");
     for (const role of Object.values(ROLES)) {
       const a = await aLeRole(lecteur, contrats[1], role, chaine.chaud).catch(() => false);
-      v(a, `le wallet chaud ${chaine.chaud} a le rôle ${role}`, "l'admin doit le donner : npm run mise-en-service -- roles …");
+      v(a, `le wallet chaud ${chaine.chaud} a le rôle ${role}`, "l'admin doit le donner");
     }
+    for (const role of ["DEFAULT_ADMIN_ROLE", ...Object.values(ROLES_DE_GARDE), INSCRIPTEUR]) {
+      const a = await aLeRole(lecteur, contrats[1], role, chaine.chaud).catch(() => true);
+      v(!a, `le wallet chaud n'a PAS le rôle ${role}`, "une clé de serveur ne doit tenir que frapper et détruire");
+    }
+    for (const [nom, role] of Object.entries(ROLES_DE_GARDE)) {
+      const qui = env[`${P}_${nom}`];
+      if (qui) v(await aLeRole(lecteur, contrats[1], role, qui).catch(() => false), `${P}_${nom} ${qui} tient ${role}`);
+      else if (production) v(false, `${P}_${nom} : l'adresse qui doit tenir ${role}`);
+    }
+    const adminAttendu = env[`${P}_ADMIN`];
+    if (adminAttendu) v(BigInt(await lecteur.lire(contrats[1], "defaultAdmin()", [], [])) === BigInt(lecteur.pourAbi(adminAttendu)), `l'admin du contrat est ${adminAttendu}`);
+    else if (production) v(false, `${P}_ADMIN : l'adresse du wallet admin attendu`);
+    if (env.MOTEUR_URL && env.MOTEUR_CLE) {
+      const etat = await moteur(env.MOTEUR_URL, env.MOTEUR_CLE)("chaine_adresses", { p_reseau: r }).catch(() => null);
+      const im = Number(etat?.indice_max ?? 0), stock = Number(env[`${P}_STOCK_XAFE`] ?? 200);
+      const proche = await chaine.estAdresseDeDepot(deriver(g, r, im + 1).adresse).catch(() => false);
+      const loin = await chaine.estAdresseDeDepot(deriver(g, r, im + stock).adresse).catch(() => false);
+      v(proche && loin, `le stock d'adresses XAFe inscrites d'avance tient (indices ${im + 1} et ${im + stock})`, "npm run mise-en-service -- preinscrire …");
+    }
+    if (production) v(Boolean(USDT_OFFICIEL[r]) && memeAdresse(contrats[0], USDT_OFFICIEL[r]!), `${P}_USDT est l'USDT officiel (${USDT_OFFICIEL[r] ?? "?"})`);
     const natif = await chaine.solde("natif", chaine.chaud);
     const minimum = parseUnits(env[`${P}_NATIF_MINIMUM`] ?? n.minimum, n.decimales);
     v(natif >= minimum, `le chaud a de quoi payer les frais : ${formatUnits(natif, n.decimales)} ${n.nom} (minimum ${formatUnits(minimum, n.decimales)})`, `envoyez-lui des ${n.nom}`);
@@ -229,10 +355,12 @@ switch (commande) {
   case "graine": graine(); break;
   case "adresses": adresses(); break;
   case "deployer": await deployer(o); break;
+  case "preinscrire": await preinscrireCmd(o); break;
+  case "plafond": await plafondCmd(o); break;
   case "roles": await roles(o); break;
   case "inscrire": await inscrireCmd(o, libres); break;
-  case "verifier": await verifier(); break;
+  case "verifier": await verifier(o); break;
   default:
-    console.log("npm run mise-en-service -- graine | adresses | deployer | roles | inscrire | verifier   (voir l'en-tête de src/mise-en-service.ts)");
+    console.log("npm run mise-en-service -- graine | adresses | deployer | preinscrire | plafond | roles | inscrire | verifier   (voir l'en-tête de src/mise-en-service.ts)");
     process.exit(commande ? 1 : 0);
 }

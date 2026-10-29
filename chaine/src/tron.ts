@@ -12,7 +12,7 @@
  *     cas où l'on a le droit d'en signer une autre pour le même retrait.
  */
 import { AbiCoder, decodeBase58, getBytes, hexlify, id, sha256, SigningKey, toBeHex, zeroPadValue } from "ethers";
-import type { Actif, Appel, Chaine, JournalBrut, MouvementJeton, Transfert } from "./chaine.ts";
+import type { Actif, Appel, Chaine, EtatDuJeton, JournalBrut, MouvementJeton, Transfert } from "./chaine.ts";
 import { mouvementsDepuisJournaux, SUJETS } from "./chaine.ts";
 import { adresseTron, CHAUD, deriver, type Reseau } from "./cles.ts";
 
@@ -221,6 +221,7 @@ export class ChaineTron implements Chaine {
   readonly reseau: Reseau;
   readonly confirmations: number;
   readonly chaud: string;
+  readonly reserve: string;
   readonly noeud: NoeudTron;
   decimales: Record<Actif, number> = { USDT: 6, XAFe: 6 };
   private graine: string;
@@ -233,6 +234,9 @@ export class ChaineTron implements Chaine {
     this.graine = c.graine;
     this.noeud = new NoeudTron(c.noeud, c.cleApi);
     this.chaud = deriver(c.graine, this.reseau, CHAUD).adresse;
+    // la réserve EST le contrat XAFe, écrit en base58 comme les mouvements lus
+    const vingt = vingtOctets(c.xafe);
+    this.reserve = vingt ? adresseTron(vingt) : c.xafe;
   }
 
   private contrat(actif: Actif) { return actif === "USDT" ? this.c.usdt : this.c.xafe; }
@@ -272,6 +276,10 @@ export class ChaineTron implements Chaine {
     return BigInt(await this.lire(this.c.xafe, "destructionReferencee(bytes32)", ["bytes32"], [empreinte])) === 1n;
   }
   async offreXafe() { return BigInt(await this.lire(this.c.xafe, "totalSupply()", [], [])); }
+  async etatDuJeton(): Promise<EtatDuJeton> {
+    const [p, plafond, reste, reserve] = await Promise.all(["paused()", "plafondJour()", "resteDuJour()", "reserve()"].map((s) => this.lire(this.c.xafe, s, [], [])));
+    return { enPause: BigInt(p) === 1n, plafondJour: BigInt(plafond), resteDuJour: BigInt(reste), reserve: BigInt(reserve) };
+  }
 
   /** l'interface Ethereum du nœud borne une lecture à 5 000 blocs */
   async mouvementsXafe(de: number, a: number): Promise<MouvementJeton[]> {
@@ -312,7 +320,8 @@ export class ChaineTron implements Chaine {
       const [contrat, selecteur, types, valeurs] =
         appel.type === "jeton" ? [this.contrat(appel.actif), "transfer(address,uint256)", ["address", "uint256"], [vingtOctets(appel.vers), appel.montant]]
         : appel.type === "frapper" ? [this.c.xafe, "frapper(address,uint256,bytes32)", ["address", "uint256", "bytes32"], [vingtOctets(appel.vers), appel.montant, appel.empreinte]]
-        : appel.type === "detruire" ? [this.c.xafe, "detruire(uint256,bytes32)", ["uint256", "bytes32"], [appel.montant, appel.empreinte]]
+        : appel.type === "frapperReserve" ? [this.c.xafe, "frapperReserve(uint256,bytes32)", ["uint256", "bytes32"], [appel.montant, appel.empreinte]]
+        : appel.type === "detruireReserve" ? [this.c.xafe, "detruireReserve(uint256,bytes32)", ["uint256", "bytes32"], [appel.montant, appel.empreinte]]
         : [this.c.xafe, "detruireDepot(address,uint256,bytes32)", ["address", "uint256", "bytes32"], [vingtOctets(appel.adresse), appel.montant, appel.empreinte]];
       const plafondFrais = this.c.plafondFraisSun ?? 100_000_000;
       tx = await this.noeud.fabriquerAppel(depuis.adresse, contrat as string, selecteur as string, types as string[], valeurs as unknown[], plafondFrais);

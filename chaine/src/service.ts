@@ -20,6 +20,8 @@ export type ConfigReseau = {
   froid?: string; plafond_chaud_usdt?: number; garder_chaud_usdt?: number; natif_minimum?: number;
   /** le bloc du déploiement du contrat XAFe : la lecture du jeton part de là */
   depart?: number;
+  /** le stock d'adresses XAFe inscrites d'avance au contrat (production) */
+  stock_xafe?: number;
   /** ce que le registre de la base dit du réseau (0018) : vérifié contre celui du code */
   famille?: string; compte_hd?: number;
 };
@@ -49,6 +51,7 @@ export function envDepuisConfiguration(c: ConfigurationMoteur, env: Env): Env {
     if (r.garder_chaud_usdt != null) e[`${p}_GARDER_CHAUD_USDT`] = String(r.garder_chaud_usdt);
     if (r.natif_minimum != null) e[`${p}_NATIF_MINIMUM`] = String(r.natif_minimum);
     if (r.depart != null) e[`${p}_DEPART`] = String(r.depart);
+    if (r.stock_xafe != null) e[`${p}_STOCK_XAFE`] = String(r.stock_xafe);
     if (r.famille != null) e[`${p}_FAMILLE`] = r.famille;
     if (r.compte_hd != null) e[`${p}_COMPTE_HD`] = String(r.compte_hd);
     // réseau d'essai seulement : la clé admin d'essai inscrit les adresses XAFe
@@ -101,6 +104,8 @@ export async function veilleursDepuis(env: Env, seulement?: Reseau[], journal?: 
       // les mêmes seuils que « mise-en-service verifier » : en dessous, quelques retraits seulement passent encore
       natifMinimum: Number(env[`${p}_NATIF_MINIMUM`] ?? f.natifMinimum),
       departJeton: env[`${p}_DEPART`] ? Number(env[`${p}_DEPART`]) : undefined,
+      // le stock d'adresses XAFe inscrites d'avance au contrat, sous lequel l'alerte part (production)
+      stockXafe: env[`${p}_STOCK_XAFE`] ? Number(env[`${p}_STOCK_XAFE`]) : undefined,
       blocsJetonParTour: Number(env[`${p}_BLOCS_JETON_PAR_TOUR`] ?? f.blocsParTour),
       froid: env[`${p}_FROID`] ? { adresse: env[`${p}_FROID`]!, plafondChaud: Number(env[`${p}_PLAFOND_CHAUD_USDT`] ?? 20000), garderChaud: Number(env[`${p}_GARDER_CHAUD_USDT`] ?? 10000) } : undefined,
       inscrire: cleEssai

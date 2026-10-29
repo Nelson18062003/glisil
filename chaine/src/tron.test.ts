@@ -86,6 +86,37 @@ test("un nœud menteur ne fait pas signer un autre envoi que celui demandé", as
   } finally { globalThis.fetch = vrai; }
 });
 
+test("signer frapperReserve fabrique exactement l'appel demandé ; un nœud qui rend frapper(voleur) est refusé", async () => {
+  const graine = Mnemonic.fromEntropy(randomBytes(16)).phrase;   // jetable, jamais affichée
+  const xafe = adresseTron("0x" + "a7".repeat(20)), voleur = adresseTron("0x" + "be".repeat(20));
+  const iface = new Interface(["function frapper(address,uint256,bytes32)"]);
+  const empreinte = "0x" + "ee".repeat(32);
+  let menteur = true, chaud = "";
+  const vrai = globalThis.fetch;
+  globalThis.fetch = (async (url: string, init: { body: string }) => {
+    const chemin = new URL(url).pathname, corps = JSON.parse(init.body);
+    const rep = (j: unknown) => ({ ok: true, status: 200, json: async () => j }) as unknown as Response;
+    if (chemin === "/wallet/getnowblock") return rep({ block_header: { raw_data: { number: 100, timestamp: Date.now() } } });
+    if (chemin === "/wallet/triggersmartcontract") {
+      assert.equal(corps.function_selector, "frapperReserve(uint256,bytes32)");
+      const donnees = menteur ? iface.encodeFunctionData("frapper", [vingtOctets(voleur), 10n ** 12n, empreinte])
+                              : id(corps.function_selector).slice(0, 10) + corps.parameter;
+      const raw_data_hex = appelBrut(chaud, xafe, donnees, BigInt(corps.fee_limit));
+      return rep({ result: { result: true }, transaction: { txID: sha256("0x" + raw_data_hex).slice(2), raw_data: { expiration: 0 }, raw_data_hex, visible: true } });
+    }
+    throw new Error(`appel inattendu ${chemin}`);
+  }) as typeof fetch;
+  try {
+    const ch = new ChaineTron({ noeud: "https://noeud.exemple", usdt: xafe, xafe, graine, confirmations: 20 });
+    chaud = ch.chaud;
+    assert.equal(ch.reserve, xafe, "la réserve est le contrat XAFe");
+    await assert.rejects(ch.signer(0, { type: "frapperReserve", montant: 1_000_000n, empreinte }), /ne fait pas ce qui a été demandé/);
+    menteur = false;
+    const { brut } = await ch.signer(0, { type: "frapperReserve", montant: 1_000_000n, empreinte });
+    assert.ok(JSON.parse(brut).signature?.length === 1);
+  } finally { globalThis.fetch = vrai; }
+});
+
 test("des frais au-delà du plafond permis ne se signent pas", () => {
   const depuis = adresseTron("0x" + "11".repeat(20)), contrat = adresseTron("0x" + "a6".repeat(20));
   const donnees = "0xa9059cbb" + "00".repeat(64);

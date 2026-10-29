@@ -96,7 +96,7 @@ if [ -d "$ICI/contracts/node_modules" ] && [ -d "$ICI/chaine/node_modules" ]; th
   done
   if [ "${TEMOIN:-0}" = "1" ]; then
     # chaque veilleur fautif doit faire tomber SA vérification (voir l'en-tête de eprouver-les-wallets.ts)
-    for T in "bep20 1 rediffuse LA MÊME" "trc20 1 rediffuse LA MÊME" "bep20 2 qui tarde" "bep20 3 est remplacée" "trc20 3 est remplacée"; do
+    for T in "bep20 1 rediffuse LA MÊME" "trc20 1 rediffuse LA MÊME" "bep20 2 qui tarde" "bep20 3 est remplacée" "trc20 3 est remplacée" "bep20 4 la réserve vit dans le contrat" "trc20 4 la réserve vit dans le contrat"; do
       R=${T%% *}; RESTE=${T#* }; N=${RESTE%% *}; ATTENDU=${RESTE#* }
       (cd "$ICI/chaine" && RESEAU=$R TEMOIN=$N node --experimental-strip-types epreuve/eprouver-les-wallets.ts) >"$TMP/wallets-temoin-$R-$N.log" 2>&1 || true
       LIGNE=$(grep "^✗ \[$R\] .*$ATTENDU" "$TMP/wallets-temoin-$R-$N.log" | head -1)

@@ -15,8 +15,12 @@ export type Appel =
   | { type: "natif"; vers: string; montant: bigint }
   | { type: "frapper"; vers: string; montant: bigint; empreinte: string }
   | { type: "detruireDepot"; adresse: string; montant: bigint; empreinte: string }
-  /** détruire sur le solde de l'appelant : la réserve de Glisil (le wallet chaud) */
-  | { type: "detruire"; montant: bigint; empreinte: string };
+  /** la réserve de Glisil vit DANS le contrat (address(this)) : elle s'y frappe et s'y détruit, elle ne se transfère pas */
+  | { type: "frapperReserve"; montant: bigint; empreinte: string }
+  | { type: "detruireReserve"; montant: bigint; empreinte: string };
+
+/** Ce que le contrat XAFe dit de lui-même : en pause, son plafond de frappe du jour, ce qu'il en reste, et la réserve. */
+export type EtatDuJeton = { enPause: boolean; plafondJour: bigint; resteDuJour: bigint; reserve: bigint };
 
 export type Transfert = { adresse: string; brut: bigint; preuve: string };
 
@@ -74,6 +78,10 @@ export interface Chaine {
   decimales: Record<Actif, number>;
   /** l'adresse du wallet chaud (indice 0), au format du réseau */
   readonly chaud: string;
+  /** l'adresse de la réserve : le contrat XAFe lui-même, au format du réseau */
+  readonly reserve: string;
+  /** pause, plafond de frappe du jour, ce qu'il en reste, réserve — au dernier bloc */
+  etatDuJeton(): Promise<EtatDuJeton>;
   demarrer(): Promise<void>;
   /** le numéro du dernier bloc */
   tete(): Promise<number>;

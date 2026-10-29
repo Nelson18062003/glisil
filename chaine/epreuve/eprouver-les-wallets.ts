@@ -29,7 +29,13 @@
  *     visible pour l'équipe ;
  *   · à la fin, les USDT du grand livre SONT sur nos adresses (chaud, froid,
  *     dépôts), et les XAFe que la base dit « sur la chaîne » sont l'offre du
- *     contrat ; l'état publié pour l'administration dit les mêmes chiffres.
+ *     contrat ; l'état publié pour l'administration dit les mêmes chiffres ;
+ *   · le contrat naît avec ses rôles ; l'inscripteur inscrit d'avance le stock
+ *     d'adresses XAFe puis y renonce, et le veilleur les prend sans admin ;
+ *   · la RÉSERVE vit dans le contrat : frappée et détruite là, jamais sur le
+ *     chaud, et lue là ;
+ *   · un retrait XAFe au-delà du plafond du jour ATTEND (ni signé, ni rendu),
+ *     et part quand l'admin relève le plafond.
  */
 import { spawnSync } from "node:child_process";
 import { createHmac } from "node:crypto";
@@ -39,7 +45,7 @@ import type { Chaine } from "../src/chaine.ts";
 import { adresseTron, deriver, type Reseau } from "../src/cles.ts";
 import { ChaineEvm } from "../src/evm.ts";
 import { moteur, type Rpc } from "../src/moteur.ts";
-import { donnerLesRoles, inscrire, signataireEvm, signataireTron, type Artefact, type Signataire } from "../src/signataire.ts";
+import { aLeRole, donnerLesRoles, INSCRIPTEUR, preinscrire, renoncer, signataireEvm, signataireTron, type Artefact, type Signataire } from "../src/signataire.ts";
 import { ChaineTron } from "../src/tron.ts";
 import { Veilleur } from "../src/veilleur.ts";
 
@@ -55,8 +61,9 @@ const SECRET = env.SECRET ?? "super-secret-jwt-token-with-at-least-32-characters
  *   TEMOIN=2 : il remplace une transaction dès qu'elle n'a pas de reçu, sans demander à la chaîne
  *              si elle peut encore passer → « qui tarde » échoue (EVM seulement : ce nœud Tron mine
  *              tout de suite, une transaction n'y tarde jamais) ;
- *   TEMOIN=3 : il ne remplace JAMAIS (le veilleur d'avant) → « est remplacée » échoue : le retrait reste bloqué. */
-const TEMOIN = ["1", "2", "3"].includes(env.TEMOIN ?? "") ? Number(env.TEMOIN) : 0;
+ *   TEMOIN=3 : il ne remplace JAMAIS (le veilleur d'avant) → « est remplacée » échoue : le retrait reste bloqué ;
+ *   TEMOIN=4 : le CONTRAT d'avant le correctif (la réserve sur le chaud) → « la réserve vit dans le contrat » échoue. */
+const TEMOIN = ["1", "2", "3", "4"].includes(env.TEMOIN ?? "") ? Number(env.TEMOIN) : 0;
 const CONFIRMATIONS = 3;
 const ECHEANCE_TRON = 15;  // secondes : assez pour un tour, assez court pour que l'épreuve attende l'échéance
 
@@ -191,9 +198,16 @@ const artefact = (chemin: string): Artefact => JSON.parse(readFileSync(`${CONTRA
 const graine = Wallet.createRandom().mnemonic!.phrase;  // une graine neuve à chaque épreuve
 const chaudAdresse = deriver(graine, RESEAU, 0).adresse;
 const usdtAdresse = await banc.admin.deployer(artefact("essai/UsdtEssai.sol/UsdtEssai.json"), ["uint8"], [dec]);
-const xafeAdresse = await banc.admin.deployer(artefact("XAFe.sol/XAFe.json"), ["address", "uint256"], [banc.admin.adresse, parseUnits("50000000", 6)]);
-const roles = await donnerLesRoles(banc.admin, xafeAdresse, chaudAdresse);
-verifier(roles.length === 2 && (await donnerLesRoles(banc.admin, xafeAdresse, chaudAdresse)).length === 0, "le wallet chaud reçoit FRAPPEUR et DESTRUCTEUR, une fois (redonner ne refait rien)", JSON.stringify(roles));
+const AVANT = TEMOIN === 4;
+const a = banc.admin.adresse;
+// le contrat naît avec TOUS ses rôles : l'admin (ici aussi pauseur, geleur et inscripteur), le chaud frappeur et destructeur
+const xafeAdresse = AVANT
+  ? await banc.admin.deployer(artefact("essai/XAFeAvantCorrectif.sol/XAFeAvantCorrectif.json"), ["address", "uint256"], [a, parseUnits("50000000", 6)])
+  : await banc.admin.deployer(artefact("XAFe.sol/XAFe.json"), ["address", "uint256", "address", "address", "address", "address", "address"],
+                              [a, parseUnits("1000000000", 6), chaudAdresse, chaudAdresse, a, a, a]);
+if (AVANT) await donnerLesRoles(banc.admin, xafeAdresse, chaudAdresse);
+verifier(await aLeRole(banc.admin, xafeAdresse, "FRAPPEUR_ROLE", chaudAdresse) && await aLeRole(banc.admin, xafeAdresse, "DESTRUCTEUR_ROLE", chaudAdresse)
+  && !(await aLeRole(banc.admin, xafeAdresse, "FRAPPEUR_ROLE", a)), "le contrat naît avec ses rôles : le chaud frappe et détruit, l'admin n'administre que");
 await banc.admin.envoyerNatif(chaudAdresse, banc.natifPourLeChaud);
 await banc.externe.ecrire(usdtAdresse, "frapper(address,uint256)", ["address", "uint256"], [banc.externe.adresse, U(10000)]);
 const versUsdt = (vers: string, montant: string | number) => banc.externe.ecrire(usdtAdresse, "transfer(address,uint256)", ["address", "uint256"], [vers, U(montant)]);
@@ -225,11 +239,36 @@ const veilleur = new Veilleur(chaine, {
   apresSignature: () => { if (coupure.active) { coupure.active = false; throw new Error("coupure de courant"); } },
 });
 const tour = () => veilleur.tour(rpcVeilleur);
+const contratXafe = chaine.reserve;
+const xafeDuContrat = () => soldeChaine("XAFe", contratXafe);
+
+/* ------------------------------------------- 0 · la réserve, dans le contrat */
+{
+  // une opération de réserve telle que le moteur la donne ; le reste de l'appel va au vrai moteur
+  const op = { id: -1, operation: "frapper", montant: 1000, reference: `reserve-${RESEAU}-${Date.now()}`, etat: "a_faire", tx_hash: null as string | null, tx_brut: null as string | null };
+  const rpcReserve: Rpc = async (nom, args) => {
+    if (nom === "chaine_reserve_a_jouer") return op.etat === "confirme" ? [] : [op];
+    if (nom === "chaine_reserve_marquer_envoi") { op.tx_hash = args.p_tx_hash; op.tx_brut = args.p_brut; op.etat = "envoye"; return null; }
+    if (nom === "chaine_reserve_resultat") { op.etat = args.p_ok ? "confirme" : "refuse"; return null; }
+    return rpc(nom, args);
+  };
+  for (let i = 0; i < 4 && op.etat !== "confirme" && op.etat !== "refuse"; i++) { await veilleur.jouerReserve(rpcReserve).catch(() => null); await banc.miner(CONFIRMATIONS); }
+  verifier(op.etat === "confirme" && await xafeDuContrat() === parseUnits("1000", 6) && await soldeChaine("XAFe", chaudAdresse) === 0n,
+    "la réserve vit dans le contrat : 1 000 XAFe frappés LÀ, rien sur le wallet chaud", `${op.etat}, contrat ${AVANT ? "?" : await xafeDuContrat()}, chaud ${await soldeChaine("XAFe", chaudAdresse)}`);
+  if (AVANT) {
+    console.log(`✗ [${RESEAU}] ${echecs} exigence(s) non tenue(s) — contrat d'avant le correctif`);
+    process.exit(1);
+  }
+}
 
 /* ---------------------------------------------------------- 1 · adresses */
+// la clé de mise en service (ici, l'admin d'essai) inscrit d'avance le stock d'adresses, puis renonce
+const stock = Array.from({ length: 60 }, (_, i) => deriver(graine, RESEAU, i + 1).adresse);
+await preinscrire(banc.admin, xafeAdresse, stock);
+await renoncer(banc.admin, xafeAdresse, INSCRIPTEUR);
+verifier(!(await aLeRole(banc.admin, xafeAdresse, INSCRIPTEUR, a)), "le stock d'adresses inscrit, la clé renonce à l'inscripteur");
 const t1 = await tour();
-verifier(t1.aInscrire.length === 3, "les adresses XAFe attendent leur inscription au contrat par l'admin", JSON.stringify(t1));
-await inscrire(banc.admin, xafeAdresse, t1.aInscrire);
+verifier(t1.aInscrire.length === 0, "les adresses XAFe sont prises dans le stock inscrit d'avance : rien n'attend l'admin", JSON.stringify(t1));
 await tour();
 const etat = await rpc("chaine_adresses", { p_reseau: RESEAU });
 verifier(etat.libres.USDT >= 3 && etat.libres.XAFe >= 3, "une réserve d'adresses de dépôt est prête, USDT et XAFe", JSON.stringify(etat.libres));
@@ -341,7 +380,21 @@ await destXafe.ecrire(xafeAdresse, "transfer(address,uint256)", ["address", "uin
 await banc.miner(CONFIRMATIONS); await tour(); await banc.miner(CONFIRMATIONS); await tour();
 const xafeApres = Number((await ama.appel("mes_soldes", {})).XAFe.disponible);
 verifier(xafeApres === xafeAvant + 100000, "100 000 XAFe rendus sur l'adresse de dépôt : détruits là, recrédités une fois", `${xafeAvant} → ${xafeApres}`);
-verifier(await soldeChaine("XAFe", adresseXafe) === 0n && await chaine.offreXafe() === parseUnits("50000", 6), "sur la chaîne, ils n'existent plus : l'offre totale est de 50 000", `offre ${await chaine.offreXafe()}`);
+verifier(await soldeChaine("XAFe", adresseXafe) === 0n && await chaine.offreXafe() === parseUnits("51000", 6), "sur la chaîne, ils n'existent plus : l'offre totale est de 50 000 chez le client, plus les 1 000 de la réserve", `offre ${await chaine.offreXafe()}`);
+const lu = await veilleur.lireLeJeton(rpc);
+verifier(lu.a_jour && lu.reserve === "1000.0" && await xafeDuContrat() === parseUnits("1000", 6), "la réserve se lit au contrat, au bloc lu", JSON.stringify(lu));
+
+/* ---------------------------------------------- 8b · le plafond de frappe du jour */
+await banc.admin.ecrire(xafeAdresse, "fixerPlafondJour(uint256)", ["uint256"], [parseUnits("100", 6)]);
+const rp = await ama.appel("demander_retrait_crypto", { p_actif: "XAFe", p_reseau: RESEAU, p_adresse: destXafe.adresse, p_montant: 150, p_cle: `${RESEAU}-w-6`, p_code: "2580" });
+await tour(); await banc.miner(CONFIRMATIONS); await tour();
+const publieP = JSON.parse(sql(`select etat from chaine_etats where reseau = '${RESEAU}'`) || "{}");
+verifier(ligne(rp.reference)[1] === "-" && ["en_attente", "en_cours"].includes(ligne(rp.reference)[0]) && (publieP.alertes ?? []).some((x: string) => x.includes(rp.reference)),
+  "au-delà du plafond du jour, le retrait XAFe ATTEND : ni signé, ni rendu au client, et l'équipe le voit", `${ligne(rp.reference).join(" ")} ${JSON.stringify(publieP.alertes)}`);
+verifier(publieP.plafond_jour === 100 && publieP.reserve_adresse === contratXafe && publieP.en_pause === false, "l'état publié dit le plafond, la réserve (le contrat) et la pause", JSON.stringify(publieP).slice(0, 300));
+await banc.admin.ecrire(xafeAdresse, "fixerPlafondJour(uint256)", ["uint256"], [parseUnits("1000000000", 6)]);
+await jusquA(rp.reference);
+verifier(ligne(rp.reference)[0] === "envoye", "l'admin relève le plafond : le retrait part au tour suivant", ligne(rp.reference).join(" "));
 
 /* -------------------------------------- 9 · une adresse jamais attribuée */
 const libre = sql(`select adresse from adresses_libres where reseau = '${RESEAU}' and actif = 'USDT' limit 1`);

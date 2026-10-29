@@ -54,18 +54,20 @@ test("une destruction se marie à son Detruit ; un sceau ne sert qu'une fois", (
 });
 
 /* La lecture du jeton par le veilleur, sur une fausse chaîne. */
-function banc({ tete = 100, curseur = null as number | null, offre = 3_000_000_000n, reserve = 2_000_000_000n, apres = [] as MouvementJeton[] } = {}) {
+function banc({ tete = 100, curseur = null as number | null, offre = 3_000_000_000n, reserve = 2_000_000_000n, chaudXafe = 0n, apres = [] as MouvementJeton[] } = {}) {
   const lectures: [number, number][] = [];
   const appels: [string, any][] = [];
   const chaine = {
-    reseau: "bep20", confirmations: 5, decimales: { USDT: 18, XAFe: 6 }, chaud: "0xCHAUD",
+    reseau: "bep20", confirmations: 5, decimales: { USDT: 18, XAFe: 6 }, chaud: "0xCHAUD", reserve: "0xRESERVE",
     tete: async () => tete,
     offreXafe: async () => offre,
-    solde: async () => reserve,
+    // la réserve se lit au CONTRAT ; le chaud ne doit rien tenir
+    solde: async (_q: string, a: string) => (a === "0xRESERVE" ? reserve : chaudXafe),
+    etatDuJeton: async () => ({ enPause: false, plafondJour: 10n ** 15n, resteDuJour: 10n ** 15n, reserve }),
     mouvementsXafe: async (de: number, a: number) => {
       lectures.push([de, a]);
       if (de > tete - 5 + 1) return apres;
-      return [{ tx: "0xt", index: 0, bloc: de, genre: "frappe", adresse: "0xCHAUD", brut: 1_000_000_000n, empreinte: E1 }];
+      return [{ tx: "0xt", index: 0, bloc: de, genre: "frappe", adresse: "0xRESERVE", brut: 1_000_000_000n, empreinte: E1 }];
     },
   } as unknown as Chaine;
   const rpc = async (nom: string, args: any) => {
@@ -91,13 +93,27 @@ test("la lecture part du déploiement du contrat, et la base apprend l'empreinte
 
 test("l'offre et la réserve se disent AU bloc lu : ce qui est arrivé après est retiré", async () => {
   const apres: MouvementJeton[] = [
-    { tx: "0xn", index: 0, bloc: 98, genre: "frappe", adresse: "0xchaud", brut: 500_000_000n, empreinte: E2 },
+    { tx: "0xn", index: 0, bloc: 98, genre: "frappe", adresse: "0xreserve", brut: 500_000_000n, empreinte: E2 },
     { tx: "0xm", index: 0, bloc: 99, genre: "frappe", adresse: "0xclient", brut: 100_000_000n, empreinte: E2 },
   ];
   const b = banc({ curseur: 90, apres });
   const r = await b.v.lireLeJeton(b.rpc);
   assert.equal(r.offre, "2400.0", "3000 lus à la tête, moins 600 frappés après le bloc lu");
-  assert.equal(r.reserve, "1500.0", "la réserve ne perd que ce qui l'a touchée");
+  assert.equal(r.reserve, "1500.0", "la réserve (au contrat) ne perd que ce qui l'a touchée");
+});
+
+test("la réserve se lit au CONTRAT : une frappe sur le chaud ne la touche pas", async () => {
+  const apres: MouvementJeton[] = [{ tx: "0xc", index: 0, bloc: 98, genre: "frappe", adresse: "0xchaud", brut: 700_000_000n, empreinte: null }];
+  const b = banc({ curseur: 90, apres });
+  const r = await b.v.lireLeJeton(b.rpc);
+  assert.equal(r.reserve, "2000.0", "le chaud n'est pas la réserve");
+});
+
+test("des XAFe sur le wallet chaud déclenchent l'alerte : rien ne doit y être", async () => {
+  const b = banc({ curseur: 95, chaudXafe: 3_000_000n });
+  const r = await b.v.lireLeJeton(b.rpc);
+  assert.equal(r.xafe_chaud, "3.0");
+  assert.match(b.v.alertes.join(" "), /wallet chaud/);
 });
 
 test("pendant le rattrapage, aucun total : un chiffre d'avant la fin de la lecture ne se compare à rien", async () => {

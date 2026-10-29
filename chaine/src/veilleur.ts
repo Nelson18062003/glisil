@@ -7,7 +7,8 @@
  *   4. envoyer les retraits : signer, NOTER, puis diffuser ; reprendre ce qui est noté ;
  *   5. mettre au froid ce qui dépasse le plafond du chaud, et crier quand il manque ;
  *   6. jouer la RÉSERVE : chaque XAFe des comptes Glisil existe aussi sur la
- *      chaîne, dans le wallet chaud du réseau qui la porte (migration 0015) ;
+ *      chaîne, DANS LE CONTRAT du réseau qui la porte (migration 0015 ; le
+ *      contrat la tient, intransférable — une clé chaude volée ne l'emporte pas) ;
  *   7. LIRE le jeton sur la chaîne, sans se fier à ce qu'il a lui-même écrit :
  *      chaque frappe et chaque destruction depuis le déploiement du contrat,
  *      l'offre totale et la réserve, au même bloc — la colonne « chaîne » du
@@ -18,7 +19,7 @@
  * BEP20_*, TRC20_*, FROID_*). `npm run veilleur`.
  */
 import { formatUnits, keccak256, parseUnits, toUtf8Bytes } from "ethers";
-import type { Actif, Appel, Chaine, MouvementJeton } from "./chaine.ts";
+import type { Actif, Appel, Chaine, EtatDuJeton, MouvementJeton } from "./chaine.ts";
 import { versMoteur } from "./chaine.ts";
 import { CHAUD, deriver, fiche } from "./cles.ts";
 import type { Rpc } from "./moteur.ts";
@@ -52,7 +53,11 @@ export type ConfigVeilleur = {
   inscrire?: (adresses: string[]) => Promise<void>;
   /** RÉSEAU D'ESSAI SEULEMENT : tenir le plafond de frappe du jour au chiffre du propriétaire (vrai s'il a fallu l'écrire) */
   plafondDEssai?: () => Promise<boolean>;
+  /** en production : combien d'adresses XAFe d'avance doivent rester inscrites au contrat (l'alerte part en dessous) */
+  stockXafe?: number;
 };
+/** Ce qu'il reste à frapper aujourd'hui pour les retraits XAFe de ce tour : la file attend plutôt que de faire refuser. */
+type GardePlafond = { enPause: boolean; plafond: bigint; reste: bigint; arrete: boolean; pauseDite: boolean };
 type Attribuee = { adresse: string; actif: Actif; indice: number | null; compte_id: string };
 type Retrait = { reference: string; actif: Actif; adresse: string; montant: number; tx_hash: string | null; tx_brut: string | null };
 type Bilan = { envoyes: number; confirmes: number; echoues: number };
@@ -88,7 +93,7 @@ export class Veilleur {
   /* -------------------------------------------------------- les adresses */
 
   /** Garder `reserve` adresses libres par actif. Les XAFe n'entrent qu'inscrites au contrat (par l'admin). */
-  async preparerAdresses(rpc: Rpc): Promise<{ ajoutees: number; aInscrire: string[] }> {
+  async preparerAdresses(rpc: Rpc): Promise<{ ajoutees: number; aInscrire: string[]; stockOk?: boolean }> {
     const r = this.chaine.reseau;
     const etat = await rpc("chaine_adresses", { p_reseau: r });
     const reserve = this.c.reserve ?? 20;
@@ -115,7 +120,14 @@ export class Veilleur {
       aInscrire = [];
     }
     if (aInscrire.length) this.journal(`${aInscrire.length} adresse(s) XAFe attendent leur inscription au contrat par l'admin`);
-    return { ajoutees, aInscrire: aInscrire.map((a) => a.adresse) };
+    // en production, le stock est inscrit d'avance par une clé de mise en service qui y renonce ensuite : on regarde loin devant
+    let stockOk: boolean | undefined;
+    if (!this.c.inscrire) {
+      const stock = this.c.stockXafe ?? 200;
+      stockOk = await this.chaine.estAdresseDeDepot(deriver(this.c.graine, r, indice + stock).adresse);
+      if (!stockOk) this.alerte(`moins de ${stock} adresses XAFe inscrites d'avance au contrat : l'admin doit en préinscrire (mise-en-service preinscrire)`);
+    }
+    return { ajoutees, aInscrire: aInscrire.map((a) => a.adresse), ...(stockOk === undefined ? {} : { stockOk }) };
   }
 
   /* ----------------------------------------------------------- les dépôts */
@@ -162,6 +174,8 @@ export class Veilleur {
   private async detruireRetour(adresse: string, brut: bigint, preuve: string) {
     const empreinte = keccak256(toUtf8Bytes(preuve));
     if (await this.chaine.dejaDetruit(empreinte)) return;
+    // en pause, rien ne se signe : le curseur ne bouge pas, ce bloc se relira
+    if ((await this.chaine.etatDuJeton()).enPause) throw new Error("contrat en pause");
     if (!(await this.envoyerEtAttendre(CHAUD, { type: "detruireDepot", adresse, montant: brut, empreinte }))) throw new Error("la destruction a été refusée par la chaîne");
   }
 
@@ -170,15 +184,24 @@ export class Veilleur {
   async envoyerRetraits(rpc: Rpc): Promise<Bilan> {
     const bilan: Bilan = { envoyes: 0, confirmes: 0, echoues: 0 };
     const liste: Retrait[] = await rpc("chaine_retraits_a_envoyer", { p_reseau: this.chaine.reseau });
+    // le plafond de frappe du jour : un retrait XAFe qui n'y tient pas ATTEND (au lieu d'être refusé par le contrat, puis
+    // remboursé au client). Ce qui est déjà signé compte contre le reste — par prudence, même s'il n'est pas encore miné.
+    let garde: GardePlafond | null = null;
+    if (liste.some((r) => r.actif === "XAFe" && !r.tx_hash)) {
+      const j = await this.chaine.etatDuJeton();
+      const dec = this.chaine.decimales.XAFe;
+      const signe = liste.filter((r) => r.actif === "XAFe" && r.tx_hash).reduce((s, r) => s + parseUnits(String(r.montant), dec), 0n);
+      garde = { enPause: j.enPause, plafond: j.plafondJour, reste: j.resteDuJour > signe ? j.resteDuJour - signe : 0n, arrete: false, pauseDite: false };
+    }
     for (const r of liste) {
       // un retrait qui casse ne retient pas les autres : chacun le sien, l'erreur au journal
       // (un chaud sans rôle FRAPPEUR, un compte Tron jamais activé, un nœud qui refuse : l'équipe doit le voir, pas seulement le journal)
-      try { await this.unRetrait(rpc, r, bilan); } catch (e) { this.alerte(`retrait ${r.reference} bloqué : ${(e as Error).message.slice(0, 300)}`); }
+      try { await this.unRetrait(rpc, r, bilan, garde); } catch (e) { this.alerte(`retrait ${r.reference} bloqué : ${(e as Error).message.slice(0, 300)}`); }
     }
     return bilan;
   }
 
-  private async unRetrait(rpc: Rpc, r: Retrait, bilan: Bilan) {
+  private async unRetrait(rpc: Rpc, r: Retrait, bilan: Bilan, garde: GardePlafond | null = null) {
     const ch = this.chaine;
     if (r.tx_hash) {
       const recu = await ch.recu(r.tx_hash);
@@ -208,6 +231,27 @@ export class Veilleur {
     if (r.actif === "USDT" && (await ch.solde("USDT", ch.chaud)) < parseUnits(String(r.montant), ch.decimales.USDT)) {
       this.alerte(`le wallet chaud n'a pas assez d'USDT pour ${r.reference} (${r.montant}) : balayage ou réapprovisionnement depuis le froid`);
       return;
+    }
+    if (r.actif === "XAFe" && garde) {
+      const dec = ch.decimales.XAFe;
+      if (garde.enPause) {
+        if (!garde.pauseDite) this.alerte("retraits XAFe en attente : le contrat est en pause");
+        garde.pauseDite = true;
+        return;
+      }
+      if (garde.arrete) return;   // la file est stricte : le gros retrait qui attend n'est pas doublé par les petits
+      const u = parseUnits(String(r.montant), dec);
+      if (u > garde.plafond) {
+        // plus grand que le plafond entier : il n'y tiendra jamais, il ne retient pas la file
+        this.alerte(`retrait ${r.reference} (${r.montant} XAFe) dépasse le plafond de frappe du jour (${formatUnits(garde.plafond, dec)}) : il ne partira qu'après que l'admin relève le plafond`);
+        return;
+      }
+      if (u > garde.reste) {
+        this.alerte(`retrait ${r.reference} attend le plafond du jour : il reste ${formatUnits(garde.reste, dec)} XAFe aujourd'hui (remis à zéro à 00:00 UTC) — ou relever le plafond (mise-en-service plafond)`);
+        garde.arrete = true;
+        return;
+      }
+      garde.reste -= u;
     }
     await this.signerNoterDiffuser(rpc, r, null);
     bilan.envoyes += 1;
@@ -242,6 +286,9 @@ export class Veilleur {
     const ch = this.chaine;
     const bilan = { frappees: 0, detruites: 0 };
     const liste: OperationReserve[] = await rpc("chaine_reserve_a_jouer", { p_reseau: ch.reseau, p_n: 20 });
+    if (!liste.length) return bilan;
+    const j: EtatDuJeton = await ch.etatDuJeton();
+    if (j.enPause) { this.alerte("réserve : le contrat XAFe est en pause — rien n'est signé"); return bilan; }
     for (const o of liste) {
       if (o.tx_hash) {
         const recu = await ch.recu(o.tx_hash);
@@ -257,7 +304,7 @@ export class Veilleur {
         this.journal(`réserve : ${o.operation} ${o.montant} XAFe confirmée (${o.reference}, bloc ${recu.bloc})`);
         continue;
       }
-      if (o.operation === "detruire" && (await ch.solde("XAFe", ch.chaud)) < parseUnits(String(o.montant), ch.decimales.XAFe)) {
+      if (o.operation === "detruire" && j.reserve < parseUnits(String(o.montant), ch.decimales.XAFe)) {
         this.alerte(`réserve : ${o.montant} XAFe à détruire (${o.reference}) mais la réserve n'en a pas assez — une frappe manque avant`);
         return bilan;
       }
@@ -271,7 +318,8 @@ export class Veilleur {
     const ch = this.chaine;
     const montant = parseUnits(String(o.montant), ch.decimales.XAFe);
     const empreinte = keccak256(toUtf8Bytes(o.reference));
-    const appel: Appel = o.operation === "frapper" ? { type: "frapper", vers: ch.chaud, montant, empreinte } : { type: "detruire", montant, empreinte };
+    // la réserve vit DANS le contrat : jamais plus une frappe vers le chaud
+    const appel: Appel = o.operation === "frapper" ? { type: "frapperReserve", montant, empreinte } : { type: "detruireReserve", montant, empreinte };
     const { hash, brut } = await ch.signer(CHAUD, appel);
     // NOTÉ avant d'être diffusé : après une coupure, c'est cette transaction-là qui repart
     await rpc("chaine_reserve_marquer_envoi", { p_id: o.id, p_tx_hash: hash, p_brut: brut });
@@ -295,7 +343,7 @@ export class Veilleur {
    * chiffres valent null : un total d'avant la fin de la lecture ne se compare
    * à rien.
    */
-  async lireLeJeton(rpc: Rpc): Promise<{ bloc: number | null; mouvements: number; offre: string | null; reserve: string | null; a_jour: boolean }> {
+  async lireLeJeton(rpc: Rpc): Promise<{ bloc: number | null; mouvements: number; offre: string | null; reserve: string | null; a_jour: boolean; xafe_chaud?: string }> {
     const ch = this.chaine;
     const dec = ch.decimales.XAFe;
     // les références sans empreinte : la base ne sait pas calculer keccak256, le veilleur le fait (et chacun peut le refaire)
@@ -317,14 +365,18 @@ export class Veilleur {
     if (lu < jusqua) return { bloc: lu, mouvements: n, offre: null, reserve: null, a_jour: false };
     // l'offre et la réserve à la tête, moins ce qui s'est passé après le bloc lu
     const offre = await ch.offreXafe();
-    const reserve = await ch.solde("XAFe", ch.chaud);
+    // la réserve se lit AU CONTRAT, qui la tient
+    const reserve = (await ch.etatDuJeton()).reserve;
     const tete = await ch.tete();
     const apres: MouvementJeton[] = tete > lu ? await ch.mouvementsXafe(lu + 1, tete) : [];
     const signe = (m: MouvementJeton) => (m.genre === "frappe" ? m.brut : -m.brut);
     const offreAuBloc = offre - apres.reduce((s, m) => s + signe(m), 0n);
-    const chaud = ch.chaud.toLowerCase();
-    const reserveAuBloc = reserve - apres.filter((m) => m.adresse.toLowerCase() === chaud).reduce((s, m) => s + signe(m), 0n);
-    return { bloc: lu, mouvements: n, offre: formatUnits(offreAuBloc, dec), reserve: formatUnits(reserveAuBloc, dec), a_jour: true };
+    const contrat = ch.reserve.toLowerCase();
+    const reserveAuBloc = reserve - apres.filter((m) => m.adresse.toLowerCase() === contrat).reduce((s, m) => s + signe(m), 0n);
+    // rien ne doit jamais dormir sur le wallet chaud : des XAFe y sont arrivés par erreur (ou par une frappe volée)
+    const xafeChaud = await ch.solde("XAFe", ch.chaud);
+    if (xafeChaud > 0n) this.alerte(`des XAFe sont sur le wallet chaud (${formatUnits(xafeChaud, dec)}) : rien ne doit y être — envoi par erreur ? (gel puis reprise par l'admin)`);
+    return { bloc: lu, mouvements: n, offre: formatUnits(offreAuBloc, dec), reserve: formatUnits(reserveAuBloc, dec), a_jour: true, xafe_chaud: formatUnits(xafeChaud, dec) };
   }
 
   /* ------------------------------------------------------------ le balayage */
@@ -376,7 +428,7 @@ export class Veilleur {
 
   /* --------------------------------------------------------------- l'état */
 
-  /** Ce que la plateforme tient sur la chaîne : le chaud, le froid et les adresses attribuées (pas la réserve), et l'offre XAFe. */
+  /** Ce que la plateforme tient sur la chaîne : le chaud, le froid et les adresses attribuées, et les XAFe hors de la réserve. */
   async avoirs(rpc: Rpc): Promise<{ usdt: bigint; xafeEnCirculation: bigint }> {
     const ch = this.chaine;
     const { attribuees } = await rpc("chaine_adresses", { p_reseau: ch.reseau });
@@ -384,7 +436,8 @@ export class Veilleur {
     const froid = this.c.froid && ch.adresseValable(this.c.froid.adresse);
     if (froid) usdt += await ch.solde("USDT", froid);
     for (const a of (attribuees as Attribuee[]).filter((x) => x.actif === "USDT" && x.indice != null)) usdt += await ch.solde("USDT", a.adresse);
-    return { usdt, xafeEnCirculation: await ch.offreXafe() };
+    // en circulation chez les clients : l'offre, moins la réserve que le contrat tient pour les comptes Glisil
+    return { usdt, xafeEnCirculation: (await ch.offreXafe()) - (await ch.etatDuJeton()).reserve };
   }
 
   /** Un tour complet ; une étape qui casse ne retient pas les autres, elle devient une alerte — et l'état est publié quand même. */
@@ -396,15 +449,17 @@ export class Veilleur {
     const adresses = await etape("adresses", () => this.preparerAdresses(rpc), { ajoutees: 0, aInscrire: [] as string[] });
     const credites = await etape("dépôts", () => this.crediterDepots(rpc), 0);
     const balayees = await etape("balayage", () => this.balayer(rpc), 0);
-    const retraits = await etape("retraits", () => this.envoyerRetraits(rpc), { envoyes: 0, confirmes: 0, echoues: 0 });
-    const auFroid = await etape("froid", () => this.mettreAuFroid(rpc), 0);
-    // avant la réserve : une frappe au-delà du plafond du jour serait refusée par le contrat
+    // avant les retraits : une frappe vers un wallet au-delà du plafond du jour attendrait (la réserve, elle, n'y compte pas)
     if (this.c.plafondDEssai && await etape("plafond du jour", () => this.c.plafondDEssai!(), false)) {
       this.journal("plafond de frappe du jour réglé au chiffre du propriétaire (clé admin d'essai)");
     }
+    const retraits = await etape("retraits", () => this.envoyerRetraits(rpc), { envoyes: 0, confirmes: 0, echoues: 0 });
+    const auFroid = await etape("froid", () => this.mettreAuFroid(rpc), 0);
     const reserve = await etape("réserve", () => this.jouerReserve(rpc), { frappees: 0, detruites: 0 });
     const jeton = await etape("lecture du jeton", () => this.lireLeJeton(rpc), null);
     const ch = this.chaine;
+    const etatJeton = await etape("état du jeton", () => ch.etatDuJeton(), null);
+    const decX = ch.decimales.XAFe;
     await rpc("chaine_publier_etat", {
       p_reseau: ch.reseau,
       p_etat: {
@@ -420,6 +475,14 @@ export class Veilleur {
         alertes: [...this.alertes],
         // la colonne « chaîne » du rapprochement : l'offre et la réserve AU bloc lu (null pendant le rattrapage)
         jeton: jeton && { ...jeton, lu_le: new Date().toISOString() },
+        // la réserve, tenue par le contrat ; le plafond de frappe du jour ; la pause ; le stock d'adresses d'avance
+        reserve_adresse: ch.reserve,
+        reserve_xafe: etatJeton ? Number(formatUnits(etatJeton.reserve, decX)) : null,
+        xafe_chaud: jeton?.xafe_chaud != null ? Number(jeton.xafe_chaud) : null,
+        plafond_jour: etatJeton ? Number(formatUnits(etatJeton.plafondJour, decX)) : null,
+        reste_du_jour: etatJeton ? Number(formatUnits(etatJeton.resteDuJour, decX)) : null,
+        en_pause: etatJeton ? etatJeton.enPause : null,
+        stock_xafe_ok: adresses.stockOk ?? null,
       },
     }).catch((e) => this.journal(`état non publié : ${(e as Error).message}`));
     return { ...adresses, credites, balayees, ...retraits, auFroid, ...reserve, jeton, alertes: [...this.alertes] };
