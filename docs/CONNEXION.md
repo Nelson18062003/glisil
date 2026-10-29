@@ -1,38 +1,57 @@
-# Entrer dans Glisil, sans mot de passe
+# Entrer dans Glisil
 
-Clients et administrateurs entrent de la même façon : **une adresse e-mail,
-puis un code à six chiffres reçu par e-mail.** Il n'y a de mot de passe nulle
-part. Le code prouve l'adresse (Supabase Auth, « OTP » par e-mail).
+Clients et administrateurs entrent de la même façon (0035) : **une adresse
+e-mail et un mot de passe, puis le code de l'application d'authentification**
+(Google Authenticator, Microsoft Authenticator). La double authentification
+est obligatoire pour tout le monde, et la base la redemande avant chaque
+requête (`session_forte`, le crochet de PostgREST). Pas de SMS, nulle part.
+
+Avant qu'un argent sorte (retrait MoMo/Orange, retrait crypto, fermeture du
+compte, retrait d'un numéro), on demande en plus le mot de passe et un code
+reçu par e-mail qui dit le montant et la destination (0036).
 
 ## Le parcours du client (`app/`)
 
-1. **L'adresse e-mail** (`/bienvenue`) → le code part.
-2. **Le code** (`/bienvenue/code`) → l'adresse est prouvée. Une adresse déjà
-   inscrite arrive sur son compte ; une nouvelle continue.
-3. **L'inscription** (`/bienvenue/inscription`), une question par écran :
+1. **Créer un compte** (`/bienvenue`) : l'adresse et un mot de passe (dix
+   caractères au moins, des lettres et des chiffres) — ou Google, qui demande
+   ensuite de choisir un mot de passe.
+2. **Le code reçu par e-mail** (`/bienvenue/code`) confirme l'adresse.
+3. **L'application d'authentification** (`/bienvenue/deux-facteurs`) :
+   l'ajouter, puis taper les six chiffres qu'elle affiche.
+4. **Dix codes de secours** (`/bienvenue/codes-de-secours`), montrés une fois :
+   ils rendent l'accès si le téléphone est perdu (« J'ai perdu mon téléphone »,
+   fonction `deux-facteurs`).
+5. **L'inscription** (`/bienvenue/inscription`), une question par écran :
    - prénom et nom : des lettres, mis en capitales propres (« jean-paul » →
      « Jean-Paul ») ;
    - date de naissance : une vraie date, **18 ans révolus** ;
-   - téléphone : le pays (les six pays du franc CFA d'Afrique centrale en
-     tête), puis le numéro, mis en forme pendant la frappe et enregistré au
-     format international (`+237677123456`). Au Cameroun : 9 chiffres,
-     commençant par 6 ou 2. Un numéro ne sert qu'à un compte ;
+   - téléphone : obligatoire, non vérifié, un numéro par compte ouvert (le
+     numéro d'un compte fermé se réutilise) ; enregistré au format
+     international (`+237677123456`) ;
    - pays et ville de résidence ;
-   - le récapitulatif, qu'on certifie exact.
-4. **Le code secret** (4 chiffres) des gestes d'argent, puis la bienvenue.
+   - le récapitulatif, qu'on certifie exact, et les conditions acceptées.
 
-Tout est vérifié deux fois : à l'écran pendant la frappe
-(`app/src/noyau/identite.ts`), puis par la base qui a le dernier mot
-(`ouvrir_mon_compte`, migration 0009). Le numéro de l'inscription n'est pas un
-numéro de sortie : un numéro MoMo s'ajoute et se prouve par SMS dans
-Compte → Mes numéros.
+Ensuite, chaque connexion : l'adresse, le mot de passe, le code de
+l'application. Compte → Sécurité : changer le mot de passe, de nouveaux codes
+de secours, changer de téléphone, déconnecter tous les appareils.
+
+Tout est vérifié deux fois : à l'écran pendant la frappe, puis par la base
+qui a le dernier mot (`ouvrir_mon_compte`). Le numéro de l'inscription n'est
+pas un numéro de sortie : un numéro MoMo s'ajoute dans Compte → Mes numéros.
 
 ## L'administration (`admin/`)
 
-Le super administrateur **invite** une adresse ; la personne entre son adresse,
-reçoit le code, et à son premier passage l'invitation devient sa fiche
-d'administrateur (`entrer_administration`). Une adresse non invitée est
-refusée, même avec un code valide.
+Le super administrateur **invite** une adresse. La personne ouvre
+l'administration, touche **« Première connexion »**, choisit son mot de passe,
+confirme son adresse par le code reçu, ajoute son application
+d'authentification et note ses dix codes de secours ; l'invitation devient
+alors sa fiche d'administrateur (`entrer_administration`). Une adresse non
+invitée est refusée à la fin, même avec tout le reste. Ensuite : l'adresse, le
+mot de passe, le code de l'application. Un administrateur d'avant (entré par
+code seulement) passe par **« Mot de passe oublié »** pour choisir le sien.
+
+Utiliser pour l'administration une adresse **réservée** à cela, jamais celle
+d'un compte client (le vôtre compris).
 
 Le tout premier administrateur s'invite par SQL (Supabase → SQL Editor) :
 

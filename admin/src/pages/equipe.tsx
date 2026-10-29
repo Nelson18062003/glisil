@@ -1,6 +1,6 @@
 /*
  * L'Équipe : qui administre Glisil, avec quel rôle, quand chacun est venu ;
- * les invitations qui attendent leur premier code ; inviter quelqu'un.
+ * les invitations qui attendent leur première connexion ; inviter quelqu'un.
  * On n'entre qu'avec son adresse e-mail et un code : inviter, c'est donner
  * une adresse et un rôle, rien d'autre. Le super administrateur seulement.
  */
@@ -44,7 +44,7 @@ export function EquipePage() {
   return (
     <Coquille titre="Équipe" actions={<Button variant="contained" onClick={() => setDialogue("inviter")}>Inviter quelqu'un</Button>}>
       <Typography variant="body2" sx={{ maxWidth: 720 }}>
-        Personne n'a de mot de passe. Une personne invitée entre avec son adresse e-mail et le code qu'elle reçoit ; à son premier code, l'invitation devient son accès.
+        Une personne invitée ouvre l'administration, touche « Première connexion », choisit son mot de passe, confirme son adresse par un code, ajoute son application d'authentification et note ses codes de secours : l'invitation devient alors son accès. Utilisez une adresse réservée à l'administration, pas celle d'un compte client.
       </Typography>
       {!dialogue && <Erreur erreur={erreur} onFermer={() => setErreur(null)} />}
 

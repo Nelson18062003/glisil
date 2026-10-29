@@ -43,14 +43,21 @@ const exiger = (c, m) => { if (!c) throw new Error(`✗ ${m}`); };
 const etape = (t) => console.log(`· ${t}`);
 
 try {
-  etape("Connexion en super admin, tableau");
+  etape("Connexion en super admin : mot de passe, puis le code de l'application (un code faux refusé) ; tableau");
   await page.goto(`${BASE}/`);
   await page.waitForURL(/\/connexion$/);
   await capturer("connexion");
-  await page.getByRole("button", { name: "Recevoir mon code" }).click();
-  await page.getByLabel("Code reçu par e-mail").waitFor();
-  await capturer("connexion-code");
-  await page.getByLabel("Code reçu par e-mail").fill("123456");
+  await page.getByLabel("Mot de passe", { exact: true }).fill("pas-le-bon-1");
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await voir("adresse ou mot de passe incorrect");
+  await page.getByLabel("Mot de passe", { exact: true }).fill("Glisil-2026");
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await page.getByLabel("Code de l'application d'authentification").waitFor();
+  await capturer("connexion-code-application");
+  await page.getByLabel("Code de l'application d'authentification").fill("000000");
+  await voir("code de l'application incorrect ou expiré");
+  exiger(new URL(page.url()).pathname === "/connexion", "un code faux n'ouvre rien");
+  await page.getByLabel("Code de l'application d'authentification").fill("123456");
   await page.waitForURL(`${BASE}/`);
   await voir("XAFe en circulation");
   await voir("SMS retenus");
@@ -213,7 +220,7 @@ try {
   await page.getByRole("button", { name: "Poser", exact: true }).click();
   await page.locator('[data-tuile="Prix de référence posé"]').getByText("596,30").waitFor();
 
-  etape("Équipe : inviter une personne, l'invitation attend son premier code, on la retire");
+  etape("Équipe : inviter une personne, l'invitation attend sa première connexion, on la retire");
   await page.goto(`${BASE}/equipe`);
   await voir("Invitations en attente");
   await page.getByRole("button", { name: "Inviter quelqu'un" }).click();
@@ -327,8 +334,9 @@ try {
   await page.getByRole("button", { name: "Se déconnecter" }).click();
   await page.waitForURL(/\/connexion$/);
   await page.getByLabel("Adresse e-mail").fill("support@glisil.com");
-  await page.getByRole("button", { name: "Recevoir mon code" }).click();
-  await page.getByLabel("Code reçu par e-mail").fill("123456");
+  await page.getByLabel("Mot de passe", { exact: true }).fill("Glisil-2026");
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await page.getByLabel("Code de l'application d'authentification").fill("123456");
   await page.waitForURL(`${BASE}/`);
   await voir("Serge Kamga");
   await page.goto(`${BASE}/entrees?onglet=retenues`);
@@ -346,6 +354,29 @@ try {
   await voir("Ce que les testeurs signalent");
   exiger((await page.getByLabel("robots en marche").count()) === 0, "le support n'arrête pas les robots");
   exiger((await page.getByRole("button", { name: "Poser un cours" }).count()) === 0, "le support ne pose pas de cours");
+
+  etape("Première connexion d'une adresse qui n'est pas invitée : mot de passe, code e-mail, application, codes de secours — puis refusée");
+  await page.getByRole("button", { name: "Se déconnecter" }).click();
+  await page.waitForURL(/\/connexion$/);
+  await page.getByRole("button", { name: "Première connexion" }).click();
+  await page.getByLabel("Adresse e-mail").fill("curieux@exemple.com");
+  await page.getByLabel("Nouveau mot de passe").fill("court1");
+  exiger(await page.getByRole("button", { name: "Choisir ce mot de passe" }).isDisabled(), "un mot de passe trop faible ne se choisit pas");
+  await page.getByLabel("Nouveau mot de passe").fill("Curieux-2026");
+  await page.getByRole("button", { name: "Choisir ce mot de passe" }).click();
+  await page.getByLabel("Code reçu par e-mail").fill("123456");
+  await page.locator("[data-cle-totp]").waitFor();
+  await capturer("premiere-connexion-application");
+  await page.getByLabel("Code de l'application d'authentification").fill("123456");
+  await page.locator("[data-codes-de-secours]").waitFor();
+  exiger(await page.getByRole("button", { name: "Continuer" }).isDisabled(), "les codes se notent avant de continuer");
+  await capturer("premiere-connexion-codes");
+  await page.getByText("J'ai noté ou enregistré mes codes").click();
+  await page.getByRole("button", { name: "Continuer" }).click();
+  await voir("cette adresse n'administre pas Glisil");
+  exiger(new URL(page.url()).pathname === "/connexion", "une adresse qui n'est pas invitée n'entre pas");
+  await page.goto(`${BASE}/`);
+  await page.waitForURL(/\/connexion$/);
 
   exiger(erreurs.length === 0, `des erreurs ont été vues dans le navigateur :\n  ${erreurs.join("\n  ")}`);
   console.log(`✓ l'administration tient (${n} captures dans admin/captures/)`);

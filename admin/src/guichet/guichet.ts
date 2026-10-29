@@ -1,16 +1,40 @@
 import type { Parite } from "./types";
+import type { EtatAuth } from "../noyau/entree";
+
+/** Ce que l'application d'authentification doit recevoir : la clé, en lien (otpauth://), en texte et en image. */
+export type Enrolement = { facteurId: string; secret: string; uri: string; qr: string };
 import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets, ReseauRegistre, Beta, Signalement } from "./types";
 
 /** LE GUICHET DE L'ADMINISTRATION : tout ce que les écrans demandent au moteur. */
 export interface GuichetAdmin {
   readonly mode: "supabase" | "demo";
 
+  /** Le profil, seulement pour une session complète (mot de passe + application d'authentification). */
   session(): Promise<Profil | null>;
-  /** Pas de mot de passe : un code à six chiffres part à cette adresse. */
-  demanderCode(email: string): Promise<void>;
-  /** Le code prouve l'adresse ; une adresse invitée devient administrateur ici. Refuse une adresse qui n'administre pas. */
-  verifierCode(email: string, code: string): Promise<Profil>;
-  deconnecter(): Promise<void>;
+
+  /* ---- l'entrée (0035) : mot de passe, code e-mail à la première fois, application d'authentification, codes de secours */
+  /** Où en est la session, d'après Auth et la base (mon_etat_d_entree). */
+  etatAuth(): Promise<EtatAuth>;
+  connecter(email: string, motDePasse: string): Promise<void>;
+  /** Une adresse invitée choisit son mot de passe ; un code part pour confirmer l'adresse. */
+  premiereConnexion(email: string, motDePasse: string): Promise<void>;
+  /** Le code reçu à la première connexion ; on entre aussitôt avec le mot de passe encore en mémoire. */
+  confirmerEmail(email: string, code: string, motDePasse: string | null): Promise<void>;
+  renvoyerConfirmation(email: string): Promise<void>;
+  enrolerDeuxFacteurs(): Promise<Enrolement>;
+  confirmerDeuxFacteurs(facteurId: string, code: string): Promise<void>;
+  verifierDeuxFacteurs(code: string): Promise<void>;
+  genererCodesDeSecours(): Promise<string[]>;
+  confirmerCodesDeSecours(): Promise<void>;
+  /** Téléphone perdu : un code de secours retire l'application (fonction deux-facteurs) ; on en enrôle une nouvelle. */
+  utiliserCodeDeSecours(code: string): Promise<void>;
+  motDePasseOublie(email: string): Promise<void>;
+  verifierCodeDeReinitialisation(email: string, code: string): Promise<void>;
+  /** Le nouveau mot de passe, puis toutes les sessions fermées : on rentre avec lui. */
+  nouveauMotDePasse(motDePasse: string): Promise<void>;
+  /** La session est complète : une adresse invitée devient administrateur ici ; une autre est refusée (et la session fermée). */
+  entrer(): Promise<Profil>;
+  deconnecter(portee?: "local" | "global"): Promise<void>;
 
   tableau(): Promise<Tableau>;
 

@@ -6,13 +6,29 @@
  */
 import { DROITS } from "../noyau/droits";
 import { ErreurMoteur } from "./supabase";
-import type { GuichetAdmin } from "./guichet";
+import type { Enrolement, GuichetAdmin } from "./guichet";
+import { AUTH_VIDE, motDePasseValide, type EtatAuth } from "../noyau/entree";
 import type { Beta, LigneParite, Parite, ReseauRegistre, ReleveCours, Signalement } from "./types";
 import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Transfert, Wallets } from "./types";
 import { verifierPreuve } from "./preuve";
 
-/** le code de démonstration, celui qui « arrive par e-mail » */
+/** le code de démonstration : celui qui « arrive par e-mail », et celui que « l'application d'authentification » affiche */
 export const CODE_DEMO = "123456";
+/** le mot de passe des administrateurs de démonstration (la règle d'Auth : dix caractères, lettres et chiffres) */
+export const MOT_DE_PASSE_DEMO = "Glisil-2026";
+/** les dix codes de secours de démonstration, toujours les mêmes */
+export const CODES_DE_SECOURS_DEMO = ["7K3QD9WMXA", "B2N8HT4RZE", "Q9F1C6VJKS", "M4X7P2DGWN", "T8R3Z5HBQA", "C1W9N6KPXJ", "H5D2V8MRTE", "Z3K7Q1FXWB", "N6P4T9CJDG", "R2H8W5MZKQ"];
+
+/** Une personne d'Auth, en démonstration : ce que GoTrue et la base savent d'elle. */
+type UtilisateurDemo = { motDePasse: string | null; emailConfirme: boolean; totp: "aucun" | "en_cours" | "verifie"; codesConfirmes: boolean };
+type AuthDemo = {
+  utilisateurs: Record<string, UtilisateurDemo>;
+  session: { email: string; aal: "aal1" | "aal2"; facteur: "password" | "autre" } | null;
+};
+const authGraine = (): AuthDemo => ({
+  utilisateurs: Object.fromEntries(Object.keys(COMPTES_DEMO).map((e) => [e, { motDePasse: MOT_DE_PASSE_DEMO, emailConfirme: true, totp: "verifie", codesConfirmes: true }])),
+  session: null,
+});
 const sansAccents = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "");
 
 export const COMPTES_DEMO: Record<string, { profil: Profil }> = {
@@ -31,6 +47,8 @@ const ref = (p: string) => `${p}${String(++compteur).padStart(6, "0")}`;
 
 type Etat = {
   profil: Profil | null;
+  /** l'entrée (absente d'un état gardé avant 0035 : elle repart de sa graine) */
+  auth?: AuthDemo;
   equipe?: Equipe;
   terminaux: Terminal[];
   floats: (Required<Pick<import("./types").Float, "id" | "operateur" | "numero" | "terminal" | "code_agent" | "actif">> & { titulaire?: string | null })[];
@@ -170,19 +188,108 @@ export class GuichetDemo implements GuichetAdmin {
     this.e.journal.unshift({ id: this.e.journal.length + 1, admin: this.e.profil?.nom ?? null, action, cible, detail, quand: iso(maintenant()) });
   }
 
-  async session() { return this.e.profil ? copie(this.e.profil) : null; }
-  async demanderCode(email: string) {
+  /* ------------------------------------------------ l'entrée, comme Auth et 0035 */
+  private get auth(): AuthDemo { return (this.e.auth ??= authGraine()); }
+  private utilisateurDemo(): UtilisateurDemo {
+    const s = this.auth.session;
+    const u = s && this.auth.utilisateurs[s.email];
+    if (!u) throw new ErreurMoteur("session expirée", "reconnectez-vous");
+    return u;
+  }
+  async session() { return this.e.profil && this.auth.session?.aal === "aal2" ? copie(this.e.profil) : null; }
+  async etatAuth(): Promise<EtatAuth> {
+    const s = this.auth.session;
+    const u = s && this.auth.utilisateurs[s.email];
+    if (!s || !u) return { ...AUTH_VIDE };
+    return { session: true, premierFacteur: s.facteur, aalActuel: s.aal, aalSuivant: u.totp === "verifie" ? "aal2" : "aal1",
+      emailConfirme: u.emailConfirme, motDePasse: Boolean(u.motDePasse), codesDeSecours: u.codesConfirmes };
+  }
+  async connecter(email: string, motDePasse: string) {
+    const e = email.trim().toLowerCase();
+    const u = this.auth.utilisateurs[e];
+    if (!u || u.motDePasse !== motDePasse) throw new ErreurMoteur("adresse ou mot de passe incorrect");
+    if (!u.emailConfirme) throw new ErreurMoteur("adresse pas encore confirmée", "un code vient de partir : entrez-le");
+    this.auth.session = { email: e, aal: "aal1", facteur: "password" };
+    this.emettre();
+  }
+  async premiereConnexion(email: string, motDePasse: string) {
+    const e = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(e)) throw new ErreurMoteur("adresse e-mail invalide");
+    if (!motDePasseValide(motDePasse)) throw new ErreurMoteur("mot de passe trop faible", "dix caractères au moins, des lettres et des chiffres");
+    if (this.auth.utilisateurs[e]?.emailConfirme) throw new ErreurMoteur("cette adresse a déjà un mot de passe", "connectez-vous, ou « mot de passe oublié »");
+    this.auth.utilisateurs[e] = { motDePasse, emailConfirme: false, totp: "aucun", codesConfirmes: false };
+    this.emettre();
+  }
+  async confirmerEmail(email: string, code: string, motDePasse: string | null) {
+    const e = email.trim().toLowerCase();
+    const u = this.auth.utilisateurs[e];
+    if (!u || code !== CODE_DEMO) throw new ErreurMoteur("code incorrect ou expiré", "demandez-en un nouveau si besoin");
+    u.emailConfirme = true;
+    this.auth.session = motDePasse && u.motDePasse === motDePasse ? { email: e, aal: "aal1", facteur: "password" } : null;
+    this.emettre();
+  }
+  async renvoyerConfirmation() { /* la démonstration n'envoie rien : le code est toujours le même */ }
+  async enrolerDeuxFacteurs(): Promise<Enrolement> {
+    this.utilisateurDemo().totp = "en_cours";
+    this.emettre();
+    const secret = "JBSWY3DPEHPK3PXP";
+    return { facteurId: "demo-totp", secret, uri: `otpauth://totp/Glisil%20Administration?secret=${secret}&issuer=Glisil%20Administration`, qr: "" };
+  }
+  async confirmerDeuxFacteurs(_facteurId: string, code: string) {
+    const u = this.utilisateurDemo();
+    if (u.totp !== "en_cours" || code !== CODE_DEMO) throw new ErreurMoteur("code de l'application incorrect ou expiré", "tapez celui qui s'affiche maintenant");
+    u.totp = "verifie";
+    this.auth.session!.aal = "aal2";
+    this.emettre();
+  }
+  async verifierDeuxFacteurs(code: string) {
+    const u = this.utilisateurDemo();
+    if (u.totp !== "verifie") throw new ErreurMoteur("aucune application d'authentification");
+    if (code !== CODE_DEMO) throw new ErreurMoteur("code de l'application incorrect ou expiré", "tapez celui qui s'affiche maintenant");
+    this.auth.session!.aal = "aal2";
+    this.emettre();
+  }
+  async genererCodesDeSecours() {
+    if (this.auth.session?.aal !== "aal2") throw new ErreurMoteur("double authentification requise");
+    return [...CODES_DE_SECOURS_DEMO];
+  }
+  async confirmerCodesDeSecours() {
+    if (this.auth.session?.aal !== "aal2") throw new ErreurMoteur("double authentification requise");
+    this.utilisateurDemo().codesConfirmes = true;
+    this.emettre();
+  }
+  async utiliserCodeDeSecours(code: string) {
+    const u = this.utilisateurDemo();
+    if (!CODES_DE_SECOURS_DEMO.includes(code.replace(/[\s-]/g, "").toUpperCase())) throw new ErreurMoteur("code de secours incorrect", "4 essai(s) restant(s)");
+    u.totp = "aucun"; u.codesConfirmes = false;
+    this.emettre();
+  }
+  async motDePasseOublie(email: string) {
     if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email.trim())) throw new ErreurMoteur("adresse e-mail invalide");
   }
-  async verifierCode(email: string, code: string) {
-    if (code !== CODE_DEMO) throw new ErreurMoteur("code incorrect ou expiré");
-    const c = COMPTES_DEMO[email.trim().toLowerCase()];
-    if (!c) throw new ErreurMoteur("cette adresse n'administre pas Glisil", "demandez au super administrateur de vous inviter");
+  async verifierCodeDeReinitialisation(email: string, code: string) {
+    const e = email.trim().toLowerCase();
+    if (!this.auth.utilisateurs[e] || code !== CODE_DEMO) throw new ErreurMoteur("code incorrect ou expiré", "demandez-en un nouveau si besoin");
+    this.auth.session = { email: e, aal: "aal1", facteur: "autre" };
+    this.emettre();
+  }
+  async nouveauMotDePasse(motDePasse: string) {
+    if (!motDePasseValide(motDePasse)) throw new ErreurMoteur("mot de passe trop faible", "dix caractères au moins, des lettres et des chiffres");
+    this.utilisateurDemo().motDePasse = motDePasse;
+    this.auth.session = null; this.e.profil = null;
+    this.emettre();
+  }
+  async entrer() {
+    const s = this.auth.session;
+    if (!s || s.aal !== "aal2" || s.facteur !== "password") throw new ErreurMoteur("double authentification requise");
+    if (!this.utilisateurDemo().codesConfirmes) throw new ErreurMoteur("codes de secours à noter", "ils vous rendent l'accès si vous perdez votre téléphone");
+    const c = COMPTES_DEMO[s.email];
+    if (!c) { this.auth.session = null; this.emettre(); throw new ErreurMoteur("cette adresse n'administre pas Glisil", "demandez au super administrateur de vous inviter"); }
     this.e.profil = c.profil;
     this.emettre();
     return copie(c.profil);
   }
-  async deconnecter() { this.e.profil = null; this.emettre(); }
+  async deconnecter() { this.e.profil = null; this.auth.session = null; this.emettre(); }
 
   async tableau(): Promise<Tableau> {
     this.exiger("voir");

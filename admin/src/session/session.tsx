@@ -3,13 +3,19 @@ import { useGuichet } from "../guichet";
 import type { Profil } from "../guichet/types";
 import { aLeDroit, type Droit } from "../noyau/droits";
 
+/*
+ * La session de l'administration : un profil, seulement quand l'entrée est
+ * complète (mot de passe + application d'authentification + codes de secours
+ * notés, 0035). Les étapes de l'entrée vivent dans pages/connexion.tsx ;
+ * ici, on ne garde que leur résultat.
+ */
 type Session = {
   pret: boolean;
   profil: Profil | null;
   peut: (droit: Droit) => boolean;
-  demanderCode: (email: string) => Promise<void>;
-  connecter: (email: string, code: string) => Promise<void>;
-  deconnecter: () => Promise<void>;
+  /** l'entrée est faite : le profil rendu par entrer_administration */
+  ouvrir: (p: Profil) => void;
+  deconnecter: (portee?: "local" | "global") => Promise<void>;
 };
 
 const Contexte = createContext<Session | null>(null);
@@ -23,13 +29,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try { setProfil(await guichet.session()); } catch { setProfil(null); } finally { setPret(true); }
   }, [guichet]);
   useEffect(() => { void relire(); }, [relire]);
+  /* une session fermée ailleurs (expirée, « déconnecter partout ») ramène à l'entrée */
+  useEffect(() => guichet.surChangement(() => { void relire(); }), [guichet, relire]);
 
   const valeur = useMemo<Session>(() => ({
     pret, profil,
     peut: (d) => aLeDroit(profil?.role, d),
-    demanderCode: (email) => guichet.demanderCode(email),
-    connecter: async (email, code) => { setProfil(await guichet.verifierCode(email, code)); },
-    deconnecter: async () => { await guichet.deconnecter(); setProfil(null); },
+    ouvrir: (p) => setProfil(p),
+    deconnecter: async (portee = "local") => { await guichet.deconnecter(portee); setProfil(null); },
   }), [pret, profil, guichet]);
 
   return <Contexte.Provider value={valeur}>{children}</Contexte.Provider>;

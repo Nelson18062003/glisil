@@ -1,10 +1,11 @@
 /*
- * Le vrai moteur : connexion par e-mail et code à six chiffres (Supabase Auth,
- * sans mot de passe), puis
- * les RPC admin_* — chacune gardée en base par admin_a_droit().
+ * Le vrai moteur : connexion par mot de passe puis application
+ * d'authentification (Supabase Auth, 0035), puis les RPC admin_* — chacune
+ * gardée en base par admin_a_droit(), qui exige cette session complète.
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { GuichetAdmin } from "./guichet";
+import type { Enrolement, GuichetAdmin } from "./guichet";
+import { AUTH_VIDE, premierFacteurDe, type EtatAuth } from "../noyau/entree";
 import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets, ReseauRegistre, Beta, Signalement } from "./types";
 import type { Parite } from "./types";
 import { verifierPreuve } from "./preuve";
@@ -13,6 +14,24 @@ export class ErreurMoteur extends Error {
   detail?: string;
   constructor(message: string, detail?: string) { super(message); this.detail = detail; }
 }
+
+/** Les refus d'Auth, dits en mots (le code d'Auth d'abord, son texte anglais ensuite). */
+function erreurAuth(e: { message: string; code?: string; status?: number }): ErreurMoteur {
+  switch (e.code ?? "") {
+    case "invalid_credentials": return new ErreurMoteur("adresse ou mot de passe incorrect");
+    case "email_not_confirmed": return new ErreurMoteur("adresse pas encore confirmée", "un code vient de partir : entrez-le");
+    case "user_already_exists": case "email_exists": return new ErreurMoteur("cette adresse a déjà un mot de passe", "connectez-vous, ou « mot de passe oublié »");
+    case "weak_password": return new ErreurMoteur("mot de passe trop faible", "dix caractères au moins, des lettres et des chiffres ; pas un mot de passe déjà fuité");
+    case "same_password": return new ErreurMoteur("choisissez un mot de passe différent");
+    case "over_email_send_rate_limit": case "over_request_rate_limit": return new ErreurMoteur("trop de demandes : attendez une minute");
+    case "mfa_verification_failed": case "mfa_challenge_expired": return new ErreurMoteur("code de l'application incorrect ou expiré", "tapez celui qui s'affiche maintenant");
+    case "otp_expired": case "otp_disabled": return new ErreurMoteur("code incorrect ou expiré", "demandez-en un nouveau si besoin");
+    case "session_not_found": case "refresh_token_not_found": return new ErreurMoteur("session expirée", "reconnectez-vous");
+    default: return new ErreurMoteur(/rate limit|too many|seconds/i.test(e.message) ? "trop de demandes : attendez une minute" : e.message);
+  }
+}
+
+const emailNormalise = (e: string) => e.trim().toLowerCase();
 
 export class GuichetSupabase implements GuichetAdmin {
   readonly mode = "supabase" as const;
@@ -33,21 +52,113 @@ export class GuichetSupabase implements GuichetAdmin {
   async session() {
     const { data } = await this.sb.auth.getSession();
     if (!data.session) return null;
-    return (await this.rpc<Profil | null>("mon_profil_admin")) ?? null;
+    /* avant la session complète, la base ne dit rien : inutile de demander */
+    const aal = await this.sb.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aal.data?.currentLevel !== "aal2") return null;
+    return (await this.rpc<Profil | null>("mon_profil_admin").catch(() => null)) ?? null;
   }
-  async demanderCode(email: string) {
-    const { error } = await this.sb.auth.signInWithOtp({ email: email.trim().toLowerCase(), options: { shouldCreateUser: true } });
-    if (error) throw new ErreurMoteur(/rate limit|too many|seconds/i.test(error.message) ? "trop de codes demandés : attendez une minute" : error.message);
+
+  async etatAuth(): Promise<EtatAuth> {
+    const { data } = await this.sb.auth.getSession();
+    if (!data.session) return { ...AUTH_VIDE };
+    const [aal, etat] = await Promise.all([
+      this.sb.auth.mfa.getAuthenticatorAssuranceLevel(),
+      this.rpc<Record<string, unknown> | null>("mon_etat_d_entree"),
+    ]);
+    if (aal.error) throw erreurAuth(aal.error);
+    const niveau = (v: unknown) => (v === "aal1" || v === "aal2" ? v : null);
+    return {
+      session: true,
+      premierFacteur: premierFacteurDe(aal.data.currentAuthenticationMethods as ({ method?: string } | string)[]),
+      aalActuel: niveau(aal.data.currentLevel), aalSuivant: niveau(aal.data.nextLevel),
+      emailConfirme: Boolean(etat?.email_confirme), motDePasse: Boolean(etat?.mot_de_passe), codesDeSecours: Boolean(etat?.codes_de_secours),
+    };
   }
-  async verifierCode(email: string, code: string) {
-    const { error } = await this.sb.auth.verifyOtp({ email: email.trim().toLowerCase(), token: code, type: "email" });
-    if (error) throw new ErreurMoteur("code incorrect ou expiré");
+  async connecter(email: string, motDePasse: string) {
+    const e = emailNormalise(email);
+    const { error } = await this.sb.auth.signInWithPassword({ email: e, password: motDePasse });
+    if (!error) return;
+    if (error.code === "email_not_confirmed") await this.renvoyerConfirmation(e).catch(() => undefined);
+    throw erreurAuth(error);
+  }
+  async premiereConnexion(email: string, motDePasse: string) {
+    const { data, error } = await this.sb.auth.signUp({ email: emailNormalise(email), password: motDePasse, options: { data: { langue: "fr" } } });
+    if (error) throw erreurAuth(error);
+    /* une adresse déjà confirmée : Auth rend un utilisateur sans identité, pour ne rien dire à un curieux */
+    if ((data.user?.identities?.length ?? 1) === 0) throw new ErreurMoteur("cette adresse a déjà un mot de passe", "connectez-vous, ou « mot de passe oublié »");
+  }
+  async confirmerEmail(email: string, code: string, motDePasse: string | null) {
+    const e = emailNormalise(email);
+    const { error } = await this.sb.auth.verifyOtp({ email: e, token: code, type: "signup" });
+    if (error) throw error.code === "over_request_rate_limit" ? erreurAuth(error) : new ErreurMoteur("code incorrect ou expiré", "demandez-en un nouveau si besoin");
+    /* le code ouvre une session « otp », jamais forte : on entre aussitôt par le mot de passe encore en mémoire */
+    if (motDePasse && !(await this.sb.auth.signInWithPassword({ email: e, password: motDePasse })).error) return;
+    await this.sb.auth.signOut({ scope: "local" });
+  }
+  async renvoyerConfirmation(email: string) {
+    const { error } = await this.sb.auth.resend({ type: "signup", email: emailNormalise(email) });
+    if (error) throw erreurAuth(error);
+  }
+  async enrolerDeuxFacteurs(): Promise<Enrolement> {
+    /* un essai abandonné (facteur jamais vérifié) bloquerait le suivant : on le retire d'abord */
+    const { data: l } = await this.sb.auth.mfa.listFactors();
+    for (const f of l?.all ?? []) if (f.factor_type === "totp" && f.status === "unverified") await this.sb.auth.mfa.unenroll({ factorId: f.id }).catch(() => undefined);
+    const quand = new Date().toISOString().slice(0, 16).replace("T", " ");
+    const { data, error } = await this.sb.auth.mfa.enroll({ factorType: "totp", issuer: "Glisil Administration", friendlyName: `Glisil admin ${quand}` });
+    if (error || !data) throw erreurAuth(error ?? { message: "aucune application d'authentification" });
+    return { facteurId: data.id, secret: data.totp.secret, uri: data.totp.uri, qr: data.totp.qr_code };
+  }
+  async confirmerDeuxFacteurs(facteurId: string, code: string) {
+    const { error } = await this.sb.auth.mfa.challengeAndVerify({ factorId: facteurId, code });
+    if (error) throw erreurAuth(error);
+  }
+  async verifierDeuxFacteurs(code: string) {
+    const { data } = await this.sb.auth.mfa.listFactors();
+    const f = data?.totp?.[0];
+    if (!f) throw new ErreurMoteur("aucune application d'authentification");
+    const { error } = await this.sb.auth.mfa.challengeAndVerify({ factorId: f.id, code });
+    if (error) throw erreurAuth(error);
+  }
+  async genererCodesDeSecours() {
+    const r = await this.rpc<{ codes?: unknown[] } | null>("generer_codes_de_secours");
+    return (r?.codes ?? []).map(String);
+  }
+  async confirmerCodesDeSecours() { await this.rpc("confirmer_codes_de_secours"); }
+  async utiliserCodeDeSecours(code: string) {
+    const { data, error } = await this.sb.functions.invoke("deux-facteurs", { body: { action: "code_de_secours", code } });
+    let j = (data ?? null) as Record<string, unknown> | null;
+    if (error) {
+      const contexte = (error as { context?: Response }).context;
+      j = contexte && typeof contexte.json === "function" ? ((await contexte.json().catch(() => null)) as Record<string, unknown> | null) : null;
+      if (!j || typeof j.erreur !== "string") throw new ErreurMoteur(error.message);
+    }
+    if (j && typeof j.erreur === "string") {
+      const reste = typeof j.essais_restants === "number" ? `${j.essais_restants} essai(s) restant(s)` : typeof j.verrou_jusqua === "string" ? `jusqu'à ${new Date(j.verrou_jusqua).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : undefined;
+      throw new ErreurMoteur(j.erreur, reste);
+    }
+    /* le facteur est parti : le jeton relu redescend, et l'entrée mène à l'enrôlement d'une nouvelle application */
+    await this.sb.auth.refreshSession();
+  }
+  async motDePasseOublie(email: string) {
+    const { error } = await this.sb.auth.resetPasswordForEmail(emailNormalise(email));
+    if (error) throw erreurAuth(error);
+  }
+  async verifierCodeDeReinitialisation(email: string, code: string) {
+    const { error } = await this.sb.auth.verifyOtp({ email: emailNormalise(email), token: code, type: "recovery" });
+    if (error) throw error.code === "over_request_rate_limit" ? erreurAuth(error) : new ErreurMoteur("code incorrect ou expiré", "demandez-en un nouveau si besoin");
+  }
+  async nouveauMotDePasse(motDePasse: string) {
+    const { error } = await this.sb.auth.updateUser({ password: motDePasse });
+    if (error) throw erreurAuth(error);
+    await this.sb.auth.signOut({ scope: "global" });
+  }
+  async entrer() {
     /* l'invitation devient la fiche d'administrateur ici, au premier passage */
     const p = await this.rpc<Profil | null>("entrer_administration");
     if (!p) { await this.sb.auth.signOut(); throw new ErreurMoteur("cette adresse n'administre pas Glisil", "demandez au super administrateur de vous inviter"); }
     return p;
   }
-  async deconnecter() { await this.sb.auth.signOut(); }
+  async deconnecter(portee: "local" | "global" = "local") { await this.sb.auth.signOut({ scope: portee }); }
 
   tableau() { return this.rpc<Tableau>("admin_tableau"); }
   entrees(etat?: string | null) { return this.rpc<Entree[]>("admin_entrees", { p_etat: etat ?? null, p_n: 200 }); }
