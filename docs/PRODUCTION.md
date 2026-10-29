@@ -37,8 +37,11 @@ page), ou `select verifier_le_profil_production(false);`.
   avertissement) ; le coffre porte `veilleur_url`, `veilleur_jeton`,
   `courriel_url`. Reste au propriétaire : `courriel_jeton` (la même valeur que
   `COURRIEL_JETON` dans Infisical).
-- Migrations déjà appliquées à la production après l'installation : 0043.
-  Toute migration suivante s'y applique seule, puis le constat.
+- Migrations déjà appliquées à la production après l'installation : 0043,
+  puis 0044, 0045 et 0046 (le 29/10, en une instruction : la base a pris les
+  fichiers sur GitHub au commit 4bfb7ea, vérifié leurs empreintes md5, puis
+  le constat — vert, aucun refus). Toute migration suivante s'y applique
+  seule, puis le constat.
 
 ## A [C] Le code et ses preuves
 
