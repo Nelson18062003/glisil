@@ -19,6 +19,8 @@ export const brand = {
   /* du blanc sur l'orange d'Orange ne se lit pas (2,6:1) ; le noir, si (6,6:1) */
   om: { bg: "#FF7900", fg: "#1B1B1B" },
   usdt: { bg: "#26A17B", fg: "#FFFFFF" },
+  /* le bleu de l'USDC (Circle) : le blanc s'y lit (4,6:1) */
+  usdc: { bg: "#2775CA", fg: "#FFFFFF" },
   xafe: { bg: "#0B6B3A", fg: "#FFFFFF" },
 };
 

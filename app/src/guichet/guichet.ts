@@ -3,6 +3,7 @@ import type {
   DevisRapide,
   SensRapide,
   Actif,
+  Paire,
   Carnet,
   Chandelle,
   Intervalle,
@@ -144,19 +145,20 @@ export interface Guichet {
   demanderSortie(p: { montant: number; numeroId: string; cle: string; preuve: PreuveDeVerification; nom?: string }): Promise<Sortie>;
   sortie(reference: string): Promise<Sortie>;
 
-  /* ---- marché */
-  cotation(): Promise<Cotation>;
-  carnet(profondeur: number): Promise<Carnet>;
-  transactions(n: number): Promise<Transaction[]>;
-  chandelles(intervalleMinutes: number, n: number): Promise<Chandelle[]>;
+  /* ---- marché : deux carnets (0045), USDT/XAFe et USDC/XAFe ; chaque lecture et chaque ordre nomme le sien */
+  cotation(paire: Paire): Promise<Cotation>;
+  carnet(profondeur: number, paire: Paire): Promise<Carnet>;
+  transactions(n: number, paire: Paire): Promise<Transaction[]>;
+  chandelles(intervalleMinutes: number, n: number, paire: Paire): Promise<Chandelle[]>;
   /** Les bougies du graphique, `n` au plus, toutes avant `avant` (null : jusqu'à maintenant) — page par page vers le passé. */
-  bougies(intervalle: Intervalle, avant?: string | null, n?: number): Promise<PageDeBougies>;
+  bougies(intervalle: Intervalle, avant: string | null | undefined, n: number | undefined, paire: Paire): Promise<PageDeBougies>;
+  /** les ordres des deux carnets ; chacun dit le sien */
   mesOrdres(): Promise<Ordre[]>;
   ordre(id: string): Promise<{ ordre: Ordre; executions: Execution[] }>;
-  placerOrdre(p: { cote: Cote; type: TypeOrdre; quantite: number; prix?: number; cle: string }): Promise<ResultatOrdre>;
+  placerOrdre(p: { cote: Cote; type: TypeOrdre; quantite: number; prix?: number; cle: string; paire: Paire }): Promise<ResultatOrdre>;
   annulerOrdre(id: string): Promise<Ordre>;
   /** ferme = false : une estimation, rien n'est écrit ; true : un prix tenu quelques secondes */
-  devisRapide(p: { sens: SensRapide; montant: number; ferme: boolean }): Promise<DevisRapide>;
+  devisRapide(p: { sens: SensRapide; montant: number; ferme: boolean; paire: Paire }): Promise<DevisRapide>;
   executerDevis(id: string): Promise<DevisRapide>;
 
   /* ---- crypto */

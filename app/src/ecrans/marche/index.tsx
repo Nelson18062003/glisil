@@ -14,13 +14,14 @@ import RemoveRounded from "@mui/icons-material/RemoveRounded";
 import { Box, Button, ButtonBase, Chip, Divider, IconButton, Menu, MenuItem, Paper, Slider, Snackbar, Stack, Tab, Tabs, Typography, useMediaQuery } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useCarnet, useCotation, useGuichet, useMesOrdres, useOrdre, useRafraichir, useSoldes, useTransactions } from "../../guichet";
-import type { Cote, Execution, Niveau, Ordre, TypeOrdre } from "../../guichet/types";
+import { pairesOuvertes, useCarnet, useCotation, useGuichet, useMesOrdres, useOrdre, usePaire, useRafraichir, useSoldes, useTransactions } from "../../guichet";
+import type { Cote, Execution, Niveau, Ordre, Paire, TypeOrdre } from "../../guichet/types";
+import { baseDe } from "../../guichet/types";
 import { achatMax, arrondi2, bandeDePrix, FRAIS, fraisOrdre, MARCHE, raisonDuRefus, simulerMarche, totalOrdre } from "../../noyau/argent";
 import { enTranches, heure, heureSecondes, jourRelatif, pourcent, prix as fPrix, usdt as fUsdt, xaf } from "../../noyau/format";
 import { langue, t } from "../../noyau/langue";
 import { useParcours } from "../../navigation/parcours";
-import { Attente, Badge, BUY, BUY_BG, Card, Feuille, FeuilleErreur, Line, Screen, SELL, SELL_BG, Squelette, Success } from "../../ui";
+import { Attente, Badge, badgeDe, BUY, BUY_BG, Card, Feuille, FeuilleErreur, Line, Screen, SELL, SELL_BG, Squelette, Success } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
 import { GraphiqueBourse, Profondeur } from "./graphique";
 
@@ -33,15 +34,35 @@ const nomDEtat = (e: Ordre["etat"]) => ({ execute: t("Exécuté", "Filled"), ann
 
 /* --------------------------------------------------------- en-tête paire */
 
+/** une ligne du choix des carnets : la paire, son dernier prix, et celle qu'on regarde marquée */
+function LigneDePaire({ p, choisie, onChoisir }: { p: Paire; choisie: boolean; onChoisir: () => void }) {
+  const { data: c } = useCotation(p);
+  const v = c?.variation24h ?? null;
+  return (
+    <ButtonBase onClick={onChoisir} aria-pressed={choisie} data-paire={p}
+      sx={{ p: 1.5, borderRadius: 3, bgcolor: choisie ? "#CDEFD9" : "action.hover", display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", minHeight: 56 }}>
+      <Stack alignItems="flex-start">
+        <Typography fontWeight={600}>{p}</Typography>
+        <Typography variant="caption" color="text.secondary">{baseDe(p) === "USDC" ? "USD Coin" : "Tether USD"}</Typography>
+      </Stack>
+      <Stack alignItems="flex-end">
+        <Typography sx={{ fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{c?.dernier != null ? fPrix(c.dernier) : "—"}</Typography>
+        {v !== null && <Typography variant="caption" sx={{ color: v >= 0 ? BUY : SELL, fontVariantNumeric: "tabular-nums" }}>{v >= 0 ? "+" : ""}{t(`${enTranches(v, 2)} %`, `${enTranches(v, 2)}%`)}</Typography>}
+      </Stack>
+    </ButtonBase>
+  );
+}
+
 function PairHeader({ chart = true }: { chart?: boolean }) {
   const { data: c } = useCotation();
+  const [choisie, choisirPaire] = usePaire();
   const [paire, setPaire] = useState(false);
   const [menu, setMenu] = useState<HTMLElement | null>(null);
   const v = c?.variation24h ?? 0;
   return (
     <Stack direction="row" alignItems="center" sx={{ px: 2, minHeight: 56 }}>
       <ButtonBase sx={{ gap: 0.25, borderRadius: 2, px: 0.5, minHeight: 44 }} onClick={() => setPaire(true)}>
-        <Typography variant="h6">{MARCHE.paire}</Typography>
+        <Typography variant="h6">{choisie}</Typography>
         <ArrowDropDownRounded />
       </ButtonBase>
       {c?.variation24h != null && (
@@ -67,12 +88,12 @@ function PairHeader({ chart = true }: { chart?: boolean }) {
       </Menu>
       <Feuille ouverte={paire} onFermer={() => setPaire(false)} titre={t("Paires", "Pairs")}>
         <Stack gap={1}>
-          <Paper sx={{ p: 1.5, borderRadius: 3, bgcolor: "#CDEFD9", display: "flex", justifyContent: "space-between" }}>
-            <Typography fontWeight={600}>USDT/XAFe</Typography>{/* langue-ok */}
-            <Typography sx={{ fontVariantNumeric: "tabular-nums" }}>{c?.dernier != null ? fPrix(c.dernier) : "—"}</Typography>
-          </Paper>
-          <Typography variant="body2">{t("Une seule paire aujourd'hui. D'autres suivront quand le carnet sera assez profond.", "Just one pair for now. More will follow once the order book is deep enough.")}</Typography>
-          <Button variant="contained" onClick={() => setPaire(false)}>{t("Fermer", "Close")}</Button>
+          {pairesOuvertes().map((p) => (
+            <LigneDePaire key={p} p={p} choisie={p === choisie} onChoisir={() => { choisirPaire(p); setPaire(false); }} />
+          ))}
+          <Typography variant="body2">{t("Deux carnets séparés : un ordre d'USDC ne rencontre jamais un ordre d'USDT. Votre solde de chaque actif reste le vôtre.",
+            "Two separate order books: a USDC order never meets a USDT order. Each balance stays your own.")}</Typography>
+          <Button variant="outlined" onClick={() => setPaire(false)}>{t("Fermer", "Close")}</Button>
         </Stack>
       </Feuille>
     </Stack>
@@ -112,6 +133,7 @@ function MidPrice({ big }: { big?: boolean }) {
 }
 
 function CompactBook({ onPick }: { onPick: (p: number) => void }) {
+  const [paire] = usePaire();
   const [pas, setPas] = useState(MARCHE.pasPrix);
   const [menuPas, setMenuPas] = useState<HTMLElement | null>(null);
   const { data: brut } = useCarnet(pas > MARCHE.pasPrix ? 60 : 7);
@@ -122,7 +144,7 @@ function CompactBook({ onPick }: { onPick: (p: number) => void }) {
       <Stack direction="row" justifyContent="space-between" sx={{ px: 0.5, mb: 0.5 }}>
         {/* « Prix (XAFe) » et « Qté (USDT) » ne tenaient pas sur un écran de 320 : l'unité passe dessous */}
         <Typography variant="caption" sx={{ lineHeight: 1.2 }}>{t("Prix", "Price")}<br />XAFe</Typography>
-        <Typography variant="caption" sx={{ lineHeight: 1.2, textAlign: "right" }}>{t("Qté", "Qty")}<br />USDT</Typography>
+        <Typography variant="caption" sx={{ lineHeight: 1.2, textAlign: "right" }}>{t("Qté", "Qty")}<br />{baseDe(paire)}</Typography>
       </Stack>
       {!carnet ? <Squelette hauteur={360} radius={8} /> : (
         <>
@@ -225,12 +247,14 @@ function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean; autoNe
   const { data: cotation } = useCotation();
   const { data: carnet } = useCarnet(30);
   const { data: mesOrdres } = useMesOrdres();
+  const [paire] = usePaire();
+  const B = baseDe(paire);
   const [typeOuvert, setTypeOuvert] = useState(false);
   const [confirme, setConfirme] = useState(false);
   /* le total tapé par la personne, tant qu'elle ne touche pas à autre chose : c'est lui qui décide de la quantité */
   const [totalSaisi, setTotalSaisi] = useState<string | null>(null);
   /* l'intention de l'ordre : un prix ou une quantité changés font un autre ordre, avec sa propre clé */
-  const { lancer, enCours, erreur, effacerErreur } = useGesteUnique("ord", { cote: f.cote, type: f.type, quantite: f.quantite, prix: f.type === "limite" ? f.prix : null });
+  const { lancer, enCours, erreur, effacerErreur } = useGesteUnique("ord", { paire, cote: f.cote, type: f.type, quantite: f.quantite, prix: f.type === "limite" ? f.prix : null });
 
   /* Le meilleur prix en face, sinon le dernier échange, sinon la référence du moteur. Un VRAI prix, jamais un exemple
      gris qui ressemble à un prix : c'est ce faux « 618,40 » qui faisait croire à un prix posé alors que la case était vide. */
@@ -243,18 +267,19 @@ function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean; autoNe
   const prix = lireNombre(f.prix);
   const quantite = lireNombre(f.quantite);
   const dispoXafe = soldes?.XAFe.disponible ?? 0;
-  const dispoUsdt = soldes?.USDT.disponible ?? 0;
+  /* ce qu'on vend : l'actif de base du carnet choisi (USDT ou USDC) */
+  const dispoBase = soldes?.[B].disponible ?? 0;
   const reference = cotation?.reference ?? MARCHE.reference;
   /* le prix qui sert aux calculs : celui tapé (limite), sinon le meilleur en face (marché) */
   const prixCalcul = f.type === "limite" ? prix : enFace ?? 0;
   /* Achat max : ce que les XAFe disponibles paient À CE PRIX. Sans prix, on ne sait pas — et on ne l'invente pas
      (l'écran divisait par 1 et annonçait « 1 000 USDT » pour 1 000 XAFe). */
-  const maxQ = f.cote === "achat" ? (prixCalcul > 0 ? achatMax(dispoXafe, prixCalcul) : null) : arrondi2(dispoUsdt);
+  const maxQ = f.cote === "achat" ? (prixCalcul > 0 ? achatMax(dispoXafe, prixCalcul) : null) : arrondi2(dispoBase);
   const total = f.type === "limite" ? totalOrdre(quantite, prix) : simulerMarche(f.cote, quantite, (f.cote === "achat" ? carnet?.ventes : carnet?.achats) ?? [], f.cote === "achat" ? dispoXafe : Infinity).total;
   const frais = fraisOrdre(f.cote, quantite, prixCalcul || 0);
   const pct = maxQ && maxQ > 0 ? Math.min(100, Math.round((quantite / maxQ) * 100)) : 0;
-  const ouverts = (mesOrdres ?? []).filter((o) => o.etat === "ouvert" || o.etat === "partiel").length;
-  const raison = raisonDuRefus({ cote: f.cote, type: f.type, prix, quantite, dispoXafe, dispoUsdt, reference, ouverts });
+  const ouverts = (mesOrdres ?? []).filter((o) => o.paire === paire && (o.etat === "ouvert" || o.etat === "partiel")).length;
+  const raison = raisonDuRefus({ cote: f.cote, type: f.type, prix, quantite, dispoXafe, dispoBase, reference, ouverts });
   const marcheVide = f.type === "marche" && enFace == null;
   const valide = quantite > 0 && raison === null && !marcheVide && (maxQ === null || quantite <= maxQ + 1e-9);
   const bande = f.type === "limite" ? bandeDePrix(f.cote, reference) : null;
@@ -274,7 +299,7 @@ function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean; autoNe
 
   const placer = () =>
     lancer(async (cle) => {
-      const r = await guichet.placerOrdre({ cote: f.cote, type: f.type, quantite, prix: f.type === "limite" ? prix : undefined, cle });
+      const r = await guichet.placerOrdre({ cote: f.cote, type: f.type, quantite, prix: f.type === "limite" ? prix : undefined, cle, paire });
       setConfirme(false);
       setTotalSaisi(null);
       poser({ quantite: "" });
@@ -312,7 +337,7 @@ function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean; autoNe
           {t(`Entre ${fPrix(bande.min)} et ${fPrix(bande.max)} · référence ${fPrix(reference!)}`, `Between ${fPrix(bande.min)} and ${fPrix(bande.max)} · reference ${fPrix(reference!)}`)}
         </Typography>
       )}
-      <Field label={t("Quantité (USDT)", "Quantity (USDT)")} value={f.quantite} onChange={changerQuantite} onStep={(d) => step("quantite", d)} placeholder="0" />
+      <Field label={t(`Quantité (${B})`, `Quantity (${B})`)} value={f.quantite} onChange={changerQuantite} onStep={(d) => step("quantite", d)} placeholder="0" />
       <Box sx={{ px: 1 }}>
         {/* la part de ce qu'on a : 25 %, 50 %, 75 %, tout — des USDT achetables à ce prix, ou des USDT qu'on vend */}
         <Slider aria-label={t("Part du disponible", "Share of available balance")} getAriaValueText={(v) => t(`${v} %`, `${v}%`)} value={pct} disabled={maxQ === null}
@@ -327,10 +352,10 @@ function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean; autoNe
       <Stack gap={0.25} sx={{ px: 0.25 }}>
         {/* acheter dépense des XAFe, vendre des USDT : le disponible n'est que l'un des deux — l'autre se dit aussi,
             sinon « Dispo 1 000 000 XAFe » se lit comme « on ne vous laisse qu'un million » (retour d'un testeur) */}
-        <Small label={f.cote === "achat" ? t("Dispo pour acheter", "Available to buy") : t("Dispo pour vendre", "Available to sell")} value={f.cote === "achat" ? `${xaf(dispoXafe)} XAFe` : `${enTranches(dispoUsdt, 2)} USDT`} />
-        <Small label={f.cote === "achat" ? t("Vos USDT (à vendre)", "Your USDT (to sell)") : t("Vos XAFe (pour acheter)", "Your XAFe (to buy)")} value={f.cote === "achat" ? `${enTranches(dispoUsdt, 2)} USDT` : `${xaf(dispoXafe)} XAFe`} />
-        <Small label={f.cote === "achat" ? t("Achat max", "Max buy") : t("Vente max", "Max sell")} value={maxQ === null ? t("fixez un prix", "set a price") : `${fUsdt(maxQ)} USDT`} />
-        <Small label={t("Frais est.", "Est. fees")} value={quantite > 0 ? `${frais.actif === "USDT" ? enTranches(frais.montant, 2) : xaf(frais.montant)} ${frais.actif}` : "—"} />
+        <Small label={f.cote === "achat" ? t("Dispo pour acheter", "Available to buy") : t("Dispo pour vendre", "Available to sell")} value={f.cote === "achat" ? `${xaf(dispoXafe)} XAFe` : `${enTranches(dispoBase, 2)} ${B}`} />
+        <Small label={f.cote === "achat" ? t(`Vos ${B} (à vendre)`, `Your ${B} (to sell)`) : t("Vos XAFe (pour acheter)", "Your XAFe (to buy)")} value={f.cote === "achat" ? `${enTranches(dispoBase, 2)} ${B}` : `${xaf(dispoXafe)} XAFe`} />
+        <Small label={f.cote === "achat" ? t("Achat max", "Max buy") : t("Vente max", "Max sell")} value={maxQ === null ? t("fixez un prix", "set a price") : `${fUsdt(maxQ)} ${B}`} />
+        <Small label={t("Frais est.", "Est. fees")} value={quantite > 0 ? `${frais.actif === "XAFe" ? xaf(frais.montant) : enTranches(frais.montant, 2)} ${frais.actif}` : "—"} />
       </Stack>
       {/* pourquoi le bouton ne part pas : la règle et sa borne, AVANT l'envoi — jamais un bouton gris muet */}
       {(raison || marcheVide) && (
@@ -339,7 +364,7 @@ function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean; autoNe
         </Typography>
       )}
       <Button variant="contained" disabled={!valide || enCours} onClick={() => setConfirme(true)} sx={{ bgcolor: couleur(f.cote), minHeight: 44, borderRadius: 2, "&:hover": { bgcolor: couleur(f.cote) } }}>
-        {f.cote === "achat" ? t("Acheter USDT", "Buy USDT") : t("Vendre USDT", "Sell USDT")}
+        {f.cote === "achat" ? t(`Acheter ${B}`, `Buy ${B}`) : t(`Vendre ${B}`, `Sell ${B}`)}
       </Button>
       <Typography component={Link} to="/marche/regles" sx={{ fontSize: 12, color: "text.secondary", textAlign: "center", minHeight: 32, display: "flex", alignItems: "center", justifyContent: "center", textUnderlineOffset: 3 }}>
         {t("Règles du marché", "Market rules")}
@@ -363,21 +388,22 @@ function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean; autoNe
         </Stack>
       </Feuille>
 
-      <Feuille ouverte={confirme} onFermer={() => setConfirme(false)} titre={f.cote === "achat" ? t(`Acheter ${fUsdt(quantite)} USDT`, `Buy ${fUsdt(quantite)} USDT`) : t(`Vendre ${fUsdt(quantite)} USDT`, `Sell ${fUsdt(quantite)} USDT`)}>
+      <Feuille ouverte={confirme} onFermer={() => setConfirme(false)} titre={f.cote === "achat" ? t(`Acheter ${fUsdt(quantite)} ${B}`, `Buy ${fUsdt(quantite)} ${B}`) : t(`Vendre ${fUsdt(quantite)} ${B}`, `Sell ${fUsdt(quantite)} ${B}`)}>
         <Stack gap={1.5}>
           <Card sx={{ p: 2, gap: 1 }}>
             <Line label={t("Type", "Type")} value={f.type === "limite" ? t("Limite", "Limit") : t("Marché", "Market")} />
             <Line label={t("Prix", "Price")} value={f.type === "limite" ? `${fPrix(prix)} XAFe` : t("au marché", "market")} />
-            <Line label={t("Quantité", "Quantity")} value={`${fUsdt(quantite)} USDT`} />
+            <Line label={t("Carnet", "Market")} value={paire} />
+            <Line label={t("Quantité", "Quantity")} value={`${fUsdt(quantite)} ${B}`} />
             <Divider />
             <Line label={f.type === "limite" ? t("Total", "Total") : t("Total estimé", "Estimated total")} value={`${xaf(total)} XAFe`} strong />
-            <Line label={t("Frais estimés", "Estimated fees")} value={`${frais.actif === "USDT" ? enTranches(frais.montant, 2) : xaf(frais.montant)} ${frais.actif}`} />
+            <Line label={t("Frais estimés", "Estimated fees")} value={`${frais.actif === "XAFe" ? xaf(frais.montant) : enTranches(frais.montant, 2)} ${frais.actif}`} />
           </Card>
           <Typography variant="body2">
             {f.type === "limite"
               ? f.cote === "achat"
                 ? t(`${xaf(total)} XAFe sont bloqués tant que l'ordre attend ; la différence revient si l'exécution se fait moins cher.`, `${xaf(total)} XAFe stay locked while the order waits. If it fills at a lower price, the difference comes back to you.`)
-                : t(`${fUsdt(quantite)} USDT sont bloqués tant que l'ordre attend.`, `${fUsdt(quantite)} USDT stay locked while the order waits.`)
+                : t(`${fUsdt(quantite)} ${B} sont bloqués tant que l'ordre attend.`, `${fUsdt(quantite)} ${B} stay locked while the order waits.`)
               : t("Un ordre au marché prend ce qu'il trouve au carnet et s'arrête à vos fonds ; ce qui n'est pas exécuté est annulé.", "A market order takes what it finds in the order book, up to your funds. Anything not filled is canceled.")}
           </Typography>
           <Button variant="contained" disabled={enCours} onClick={() => void placer()} sx={{ bgcolor: couleur(f.cote), "&:hover": { bgcolor: couleur(f.cote) } }}>
@@ -407,7 +433,7 @@ function OpenOrder({ o, onCancel }: { o: Ordre; onCancel?: (id: string) => void 
     <Stack gap={1} sx={{ py: 1.5, borderTop: 1, borderColor: "divider" }}>
       <Stack direction="row" alignItems="center" gap={1}>
         <Chip label={nomDuCote(o.cote)} size="small" sx={{ height: 22, fontSize: 12, bgcolor: fond(o.cote), color: couleur(o.cote), fontWeight: 600 }} />
-        <Typography component={Link} to={`/marche/ordres/${o.id}`} sx={{ fontWeight: 600, fontSize: 14, color: "inherit", textDecoration: "none", display: "inline-block", py: "6px" }}>USDT/XAFe</Typography>{/* langue-ok */}
+        <Typography component={Link} to={`/marche/ordres/${o.id}`} sx={{ fontWeight: 600, fontSize: 14, color: "inherit", textDecoration: "none", display: "inline-block", py: "6px" }}>{o.paire}</Typography>
         <Typography variant="caption" sx={{ "@media (max-width:359px)": { display: "none" } }}>{nomDuType(o.type)}</Typography>
         <Box sx={{ flex: 1 }} />
         <Typography variant="caption">{heure(o.creeLe)}</Typography>
@@ -433,7 +459,7 @@ function OrdreFait({ o }: { o: Ordre }) {
     <Stack component={Link} to={`/marche/ordres/${o.id}`} gap={0.75} sx={{ py: 1.5, borderTop: 1, borderColor: "divider", color: "inherit", textDecoration: "none" }}>
       <Stack direction="row" alignItems="center" gap={1}>
         <Chip label={nomDuCote(o.cote)} size="small" sx={{ height: 22, fontSize: 12, bgcolor: fond(o.cote), color: couleur(o.cote), fontWeight: 600 }} />
-        <Typography sx={{ fontWeight: 600, fontSize: 14 }}>USDT/XAFe</Typography>{/* langue-ok */}
+        <Typography sx={{ fontWeight: 600, fontSize: 14 }}>{o.paire}</Typography>
         <Box sx={{ flex: 1 }} />
         <Typography variant="caption">{heure(o.majLe ?? o.creeLe)}</Typography>
         <Chip label={nomDEtat(o.etat === "execute" ? "execute" : "partiel")} size="small" sx={{ height: 22, fontSize: 12 }} />
@@ -465,9 +491,9 @@ function Actifs() {
   if (!soldes) return <Squelette hauteur={80} radius={12} />;
   return (
     <Stack>
-      {(["XAFe", "USDT"] as const).map((a) => (
+      {(["XAFe", "USDT", "USDC"] as const).map((a) => (
         <Stack key={a} direction="row" alignItems="center" gap={1.5} sx={{ py: 1.5, borderTop: 1, borderColor: "divider" }}>
-          <Badge kind={a === "XAFe" ? "xafe" : "usdt"} size={36} />
+          <Badge kind={badgeDe(a)} size={36} />
           <Typography sx={{ fontWeight: 600, flex: 1 }}>{a}</Typography>
           <Stack alignItems="flex-end">
             <Typography sx={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{a === "XAFe" ? xaf(Math.trunc(soldes[a].disponible)) : fUsdt(soldes[a].disponible)}</Typography>
@@ -501,6 +527,8 @@ function Regle({ titre, valeur, aide }: { titre: string; valeur: string; aide: s
  * Les chiffres viennent des paramètres de l'équipe (parametres_publics).
  */
 export function MarcheRegles() {
+  const [paire] = usePaire();
+  const B = baseDe(paire);
   const { data: cotation } = useCotation();
   const ref = cotation?.reference ?? MARCHE.reference;
   const achat = bandeDePrix("achat", ref);
@@ -511,7 +539,7 @@ export function MarcheRegles() {
       <Card sx={{ gap: 0.5 }}>
         <Typography variant="subtitle1" component="h2">{t("Comment un échange se fait", "How a trade happens")}</Typography>
         <Box component="ol" sx={{ m: 0, pl: 2.5, "& li": { mb: 0.75 }, typography: "body2" }}>
-          <li>{t("Un ordre limite ", "A limit order ")}<b>{t("bloque", "locks")}</b>{t(" ses fonds dès qu'il est posé : les XAFe d'un achat, les USDT d'une vente. Ils reviennent s'il est annulé.", " its funds as soon as it is placed: XAFe for a buy, USDT for a sell. They come back if it is canceled.")}</li>
+          <li>{t("Un ordre limite ", "A limit order ")}<b>{t("bloque", "locks")}</b>{t(` ses fonds dès qu'il est posé : les XAFe d'un achat, les ${B} d'une vente. Ils reviennent s'il est annulé.`, ` its funds as soon as it is placed: XAFe for a buy, ${B} for a sell. They come back if it is canceled.`)}</li>
           <li>{t("Un ordre qui arrive rencontre d'abord le ", "An incoming order first meets the ")}<b>{t("meilleur prix", "best price")}</b>{t(" en face, puis, à prix égal, l'ordre ", " on the other side, then, at equal prices, the order that ")}<b>{t("arrivé le premier", "arrived first")}</b>.</li>
           <li>{t("L'échange se fait au prix de l'ordre ", "The trade happens at the price of the order ")}<b>{t("qui attendait", "that was waiting")}</b>{t(" : celui qui arrive ne paie jamais plus cher que sa limite.", ": the incoming order never pays more than its limit.")}</li>
           <li>{t("Un ordre peut être servi en plusieurs fois ; ce qui reste attend au carnet (limite) ou est annulé (marché).", "An order can be filled in several parts. What remains waits in the order book (limit) or is canceled (market).")}</li>
@@ -534,13 +562,13 @@ export function MarcheRegles() {
             "A market order never fills further than this from the reference price. Anything it can't find within this band is canceled, not filled at any price.")} />
         <Regle titre={t("Pas de prix", "Price step")} valeur={`${fPrix(MARCHE.pasPrix)} XAFe`} aide={t("Un prix se donne à ce pas près : 618,40 ou 618,45, pas 618,41.", "Prices move in steps of this size: 618.40 or 618.45, not 618.41.")} />
         <Regle titre={t("Montant minimum d'un ordre", "Minimum order amount")} valeur={`${xaf(MARCHE.montantMin)} XAFe`}
-          aide={t("Au prix de l'ordre (ou du marché pour un ordre au marché). La quantité se donne au centime d'USDT.", "At the order's price (or the market price for a market order). Quantities go down to 0.01 USDT.")} />
-        <Regle titre={t("Montant maximum", "Maximum amount")} valeur={Number.isFinite(MARCHE.quantiteMax) ? `${fUsdt(MARCHE.quantiteMax)} USDT` : t("aucun", "none")} aide={t("Tradez autant que votre solde le permet.", "Trade as much as your balance allows.")} />
-        {Number.isFinite(MARCHE.marcheQuantiteMax) && <Regle titre={t("Ordre au marché, au plus", "Market order, at most")} valeur={`${fUsdt(MARCHE.marcheQuantiteMax)} USDT`} aide={t("Au-delà, posez un ordre limite : vous fixez le prix.", "Above that, place a limit order: you set the price.")} />}
+          aide={t(`Au prix de l'ordre (ou du marché pour un ordre au marché). La quantité se donne au centime d'${B}.`, `At the order's price (or the market price for a market order). Quantities go down to 0.01 ${B}.`)} />
+        <Regle titre={t("Montant maximum", "Maximum amount")} valeur={Number.isFinite(MARCHE.quantiteMax) ? `${fUsdt(MARCHE.quantiteMax)} ${B}` : t("aucun", "none")} aide={t("Tradez autant que votre solde le permet.", "Trade as much as your balance allows.")} />
+        {Number.isFinite(MARCHE.marcheQuantiteMax) && <Regle titre={t("Ordre au marché, au plus", "Market order, at most")} valeur={`${fUsdt(MARCHE.marcheQuantiteMax)} ${B}`} aide={t("Au-delà, posez un ordre limite : vous fixez le prix.", "Above that, place a limit order: you set the price.")} />}
         <Regle titre={t("Ordres ouverts, au plus", "Open orders, at most")} valeur={String(MARCHE.ordresOuvertsMax)} aide={t("Par compte, en même temps.", "Per account, at the same time.")} />
         <Regle titre={t("Frais", "Fees")} valeur={`${pourcent(FRAIS.placeur)} · ${pourcent(FRAIS.preneur)}`}
-          aide={t("Le premier si votre ordre attendait au carnet (il y apporte un prix), le second s'il prend un ordre qui attendait. L'acheteur les paie en USDT, le vendeur en XAFe.",
-            "The first if your order was waiting in the order book (it adds a price), the second if it takes an order that was waiting. Buyers pay fees in USDT, sellers in XAFe.")} />
+          aide={t(`Le premier si votre ordre attendait au carnet (il y apporte un prix), le second s'il prend un ordre qui attendait. L'acheteur les paie en ${B}, le vendeur en XAFe.`,
+            `The first if your order was waiting in the order book (it adds a price), the second if it takes an order that was waiting. Buyers pay fees in ${B}, sellers in XAFe.`)} />
       </Card>
     </Screen>
   );
@@ -605,6 +633,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 /** Le graphique, en panneau, à côté du formulaire d'ordre sur un grand écran. */
 function PanneauGraphique() {
+  const [paire] = usePaire();
   const { data: c } = useCotation();
   const { data: carnet } = useCarnet(100);
   const [vue, setVue] = useState<"graphique" | "profondeur">("graphique");
@@ -613,14 +642,14 @@ function PanneauGraphique() {
     <Paper sx={{ p: 2.5, borderRadius: 6, display: "flex", flexDirection: "column", gap: 1.5, mt: 1 }}>
       <Stack direction="row" alignItems="flex-end" justifyContent="space-between" flexWrap="wrap" gap={2}>
         <Stack>
-          <Typography variant="caption">{t("USDT/XAFe · dernier prix", "USDT/XAFe · last price")}</Typography>
+          <Typography variant="caption">{t(`${paire} · dernier prix`, `${paire} · last price`)}</Typography>
           <Typography sx={{ fontSize: 30, fontWeight: 700, color: v >= 0 ? BUY : SELL, lineHeight: 1.1, fontVariantNumeric: "tabular-nums" }}>{c?.dernier != null ? fPrix(c.dernier) : "—"}</Typography>
         </Stack>
         <Stack direction="row" gap={3}>
           <Stat label={t("Variation 24 h", "24h change")} value={t(`${v >= 0 ? "+" : ""}${enTranches(v, 2)} %`, `${v >= 0 ? "+" : ""}${enTranches(v, 2)}%`)} />
           <Stat label={t("Haut 24 h", "24h high")} value={c?.haut24h != null ? fPrix(c.haut24h) : "—"} />
           <Stat label={t("Bas 24 h", "24h low")} value={c?.bas24h != null ? fPrix(c.bas24h) : "—"} />
-          <Stat label={t("Volume 24 h (USDT)", "24h volume (USDT)")} value={c ? fUsdt(Math.round(c.volume24hUsdt)) : "—"} />
+          <Stat label={t(`Volume 24 h (${baseDe(paire)})`, `24h volume (${baseDe(paire)})`)} value={c ? fUsdt(Math.round(c.volume24hBase)) : "—"} />
         </Stack>
       </Stack>
       <Tabs value={vue} onChange={(_, val) => setVue(val)} sx={{ minHeight: 36, "& .MuiTab-root": { minHeight: 36, textTransform: "none", fontWeight: 600, px: 1.5 } }}>
@@ -636,6 +665,7 @@ function PanneauGraphique() {
 
 export function MarcheGraphique() {
   const navigate = useNavigate();
+  const [paire] = usePaire();
   const { data: c } = useCotation();
   const { data: carnet } = useCarnet(5);
   const { data: profond } = useCarnet(100);
@@ -646,7 +676,7 @@ export function MarcheGraphique() {
   const aller = (cote: Cote) => { poser({ cote, prix: "" }); navigate("/marche"); };
 
   return (
-    <Screen back="/marche" title="USDT/XAFe" gap={1.5}>
+    <Screen back="/marche" title={paire} gap={1.5}>
       <Stack direction="row" alignItems="flex-end" justifyContent="space-between">
         <Stack>
           <Typography sx={{ fontSize: 30, fontWeight: 700, color: v >= 0 ? BUY : SELL, lineHeight: 1.1, fontVariantNumeric: "tabular-nums" }}>{c?.dernier != null ? fPrix(c.dernier) : "—"}</Typography>
@@ -657,7 +687,7 @@ export function MarcheGraphique() {
         <Stack direction="row" gap={2.5}>
           <Stat label={t("Haut 24 h", "24h high")} value={c?.haut24h != null ? fPrix(c.haut24h) : "—"} />
           <Stat label={t("Bas 24 h", "24h low")} value={c?.bas24h != null ? fPrix(c.bas24h) : "—"} />
-          <Stat label={t("Vol 24 h (USDT)", "24h vol (USDT)")} value={c ? fUsdt(Math.round(c.volume24hUsdt)) : "—"} />
+          <Stat label={t(`Vol 24 h (${baseDe(paire)})`, `24h vol (${baseDe(paire)})`)} value={c ? fUsdt(Math.round(c.volume24hBase)) : "—"} />
         </Stack>
       </Stack>
       <Paper sx={{ p: 1.25, borderRadius: 3 }}>
@@ -696,10 +726,10 @@ export function MarcheGraphique() {
         </Stack>
       ) : (
         <Card sx={{ gap: 1 }}>
-          <Line label={t("Paire", "Pair")} value="USDT / XAFe" />
-          <Line label={t("Prix en", "Priced in")} value={t("XAFe par USDT", "XAFe per USDT")} />
+          <Line label={t("Paire", "Pair")} value={paire.replace("/", " / ")} />
+          <Line label={t("Prix en", "Priced in")} value={t(`XAFe par ${baseDe(paire)}`, `XAFe per ${baseDe(paire)}`)} />
           <Line label={t("Pas de prix", "Price step")} value={fPrix(MARCHE.pasPrix)} />
-          <Line label={t("Quantité minimale", "Minimum quantity")} value={`${fUsdt(MARCHE.quantiteMin)} USDT`} />
+          <Line label={t("Quantité minimale", "Minimum quantity")} value={`${fUsdt(MARCHE.quantiteMin)} ${baseDe(paire)}`} />
           <Line label={t("Frais placeur · preneur", "Maker · taker fees")} value={`${pourcent(FRAIS.placeur)} · ${pourcent(FRAIS.preneur)}`} />
           <Line label="1 XAFe" value={t("1 XAF, garanti par les floats MoMo et les banques", "1 XAF, backed by MoMo floats and banks")} />
         </Card>
@@ -728,6 +758,8 @@ function regrouper(niveaux: Niveau[], pas: number, cote: Cote): Niveau[] {
 
 export function MarcheCarnet() {
   const navigate = useNavigate();
+  const [paire] = usePaire();
+  const B = baseDe(paire);
   const [onglet, setOnglet] = useState<"carnet" | "trades">("carnet");
   const [pas, setPas] = useState(MARCHE.pasPrix);
   const [menuPas, setMenuPas] = useState<HTMLElement | null>(null);
@@ -746,8 +778,8 @@ export function MarcheCarnet() {
   const colonne = (niveaux: Niveau[], side: Cote) => (
     <Stack sx={{ flex: 1 }}>
       <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
-        <Typography variant="caption">{side === "achat" ? t("Qté (USDT)", "Qty (USDT)") : t("Vente (XAFe)", "Ask (XAFe)")}</Typography>
-        <Typography variant="caption">{side === "achat" ? t("Achat (XAFe)", "Bid (XAFe)") : t("Qté (USDT)", "Qty (USDT)")}</Typography>
+        <Typography variant="caption">{side === "achat" ? t(`Qté (${B})`, `Qty (${B})`) : t("Vente (XAFe)", "Ask (XAFe)")}</Typography>
+        <Typography variant="caption">{side === "achat" ? t("Achat (XAFe)", "Bid (XAFe)") : t(`Qté (${B})`, `Qty (${B})`)}</Typography>
       </Stack>
       {niveaux.map((n) => (
         <ButtonBase key={n.prix} onClick={() => choisir(n.prix)} sx={{ position: "relative", display: "flex", justifyContent: "space-between", height: 26, alignItems: "center", px: 0.5, width: "100%" }}>
@@ -760,7 +792,7 @@ export function MarcheCarnet() {
   );
 
   return (
-    <Screen back="/marche" title="USDT/XAFe" gap={1}>
+    <Screen back="/marche" title={paire} gap={1}>
       <Tabs value={onglet} onChange={(_, v) => setOnglet(v)} variant="fullWidth" sx={{ minHeight: 40, "& .MuiTab-root": { minWidth: 0, px: 1, "@media (max-width:359px)": { fontSize: 13, px: 0.5 } } }}>
         <Tab value="carnet" label={t("Carnet d'ordres", "Order book")} sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
         <Tab value="profondeur" label={t("Profondeur", "Depth")} sx={{ minHeight: 40, textTransform: "none", fontWeight: 600 }} />
@@ -804,7 +836,7 @@ export function MarcheCarnet() {
         <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
           <Typography variant="caption">{t("Heure", "Time")}</Typography>
           <Typography variant="caption">{t("Prix (XAFe)", "Price (XAFe)")}</Typography>
-          <Typography variant="caption">{t("Qté (USDT)", "Qty (USDT)")}</Typography>
+          <Typography variant="caption">{t(`Qté (${B})`, `Qty (${B})`)}</Typography>
         </Stack>
         {(trades ?? []).map((t, i) => (
           <Stack key={`${t.quand}-${i}`} direction="row" justifyContent="space-between" sx={{ height: 26, alignItems: "center" }}>
@@ -875,12 +907,12 @@ export function MarcheOrdres() {
 
 /* ============================================ 5 · détail d'un ordre */
 
-function LigneExecution({ e }: { e: Execution }) {
+function LigneExecution({ e, base }: { e: Execution; base: string }) {
   return (
     <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ py: 1, borderTop: 1, borderColor: "divider" }}>
       <Stack>
-        <Typography sx={{ fontSize: 13, fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>{t(`${fUsdt(e.quantite)} USDT à ${fPrix(e.prix)}`, `${fUsdt(e.quantite)} USDT at ${fPrix(e.prix)}`)}</Typography>
-        <Typography variant="caption">{heureSecondes(e.quand)} · {e.preneur ? t("preneur", "taker") : t("placeur", "maker")} · {t("frais", "fee")} {e.fraisActif === "USDT" ? enTranches(e.frais, 2) : xaf(e.frais)} {e.fraisActif}</Typography>
+        <Typography sx={{ fontSize: 13, fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>{t(`${fUsdt(e.quantite)} ${base} à ${fPrix(e.prix)}`, `${fUsdt(e.quantite)} ${base} at ${fPrix(e.prix)}`)}</Typography>
+        <Typography variant="caption">{heureSecondes(e.quand)} · {e.preneur ? t("preneur", "taker") : t("placeur", "maker")} · {t("frais", "fee")} {e.fraisActif === "XAFe" ? xaf(e.frais) : enTranches(e.frais, 2)} {e.fraisActif}</Typography>
       </Stack>
       <Typography sx={{ fontSize: 13, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{xaf(e.montantXafe)} XAFe</Typography>
     </Stack>
@@ -894,8 +926,9 @@ export function MarcheOrdreDetail() {
   if (!data) return <Attente erreur={error} title={t("Ordre", "Order")} back="/marche/ordres" hauteur={260} />;
   const { ordre: o, executions } = data;
   const ouvert = o.etat === "ouvert" || o.etat === "partiel";
+  const B = baseDe(o.paire);
   return (
-    <Screen title={o.cote === "achat" ? t(`Achat ${fUsdt(o.quantite)} USDT`, `Buy ${fUsdt(o.quantite)} USDT`) : t(`Vente ${fUsdt(o.quantite)} USDT`, `Sell ${fUsdt(o.quantite)} USDT`)} back="/marche/ordres">
+    <Screen title={o.cote === "achat" ? t(`Achat ${fUsdt(o.quantite)} ${B}`, `Buy ${fUsdt(o.quantite)} ${B}`) : t(`Vente ${fUsdt(o.quantite)} ${B}`, `Sell ${fUsdt(o.quantite)} ${B}`)} back="/marche/ordres">
       <Card>
         <Stack direction="row" alignItems="center" gap={1}>
           <Chip label={nomDuCote(o.cote)} size="small" sx={{ height: 24, bgcolor: fond(o.cote), color: couleur(o.cote), fontWeight: 600 }} />
@@ -903,18 +936,19 @@ export function MarcheOrdreDetail() {
           <Box sx={{ flex: 1 }} />
           <Typography variant="caption">{jourRelatif(o.creeLe)} · {heure(o.creeLe)}</Typography>
         </Stack>
+        <Line label={t("Carnet", "Market")} value={o.paire} />
         <Line label={t("Type", "Type")} value={nomDuType(o.type)} />
         {o.prix != null && <Line label={t("Prix limite", "Limit price")} value={`${fPrix(o.prix)} XAFe`} />}
-        <Line label={t("Exécuté", "Filled")} value={`${fUsdt(o.executee)} / ${fUsdt(o.quantite)} USDT`} />
+        <Line label={t("Exécuté", "Filled")} value={`${fUsdt(o.executee)} / ${fUsdt(o.quantite)} ${B}`} />
         {o.prixMoyen != null && <Line label={t("Prix moyen", "Avg. price")} value={`${fPrix(o.prixMoyen)} XAFe`} />}
         <Line label={t("Total", "Total")} value={`${xaf(o.totalXafe)} XAFe`} strong />
-        {ouvert && o.bloque > 0 && <Line label={t("Bloqué", "Locked")} value={`${o.cote === "achat" ? xaf(o.bloque) : fUsdt(o.bloque)} ${o.cote === "achat" ? "XAFe" : "USDT"}`} />}
+        {ouvert && o.bloque > 0 && <Line label={t("Bloqué", "Locked")} value={`${o.cote === "achat" ? xaf(o.bloque) : fUsdt(o.bloque)} ${o.cote === "achat" ? "XAFe" : B}`} />}
         <Line label={t("Référence", "Reference")} value={o.numero} mono />
       </Card>
       {executions.length > 0 && (
         <Paper sx={{ px: 2, pb: 1, borderRadius: 3 }}>
           <Typography variant="subtitle1" sx={{ py: 1.5 }}>{t("Exécutions", "Fills")}</Typography>
-          {executions.map((e) => <LigneExecution key={e.id} e={e} />)}
+          {executions.map((e) => <LigneExecution key={e.id} e={e} base={B} />)}
         </Paper>
       )}
       <Box sx={{ flex: 1 }} />
@@ -932,21 +966,22 @@ export function MarcheExecute() {
   if (!data) return <Attente erreur={error} back="/marche" />;
   const { ordre: o, executions } = data;
   const frais = executions.reduce((s, e) => s + e.frais, 0);
-  const fraisActif = o.cote === "achat" ? "USDT" : "XAFe";
+  const B = baseDe(o.paire);
+  const fraisActif = o.cote === "achat" ? B : "XAFe";
   /* ce qui ARRIVE sur le compte, frais déduits — pas la quantité négociée */
   const recu = o.cote === "achat" ? arrondi2(o.executee - frais) : o.totalXafe - frais;
   return (
     <Success
       title={t("Ordre exécuté", "Order filled")}
-      amount={o.cote === "achat" ? `+${enTranches(recu, 2)} USDT` : `+${xaf(recu)} XAFe`}
+      amount={o.cote === "achat" ? `+${enTranches(recu, 2)} ${B}` : `+${xaf(recu)} XAFe`}
       caption={o.cote === "achat"
         ? t(`Pour ${xaf(o.totalXafe)} XAFe, au prix moyen de ${o.prixMoyen != null ? fPrix(o.prixMoyen) : "—"}.`, `For ${xaf(o.totalXafe)} XAFe, at an average price of ${o.prixMoyen != null ? fPrix(o.prixMoyen) : "—"}.`)
-        : t(`Pour ${fUsdt(o.executee)} USDT, au prix moyen de ${o.prixMoyen != null ? fPrix(o.prixMoyen) : "—"}.`, `For ${fUsdt(o.executee)} USDT, at an average price of ${o.prixMoyen != null ? fPrix(o.prixMoyen) : "—"}.`)}
+        : t(`Pour ${fUsdt(o.executee)} ${B}, au prix moyen de ${o.prixMoyen != null ? fPrix(o.prixMoyen) : "—"}.`, `For ${fUsdt(o.executee)} ${B}, at an average price of ${o.prixMoyen != null ? fPrix(o.prixMoyen) : "—"}.`)}
       primary={{ label: t("Retour au marché", "Back to Market"), to: "/marche" }}
       secondary={{ label: t("Voir mon portefeuille", "View my wallet"), to: "/" }}
     >
       <Card>
-        <Line label={t("Frais", "Fees")} value={`${fraisActif === "USDT" ? enTranches(frais, 2) : xaf(frais)} ${fraisActif}`} />
+        <Line label={t("Frais", "Fees")} value={`${fraisActif === "XAFe" ? xaf(frais) : enTranches(frais, 2)} ${fraisActif}`} />
         <Line label={t("Exécutions", "Fills")} value={String(executions.length)} />
         <Line label={t("Référence", "Reference")} value={o.numero} mono />
       </Card>

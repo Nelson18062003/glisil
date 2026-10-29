@@ -225,14 +225,14 @@ function dictionnaire(): Record<string, Entree> {
     "pas assez de vendeurs au carnet": { // langue-ok
       titre: t("Pas assez de vendeurs", "Not enough sellers"),
       argent: rienNaBouge(),
-      suite: t("Le carnet n'a pas assez d'USDT à vendre pour ce montant (10 USDT au moins). Essayez un autre montant.",
-        "The order book doesn't have enough USDT for sale for this amount (10 USDT minimum). Try a different amount."),
+      suite: t("Le carnet n'a pas assez à vendre pour ce montant (10 USDT ou USDC au moins). Essayez un autre montant.",
+        "The order book doesn't have enough for sale for this amount (10 USDT or USDC minimum). Try a different amount."),
     },
     "pas assez d'acheteurs au carnet": { // langue-ok
       titre: t("Pas assez d'acheteurs", "Not enough buyers"),
       argent: rienNaBouge(),
-      suite: t("Le carnet ne prend pas autant d'USDT en ce moment. Essayez un montant plus petit.",
-        "The order book can't take that much USDT right now. Try a smaller amount."),
+      suite: t("Le carnet ne prend pas autant en ce moment. Essayez un montant plus petit.",
+        "The order book can't take that much right now. Try a smaller amount."),
     },
     "achat rapide fermé": { // langue-ok
       titre: t("L'achat rapide est fermé", "Quick buy is closed"),
@@ -242,7 +242,7 @@ function dictionnaire(): Record<string, Entree> {
     },
     "solde insuffisant": { // langue-ok
       titre: t("Le solde ne suffit pas", "Your balance isn't enough"),
-      argent: t("Rien n'a bougé : aucun XAFe ni USDT n'a été bloqué.", "Nothing has changed: no XAFe or USDT has been locked."),
+      argent: t("Rien n'a bougé : rien n'a été bloqué sur votre compte.", "Nothing has changed: nothing was locked on your account."),
       suite: t("Baissez le montant ou entrez des XAF d'abord.", "Lower the amount, or deposit XAF first."),
     },
     "plafond du palier atteint": { // langue-ok
@@ -268,7 +268,7 @@ function dictionnaire(): Record<string, Entree> {
     "quantité invalide": { // langue-ok
       titre: t("La quantité n'est pas valable", "The quantity isn't valid"),
       argent: aucunOrdre(),
-      suite: t("Une quantité d'USDT s'écrit avec deux décimales au plus.", "A USDT quantity can have at most two decimal places."),
+      suite: t("Une quantité d'USDT ou d'USDC s'écrit avec deux décimales au plus.", "A USDT or USDC quantity can have at most two decimal places."),
     },
     "ordre trop petit": { // langue-ok
       titre: t("Cet ordre est trop petit", "This order is too small"),
@@ -320,7 +320,19 @@ function dictionnaire(): Record<string, Entree> {
     "marché fermé": { // langue-ok
       titre: t("Le marché est fermé pour le moment", "The market is closed for now"),
       argent: aucunOrdre(),
-      suite: t("Réessayez dans quelques minutes.", "Try again in a few minutes."),
+      suite: t("Réessayez dans quelques minutes, ou passez par l'autre carnet (USDT ou USDC).", "Try again in a few minutes, or use the other order book (USDT or USDC)."),
+    },
+    "paire inconnue": { // langue-ok
+      titre: t("Ce carnet n'existe pas", "This order book doesn't exist"),
+      argent: aucunOrdre(),
+      suite: t("Choisissez USDT/XAFe ou USDC/XAFe en haut du marché.", "Choose USDT/XAFe or USDC/XAFe at the top of the market."),
+      recommencer: false,
+    },
+    "actif absent de ce réseau": { // langue-ok
+      titre: t("Ce jeton ne passe pas par ce réseau", "This token isn't available on this network"),
+      argent: rienNaBouge(),
+      suite: t("L'USDC passe par BNB Chain et Ethereum, pas par Tron. Choisissez un autre réseau.", "USDC is available on BNB Chain and Ethereum, not on Tron. Choose another network."),
+      recommencer: false,
     },
     "cet ordre ne peut plus être annulé": { // langue-ok
       titre: t("Cet ordre est déjà exécuté ou annulé", "This order has already been filled or canceled"),
@@ -434,7 +446,7 @@ function dictionnaire(): Record<string, Entree> {
     "il reste de l'argent sur le compte": { // langue-ok
       titre: t("Il reste de l'argent sur votre compte", "There's still money in your account"),
       argent: t("Rien n'a été fermé : votre argent est toujours là.", "Nothing was closed: your money is still there."),
-      suite: t("Sortez d'abord vos XAF et vos USDT, puis revenez fermer le compte.", "Withdraw your XAF and USDT first, then come back to close the account."),
+      suite: t("Sortez d'abord vos XAF, vos USDT et vos USDC, puis revenez fermer le compte.", "Withdraw your XAF, USDT and USDC first, then come back to close the account."),
       recommencer: false,
     },
     "une opération est en cours": { // langue-ok

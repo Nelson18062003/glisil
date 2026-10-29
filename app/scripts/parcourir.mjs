@@ -333,6 +333,38 @@ try {
     await p3.close();
   }
 
+  /* ----------------------------------------------- le carnet USDC (0045) */
+  etape("Deux carnets : USDC/XAFe se choisit en haut du marché, s'achète au marché, et son solde est le sien");
+  await page.goto(`${BASE}/marche`);
+  await page.getByText("Prix (XAFe)").first().waitFor();
+  await page.getByRole("button", { name: "USDT/XAFe", exact: true }).click();
+  await page.locator('[data-paire="USDC/XAFe"]').waitFor();
+  await capturer("marche-paires");
+  await page.locator('[data-paire="USDC/XAFe"]').click();
+  await page.getByLabel("Quantité (USDC)").waitFor();
+  exiger(await page.getByRole("button", { name: "USDC/XAFe", exact: true }).count() === 1, "l'en-tête nomme le carnet choisi");
+  exiger((await page.getByLabel("Quantité (USDC)").inputValue()) === "", "ce qui était tapé pour l'USDT ne passe pas au carnet USDC");
+  await page.getByText("Limite", { exact: true }).first().click();
+  await page.getByText("Marché", { exact: true }).last().click();
+  await page.getByLabel("Quantité (USDC)").fill("10");
+  await page.getByRole("button", { name: "Acheter USDC" }).click();
+  await voir("Acheter 10 USDC");
+  await page.getByRole("button", { name: "Confirmer" }).click();
+  await page.waitForURL(/\/marche\/execute\//);
+  await voir("+9,99 USDC");
+  await capturer("marche-usdc-execute");
+  await page.getByRole("link", { name: "Retour au marché" }).click();
+  await page.waitForURL(/\/marche$/);
+  await page.getByRole("tab", { name: "Actifs" }).click();
+  await voir("USDC");
+  await capturer("marche-usdc-actifs");
+  /* le choix est retenu : on revient au carnet USDT pour la suite du parcours */
+  await page.getByRole("button", { name: "USDC/XAFe", exact: true }).click();
+  await page.locator('[data-paire="USDT/XAFe"]').click();
+  await page.getByLabel("Quantité (USDT)").waitFor();
+  await page.getByText("Marché", { exact: true }).first().click();
+  await page.getByText("Limite", { exact: true }).last().click();
+
   /* --------------------------------------------------------- crypto */
   etape("Crypto : l'adresse de dépôt et son code QR");
   await page.goto(`${BASE}/crypto`);
@@ -341,6 +373,14 @@ try {
   await page.waitForURL(/\/crypto\/deposer\/USDT$/);
   await page.locator("img[alt^='Code QR']").waitFor();
   await capturer("crypto-deposer");
+  /* l'USDC : BNB Chain (et Ethereum quand il s'ouvre), jamais Tron — et son adresse n'est pas celle de l'USDT */
+  const adresseUsdt = await page.locator("img[alt^='Code QR']").getAttribute("src");
+  await page.goto(`${BASE}/crypto/deposer/USDC`);
+  await page.locator("img[alt^='Code QR']").waitFor();
+  await voir("Cette adresse ne reçoit que des USDC");
+  exiger(await page.getByRole("button", { name: "TRC20", exact: true }).count() === 0, "l'USDC ne se dépose pas sur Tron");
+  exiger((await page.locator("img[alt^='Code QR']").getAttribute("src")) !== adresseUsdt, "l'USDC a sa propre adresse");
+  await capturer("crypto-deposer-usdc");
 
   etape("Les réseaux viennent du moteur : Base ouvert, il s'ajoute au dépôt ; une adresse 0x se CHOISIT (BSC ou Base), une adresse T se reconnaît");
   await page.addInitScript(() => {
@@ -716,7 +756,7 @@ try {
   for (const [adresse, titre, nom] of [
     ["/sortir/montant", "Les sorties vers Mobile Money arrivent bientôt", "sortir-bientot"],
     ["/marche", "Le marché ouvre bientôt", null],
-    ["/rapide?sens=achat", "L'achat et la vente d'USDT arrivent bientôt", null],
+    ["/rapide?sens=achat", "L'achat et la vente d'USDT et d'USDC arrivent bientôt", null],
     ["/crypto", "La crypto arrive bientôt", null],
     ["/crypto/deposer/USDT", "Les dépôts crypto arrivent bientôt", null],
     ["/crypto/retirer/XAFe/adresse", "Les retraits crypto arrivent bientôt", null],

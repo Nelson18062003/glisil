@@ -4,7 +4,18 @@
  * en français comme dans la base.
  */
 
-export type Actif = "XAFe" | "USDT";
+export type Actif = "XAFe" | "USDT" | "USDC";
+/** les deux dollars : ils se déposent et se retirent sur la chaîne, et s'échangent contre des XAFe */
+export type Dollar = "USDT" | "USDC";
+export const DOLLARS: readonly Dollar[] = ["USDT", "USDC"];
+/** Les deux carnets (0045) : le nom suit l'usage BASE/COTATION, comme dans la base. */
+export type Paire = "USDT/XAFe" | "USDC/XAFe";
+export const PAIRES: readonly Paire[] = ["USDT/XAFe", "USDC/XAFe"];
+export const PAIRE_PRINCIPALE: Paire = "USDT/XAFe";
+/** l'actif échangé contre des XAFe : « USDC » pour « USDC/XAFe » */
+export const baseDe = (p: Paire): Dollar => (p === "USDC/XAFe" ? "USDC" : "USDT");
+export const paireDe = (d: Dollar): Paire => (d === "USDC" ? "USDC/XAFe" : "USDT/XAFe");
+export const estPaire = (x: unknown): x is Paire => x === "USDT/XAFe" || x === "USDC/XAFe";
 export type IdOperateur = "mtn" | "om";
 /** L'identifiant d'un réseau du registre (bep20, trc20, base…) : la liste vient du moteur (0018). */
 export type Reseau = string;
@@ -167,6 +178,8 @@ export type EtatOrdre = "ouvert" | "partiel" | "execute" | "annule";
 export type Ordre = {
   id: string;
   numero: string;
+  /** le carnet de l'ordre ; un ordre d'avant 0045 est d'USDT/XAFe */
+  paire: Paire;
   cote: Cote;
   type: TypeOrdre;
   prix: number | null;
@@ -209,11 +222,13 @@ export type Carnet = { achats: Niveau[]; ventes: Niveau[] };
 export type Transaction = { quand: string; prix: number; quantite: number; cote: Cote };
 
 export type Cotation = {
+  paire: Paire;
   dernier: number | null;
   variation24h: number | null;
   haut24h: number | null;
   bas24h: number | null;
-  volume24hUsdt: number;
+  /** le volume des 24 dernières heures, dans l'actif de base de la paire (USDT ou USDC) */
+  volume24hBase: number;
   meilleurAchat: number | null;
   meilleureVente: number | null;
   /** le prix de référence du moteur : la bande de prix se calcule autour de lui (0017) */
@@ -324,8 +339,9 @@ export type SensRapide = "achat" | "vente";
 export type DevisRapide = {
   /** null pour une estimation (rien n'est écrit) */
   id: string | null;
+  paire: Paire;
   sens: SensRapide;
-  /** USDT reçus (achat) ou donnés (vente) */
+  /** USDT ou USDC reçus (achat) ou donnés (vente) */
   quantite: number;
   /** XAFe payés (achat) ou reçus (vente), marge comprise */
   total: number;

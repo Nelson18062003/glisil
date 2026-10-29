@@ -10,8 +10,9 @@ import CurrencyBitcoinRounded from "@mui/icons-material/CurrencyBitcoinRounded";
 import { Box, Button, LinearProgress, Stack, Typography } from "@mui/material";
 import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { useEstimationRapide, useGuichet, useRafraichir, useSoldes } from "../../guichet";
+import { pairesOuvertes, useEstimationRapide, useGuichet, usePaire, useRafraichir, useSoldes } from "../../guichet";
 import type { DevisRapide, SensRapide } from "../../guichet/types";
+import { baseDe, paireDe } from "../../guichet/types";
 import { RAPIDE } from "../../noyau/argent";
 import { lisible } from "../../noyau/erreurs";
 import { enTranches, pourcent, prix as fPrix, usdt } from "../../noyau/format";
@@ -30,13 +31,20 @@ export function Rapide() {
   const { data: soldes } = useSoldes();
   const [sens, setSens] = useState<SensRapide>(params.get("sens") === "vente" ? "vente" : "achat");
   const [saisie, setSaisie] = useState("");
+  /* USDT ou USDC : le même carnet que le marché ; « ?actif=USDC » (depuis une carte d'accueil) le choisit */
+  const [paire, choisirPaire] = usePaire();
+  useEffect(() => {
+    const a = params.get("actif");
+    if (a === "USDT" || a === "USDC") choisirPaire(paireDe(a));
+  }, [params, choisirPaire]);
+  const B = baseDe(paire);
   const { lancer, enCours, erreur, effacerErreur } = useGesteUnique();
 
   const montant = Number(saisie.replace(",", ".")) || 0;
-  const unite = sens === "achat" ? "XAFe" : "USDT";
-  const dispo = soldes ? (sens === "achat" ? soldes.XAFe.disponible : soldes.USDT.disponible) : 0;
+  const unite = sens === "achat" ? "XAFe" : B;
+  const dispo = soldes ? (sens === "achat" ? soldes.XAFe.disponible : soldes[B].disponible) : 0;
   const trop = soldes ? montant > dispo + 1e-9 : false;
-  const estimation = useEstimationRapide(sens, montant);
+  const estimation = useEstimationRapide(sens, montant, paire);
   const e = montant > 0 && !estimation.isError ? estimation.data : undefined;
   const ok = montant > 0 && !trop && Boolean(e) && !estimation.isError;
 
@@ -52,18 +60,18 @@ export function Rapide() {
   /* les puces portent une clé (« tout », un montant brut) ; leur libellé se lit dans la langue de l'écran */
   const choisir = (c: string) => setSaisie(c === "tout" ? String(sens === "achat" ? Math.trunc(dispo) : Math.trunc(dispo * 100) / 100) : c.replace(/\D/g, ""));
   const prixFerme = () => lancer(async () => {
-    const devis = await guichet.devisRapide({ sens, montant, ferme: true });
+    const devis = await guichet.devisRapide({ sens, montant, ferme: true, paire });
     navigate("/rapide/prix", { state: { devis, montant } });
   });
 
   const aide = !soldes ? " "
     : trop ? t(`Vous n'avez que ${sens === "achat" ? xafe(Math.trunc(dispo)) : usdt(dispo)} ${unite} disponibles`, `You only have ${sens === "achat" ? xafe(Math.trunc(dispo)) : usdt(dispo)} ${unite} available`)
     : montant > 0 && estimation.isError ? lisible(estimation.error).titre
-    : e ? (sens === "achat" ? t(`Vous recevez ${usdt(e.quantite)} USDT`, `You get ${usdt(e.quantite)} USDT`) : t(`Vous recevez ${xafe(e.total)} XAFe`, `You get ${xafe(e.total)} XAFe`))
+    : e ? (sens === "achat" ? t(`Vous recevez ${usdt(e.quantite)} ${B}`, `You get ${usdt(e.quantite)} ${B}`) : t(`Vous recevez ${xafe(e.total)} XAFe`, `You get ${xafe(e.total)} XAFe`))
     : t(`Disponible : ${sens === "achat" ? xafe(Math.trunc(dispo)) : usdt(dispo)} ${unite}`, `Available: ${sens === "achat" ? xafe(Math.trunc(dispo)) : usdt(dispo)} ${unite}`);
 
   return (
-    <Screen title={sens === "achat" ? t("Acheter des USDT", "Buy USDT") : t("Vendre des USDT", "Sell USDT")} back="/" gap={1.5}>
+    <Screen title={sens === "achat" ? t(`Acheter des ${B}`, `Buy ${B}`) : t(`Vendre des ${B}`, `Sell ${B}`)} back="/" gap={1.5}>
       <Stack direction="row" sx={{ height: 40, borderRadius: 3, overflow: "hidden", bgcolor: "background.paper" }}>
         {(["achat", "vente"] as const).map((s) => (
           <Button key={s} onClick={() => changer(s)} disableElevation variant={sens === s ? "contained" : "text"} aria-pressed={sens === s}
@@ -72,20 +80,30 @@ export function Rapide() {
           </Button>
         ))}
       </Stack>
+      {pairesOuvertes().length > 1 && (
+        <Stack direction="row" gap={1} justifyContent="center" role="group" aria-label={t("Le dollar à acheter ou vendre", "The dollar to buy or sell")}>
+          {pairesOuvertes().map((p) => (
+            <Button key={p} size="small" data-paire={p} aria-pressed={p === paire} variant={p === paire ? "contained" : "outlined"} disableElevation
+              onClick={() => { choisirPaire(p); setSaisie(""); }} sx={{ minWidth: 88, minHeight: 36, borderRadius: 5 }}>
+              {baseDe(p)}
+            </Button>
+          ))}
+        </Stack>
+      )}
       {soldes && dispo <= 0 ? (
         sens === "achat" ? (
           <EtatVide icone={<ArrowDownwardRounded sx={{ fontSize: 36 }} />} tone="green" titre={t("D'abord, des XAFe", "First, get some XAFe")}
-            texte={t("On achète des USDT avec des XAFe. Entrez des XAF par Mobile Money : ils deviennent des XAFe sur votre solde, tout de suite.", "You buy USDT with XAFe. Add XAF with Mobile Money: they become XAFe in your balance right away.")}
+            texte={t(`On achète des ${B} avec des XAFe. Entrez des XAF par Mobile Money : ils deviennent des XAFe sur votre solde, tout de suite.`, `You buy ${B} with XAFe. Add XAF with Mobile Money: they become XAFe in your balance right away.`)}
             action={{ label: t("Entrer des XAF", "Add XAF"), to: "/entrer/operateur" }} />
         ) : (
-          <EtatVide icone={<CurrencyBitcoinRounded sx={{ fontSize: 36 }} />} tone="blue" titre={t("Pas encore d'USDT à vendre", "No USDT to sell yet")}
-            texte={t("Achetez-en avec vos XAFe, ou déposez des USDT depuis un autre wallet.", "Buy some with your XAFe, or deposit USDT from another wallet.")}
-            action={{ label: t("Acheter des USDT", "Buy USDT"), onClick: () => changer("achat") }} secondaire={{ label: t("Déposer des USDT", "Deposit USDT"), to: "/crypto/deposer/USDT" }} />
+          <EtatVide icone={<CurrencyBitcoinRounded sx={{ fontSize: 36 }} />} tone="blue" titre={t(`Pas encore d'${B} à vendre`, `No ${B} to sell yet`)}
+            texte={t(`Achetez-en avec vos XAFe, ou déposez des ${B} depuis un autre wallet.`, `Buy some with your XAFe, or deposit ${B} from another wallet.`)}
+            action={{ label: t(`Acheter des ${B}`, `Buy ${B}`), onClick: () => changer("achat") }} secondaire={{ label: t(`Déposer des ${B}`, `Deposit ${B}`), to: `/crypto/deposer/${B}` }} />
         )
       ) : (<>
       <Amount value={saisie ? (sens === "achat" ? xafe(montant) : (langue() === "en" ? saisie : saisie.replace(".", ","))) : "0"} unit={unite} hint={aide} hintColor={trop || (montant > 0 && estimation.isError) ? "error.main" : undefined} />
       <Typography variant="caption" textAlign="center" sx={{ mt: -2 }}>
-        {e ? t(`≈ ${fPrix(e.prix)} XAFe par USDT, frais compris`, `≈ ${fPrix(e.prix)} XAFe per USDT, fees included`)
+        {e ? t(`≈ ${fPrix(e.prix)} XAFe par ${B}, frais compris`, `≈ ${fPrix(e.prix)} XAFe per ${B}, fees included`)
           : RAPIDE.marge > 0 ? t(`Au prix du carnet, frais de ${pourcent(RAPIDE.marge)} compris`, `At the order book price, ${pourcent(RAPIDE.marge)} fee included`)
           : t("Au prix du carnet, sans frais", "At the order book price, no fees")}
       </Typography>
@@ -119,8 +137,9 @@ export function RapidePrix() {
   const reste = Math.max(0, Math.ceil((fin - maintenant) / 1000));
   const expire = reste <= 0;
   const achat = devis.sens === "achat";
+  const B = baseDe(devis.paire);
 
-  const nouveau = () => lancer(async () => { setDevis(await guichet.devisRapide({ sens: devis.sens, montant: etat.montant!, ferme: true })); });
+  const nouveau = () => lancer(async () => { setDevis(await guichet.devisRapide({ sens: devis.sens, montant: etat.montant!, ferme: true, paire: devis.paire })); });
   const confirmer = () => lancer(async () => {
     const fait = await guichet.executerDevis(devis.id!);
     await rafraichir();
@@ -130,9 +149,9 @@ export function RapidePrix() {
   return (
     <Screen title={t("Votre prix", "Your price")} back={`/rapide?sens=${devis.sens}`} gap={1.5}>
       <Card>
-        <Line label={t("Vous payez", "You pay")} value={achat ? `${xafe(devis.total)} XAFe` : `${usdt(devis.quantite)} USDT`} strong />
-        <Line label={t("Vous recevez", "You get")} value={achat ? `${usdt(devis.quantite)} USDT` : `${xafe(devis.total)} XAFe`} strong />
-        <Line label={t("Prix", "Price")} value={t(`${fPrix(devis.prix)} XAFe par USDT`, `${fPrix(devis.prix)} XAFe per USDT`)} />
+        <Line label={t("Vous payez", "You pay")} value={achat ? `${xafe(devis.total)} XAFe` : `${usdt(devis.quantite)} ${B}`} strong />
+        <Line label={t("Vous recevez", "You get")} value={achat ? `${usdt(devis.quantite)} ${B}` : `${xafe(devis.total)} XAFe`} strong />
+        <Line label={t("Prix", "Price")} value={t(`${fPrix(devis.prix)} XAFe par ${B}`, `${fPrix(devis.prix)} XAFe per ${B}`)} />
         <Line label={t(`Dont frais (${pourcent(devis.marge)})`, `Including fees (${pourcent(devis.marge)})`)} value={`${xafe(devis.frais)} XAFe`} />
       </Card>
       <Stack gap={0.75} sx={{ px: 0.5 }} data-compte-a-rebours="1">
@@ -162,12 +181,13 @@ export function RapideFait() {
   const d = etat?.devis;
   if (!d) return <Navigate to="/" replace />;
   const achat = d.sens === "achat";
+  const B = baseDe(d.paire);
   return (
     <Success
-      title={achat ? t("USDT achetés", "USDT bought") : t("USDT vendus", "USDT sold")}
-      amount={achat ? `+${usdt(d.quantite)} USDT` : `+${xafe(d.total)} XAFe`}
-      caption={achat ? t(`Pour ${xafe(d.total)} XAFe, à ${fPrix(d.prix)} par USDT, frais compris.`, `For ${xafe(d.total)} XAFe, at ${fPrix(d.prix)} per USDT, fees included.`)
-        : t(`${usdt(d.quantite)} USDT à ${fPrix(d.prix)} par USDT, frais compris.`, `${usdt(d.quantite)} USDT at ${fPrix(d.prix)} per USDT, fees included.`)}
+      title={achat ? t(`${B} achetés`, `${B} bought`) : t(`${B} vendus`, `${B} sold`)}
+      amount={achat ? `+${usdt(d.quantite)} ${B}` : `+${xafe(d.total)} XAFe`}
+      caption={achat ? t(`Pour ${xafe(d.total)} XAFe, à ${fPrix(d.prix)} par ${B}, frais compris.`, `For ${xafe(d.total)} XAFe, at ${fPrix(d.prix)} per ${B}, fees included.`)
+        : t(`${usdt(d.quantite)} ${B} à ${fPrix(d.prix)} par ${B}, frais compris.`, `${usdt(d.quantite)} ${B} at ${fPrix(d.prix)} per ${B}, fees included.`)}
       primary={{ label: t("Retour à l'accueil", "Back to Home"), to: "/" }}
       secondary={{ label: t("Voir le marché", "View the Market"), to: "/marche" }}
     >

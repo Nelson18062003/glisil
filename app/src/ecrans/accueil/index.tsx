@@ -15,7 +15,8 @@ import { Avatar, Badge as Pastille, Box, Button, ButtonBase, Chip, IconButton, L
 import { useEffect, useState } from "react";
 import type { Compte, Numero, Operation, Soldes } from "../../guichet/types";
 import { Link } from "react-router-dom";
-import { useChandelles, useCompte, useCotation, useDepotsEnAttente, useGuichet, useHistorique, useNotifications, useNumeros, useOuvertures, useSoldes } from "../../guichet";
+import { useChandelles, useCompte, useCotation, useDepotsEnAttente, useGuichet, useHistorique, useNotifications, useNumeros, useOuvertures, usePaire, useSoldes } from "../../guichet";
+import { baseDe } from "../../guichet/types";
 import { enTranches, initiales, jourRelatif, prix, quand, xaf } from "../../noyau/format";
 import { texteDuServeur, titreDuServeur } from "../../noyau/serveur";
 import { t } from "../../noyau/langue";
@@ -23,13 +24,17 @@ import { useSession } from "../../session/session";
 import { BETA, PALIERS } from "../../noyau/argent";
 import { apparence } from "../../ui/operation";
 import { tones } from "../../theme";
-import { Badge, BUY, Card, EtatVide, Icon, List, Masquable, Row, Screen, SELL, Sparkline, Squelette, Tile } from "../../ui";
+import { Badge, badgeDe, BUY, Card, EtatVide, Icon, List, Masquable, Row, Screen, SELL, Sparkline, Squelette, Tile } from "../../ui";
 
 export function Accueil() {
   const session = useSession();
   const { data: compte } = useCompte();
   const { data: soldes } = useSoldes();
+  /* la carte du marché suit le carnet choisi ; le solde total compte chaque dollar à SON prix */
+  const [paire] = usePaire();
   const { data: cotation } = useCotation();
+  const { data: coteUsdt } = useCotation("USDT/XAFe");
+  const { data: coteUsdc } = useCotation("USDC/XAFe");
   const { data: chandelles } = useChandelles(60, 28);
   const { data: enAttente } = useDepotsEnAttente();
   const { data: notifications } = useNotifications();
@@ -38,11 +43,12 @@ export function Accueil() {
   const { data: numeros } = useNumeros();
   const ouvert = useOuvertures();
   const grand = useMediaQuery("(min-width:900px)", { noSsr: true });
-  const vide = soldes ? soldes.XAFe.disponible + soldes.XAFe.bloque + soldes.USDT.disponible + soldes.USDT.bloque === 0 : false;
-
-  const totalXaf = soldes && cotation?.dernier != null
-    ? soldes.XAFe.disponible + soldes.XAFe.bloque + (soldes.USDT.disponible + soldes.USDT.bloque) * cotation.dernier
-    : soldes ? soldes.XAFe.disponible + soldes.XAFe.bloque : null;
+  const tout = (a: "XAFe" | "USDT" | "USDC") => (soldes ? soldes[a].disponible + soldes[a].bloque : 0);
+  const vide = soldes ? tout("XAFe") + tout("USDT") + tout("USDC") === 0 : false;
+  /* un dollar sans prix connu (son carnet n'a jamais échangé) ne compte pas dans l'estimation : on ne l'invente pas */
+  const enXaf = (d: "USDT" | "USDC", px: number | null | undefined) => (tout(d) > 0 && px != null ? tout(d) * px : 0);
+  const totalXaf = soldes ? tout("XAFe") + enXaf("USDT", coteUsdt?.dernier) + enXaf("USDC", coteUsdc?.dernier) : null;
+  const dollars = soldes ? (["USDT", "USDC"] as const).filter((d) => tout(d) > 0) : [];
   const variation = cotation?.variation24h ?? 0;
   const couleur = variation >= 0 ? BUY : SELL;
 
@@ -76,7 +82,7 @@ export function Accueil() {
       {soldes ? (
         <Card onPrimary>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography variant="body2" sx={{ color: "inherit", opacity: 0.85 }}>{soldes.USDT.disponible + soldes.USDT.bloque > 0 ? t("Solde total · XAFe + USDT, estimé en XAF", "Total balance · XAFe + USDT, estimated in XAF") : t("Solde total", "Total balance")}</Typography>
+            <Typography variant="body2" sx={{ color: "inherit", opacity: 0.85 }}>{dollars.length ? t(`Solde total · XAFe + ${dollars.join(" + ")}, estimé en XAF`, `Total balance · XAFe + ${dollars.join(" + ")}, estimated in XAF`) : t("Solde total", "Total balance")}</Typography>
             <IconButton size="small" onClick={session.basculerMasque} sx={{ color: "inherit", m: -1 }} aria-label={session.montantsMasques ? t("Montrer les montants", "Show amounts") : t("Masquer les montants", "Hide amounts")}>
               {session.montantsMasques ? <VisibilityOffOutlined fontSize="small" /> : <VisibilityOutlined fontSize="small" />}
             </IconButton>
@@ -84,10 +90,16 @@ export function Accueil() {
           <Typography variant="h3" sx={{ fontSize: totalXaf !== null && totalXaf >= 1e9 ? 32 : 40 }}>
             <Masquable>{totalXaf === null ? "—" : xaf(totalXaf)}</Masquable> XAF
           </Typography>
-          <Stack direction="row" gap={1.5} mt={0.5}>
+          {/* trois poches ne tiennent pas côte à côte sur 320 points : elles passent à la ligne, deux par deux */}
+          <Stack direction="row" gap={1.5} mt={0.5} flexWrap="wrap" useFlexGap>
             <Poche badge="xafe" label="XAFe" valeur={xaf(soldes.XAFe.disponible)} bloque={soldes.XAFe.bloque > 0 ? t(`${xaf(soldes.XAFe.bloque)} bloqués`, `${xaf(soldes.XAFe.bloque)} on hold`) : undefined} />
-            <Poche badge="usdt" label="USDT" valeur={enTranches(soldes.USDT.disponible, 2)} bloque={soldes.USDT.bloque > 0 ? t(`${enTranches(soldes.USDT.bloque, 2)} bloqués`, `${enTranches(soldes.USDT.bloque, 2)} on hold`) : undefined}
-              equivalent={cotation?.dernier != null && soldes.USDT.disponible + soldes.USDT.bloque > 0 ? `≈ ${xaf((soldes.USDT.disponible + soldes.USDT.bloque) * cotation.dernier)} XAF` : undefined} />
+            {(["USDT", "USDC"] as const).filter((d) => d === "USDT" || tout(d) > 0).map((d) => {
+              const px = d === "USDT" ? coteUsdt?.dernier : coteUsdc?.dernier;
+              return (
+                <Poche key={d} badge={badgeDe(d)} label={d} valeur={enTranches(soldes[d].disponible, 2)} bloque={soldes[d].bloque > 0 ? t(`${enTranches(soldes[d].bloque, 2)} bloqués`, `${enTranches(soldes[d].bloque, 2)} on hold`) : undefined}
+                  equivalent={px != null && tout(d) > 0 ? `≈ ${xaf(tout(d) * px)} XAF` : undefined} />
+              );
+            })}
           </Stack>
           {/* le XAFe est un jeton : la promesse 1 XAFe = 1 XAF se vérifie, à un geste */}
           <Typography component={Link} to="/preuve" variant="caption" sx={{ color: "inherit", opacity: 0.85, alignSelf: "flex-start", textUnderlineOffset: 3, display: "inline-flex", alignItems: "center", minHeight: 32 }}>
@@ -134,17 +146,17 @@ export function Accueil() {
         /* le marché n'est pas encore ouvert : pas de cours qui bouge sur un marché où l'on ne peut rien faire */
         <Card sx={{ width: "100%" }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography variant="body2">{"USDT/XAFe" /* langue-ok */}</Typography>
+            <Typography variant="body2">{paire}</Typography>
             <Chip label={t("Bientôt", "Coming soon")} size="small" sx={{ bgcolor: tones.amber.bg, color: tones.amber.fg, height: 28 }} />
           </Stack>
           <Typography variant="subtitle1" fontWeight={600}>{t("Le marché ouvre bientôt", "The market opens soon")}</Typography>
-          <Typography variant="body2">{t("Acheter et vendre des USDT sera possible très prochainement. Pour l'instant, ajoutez des XAFe à votre compte.", "Buying and selling USDT will be available very soon. For now, add XAFe to your account.")}</Typography>
+          <Typography variant="body2">{t("Acheter et vendre des USDT et des USDC sera possible très prochainement. Pour l'instant, ajoutez des XAFe à votre compte.", "Buying and selling USDT and USDC will be available very soon. For now, add XAFe to your account.")}</Typography>
         </Card>
       ) : (
       <ButtonBase component={Link} to="/marche" sx={{ textAlign: "left", borderRadius: 6 }}>
         <Card sx={{ width: "100%" }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography variant="body2">{"USDT/XAFe" /* langue-ok */}</Typography>
+            <Typography variant="body2">{paire}</Typography>
             {cotation?.variation24h != null && (
               <Chip label={`${variation >= 0 ? "+" : ""}${enTranches(variation, 2)} %`} size="small" sx={{ bgcolor: variation >= 0 ? "#CDEFD9" : "#F9DEDC", color: variation >= 0 ? "#06331B" : "#7A1F17", height: 28 }} />
             )}
@@ -159,7 +171,7 @@ export function Accueil() {
       )}
       {/* l'achat rapide : pour qui ne veut pas poser un ordre au carnet — rien à acheter ni à vendre tant que le compte est vide */}
       {!vide && ouvert.rapide && <Stack direction="row" gap={1.5}>
-        <Button component={Link} to="/rapide?sens=achat" variant="contained" disableElevation sx={{ flex: 1, bgcolor: BUY, "&:hover": { bgcolor: BUY } }}>{t("Acheter des USDT", "Buy USDT")}</Button>
+        <Button component={Link} to="/rapide?sens=achat" variant="contained" disableElevation sx={{ flex: 1, bgcolor: BUY, "&:hover": { bgcolor: BUY } }}>{t(`Acheter des ${baseDe(paire)}`, `Buy ${baseDe(paire)}`)}</Button>
         <Button component={Link} to="/rapide?sens=vente" variant="outlined" sx={{ flex: 1, color: SELL, borderColor: SELL }}>{t("Vendre", "Sell")}</Button>
       </Stack>}
       {/* sur un grand écran, la place à droite sert à voir ce qui vient de se passer — sur un téléphone, c'est l'onglet Historique */}
@@ -181,7 +193,7 @@ function PremiersPas({ compte, soldes, historique, numeros, sorties }: { compte?
   const [plusTard, setPlusTard] = useState(() => { try { return localStorage.getItem(CLE_PLUS_TARD) === "1"; } catch { return false; } });
   if (!compte || !soldes || !historique || !numeros) return null;
   const etapes = [
-    { fait: historique.some((o) => o.nature === "depot" && o.etat === "credite") || soldes.XAFe.disponible + soldes.XAFe.bloque + soldes.USDT.disponible + soldes.USDT.bloque > 0,
+    { fait: historique.some((o) => o.nature === "depot" && o.etat === "credite") || soldes.XAFe.disponible + soldes.XAFe.bloque + soldes.USDT.disponible + soldes.USDT.bloque + (soldes.USDC?.disponible ?? 0) + (soldes.USDC?.bloque ?? 0) > 0,
       titre: t("Entrez vos premiers XAF", "Add your first XAF"), texte: t("Payez notre numéro MTN MoMo ou Orange Money, puis donnez-nous le transaction ID de votre SMS : vos XAFe arrivent en quelques instants.", "Pay our MTN MoMo or Orange Money number, then give us the transaction ID from your SMS: your XAFe arrive within moments."), label: t("Entrer des XAF", "Add XAF"), to: "/entrer/operateur" },
     /* tant que les sorties ne sont pas ouvertes, le numéro de sortie n'est pas une étape */
     ...(sorties ? [{ fait: numeros.some((n) => n.verifieLe && !n.retireLe),
@@ -233,9 +245,9 @@ function Recents({ operations }: { operations: Operation[] }) {
   );
 }
 
-function Poche({ badge, label, valeur, bloque, equivalent }: { badge: "xafe" | "usdt"; label: string; valeur: string; bloque?: string; equivalent?: string }) {
+function Poche({ badge, label, valeur, bloque, equivalent }: { badge: "xafe" | "usdt" | "usdc" | "mtn" | "om"; label: string; valeur: string; bloque?: string; equivalent?: string }) {
   return (
-    <Stack direction="row" alignItems="center" gap={1} sx={{ flex: 1, minWidth: 0, bgcolor: "rgba(255,255,255,0.14)", borderRadius: 3, p: 1.25 }}>
+    <Stack direction="row" alignItems="center" gap={1} sx={{ flex: "1 1 128px", minWidth: 0, bgcolor: "rgba(255,255,255,0.14)", borderRadius: 3, p: 1.25 }}>
       <Badge kind={badge} size={32} />
       <Stack sx={{ minWidth: 0 }}>
         <Typography variant="caption" sx={{ color: "inherit" }}>{label}</Typography>

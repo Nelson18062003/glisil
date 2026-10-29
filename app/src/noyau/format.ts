@@ -35,6 +35,11 @@ export function usdt(n: number): string {
   return Number.isInteger(Math.round(n * 100) / 100) && Number.isInteger(n) ? enTranches(n, 0) : enTranches(n, 2);
 }
 
+/** Un montant dans son actif : XAFe en entier, un dollar (USDT, USDC) au centime. */
+export function montantDe(actif: string, n: number): string {
+  return actif === "XAFe" ? xaf(n) : usdt(n);
+}
+
 /** Un montant signé pour une liste : « +1 000 000 », « −500 000 ». */
 export function signe(n: number, decimales = 0): string {
   const corps = enTranches(Math.abs(n), decimales);

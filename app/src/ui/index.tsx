@@ -221,10 +221,13 @@ export function JetonXafe({ size = 44 }: { size?: number }) {
   );
 }
 
+/** la pastille d'un actif : XAFe, USDT ou USDC */
+export const badgeDe = (a: "XAFe" | "USDT" | "USDC"): keyof typeof brand => (a === "XAFe" ? "xafe" : a === "USDC" ? "usdc" : "usdt");
+
 export function Badge({ kind, size = 44 }: { kind: keyof typeof brand; size?: number }) {
   if (kind === "xafe") return <JetonXafe size={size} />;
   const b = brand[kind];
-  const label = { mtn: "MTN", om: "OM", usdt: "₮", xafe: "X" }[kind];
+  const label = { mtn: "MTN", om: "OM", usdt: "₮", usdc: "$", xafe: "X" }[kind];
   return <Avatar sx={{ width: size, height: size, bgcolor: b.bg, color: b.fg, fontWeight: 700, fontSize: size / 3.2 }}>{label}</Avatar>;
 }
 

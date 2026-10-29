@@ -122,7 +122,7 @@ test("une date se lit dans la langue de l'écran", () => {
 test("les paramètres de l'équipe remplacent ceux de la migration, et une valeur abîmée ne passe pas", async () => {
   const a = await import("./argent.ts");
   // ce test touche des valeurs PARTAGÉES par tout le fichier : il les rend toutes en partant
-  const avant = structuredClone({ FRAIS: a.FRAIS, MARCHE: a.MARCHE, FRAIS_CRYPTO: a.FRAIS_CRYPTO, CRYPTO: a.CRYPTO, PALIERS: a.PALIERS, OPERATEURS: a.OPERATEURS });
+  const avant = structuredClone({ FRAIS: a.FRAIS, MARCHE: a.MARCHE, MARCHES: a.MARCHES, FRAIS_CRYPTO: a.FRAIS_CRYPTO, CRYPTO: a.CRYPTO, PALIERS: a.PALIERS, OPERATEURS: a.OPERATEURS });
   assert.equal(a.appliquerParametres({
     frais: { placeur: 0.0005, preneur: 0.001, sortie: 0.01 },
     marche: { pas_prix: 0.1, quantite_min: "20" },
@@ -150,6 +150,7 @@ test("les paramètres de l'équipe remplacent ceux de la migration, et une valeu
   assert.equal(a.FRAIS.sortie, 0.01, "des frais à 90 % ne s'affichent pas");
   assert.equal(a.appliquerParametres(null), false);
   Object.assign(a.FRAIS, avant.FRAIS); Object.assign(a.MARCHE, avant.MARCHE); Object.assign(a.FRAIS_CRYPTO, avant.FRAIS_CRYPTO);
+  for (const p of Object.keys(avant.MARCHES) as (keyof typeof avant.MARCHES)[]) Object.assign(a.MARCHES[p], avant.MARCHES[p]);
   Object.assign(a.CRYPTO, avant.CRYPTO); Object.assign(a.PALIERS, avant.PALIERS);
   a.OPERATEURS.forEach((o, i) => Object.assign(o, avant.OPERATEURS[i]));
 });
@@ -237,7 +238,7 @@ test("la bande de prix est celle du moteur : au pas, vers l'intérieur", () => {
 });
 
 test("le bouton gris dit pourquoi : la règle et sa borne, dans l'ordre du moteur", () => {
-  const base = { cote: "achat" as const, type: "limite" as const, prix: 618.4, quantite: 10, dispoXafe: 1_000_000, dispoUsdt: 0, reference: 618.4, ouverts: 0 };
+  const base = { cote: "achat" as const, type: "limite" as const, prix: 618.4, quantite: 10, dispoXafe: 1_000_000, dispoBase: 0, reference: 618.4, ouverts: 0 };
   /* les nombres s'écrivent à la française, avec des espaces fines : on les lit comme des espaces */
   const raison = (o: Parameters<typeof raisonDuRefus>[0]) => raisonDuRefus(o)?.replace(/[\u202f\u00a0]/g, " ") ?? null;
   assert.equal(raison(base), null);
@@ -252,7 +253,7 @@ test("le bouton gris dit pourquoi : la règle et sa borne, dans l'ordre du moteu
   assert.match(raison({ ...base, prix: 700 })!, /entre 494,75 et 680,20/);
   assert.match(raison({ ...base, quantite: 2000 })!, /Il faut 1 236 800 XAFe/);
   assert.match(raison({ ...base, ouverts: 200 })!, /200 ordres ouverts/);
-  assert.match(raison({ ...base, cote: "vente", dispoUsdt: 5 })!, /5 USDT disponibles/);
+  assert.match(raison({ ...base, cote: "vente", dispoBase: 5 })!, /5 USDT disponibles/);
   assert.equal(raison({ ...base, type: "marche", quantite: 200_000 }), null, "au marché non plus, pas de plafond (0027)");
 });
 
@@ -304,4 +305,48 @@ test("les textes de la base se lisent en anglais, et un texte imprévu reste tel
   } finally {
     poserLangue("fr");
   }
+});
+
+test("deux carnets (0045) : chacun ses règles, « marche.paires » ne change que ce qu'il nomme, et les refus nomment le bon dollar", async () => {
+  const a = await import("./argent.ts");
+  const avant = structuredClone({ MARCHE: a.MARCHE, MARCHES: a.MARCHES });
+  a.appliquerParametres({
+    marche: { pas_prix: 0.05, quantite_min: 10, ouvert: true },
+    marches: { "USDT/XAFe": { paire: "USDT/XAFe", pas_prix: 0.05, quantite_min: 10, ouvert: true },
+               "USDC/XAFe": { paire: "USDC/XAFe", pas_prix: 0.05, quantite_min: 25, ouvert: false } },
+  });
+  assert.equal(a.MARCHES["USDC/XAFe"].quantiteMin, 25);
+  assert.equal(a.MARCHES["USDC/XAFe"].ouvert, false);
+  assert.equal(a.MARCHES["USDT/XAFe"].quantiteMin, 10, "la règle d'une paire ne fuit pas dans l'autre");
+  a.choisirLaPaire("USDC/XAFe");
+  assert.equal(a.MARCHE.base, "USDC");
+  assert.equal(a.MARCHE.quantiteMin, 25, "l'écran juge avec les règles du carnet choisi");
+  const r = a.raisonDuRefus({ cote: "vente", type: "limite", prix: 600, quantite: 30, dispoXafe: 0, dispoBase: 5, reference: 600, ouverts: 0 });
+  assert.match(r ?? "", /USDC/, "le refus nomme l'USDC, pas l'USDT");
+  assert.equal(a.fraisOrdre("achat", 100, 600).actif, "USDC", "l'acheteur paie ses frais dans l'actif qu'il reçoit");
+  // une base d'avant 0045 : « marche » seul vaut pour la paire principale
+  a.appliquerParametres({ marche: { pas_prix: 0.1, quantite_min: 12 } });
+  assert.equal(a.MARCHES["USDT/XAFe"].quantiteMin, 12);
+  assert.equal(a.MARCHES["USDC/XAFe"].quantiteMin, 25);
+  assert.equal(a.MARCHES["USDC/XAFe"].ouvert, false, "une base qui ne connaît pas le carnet USDC ne l'ouvre pas");
+  Object.assign(a.MARCHE, avant.MARCHE);
+  for (const p of Object.keys(avant.MARCHES) as (keyof typeof avant.MARCHES)[]) Object.assign(a.MARCHES[p], avant.MARCHES[p]);
+});
+
+test("l'USDC passe par BNB Chain et Ethereum, jamais par Tron ; chaque réseau a ses frais", async () => {
+  const a = await import("./argent.ts");
+  a.appliquerParametres({ crypto: { frais: { USDT: 1, XAFe: 500 }, reseaux: [
+    { id: "bep20", norme: "BEP20", nom: "BNB Smart Chain", famille: "evm", actifs: ["XAFe", "USDT", "USDC"], frais: { USDT: 1, USDC: 1, XAFe: 500 } },
+    { id: "trc20", norme: "TRC20", nom: "Tron", famille: "tron", actifs: ["XAFe", "USDT"] },
+    { id: "erc20", norme: "ERC20", nom: "Ethereum", famille: "evm", actifs: ["XAFe", "USDT", "USDC"], frais: { USDT: 5, USDC: 5, XAFe: 3000 } },
+  ] } });
+  assert.deepEqual(a.reseauxDe("USDC").map((r) => r.id), ["bep20", "erc20"]);
+  assert.deepEqual(a.reseauxDe("USDT").map((r) => r.id), ["bep20", "trc20", "erc20"]);
+  assert.equal(a.reseauxPour("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", "USDC").length, 0, "une adresse Tron ne reçoit pas d'USDC");
+  assert.equal(a.fraisRetrait("USDC", "erc20"), 5);
+  assert.equal(a.fraisRetrait("USDC", "bep20"), 1);
+  assert.equal(a.FRAIS_CRYPTO.USDC, 1, "sans frais d'USDC posés, ceux de l'USDT");
+  a.appliquerParametres({ crypto: { reseaux: [
+    { id: "bep20", norme: "BEP20", nom: "BNB Smart Chain", famille: "evm" }, { id: "trc20", norme: "TRC20", nom: "Tron", famille: "tron" } ] } });
+  assert.deepEqual(a.reseauxDe("USDC").map((r) => r.id), [], "une base d'avant 0045 ne dit rien de l'USDC : il n'est nulle part");
 });

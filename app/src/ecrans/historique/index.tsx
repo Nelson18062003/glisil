@@ -10,6 +10,7 @@ import { useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { useCompte, useHistorique, useOperation } from "../../guichet";
 import type { Operation } from "../../guichet/types";
+import { baseDe } from "../../guichet/types";
 import type { RecuDonnees } from "../../noyau/recu-pdf";
 import { infoReseau, libelleReseau, operateur as opDe } from "../../noyau/argent";
 import { enTranches, heureSecondes, jourRelatif, numeroEnTranches, quand, usdt as fUsdt, xaf } from "../../noyau/format";
@@ -104,8 +105,9 @@ function donneesDuRecu(o: Operation, nom: string | null | undefined): Omit<RecuD
     else if (o.detail.transactionId) lignes.push(["Transaction ID", o.detail.transactionId]); // langue-ok
     if (o.detail.prouveeLe) lignes.push([t("Vérifié", "Verified"), quand(o.detail.prouveeLe)]);
   } else if (o.nature === "ordre") {
-    titre = o.detail.cote === "achat" ? t("Achat d'USDT", "USDT purchase") : t("Vente d'USDT", "USDT sale");
-    montant = `${fUsdt(o.detail.executee)} USDT`;
+    const B = baseDe(o.detail.paire ?? "USDT/XAFe");
+    titre = o.detail.cote === "achat" ? t(`Achat d'${B}`, `${B} purchase`) : t(`Vente d'${B}`, `${B} sale`);
+    montant = `${fUsdt(o.detail.executee)} ${B}`;
     lignes.push([t("Pour", "For"), `${xaf(o.detail.totalXafe)} XAFe`]);
   } else if (o.nature === "dotation") {
     titre = t("Argent de test (bêta)", "Test money (beta)");
@@ -114,7 +116,7 @@ function donneesDuRecu(o: Operation, nom: string | null | undefined): Omit<RecuD
     lignes.push([t("Motif", "Reason"), motifLisible(o.detail.motif)], [t("Valeur", "Value"), t("aucune hors de la bêta", "none outside the beta")]);
   } else {
     titre = `${o.montant > 0 ? t("Dépôt", "Deposit") : t("Retrait", "Withdrawal")} ${o.actif} · ${infoReseau(o.detail.reseau).nom}`;
-    montant = `${o.montant > 0 ? "+" : ""}${enTranches(o.montant, o.actif === "USDT" ? 2 : 0)} ${o.actif}`;
+    montant = `${o.montant > 0 ? "+" : ""}${enTranches(o.montant, o.actif === "XAFe" ? 0 : 2)} ${o.actif}`;
     lignes.push([t("Adresse", "Address"), o.detail.adresse]);
     if ("txHash" in o.detail && o.detail.txHash) lignes.push(["Transaction", o.detail.txHash]); // langue-ok
   }
@@ -216,7 +218,7 @@ export function HistoriqueDetail() {
         <Card>
           <Line label={t("Réseau", "Network")} value={libelleReseau(infoReseau(o.detail.reseau))} />
           <Line label={t("Adresse", "Address")} value={o.detail.adresse} mono />
-          {"frais" in o.detail && <Line label={t("Frais", "Fees")} value={`${enTranches(o.detail.frais, o.actif === "USDT" ? 2 : 0)} ${o.actif}`} />}
+          {"frais" in o.detail && <Line label={t("Frais", "Fees")} value={`${enTranches(o.detail.frais, o.actif === "XAFe" ? 0 : 2)} ${o.actif}`} />}
           <Line label={"Transaction" /* langue-ok */} value={("txHash" in o.detail && o.detail.txHash) || t("en attente", "pending")} mono />
           <Line label={t("Référence", "Reference")} value={o.reference} mono />
         </Card>

@@ -35,17 +35,17 @@ const textes = (): Record<Porte, { ecran: string; titre: string; texte: string; 
   marche: {
     ecran: t("Marché", "Market"), retour: "/",
     titre: t("Le marché ouvre bientôt", "The market opens soon"),
-    texte: t("Acheter et vendre des USDT au carnet sera possible très prochainement. Pour l'instant, vous pouvez ajouter des XAFe à votre compte.", "Buying and selling USDT on the order book will be available very soon. For now, you can add XAFe to your account."),
+    texte: t("Acheter et vendre des USDT et des USDC au carnet sera possible très prochainement. Pour l'instant, vous pouvez ajouter des XAFe à votre compte.", "Buying and selling USDT and USDC on the order book will be available very soon. For now, you can add XAFe to your account."),
   },
   rapide: {
     ecran: t("Acheter ou vendre", "Buy or sell"), retour: "/",
-    titre: t("L'achat et la vente d'USDT arrivent bientôt", "Buying and selling USDT is coming soon"),
+    titre: t("L'achat et la vente d'USDT et d'USDC arrivent bientôt", "Buying and selling USDT and USDC is coming soon"),
     texte: t("Pour l'instant, Glisil ouvre par les dépôts : vous pouvez ajouter des XAFe à votre compte.", "For now, Glisil is opening with deposits: you can add XAFe to your account."),
   },
   crypto: {
     ecran: "Crypto", retour: "/", // langue-ok
     titre: t("La crypto arrive bientôt", "Crypto is coming soon"),
-    texte: t("Déposer, retirer, acheter ou vendre des USDT sera possible très prochainement. Pour l'instant, vous pouvez ajouter des XAFe à votre compte.", "Depositing, withdrawing, buying and selling USDT will be available very soon. For now, you can add XAFe to your account."),
+    texte: t("Déposer, retirer, acheter ou vendre des USDT et des USDC sera possible très prochainement. Pour l'instant, vous pouvez ajouter des XAFe à votre compte.", "Depositing, withdrawing, buying and selling USDT and USDC will be available very soon. For now, you can add XAFe to your account."),
   },
   cryptoDepots: {
     ecran: t("Déposer", "Deposit"), retour: "/crypto",

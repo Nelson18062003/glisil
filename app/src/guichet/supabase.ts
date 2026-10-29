@@ -15,7 +15,8 @@ import { numeroSaisi, transactionIdNormalise } from "../noyau/format";
 import { ENTREE_VIDE, premierFacteurDe } from "../noyau/entree";
 import { coqueActuelle, lireRetourOAuth, voieGoogle } from "../noyau/google";
 import type { EvenementDEntree, Guichet } from "./guichet";
-import type { PreuveDeReserve } from "./types";
+import type { PreuveDeReserve, Paire } from "./types";
+import { baseDe, estPaire, PAIRE_PRINCIPALE } from "./types";
 import type {
   Actif, Carnet, Chandelle, Intervalle, PageDeBougies, Compte, Cote, Cotation, Declaration, Depot, TraceChaine, DevisRapide, Execution, IdOperateur, Notification, Numero, Operation, Ordre, ProfilInscription, SensRapide,
   Reseau, ResultatOrdre, RetraitCrypto, Soldes, Sortie, Transaction, TransfertCrypto, TypeOrdre,
@@ -108,7 +109,7 @@ function trace(j: J): TraceChaine {
 }
 function devis(j: J): DevisRapide {
   return {
-    id: sn(j.id), sens: j.sens as SensRapide, quantite: n(j.quantite), total: n(j.total), prix: n(j.prix), frais: n(j.frais), marge: n(j.marge),
+    id: sn(j.id), paire: estPaire(j.paire) ? j.paire : PAIRE_PRINCIPALE, sens: j.sens as SensRapide, quantite: n(j.quantite), total: n(j.total), prix: n(j.prix), frais: n(j.frais), marge: n(j.marge),
     etat: j.id ? ((j.etat as DevisRapide["etat"]) ?? "propose") : "estimation", expireLe: sn(j.expire_le), ordre: sn(j.ordre),
   };
 }
@@ -124,16 +125,16 @@ function sortie(j: J): Sortie {
 }
 function ordre(j: J): Ordre {
   return {
-    id: s(j.id), numero: s(j.numero), cote: j.cote as Cote, type: j.type as TypeOrdre, prix: nn(j.prix), quantite: n(j.quantite), restant: n(j.restant), executee: n(j.executee),
+    id: s(j.id), numero: s(j.numero), paire: estPaire(j.paire) ? j.paire : PAIRE_PRINCIPALE, cote: j.cote as Cote, type: j.type as TypeOrdre, prix: nn(j.prix), quantite: n(j.quantite), restant: n(j.restant), executee: n(j.executee),
     totalXafe: n(j.total_xafe), bloque: n(j.bloque), prixMoyen: nn(j.prix_moyen), etat: j.etat as Ordre["etat"], creeLe: s(j.cree_le), majLe: s(j.maj_le),
     rapide: j.rapide && typeof j.rapide === "object" ? { total: n((j.rapide as J).total), frais: n((j.rapide as J).frais) } : null,
   };
 }
-function execution(j: J, cote: Cote): Execution {
+function execution(j: J, cote: Cote, paire: Paire): Execution {
   const preneur = Boolean(j.preneur) === (cote === "achat") ? Boolean(j.preneur_est_acheteur ?? j.preneur) : false;
   return {
     id: s(j.id), prix: n(j.prix), quantite: n(j.quantite), montantXafe: n(j.montant_xafe), cote,
-    frais: cote === "achat" ? n(j.frais_acheteur) : n(j.frais_vendeur), fraisActif: cote === "achat" ? "USDT" : "XAFe",
+    frais: cote === "achat" ? n(j.frais_acheteur) : n(j.frais_vendeur), fraisActif: cote === "achat" ? baseDe(paire) : "XAFe",
     preneur: typeof j.mon_role === "string" ? j.mon_role === "preneur" : preneur, quand: s(j.cree_le),
   };
 }
@@ -513,7 +514,7 @@ export class GuichetSupabase implements Guichet {
   async soldes(): Promise<Soldes> {
     const r = (await this.rpc<Record<string, J>>("mes_soldes")) ?? {};
     const lire = (a: Actif) => ({ disponible: n(r[a]?.disponible), bloque: n(r[a]?.bloque) });
-    return { XAFe: lire("XAFe"), USDT: lire("USDT") };
+    return { XAFe: lire("XAFe"), USDT: lire("USDT"), USDC: lire("USDC") };
   }
 
   /* ============================================================= entrer */
@@ -559,30 +560,30 @@ export class GuichetSupabase implements Guichet {
 
   /* ============================================================= marché */
 
-  async cotation(): Promise<Cotation> {
-    const r = await this.rpc<J>("cotation");
+  async cotation(paire: Paire): Promise<Cotation> {
+    const r = await this.rpc<J>("cotation", { p_paire: paire });
     const dernier = nn(r.dernier);
     const avant = nn(r.il_y_a_24h);
     return {
-      dernier, variation24h: dernier !== null && avant ? Math.round(((dernier - avant) / avant) * 10000) / 100 : null,
-      haut24h: nn(r.haut), bas24h: nn(r.bas), volume24hUsdt: n(r.volume_usdt), meilleurAchat: nn(r.meilleur_achat), meilleureVente: nn(r.meilleure_vente), reference: nn(r.reference), releveLe: new Date().toISOString(),
+      paire, dernier, variation24h: dernier !== null && avant ? Math.round(((dernier - avant) / avant) * 10000) / 100 : null,
+      haut24h: nn(r.haut), bas24h: nn(r.bas), volume24hBase: n(r.volume_base ?? r.volume_usdt), meilleurAchat: nn(r.meilleur_achat), meilleureVente: nn(r.meilleure_vente), reference: nn(r.reference), releveLe: new Date().toISOString(),
     };
   }
-  async carnet(profondeur: number): Promise<Carnet> {
-    const r = await this.rpc<J>("carnet", { p_profondeur: profondeur });
+  async carnet(profondeur: number, paire: Paire): Promise<Carnet> {
+    const r = await this.rpc<J>("carnet", { p_profondeur: profondeur, p_paire: paire });
     const niveaux = (l: unknown) => ((l as J[]) ?? []).map((x) => ({ prix: n(x.prix), quantite: n(x.quantite) }));
     return { achats: niveaux(r.achats), ventes: niveaux(r.ventes) };
   }
-  async transactions(nb: number): Promise<Transaction[]> {
-    const r = await this.rpc<J[]>("transactions_recentes", { p_n: nb });
+  async transactions(nb: number, paire: Paire): Promise<Transaction[]> {
+    const r = await this.rpc<J[]>("transactions_recentes", { p_n: nb, p_paire: paire });
     return (r ?? []).map((x) => ({ quand: s(x.cree_le), prix: n(x.prix), quantite: n(x.quantite), cote: x.preneur === "achat" ? "achat" : "vente" }));
   }
-  async chandelles(intervalleMinutes: number, nb: number): Promise<Chandelle[]> {
-    const r = await this.rpc<J[]>("chandelles", { p_minutes: intervalleMinutes, p_n: nb });
+  async chandelles(intervalleMinutes: number, nb: number, paire: Paire): Promise<Chandelle[]> {
+    const r = await this.rpc<J[]>("chandelles", { p_minutes: intervalleMinutes, p_n: nb, p_paire: paire });
     return (r ?? []).map((x) => ({ t: s(x.t), o: n(x.o), h: n(x.h), l: n(x.l), c: n(x.c), v: n(x.v) }));
   }
-  async bougies(intervalle: Intervalle, avant?: string | null, nb = 300): Promise<PageDeBougies> {
-    const r = await this.rpc<J>("bougies", { p_intervalle: intervalle, p_avant: avant ?? null, p_n: nb });
+  async bougies(intervalle: Intervalle, avant: string | null | undefined, nb: number | undefined, paire: Paire): Promise<PageDeBougies> {
+    const r = await this.rpc<J>("bougies", { p_intervalle: intervalle, p_avant: avant ?? null, p_n: nb ?? 300, p_paire: paire });
     return {
       bougies: ((r.bougies as J[]) ?? []).map((x) => ({ t: s(x.t), o: n(x.o), h: n(x.h), l: n(x.l), c: n(x.c), v: n(x.v), source: x.source === "reference" ? "reference" as const : "marche" as const })),
       plusAncien: Boolean(r.plus_ancien),
@@ -593,17 +594,17 @@ export class GuichetSupabase implements Guichet {
   async ordre(id: string) {
     const r = trouve(await this.rpc<J>("mon_ordre", { p_id: id }), "ordre inconnu");
     const o = ordre(r.ordre as J);
-    return { ordre: o, executions: ((r.executions as J[]) ?? []).map((e) => execution(e, o.cote)) };
+    return { ordre: o, executions: ((r.executions as J[]) ?? []).map((e) => execution(e, o.cote, o.paire)) };
   }
-  async placerOrdre({ cote, type, quantite, prix, cle }: { cote: Cote; type: TypeOrdre; quantite: number; prix?: number; cle: string }): Promise<ResultatOrdre> {
-    const r = await this.rpc<J>("placer_ordre", { p_cote: cote, p_type: type, p_quantite: quantite, p_prix: type === "limite" ? prix : null, p_cle: cle });
+  async placerOrdre({ cote, type, quantite, prix, cle, paire }: { cote: Cote; type: TypeOrdre; quantite: number; prix?: number; cle: string; paire: Paire }): Promise<ResultatOrdre> {
+    const r = await this.rpc<J>("placer_ordre", { p_cote: cote, p_type: type, p_quantite: quantite, p_prix: type === "limite" ? prix : null, p_cle: cle, p_paire: paire });
     const o = ordre(r.ordre as J);
-    return { ordre: o, executions: ((r.executions as J[]) ?? []).map((e) => execution(e, o.cote)), autoNegociation: Boolean(r.auto_negociation), deja: Boolean(r.deja) };
+    return { ordre: o, executions: ((r.executions as J[]) ?? []).map((e) => execution(e, o.cote, o.paire)), autoNegociation: Boolean(r.auto_negociation), deja: Boolean(r.deja) };
   }
   async annulerOrdre(id: string) { return ordre(await this.rpc<J>("annuler_ordre", { p_id: id })); }
 
-  async devisRapide({ sens, montant, ferme }: { sens: SensRapide; montant: number; ferme: boolean }) {
-    return devis(await this.rpc<J>("devis_rapide", { p_sens: sens, p_montant: montant, p_ferme: ferme }));
+  async devisRapide({ sens, montant, ferme, paire }: { sens: SensRapide; montant: number; ferme: boolean; paire: Paire }) {
+    return devis({ paire, ...(await this.rpc<J>("devis_rapide", { p_sens: sens, p_montant: montant, p_ferme: ferme, p_paire: paire })) });
   }
   async executerDevis(id: string) { return devis(await this.rpc<J>("executer_devis", { p_id: id })); }
 

@@ -1,12 +1,12 @@
 /*
- * Crypto : déposer des USDT (une adresse par réseau, la même à chaque fois) ;
- * retirer des USDT ou des XAFe vers un wallet externe : Adresse (le réseau
+ * Crypto : déposer des USDT ou des USDC (une adresse par actif et par réseau,
+ * la même à chaque fois) ; retirer des USDT, des USDC ou des XAFe vers un wallet externe : Adresse (le réseau
  * s'y lit, ou se choisit quand l'adresse vaut pour plusieurs) → Montant →
  * Vérifier → Code → Envoyé. Mêmes règles que « Sortir des XAF ».
  *
  * Un solde, plusieurs réseaux : la liste vient du moteur (0018). Le client
- * ne voit que les réseaux ouverts ; le réseau maison (où vit la réserve) en
- * premier.
+ * ne voit que les réseaux ouverts QUI PORTENT l'actif (0045 : l'USDC passe
+ * par BNB Chain et Ethereum, jamais par Tron) ; le réseau maison en premier.
  */
 import ArrowDownwardRounded from "@mui/icons-material/ArrowDownwardRounded";
 import BoltRounded from "@mui/icons-material/BoltRounded";
@@ -24,15 +24,15 @@ import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useAdresseDepot, useGuichet, useOuvertures, useRetraitCrypto, useSoldes } from "../../guichet";
 import type { Actif, Reseau } from "../../guichet/types";
-import { arrondi2, FRAIS_CRYPTO, infoReseau, libelleReseau, nomsDesReseaux, reseauxOuverts, reseauxPour, type InfoReseau } from "../../noyau/argent";
+import { arrondi2, fraisRetrait, infoReseau, libelleReseau, nomsDesReseaux, reseauxDe, reseauxPour, type InfoReseau } from "../../noyau/argent";
 import { adresseCourte, enTranches, quand, xaf } from "../../noyau/format";
 import { langue, t } from "../../noyau/langue";
 import { parcours, useParcours } from "../../navigation/parcours";
 import { Attente, Card, Keypad, Line, List, Row, Screen, Success } from "../../ui";
 import { EtapeDeVerification } from "../../ui/verification";
 
-const actifDe = (a: string | undefined): Actif => (a === "XAFe" ? "XAFe" : "USDT");
-const fmt = (a: Actif, n: number) => (a === "USDT" ? enTranches(n, 2) : xaf(n));
+const actifDe = (a: string | undefined): Actif => (a === "XAFe" ? "XAFe" : a === "USDC" ? "USDC" : "USDT");
+const fmt = (a: Actif, n: number) => (a === "XAFe" ? xaf(n) : enTranches(n, 2));
 /* des frais nuls se disent « offerts », pas « 0 XAFe » */
 const fraisLus = (a: Actif, n: number) => (n > 0 ? `${fmt(a, n)} ${a}` : t("Offerts", "Free"));
 
@@ -43,11 +43,17 @@ export function Crypto() {
   return (
     <Screen title={t("Crypto", "Crypto")} back="/">
       <List>
-        <Row icon={<BoltRounded />} tone="green" primary={t("Acheter ou vendre des USDT", "Buy or sell USDT")} {...ligne(ouvert.rapide, t("En un geste, au prix du moment", "In one tap, at the current price"))} to="/rapide" />
-        <Row icon={<ArrowDownwardRounded />} tone="blue" primary={t("Déposer des USDT", "Deposit USDT")} {...ligne(ouvert.cryptoDepots, nomsDesReseaux())} to="/crypto/deposer/USDT" />
-        <Row icon={<ArrowUpwardRounded />} tone="blue" primary={t("Retirer des USDT", "Withdraw USDT")} {...ligne(ouvert.cryptoRetraits, t("Vers un wallet externe", "To an external wallet"))} to="/crypto/retirer/USDT/adresse" />
-        <Row icon={<CallReceivedRounded />} tone="green" primary={t("Recevoir des XAFe", "Receive XAFe")} {...ligne(ouvert.cryptoDepots, t(`Depuis mon propre wallet, ${nomsDesReseaux()}`, `From my own wallet, ${nomsDesReseaux()}`))} to="/crypto/deposer/XAFe" />
-        <Row icon={<ArrowOutwardRounded />} tone="green" primary={t("Retirer des XAFe", "Withdraw XAFe")} {...ligne(ouvert.cryptoRetraits, t(`Vers mon propre wallet, ${nomsDesReseaux()}`, `To my own wallet, ${nomsDesReseaux()}`))} to="/crypto/retirer/XAFe/adresse" />
+        <Row icon={<BoltRounded />} tone="green" primary={t("Acheter ou vendre des USDT ou USDC", "Buy or sell USDT or USDC")} {...ligne(ouvert.rapide, t("En un geste, au prix du moment", "In one tap, at the current price"))} to="/rapide" />
+        {(["USDT", "USDC"] as const).map((d) => {
+          /* un dollar qu'aucun réseau ouvert ne porte reste à sa place, « bientôt » */
+          const ici = reseauxDe(d).length > 0;
+          return [
+            <Row key={`d-${d}`} icon={<ArrowDownwardRounded />} tone="blue" primary={t(`Déposer des ${d}`, `Deposit ${d}`)} {...ligne(ouvert.cryptoDepots && ici, nomsDesReseaux(d))} to={`/crypto/deposer/${d}`} />,
+            <Row key={`r-${d}`} icon={<ArrowUpwardRounded />} tone="blue" primary={t(`Retirer des ${d}`, `Withdraw ${d}`)} {...ligne(ouvert.cryptoRetraits && ici, t(`Vers un wallet externe, ${nomsDesReseaux(d)}`, `To an external wallet, ${nomsDesReseaux(d)}`))} to={`/crypto/retirer/${d}/adresse`} />,
+          ];
+        })}
+        <Row icon={<CallReceivedRounded />} tone="green" primary={t("Recevoir des XAFe", "Receive XAFe")} {...ligne(ouvert.cryptoDepots, t(`Depuis mon propre wallet, ${nomsDesReseaux("XAFe")}`, `From my own wallet, ${nomsDesReseaux("XAFe")}`))} to="/crypto/deposer/XAFe" />
+        <Row icon={<ArrowOutwardRounded />} tone="green" primary={t("Retirer des XAFe", "Withdraw XAFe")} {...ligne(ouvert.cryptoRetraits, t(`Vers mon propre wallet, ${nomsDesReseaux("XAFe")}`, `To my own wallet, ${nomsDesReseaux("XAFe")}`))} to="/crypto/retirer/XAFe/adresse" />
       </List>
     </Screen>
   );
@@ -85,7 +91,7 @@ export function CryptoDeposer() {
   const { actif: a } = useParams();
   const actif = actifDe(a);
   useOuvertures();   // se redessine quand la liste des réseaux arrive
-  const ouverts = reseauxOuverts();
+  const ouverts = reseauxDe(actif);
   const [voulu, setReseau] = useState<Reseau>(ouverts[0]?.id ?? "");
   // un réseau fermé entre-temps : on revient au premier ouvert, jamais une adresse d'un réseau fermé
   const reseau = ouverts.some((r) => r.id === voulu) ? voulu : (ouverts[0]?.id ?? "");
@@ -94,7 +100,7 @@ export function CryptoDeposer() {
   const [qr, setQr] = useState<string | null>(null);
   const [copie, setCopie] = useState(false);
   const [contratCopie, setContratCopie] = useState(false);
-  /* des XAFe se REÇOIVENT depuis le wallet du client ; des USDT se DÉPOSENT */
+  /* des XAFe se REÇOIVENT depuis le wallet du client ; des USDT et des USDC se DÉPOSENT */
   const titre = actif === "XAFe" ? t("Recevoir des XAFe", "Receive XAFe") : t(`Déposer des ${actif}`, `Deposit ${actif}`);
   const surReseau = info.nom === info.chaine ? info.chaine : `${info.chaine} (${info.nom})`;
 
@@ -111,7 +117,7 @@ export function CryptoDeposer() {
   if (!ouverts.length) {
     return (
       <Screen title={titre} back="/crypto">
-        <Typography variant="body2">{t("Aucun réseau n'est ouvert aux dépôts pour le moment. Vos fonds ne sont pas concernés ; revenez bientôt.", "No network is open for deposits right now. Your funds are not affected; check back soon.")}</Typography>
+        <Typography variant="body2">{t(`Aucun réseau n'est ouvert aux dépôts de ${actif} pour le moment. Vos fonds ne sont pas concernés ; revenez bientôt.`, `No network is open for ${actif} deposits right now. Your funds are not affected; check back soon.`)}</Typography>
       </Screen>
     );
   }
@@ -138,7 +144,7 @@ export function CryptoDeposer() {
       {actif === "XAFe" && (
         <Card>
           <Typography variant="body2" fontWeight={600}>{t("Cette adresse ne reçoit que des XAFe", "This address only accepts XAFe")}</Typography>
-          <Typography variant="body2">{t("Un autre jeton envoyé ici, USDT compris, n'est pas crédité. Pour des USDT, utilisez « Déposer des USDT » : c'est une autre adresse.", "Any other token sent here, including USDT, won't be credited. For USDT, use “Deposit USDT”: it's a different address.")}</Typography>
+          <Typography variant="body2">{t("Un autre jeton envoyé ici, USDT et USDC compris, n'est pas crédité. Pour des USDT ou des USDC, utilisez « Déposer » : chacun a son adresse.", "Any other token sent here, including USDT and USDC, won't be credited. For USDT or USDC, use “Deposit”: each one has its own address.")}</Typography>
           {info.contratXafe && (
             <>
               <Typography variant="body2">{t(`Pour voir et envoyer vos XAFe dans votre wallet, ajoutez-y le jeton avec l'adresse de son contrat sur ${info.chaine} :`, `To see and send your XAFe in your wallet, add the token using its contract address on ${info.chaine}:`)}</Typography>
@@ -147,6 +153,21 @@ export function CryptoDeposer() {
                 try { await navigator.clipboard.writeText(info.contratXafe!); setContratCopie(true); setTimeout(() => setContratCopie(false), 1500); } catch { /* refusé : l'adresse reste lisible */ }
               }}>{contratCopie ? t("Contrat copié", "Contract copied") : t("Copier le contrat XAFe", "Copy XAFe contract")}</Button>
             </>
+          )}
+        </Card>
+      )}
+      {actif !== "XAFe" && (
+        <Card>
+          {/* l'erreur la plus fréquente : l'USDT envoyé à l'adresse d'USDC (ou l'inverse) — chacun a SON adresse */}
+          <Typography variant="body2" fontWeight={600}>{t(`Cette adresse ne reçoit que des ${actif}`, `This address only accepts ${actif}`)}</Typography>
+          <Typography variant="body2">{actif === "USDC"
+            ? t("Des USDT envoyés ici ne sont pas crédités : pour des USDT, utilisez « Déposer des USDT », c'est une autre adresse.", "USDT sent here won't be credited: for USDT, use “Deposit USDT”, it's a different address.")
+            : t("Des USDC envoyés ici ne sont pas crédités : pour des USDC, utilisez « Déposer des USDC », c'est une autre adresse.", "USDC sent here won't be credited: for USDC, use “Deposit USDC”, it's a different address.")}</Typography>
+          {info.contrats?.[actif] && (
+            <Typography variant="caption" sx={{ wordBreak: "break-all" }}>
+              {t(`Contrat ${actif} sur ${info.chaine} : `, `${actif} contract on ${info.chaine}: `)}
+              <Box component="span" sx={{ fontFamily: "Roboto Mono, monospace" }}>{info.contrats[actif]}</Box>
+            </Typography>
           )}
         </Card>
       )}
@@ -170,7 +191,7 @@ export function CryptoRetirerAdresse() {
   const [c, poser] = useParcours("crypto");
   useOuvertures();
   useEffect(() => { if (c.actif !== actif) poser({ actif, adresse: "", montant: 0, reseau: "" }); }, [actif, c.actif, poser]);
-  const possibles = reseauxPour(c.adresse);
+  const possibles = reseauxPour(c.adresse, actif);
   const seul = possibles.length === 1 ? possibles[0].id : null;
   useEffect(() => { if (seul && seul !== c.reseau) poser({ reseau: seul }); }, [seul, c.reseau, poser]);
   const reseau = possibles.some((r) => r.id === c.reseau) ? infoReseau(c.reseau) : null;
@@ -180,7 +201,7 @@ export function CryptoRetirerAdresse() {
     try { const colle = await navigator.clipboard.readText(); changer(colle.trim()); } catch { /* lecture refusée : on tape */ }
   };
   const tape = c.adresse.trim().length > 10;
-  const ouverts = reseauxOuverts();
+  const ouverts = reseauxDe(actif);
   const formes = ouverts.map((r) => {
     const nom = r.nom === r.chaine ? "" : `${r.nom}, `;
     const forme = r.famille === "tron" ? "T…" : r.famille === "evm" ? "0x…" : "base58";
@@ -203,7 +224,7 @@ export function CryptoRetirerAdresse() {
         minRows={2}
         autoComplete="off"
         error={tape && !possibles.length}
-        helperText={tape && !possibles.length ? t(`Ce n'est une adresse d'aucun réseau ouvert (${nomsDesReseaux()}). Copiez-la depuis votre wallet.`, `This isn't an address on any open network (${nomsDesReseaux()}). Copy it from your wallet.`) : " "}
+        helperText={tape && !possibles.length ? t(`Ce n'est une adresse d'aucun réseau ouvert aux ${actif} (${nomsDesReseaux(actif)}). Copiez-la depuis votre wallet.`, `This isn't an address on any network open to ${actif} (${nomsDesReseaux(actif)}). Copy it from your wallet.`) : " "}
         slotProps={{ input: { sx: { fontFamily: "Roboto Mono, monospace", fontSize: 16 } }, htmlInput: { spellCheck: false, autoCapitalize: "off", autoCorrect: "off" } }}
       />
       <Button variant="outlined" startIcon={<ContentPasteRounded />} onClick={() => void coller()}>{t("Coller", "Paste")}</Button>
@@ -216,7 +237,7 @@ export function CryptoRetirerAdresse() {
       {reseau && (
         <Card>
           <Line label={t("Réseau", "Network")} value={libelleReseau(reseau)} strong />
-          <Line label={t("Frais du retrait", "Withdrawal fee")} value={fraisLus(actif, FRAIS_CRYPTO[actif])} />
+          <Line label={t("Frais du retrait", "Withdrawal fee")} value={fraisLus(actif, fraisRetrait(actif, reseau.id))} />
           <Typography variant="body2">{t(`Vérifiez que votre wallet attend bien des ${actif} sur ${reseau.chaine} : un envoi sur une chaîne ne se rappelle pas.`, `Make sure your wallet expects ${actif} on ${reseau.chaine}: a blockchain transfer can't be reversed.`)}</Typography>
         </Card>
       )}
@@ -234,7 +255,8 @@ export function CryptoRetirerMontant() {
   const [c, poser] = useParcours("crypto");
   const [saisie, setSaisie] = useState(c.montant ? String(c.montant) : "");
   const dispo = soldes ? soldes[actif].disponible : 0;
-  const frais = FRAIS_CRYPTO[actif];
+  /* les frais du RÉSEAU choisi : Ethereum peut coûter plus que BNB Chain */
+  const frais = fraisRetrait(actif, c.reseau);
   const montant = Number(saisie.replace(",", ".")) || 0;
   /* « Tout » ne propose jamais plus que le solde : un plancher, pas un arrondi (un XAFe se retire en entier) */
   const maxi = Math.max(0, actif === "XAFe" ? Math.floor(dispo - frais + 1e-9) : Math.floor(arrondi2((dispo - frais) * 100) + 1e-9) / 100);
@@ -245,7 +267,7 @@ export function CryptoRetirerMontant() {
     if (k === "⌫") return setSaisie(saisie.slice(0, -1));
     if (k === ",") return setSaisie(saisie.includes(".") ? saisie : (saisie || "0") + ".");
     const suite = (saisie + k).replace(/^0+(?=\d)/, "");
-    if (actif === "USDT" && /\.\d{3,}$/.test(suite)) return;
+    if (actif !== "XAFe" && /\.\d{3,}$/.test(suite)) return;
     if (suite.length <= 12) setSaisie(suite);
   };
 
@@ -265,7 +287,7 @@ export function CryptoRetirerMontant() {
         <Button size="small" variant="outlined" onClick={() => setSaisie(String(maxi))}>{t(`Tout (${fmt(actif, maxi)})`, `All (${fmt(actif, maxi)})`)}</Button>
       </Stack>
       <Box sx={{ flex: 1 }} />
-      <Keypad onKey={touche} triple={actif === "USDT" ? "," : "000"} />
+      <Keypad onKey={touche} triple={actif !== "XAFe" ? "," : "000"} />
       <Button variant="contained" disabled={!ok} onClick={() => { poser({ montant }); navigate(`/crypto/retirer/${actif}/verifier`); }}>{t("Continuer", "Continue")}</Button>
     </Screen>
   );
@@ -277,7 +299,7 @@ export function CryptoRetirerVerifier() {
   const navigate = useNavigate();
   const [c] = useParcours("crypto");
   if (!c.montant || !c.adresse || !c.reseau) return <Navigate to={`/crypto/retirer/${actif}/adresse`} replace />;
-  const frais = FRAIS_CRYPTO[actif];
+  const frais = fraisRetrait(actif, c.reseau);
   return (
     <Screen title={t("Vérifiez", "Review")} back={`/crypto/retirer/${actif}/montant`}>
       <Card>
@@ -289,7 +311,7 @@ export function CryptoRetirerVerifier() {
         <Line label={t("Vers", "To")} value={c.adresse} mono />
       </Card>
       <Typography variant="body2" textAlign="center">
-        {actif === "XAFe" ? t("Vos XAFe sont frappés sur la chaîne au départ, et détruits ici : la circulation ne change pas.", "Your XAFe are minted on-chain as they leave and burned here: the total supply stays the same.") : t("Les USDT partent de la réserve de la plateforme ; le hash de la transaction apparaîtra dans le détail.", "The USDT are sent from the platform's reserve; the transaction hash will appear in the details.")}
+        {actif === "XAFe" ? t("Vos XAFe sont frappés sur la chaîne au départ, et détruits ici : la circulation ne change pas.", "Your XAFe are minted on-chain as they leave and burned here: the total supply stays the same.") : t(`Les ${actif} partent de la réserve de la plateforme ; le hash de la transaction apparaîtra dans le détail.`, `The ${actif} are sent from the platform's reserve; the transaction hash will appear in the details.`)}
       </Typography>
       <Box sx={{ flex: 1 }} />
       <Button variant="contained" startIcon={<LockRounded />} onClick={() => navigate(`/crypto/retirer/${actif}/code`)}>{t("Continuer vers la vérification", "Continue to verification")}</Button>

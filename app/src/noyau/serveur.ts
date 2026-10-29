@@ -30,6 +30,7 @@ const TITRES: Record<string, string> = {
   "Vérification refusée": "Verification declined",
   "XAFe crédités": "XAFe credited",
   "USDT envoyés": "USDT sent",
+  "USDC envoyés": "USDC sent",
   "XAFe envoyés": "XAFe sent",
   "Double authentification retirée": "Two-factor authentication removed",
 };
@@ -57,10 +58,10 @@ const TEXTES: Forme[] = [
   [/^([\d\s  ,.]+) XAF reçus au-delà de votre palier : ils vous seront remboursés\.$/, (_, n) => `${nombre(n)} XAF received above your tier limit: they will be refunded.`],
   [/^([\d\s  ,.]+) XAF envoyés au (\d+)\. Transaction ID : (.+)\.$/, (_, n, num, id) => `${nombre(n)} XAF sent to ${num}. Transaction ID: ${id}.`],
   [/^([\d\s  ,.]+) XAF envoyés au (\d+)\.$/, (_, n, num) => `${nombre(n)} XAF sent to ${num}.`],
-  [/^([\d\s  ,.]+) (XAFe|USDT) sont revenus sur votre compte\.(?: (.+))?$/, (_, n, a, reste) =>
+  [/^([\d\s  ,.]+) (XAFe|USDT|USDC) sont revenus sur votre compte\.(?: (.+))?$/, (_, n, a, reste) =>
     `${nombre(n)} ${a} are back in your account.${reste ? ` ${motifLisible(reste.replace(/\.$/, ""))}.` : ""}`],
-  [/^(Achat|Vente) de ([\d.]+) USDT à ([\d.]+)\.$/, (_, cote, q, px) => `${cote === "Achat" ? "Bought" : "Sold"} ${q} USDT at ${px}.`],
-  [/^([\d.]+) (XAFe|USDT) partis vers (.+) \((.+)\)\.$/, (_, n, a, adr, res) => `${n} ${a} sent to ${adr} (${res}).`],
+  [/^(Achat|Vente) de ([\d.]+) (USDT|USDC) à ([\d.]+)\.$/, (_, cote, q, a, px) => `${cote === "Achat" ? "Bought" : "Sold"} ${q} ${a} at ${px}.`],
+  [/^([\d.]+) (XAFe|USDT|USDC) partis vers (.+) \((.+)\)\.$/, (_, n, a, adr, res) => `${n} ${a} sent to ${adr} (${res}).`],
   [/^L'équipe vérifie votre dossier, en général sous 24 h ouvrées\.$/, "The team is reviewing your file, usually within 24 business hours."],
   [/^Votre compte est au palier 0\.$/, "Your account is at tier 0."],
   [/^Votre identité est vérifiée : palier 1\.$/, "Your identity is verified: tier 1."],

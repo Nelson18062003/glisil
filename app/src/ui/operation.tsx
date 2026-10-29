@@ -10,6 +10,7 @@ import CardGiftcardRounded from "@mui/icons-material/CardGiftcardRounded";
 import CurrencyBitcoinRounded from "@mui/icons-material/CurrencyBitcoinRounded";
 import SwapHorizRounded from "@mui/icons-material/SwapHorizRounded";
 import type { Operation } from "../guichet/types";
+import { baseDe } from "../guichet/types";
 import { infoReseau, operateur as opDe } from "../noyau/argent";
 import { enTranches, heure, prix as fPrix, signe, usdt as fUsdt } from "../noyau/format";
 import { motifLisible } from "../noyau/serveur";
@@ -39,12 +40,13 @@ export function apparence(o: Operation): { icone: JSX.Element; tone: Tone; titre
       return { icone: <ArrowUpwardRounded />, tone: o.etat === "echouee" ? "red" : "amber", titre: t(`Sortie ${opDe(o.detail.operateur).nom}`, `${opDe(o.detail.operateur).nom} withdrawal`), sousTitre: heureOuEtat, droite: signe(-o.detail.montant) };
     case "ordre": {
       const d = o.detail;
-      return { icone: <SwapHorizRounded />, tone: "blue", titre: t(`${d.cote === "achat" ? "Achat" : "Vente"}${d.rapide ? " rapide" : ""} ${fUsdt(d.executee || d.quantite)} USDT`,
-             `${d.rapide ? (d.cote === "achat" ? "Quick buy" : "Quick sell") : d.cote === "achat" ? "Buy" : "Sell"} ${fUsdt(d.executee || d.quantite)} USDT`),
+      const B = baseDe(d.paire ?? "USDT/XAFe");
+      return { icone: <SwapHorizRounded />, tone: "blue", titre: t(`${d.cote === "achat" ? "Achat" : "Vente"}${d.rapide ? " rapide" : ""} ${fUsdt(d.executee || d.quantite)} ${B}`,
+             `${d.rapide ? (d.cote === "achat" ? "Quick buy" : "Quick sell") : d.cote === "achat" ? "Buy" : "Sell"} ${fUsdt(d.executee || d.quantite)} ${B}`),
              sousTitre: d.rapide ? t(`${heureOuEtat} · frais compris`, `${heureOuEtat} · fees included`) : d.prixMoyen != null ? t(`${heureOuEtat} · à ${fPrix(d.prixMoyen)}`, `${heureOuEtat} · at ${fPrix(d.prixMoyen)}`) : d.prix != null ? t(`${heureOuEtat} · limite ${fPrix(d.prix)}`, `${heureOuEtat} · limit ${fPrix(d.prix)}`) : heureOuEtat, droite: d.totalXafe > 0 ? signe(o.montant) : "—", couleur: o.montant > 0 && d.totalXafe > 0 ? tones.green.fg : undefined };
     }
     case "crypto":
-      return { icone: <CurrencyBitcoinRounded />, tone: "neutral", titre: `${o.montant > 0 ? t("Dépôt", "Deposit") : t("Retrait", "Withdrawal")} ${o.actif} · ${infoReseau(o.detail.reseau).nom}`, sousTitre: heureOuEtat, droite: `${signe(o.montant, o.actif === "USDT" ? 2 : 0)} ${o.actif}`, couleur: o.montant > 0 ? tones.green.fg : undefined };
+      return { icone: <CurrencyBitcoinRounded />, tone: "neutral", titre: `${o.montant > 0 ? t("Dépôt", "Deposit") : t("Retrait", "Withdrawal")} ${o.actif} · ${infoReseau(o.detail.reseau).nom}`, sousTitre: heureOuEtat, droite: `${signe(o.montant, o.actif === "XAFe" ? 0 : 2)} ${o.actif}`, couleur: o.montant > 0 ? tones.green.fg : undefined };
     case "dotation":
       /* la bêta : de l'argent de test, dit comme tel */
       return { icone: <CardGiftcardRounded />, tone: "green", titre: t("Argent de test reçu", "Test money received"), sousTitre: `${heure(o.quand)} · ${motifLisible(o.detail.motif)}${o.detail.usdt > 0 ? ` · +${enTranches(o.detail.usdt, 2)} USDT` : ""}`,

@@ -5,12 +5,42 @@
  */
 import { appliquerSupport } from "../noyau/conditions";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
-import { appliquerParametres, BETA, CRYPTO, MARCHE, RAPIDE, SORTIES } from "../noyau/argent";
+import { createContext, useContext, useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { appliquerParametres, BETA, choisirLaPaire, CRYPTO, MARCHES, RAPIDE, SORTIES } from "../noyau/argent";
+import { parcours } from "../navigation/parcours";
 import { GuichetDemo } from "./demo";
 import type { Guichet } from "./guichet";
 import { GuichetSupabase } from "./supabase";
-import type { Actif, Reseau, SensRapide } from "./types";
+import type { Actif, Paire, Reseau, SensRapide } from "./types";
+import { estPaire, PAIRE_PRINCIPALE } from "./types";
+
+/*
+ * LE CARNET CHOISI : USDT/XAFe ou USDC/XAFe (0045). Un seul choix pour tous les
+ * écrans du marché, retenu sur l'appareil ; les règles de l'écran (MARCHE)
+ * suivent celles de ce carnet.
+ */
+const CLE_PAIRE = "glisil.paire";
+let paireChoisie: Paire = (() => {
+  try { const v = globalThis.localStorage?.getItem(CLE_PAIRE); return estPaire(v) ? v : PAIRE_PRINCIPALE; } catch { return PAIRE_PRINCIPALE; }
+})();
+choisirLaPaire(paireChoisie);
+const abonnesPaire = new Set<() => void>();
+export function choisirPaire(p: Paire) {
+  if (p === paireChoisie) return;
+  paireChoisie = p;
+  choisirLaPaire(p);
+  // un prix d'USDT n'est pas un prix d'USDC : ce qui était tapé ne passe pas d'un carnet à l'autre
+  parcours.poser("marche", { prix: "", quantite: "" });
+  try { globalThis.localStorage?.setItem(CLE_PAIRE, p); } catch { /* un stockage fermé : le choix vaut pour la visite */ }
+  abonnesPaire.forEach((f) => f());
+}
+/** le carnet que la personne regarde, et de quoi en changer */
+export function usePaire(): [Paire, (p: Paire) => void] {
+  const p = useSyncExternalStore((cb) => { abonnesPaire.add(cb); return () => abonnesPaire.delete(cb); }, () => paireChoisie);
+  return [p, choisirPaire];
+}
+/** un carnet fermé par l'équipe ne se propose pas ; la principale reste toujours là */
+export const pairesOuvertes = (): Paire[] => (Object.keys(MARCHES) as Paire[]).filter((p) => p === PAIRE_PRINCIPALE || MARCHES[p].ouvert);
 
 const Contexte = createContext<Guichet | null>(null);
 
@@ -66,15 +96,16 @@ export function useOuvertures() {
     sortiesDemoSeulement: !SORTIES.ouvertes && BETA.actif && BETA.demoTotem,
     /* l'équipe paie à la main : on demande le nom du compte, et on ne promet pas « 40 secondes » */
     sortieManuelle: SORTIES.mode === "manuel",
-    marche: MARCHE.ouvert,
-    rapide: RAPIDE.ouvert && MARCHE.ouvert,
+    /* le marché s'ouvre dès qu'un de ses carnets l'est */
+    marche: Object.values(MARCHES).some((m) => m.ouvert),
+    rapide: RAPIDE.ouvert && Object.values(MARCHES).some((m) => m.ouvert),
     cryptoDepots: CRYPTO.depotsOuverts,
     cryptoRetraits: CRYPTO.retraitsOuverts,
     /* la bêta : de l'argent de test ; les dépôts réels fermés, sauf pour un compte autorisé */
     beta: BETA.actif,
     entrees: !BETA.actif || BETA.depotsReels || BETA.demoTotem,
     /* l'entrée « Crypto » mène à l'un de ces trois : fermée s'ils le sont tous */
-    crypto: CRYPTO.depotsOuverts || CRYPTO.retraitsOuverts || (RAPIDE.ouvert && MARCHE.ouvert),
+    crypto: CRYPTO.depotsOuverts || CRYPTO.retraitsOuverts || (RAPIDE.ouvert && Object.values(MARCHES).some((m) => m.ouvert)),
   }), [dataUpdatedAt, isPending]); // les valeurs vivent hors de React : la date de la lecture suffit à les relire
 }
 
@@ -93,10 +124,10 @@ export const cles = {
   depot: (ref: string) => ["depot", ref] as const,
   depotsEnAttente: ["depots-en-attente"] as const,
   sortie: (ref: string) => ["sortie", ref] as const,
-  cotation: ["cotation"] as const,
-  carnet: (p: number) => ["carnet", p] as const,
-  transactions: (n: number) => ["transactions", n] as const,
-  chandelles: (m: number, n: number) => ["chandelles", m, n] as const,
+  cotation: (paire: Paire) => ["cotation", paire] as const,
+  carnet: (p: number, paire: Paire) => ["carnet", paire, p] as const,
+  transactions: (n: number, paire: Paire) => ["transactions", paire, n] as const,
+  chandelles: (m: number, n: number, paire: Paire) => ["chandelles", paire, m, n] as const,
   mesOrdres: ["mes-ordres"] as const,
   ordre: (id: string) => ["ordre", id] as const,
   historique: ["historique"] as const,
@@ -114,10 +145,23 @@ export function useNumeros() { const g = useGuichet(); return useQuery({ queryKe
 export function useDepot(ref: string | undefined) { const g = useGuichet(); return useQuery({ queryKey: cles.depot(ref ?? ""), queryFn: () => g.depot(ref!), enabled: Boolean(ref), refetchInterval: 3_000 }); }
 export function useDepotsEnAttente() { const g = useGuichet(); return useQuery({ queryKey: cles.depotsEnAttente, queryFn: () => g.depotsEnAttente(), refetchInterval: 10_000 }); }
 export function useSortie(ref: string | undefined) { const g = useGuichet(); return useQuery({ queryKey: cles.sortie(ref ?? ""), queryFn: () => g.sortie(ref!), enabled: Boolean(ref), refetchInterval: 3_000 }); }
-export function useCotation() { const g = useGuichet(); return useQuery({ queryKey: cles.cotation, queryFn: () => g.cotation(), refetchInterval: MARCHE_MS }); }
-export function useCarnet(profondeur: number) { const g = useGuichet(); return useQuery({ queryKey: cles.carnet(profondeur), queryFn: () => g.carnet(profondeur), refetchInterval: MARCHE_MS }); }
-export function useTransactions(n: number) { const g = useGuichet(); return useQuery({ queryKey: cles.transactions(n), queryFn: () => g.transactions(n), refetchInterval: MARCHE_MS }); }
-export function useChandelles(minutes: number, n: number) { const g = useGuichet(); return useQuery({ queryKey: cles.chandelles(minutes, n), queryFn: () => g.chandelles(minutes, n), refetchInterval: 15_000 }); }
+/* Les lectures du marché suivent le carnet choisi, sauf si l'écran en nomme un autre. */
+export function useCotation(paire?: Paire) {
+  const g = useGuichet(); const [choisie] = usePaire(); const p = paire ?? choisie;
+  return useQuery({ queryKey: cles.cotation(p), queryFn: () => g.cotation(p), refetchInterval: MARCHE_MS });
+}
+export function useCarnet(profondeur: number, paire?: Paire) {
+  const g = useGuichet(); const [choisie] = usePaire(); const p = paire ?? choisie;
+  return useQuery({ queryKey: cles.carnet(profondeur, p), queryFn: () => g.carnet(profondeur, p), refetchInterval: MARCHE_MS });
+}
+export function useTransactions(n: number, paire?: Paire) {
+  const g = useGuichet(); const [choisie] = usePaire(); const p = paire ?? choisie;
+  return useQuery({ queryKey: cles.transactions(n, p), queryFn: () => g.transactions(n, p), refetchInterval: MARCHE_MS });
+}
+export function useChandelles(minutes: number, n: number, paire?: Paire) {
+  const g = useGuichet(); const [choisie] = usePaire(); const p = paire ?? choisie;
+  return useQuery({ queryKey: cles.chandelles(minutes, n, p), queryFn: () => g.chandelles(minutes, n, p), refetchInterval: 15_000 });
+}
 export function useMesOrdres() { const g = useGuichet(); return useQuery({ queryKey: cles.mesOrdres, queryFn: () => g.mesOrdres(), refetchInterval: 6_000 }); }
 export function useOrdre(id: string | undefined) { const g = useGuichet(); return useQuery({ queryKey: cles.ordre(id ?? ""), queryFn: () => g.ordre(id!), enabled: Boolean(id) }); }
 export function useHistorique() { const g = useGuichet(); return useQuery({ queryKey: cles.historique, queryFn: () => g.historique(), refetchInterval: 10_000 }); }
@@ -147,11 +191,11 @@ export function useAdresseDepot(actif: Actif, reseau: Reseau) { const g = useGui
 export function useRetraitCrypto(ref: string | undefined) { const g = useGuichet(); return useQuery({ queryKey: cles.retrait(ref ?? ""), queryFn: () => g.retraitCrypto(ref!), enabled: Boolean(ref), refetchInterval: 3_000 }); }
 
 /** L'estimation de l'achat rapide pendant qu'on tape : rien n'est écrit ; elle se relit, le carnet bouge. */
-export function useEstimationRapide(sens: SensRapide, montant: number) {
+export function useEstimationRapide(sens: SensRapide, montant: number, paire: Paire) {
   const g = useGuichet();
   return useQuery({
-    queryKey: ["rapide", sens, montant],
-    queryFn: () => g.devisRapide({ sens, montant, ferme: false }),
+    queryKey: ["rapide", paire, sens, montant],
+    queryFn: () => g.devisRapide({ sens, montant, ferme: false, paire }),
     enabled: montant > 0,
     retry: false,
     refetchInterval: 5_000,

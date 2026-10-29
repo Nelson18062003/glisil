@@ -25,8 +25,9 @@ import {
   type IChartApi, type ISeriesApi, type ISeriesMarkersPluginApi, type LogicalRange, type MouseEventParams, type SeriesType, type Time, type UTCTimestamp,
 } from "lightweight-charts";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useGuichet } from "../../guichet";
+import { useGuichet, usePaire } from "../../guichet";
 import type { Bougie, Intervalle, Niveau } from "../../guichet/types";
+import { baseDe } from "../../guichet/types";
 import { enTranches, prix as fPrix, usdt as fUsdt } from "../../noyau/format";
 import { langue, t } from "../../noyau/langue";
 import { BUY, SELL } from "../../ui";
@@ -109,6 +110,8 @@ function creerSerie(chart: IChartApi, type: TypeGraphique): ISeriesApi<SeriesTyp
  */
 export function GraphiqueBourse({ hauteur, compact = false }: { hauteur: number; compact?: boolean }) {
   const guichet = useGuichet();
+  /* le carnet regardé : en changer recharge tout le graphique, comme un changement d'intervalle */
+  const [paire] = usePaire();
   const boite = useRef<HTMLDivElement | null>(null);
   const chart = useRef<IChartApi | null>(null);
   const serie = useRef<ISeriesApi<SeriesType> | null>(null);
@@ -152,7 +155,7 @@ export function GraphiqueBourse({ hauteur, compact = false }: { hauteur: number;
     enCours.current = true;
     const g = generation.current;
     try {
-      const page = await guichet.bougies(intervalle, bougies.current[0].t, combien);
+      const page = await guichet.bougies(intervalle, bougies.current[0].t, combien, paire);
       if (g !== generation.current) return 0;
       const premier = Date.parse(bougies.current[0].t);
       const neuves = page.bougies.filter((b) => Date.parse(b.t) < premier);
@@ -165,7 +168,7 @@ export function GraphiqueBourse({ hauteur, compact = false }: { hauteur: number;
       if (vue) chart.current?.timeScale().setVisibleLogicalRange({ from: vue.from + neuves.length, to: vue.to + neuves.length });
       return neuves.length;
     } catch { return 0; } finally { enCours.current = false; }
-  }, [guichet, intervalle, dessiner]);
+  }, [guichet, intervalle, dessiner, paire]);
 
   /* ---- montrer une plage (1J… Tout) : charger assez loin, puis cadrer */
   const cadrer = useCallback(async (duree: number | null) => {
@@ -234,7 +237,7 @@ export function GraphiqueBourse({ hauteur, compact = false }: { hauteur: number;
     let arret = false;
     (async () => {
       try {
-        const page = await guichet.bougies(intervalle, null, 400);
+        const page = await guichet.bougies(intervalle, null, 400, paire);
         if (g !== generation.current) return;
         bougies.current = page.bougies;
         plusAncien.current = page.plusAncien;
@@ -249,7 +252,7 @@ export function GraphiqueBourse({ hauteur, compact = false }: { hauteur: number;
     const direct = setInterval(async () => {
       if (arret || document.hidden) return;
       try {
-        const page = await guichet.bougies(intervalle, null, 3);
+        const page = await guichet.bougies(intervalle, null, 3, paire);
         if (g !== generation.current || !serie.current || !volume.current) return;
         const fin = bougies.current.length ? Date.parse(bougies.current[bougies.current.length - 1].t) : 0;
         for (const b of page.bougies) {
@@ -266,7 +269,7 @@ export function GraphiqueBourse({ hauteur, compact = false }: { hauteur: number;
     return () => { arret = true; clearInterval(direct); };
     // le type change la série, pas les données : il n'est pas une raison de recharger
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [intervalle, guichet]);
+  }, [intervalle, guichet, paire]);
 
   const choisirPlage = (p: ReturnType<typeof PLAGES>[number]) => {
     setPlage(p.id);
@@ -319,7 +322,7 @@ export function GraphiqueBourse({ hauteur, compact = false }: { hauteur: number;
             <Box component="span" sx={{ color: variation >= 0 ? BUY : SELL, fontWeight: 600 }}>{variation >= 0 ? "+" : ""}{t(`${enTranches(variation, 2)} %`, `${enTranches(variation, 2)}%`)}</Box>
             {montree.source === "reference"
               ? <Box component="span" sx={{ fontStyle: "italic" }}>{t("cours de référence BCE · avant l'ouverture de Glisil", "ECB reference rate · before Glisil opened")}</Box>
-              : <Box component="span">{t("Vol", "Vol")} {fUsdt(Math.round(montree.v))} USDT</Box>}
+              : <Box component="span">{t("Vol", "Vol")} {fUsdt(Math.round(montree.v))} {baseDe(paire)}</Box>}
           </>
         ) : <Box component="span">{vide ? t("Pas encore d'échange sur cet intervalle.", "No trades yet on this interval.") : t("Chargement…", "Loading…")}</Box>}
       </Box>
@@ -328,9 +331,9 @@ export function GraphiqueBourse({ hauteur, compact = false }: { hauteur: number;
       <Box sx={{ position: "relative", height: hauteur, borderRadius: 2, overflow: "hidden" }}>
         <Box ref={boite} sx={{ position: "absolute", inset: 0 }} role="img"
           aria-label={derniere
-            ? t(`Graphique USDT/XAFe, intervalle ${intervalles.find((i) => i.id === intervalle)?.nom}, dernier prix ${fPrix(derniere.c)} XAFe`,
-                `USDT/XAFe chart, ${intervalles.find((i) => i.id === intervalle)?.nom} interval, last price ${fPrix(derniere.c)} XAFe`)
-            : t("Graphique USDT/XAFe", "USDT/XAFe chart")} />
+            ? t(`Graphique ${paire}, intervalle ${intervalles.find((i) => i.id === intervalle)?.nom}, dernier prix ${fPrix(derniere.c)} XAFe`,
+                `${paire} chart, ${intervalles.find((i) => i.id === intervalle)?.nom} interval, last price ${fPrix(derniere.c)} XAFe`)
+            : t(`Graphique ${paire}`, `${paire} chart`)} />
         {pasAuBout && (
           <Tooltip title={t("Revenir au plus récent", "Back to the latest")}>
             <IconButton size="small" onClick={() => chart.current?.timeScale().scrollToRealTime()} aria-label={t("Revenir au plus récent", "Back to the latest")}
@@ -374,6 +377,8 @@ export function cumuler(niveaux: Niveau[], cote: "achats" | "ventes"): Point[] {
  * qu'on peut acheter. Un mur se voit comme une marche haute.
  */
 export function Profondeur({ achats, ventes, hauteur }: { achats: Niveau[]; ventes: Niveau[]; hauteur: number }) {
+  const [paire] = usePaire();
+  const B = baseDe(paire);
   const [vise, setVise] = useState<{ x: number; cote: "achat" | "vente"; p: Point } | null>(null);
   // le dessin se fait à la largeur réelle : un viewBox fixe rapetissait le texte à 8 px sur un téléphone
   const cadre = useRef<HTMLDivElement | null>(null);
@@ -422,8 +427,8 @@ export function Profondeur({ achats, ventes, hauteur }: { achats: Niveau[]; vent
   return (
     <Box ref={cadre} sx={{ position: "relative" }} data-profondeur>
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} role="img" onPointerMove={surMouvement} onPointerLeave={() => setVise(null)} style={{ touchAction: "pan-y", display: "block" }}
-        aria-label={t(`Profondeur du carnet : ${fUsdt(Math.round(a[a.length - 1]?.cumul ?? 0))} USDT à l'achat, ${fUsdt(Math.round(v[v.length - 1]?.cumul ?? 0))} USDT à la vente`,
-                      `Order book depth: ${fUsdt(Math.round(a[a.length - 1]?.cumul ?? 0))} USDT on the buy side, ${fUsdt(Math.round(v[v.length - 1]?.cumul ?? 0))} USDT on the sell side`)}>
+        aria-label={t(`Profondeur du carnet : ${fUsdt(Math.round(a[a.length - 1]?.cumul ?? 0))} ${B} à l'achat, ${fUsdt(Math.round(v[v.length - 1]?.cumul ?? 0))} ${B} à la vente`,
+                      `Order book depth: ${fUsdt(Math.round(a[a.length - 1]?.cumul ?? 0))} ${B} on the buy side, ${fUsdt(Math.round(v[v.length - 1]?.cumul ?? 0))} ${B} on the sell side`)}>
         {graduations.map((q) => (
           <g key={q}>
             <line x1={0} x2={W - droite} y1={y(q)} y2={y(q)} stroke={GRILLE} />
@@ -448,12 +453,12 @@ export function Profondeur({ achats, ventes, hauteur }: { achats: Niveau[]; vent
       {vise && (
         <Box sx={{ position: "absolute", top: 30, left: `${Math.min(Math.max((vise.x / W) * 100, 12), 70)}%`, bgcolor: "background.paper", boxShadow: 2, borderRadius: 2, px: 1.25, py: 0.75, pointerEvents: "none", fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
           <Box sx={{ color: vise.cote === "achat" ? BUY : SELL, fontWeight: 600 }}>{vise.cote === "achat" ? t("Achats jusqu'à", "Bids down to") : t("Ventes jusqu'à", "Asks up to")} {fPrix(vise.p.prix)}</Box>
-          <Box>{t("Cumul", "Total")} {fUsdt(Math.round(vise.p.cumul * 100) / 100)} USDT</Box>
+          <Box>{t("Cumul", "Total")} {fUsdt(Math.round(vise.p.cumul * 100) / 100)} {B}</Box>
         </Box>
       )}
       <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5, fontSize: 12, color: TEXTE }}>
-        <span><Box component="span" sx={{ color: BUY, fontWeight: 600 }}>{t("Achats", "Bids")}</Box> · {fUsdt(Math.round(a[a.length - 1]?.cumul ?? 0))} USDT</span>
-        <span><Box component="span" sx={{ color: SELL, fontWeight: 600 }}>{t("Ventes", "Asks")}</Box> · {fUsdt(Math.round(v[v.length - 1]?.cumul ?? 0))} USDT</span>
+        <span><Box component="span" sx={{ color: BUY, fontWeight: 600 }}>{t("Achats", "Bids")}</Box> · {fUsdt(Math.round(a[a.length - 1]?.cumul ?? 0))} {B}</span>
+        <span><Box component="span" sx={{ color: SELL, fontWeight: 600 }}>{t("Ventes", "Asks")}</Box> · {fUsdt(Math.round(v[v.length - 1]?.cumul ?? 0))} {B}</span>
       </Stack>
     </Box>
   );

@@ -7,7 +7,7 @@
  * vit. Il tourne quand l'application n'a pas de projet Supabase configuré.
  * Il n'a aucune valeur comptable : c'est une maquette qui répond.
  */
-import { achatMax, adresseValide, arrondi2, FRAIS_CRYPTO, bandeDePrix, coutAuCarnet, decouperSortie, devisSurLeCarnet, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide, RAPIDE, SORTIES, fraisSortieManuelle, infoReseau, NUMEROS, RESEAUX, RESEAUX_OUVERTS } from "../noyau/argent";
+import { achatMax, adresseValide, arrondi2, bandeDePrix, fraisRetrait, MARCHES, coutAuCarnet, decouperSortie, devisSurLeCarnet, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide, RAPIDE, SORTIES, fraisSortieManuelle, infoReseau, NUMEROS, RESEAUX, RESEAUX_OUVERTS } from "../noyau/argent";
 import { ErreurMoteur } from "../noyau/erreurs";
 import { emailNormalise, emailValide } from "../noyau/identite";
 import { codeDeSecoursNormalise } from "../noyau/codesDeSecours";
@@ -19,9 +19,10 @@ import type { EvenementDEntree, Guichet } from "./guichet";
 import type {
   Actif, Bougie, Carnet, Chandelle, Intervalle, PageDeBougies, Compte, Cote, Cotation, Declaration, Depot, DevisRapide, Execution, IdOperateur, Niveau, Notification, Numero, Operation, Ordre, ProfilInscription, SensRapide,
   Reseau, ResultatOrdre, RetraitCrypto, Soldes, Sortie, Transaction, TransfertCrypto, TypeOrdre,
-  LignePreuve, PreuveDeReserve,
+  LignePreuve, PreuveDeReserve, Paire,
   EtatDEntree, EnrolementTotp, EtatCodesDeSecours, OperationAVerifier, Verification, EtatVerification, PreuveDeVerification,
 } from "./types";
+import { baseDe, PAIRES } from "./types";
 
 const CLE_STOCKAGE = "xafe.demo.v6";
 /** le code de démonstration : celui qui arrive « par SMS » pour un numéro, « par e-mail » pour confirmer une adresse ou une sortie */
@@ -96,7 +97,10 @@ type Etat = {
   dossiers: Record<string, Dossier>;
   verifications: VerificationDemo[];
   echecs: { email: string; quand: number }[];
+  /** le carnet USDT/XAFe (le nom d'avant 0045 : un stockage d'hier se relit) */
   marche: Marche;
+  /** le carnet USDC/XAFe, créé au premier regard */
+  marcheUsdc?: Marche;
 };
 
 /* ------------------------------------------------------------- utilitaires */
@@ -145,24 +149,25 @@ function auPas(p: number): number {
 
 /* ------------------------------------------------------------- le marché */
 
-function marcheInitial(): Marche {
+/** un carnet qui démarre : `depart`, le prix d'il y a 28 heures ; `graine` décale le hasard (deux carnets ne bougent pas pareil) */
+function marcheInitial(depart = 616.2, graine = 0): Marche {
   const t0 = maintenant() - 28 * 3600_000;
   const chandelles: Chandelle[] = [];
-  let p = 616.2;
+  let p = depart;
   for (let i = 0; i < 28; i++) {
     const o = p;
-    const c = auPas(o + (alea(i * 7 + 1) - 0.45) * 1.2);
-    const h = Math.max(o, c) + alea(i * 3 + 2) * 0.4;
-    const l = Math.min(o, c) - alea(i * 5 + 3) * 0.4;
-    chandelles.push({ t: iso(t0 + i * 3600_000), o: arrondi2(o), h: arrondi2(h), l: arrondi2(l), c: arrondi2(c), v: Math.round(4000 + alea(i * 11) * 30000) });
+    const c = auPas(o + (alea(i * 7 + 1 + graine) - 0.45) * 1.2);
+    const h = Math.max(o, c) + alea(i * 3 + 2 + graine) * 0.4;
+    const l = Math.min(o, c) - alea(i * 5 + 3 + graine) * 0.4;
+    chandelles.push({ t: iso(t0 + i * 3600_000), o: arrondi2(o), h: arrondi2(h), l: arrondi2(l), c: arrondi2(c), v: Math.round(4000 + alea(i * 11 + graine) * 30000) });
     p = c;
   }
   const mid = chandelles[chandelles.length - 1].c;
   const transactions: Transaction[] = [];
   for (let i = 0; i < 20; i++) {
-    transactions.push({ quand: iso(maintenant() - (20 - i) * 25_000), prix: auPas(mid + (alea(i + 100) - 0.5) * 0.4), quantite: Math.round(50 + alea(i + 200) * 3000), cote: alea(i + 300) > 0.5 ? "achat" : "vente" });
+    transactions.push({ quand: iso(maintenant() - (20 - i) * 25_000), prix: auPas(mid + (alea(i + 100 + graine) - 0.5) * 0.4), quantite: Math.round(50 + alea(i + 200 + graine) * 3000), cote: alea(i + 300 + graine) > 0.5 ? "achat" : "vente" });
   }
-  return { mid, transactions: transactions.reverse(), chandelles, alea: 1 };
+  return { mid, transactions: transactions.reverse(), chandelles, alea: 1 + graine };
 }
 
 /** Le carnet des AUTRES : des niveaux autour du prix, stables tant que le prix ne bouge pas. */
@@ -191,7 +196,7 @@ function dossierVide(email: string, p: ProfilInscription, numeroDejaVerifie = fa
       conditionsVersion: p.conditions, fermeLe: null, desactive: false,
       email, prenom: p.prenom, nomDeFamille: p.nom, dateNaissance: p.naissance, ville: p.ville, pays: p.pays,
     },
-    soldes: { XAFe: { disponible: 0, bloque: 0 }, USDT: { disponible: 0, bloque: 0 } },
+    soldes: { XAFe: { disponible: 0, bloque: 0 }, USDT: { disponible: 0, bloque: 0 }, USDC: { disponible: 0, bloque: 0 } },
     numeros: local ? [{ id: uuid(), operateur: local.startsWith("69") || local.startsWith("65") ? "om" : "mtn", numero: local, verifieLe: iso(), actifDes: iso(), retireLe: null }] : [],
     depots: [], sorties: [], ordres: [], executions: [], retraits: [], transferts: [], notifications: [], taches: [], compteur: 417, numerosEnAttente: {},
   };
@@ -208,7 +213,7 @@ function dossierVitrine(): Dossier {
   const d = dossierVide(EMAIL_VITRINE, { prenom: "Nelson", nom: "Soh", naissance: "1988-06-21", telephone: `+237${NUMERO_VITRINE}`, ville: "Douala", pays: "CM", conditions: VERSION_CONDITIONS }, true);
   const hier = maintenant() - 20 * 3600_000;
   d.compte = { ...d.compte, entreprise: "NORTON GAUSS BONZINI SARL", palier: 2 };
-  d.soldes = { XAFe: { disponible: 3_250_000, bloque: 0 }, USDT: { disponible: 2_608.05, bloque: 0 } };
+  d.soldes = { XAFe: { disponible: 3_250_000, bloque: 0 }, USDT: { disponible: 2_608.05, bloque: 0 }, USDC: { disponible: 1_250, bloque: 0 } };
   d.numeros.push({ id: uuid(), operateur: "om", numero: "699876543", verifieLe: iso(hier - 86400_000), actifDes: iso(hier), retireLe: null });
   d.depots.push({
     reference: "XAFe-DP-000401", operateur: "mtn", floatNumero: "677000000", titulaire: "GLISIL DÉMONSTRATION", codeAgent: null, reception: "ouverte", montantRecu: 3_000_000,
@@ -217,9 +222,9 @@ function dossierVitrine(): Dossier {
   });
   d.transferts.push({ id: uuid(), actif: "USDT", reseau: "bep20", sens: "sortie", montant: 2000, txHash: "0x8a1f3c…", adresse: "0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21", quand: iso(hier + 30_000_000) });
   const t1 = maintenant() - 2 * 3600_000;
-  d.ordres.push({ id: uuid(), numero: "ORD-020931", cote: "achat", type: "limite", prix: 618.2, quantite: 1500, restant: 0, executee: 1500, totalXafe: 927_300, bloque: 0, prixMoyen: 618.2, etat: "execute", creeLe: iso(t1), majLe: iso(t1 + 40_000) });
+  d.ordres.push({ id: uuid(), numero: "ORD-020931", paire: "USDT/XAFe", cote: "achat", type: "limite", prix: 618.2, quantite: 1500, restant: 0, executee: 1500, totalXafe: 927_300, bloque: 0, prixMoyen: 618.2, etat: "execute", creeLe: iso(t1), majLe: iso(t1 + 40_000) });
   d.executions.push({ id: uuid(), ordreId: d.ordres[0].id, prix: 618.2, quantite: 1500, montantXafe: 927_300, frais: 1.5, fraisActif: "USDT", cote: "achat", preneur: true, quand: iso(t1 + 40_000) });
-  d.ordres.push({ id: uuid(), numero: "ORD-020944", cote: "vente", type: "limite", prix: 619.0, quantite: 2000, restant: 1200, executee: 800, totalXafe: 495_200, bloque: 1200, prixMoyen: 619, etat: "partiel", creeLe: iso(t1 + 600_000), majLe: iso(t1 + 900_000) });
+  d.ordres.push({ id: uuid(), numero: "ORD-020944", paire: "USDT/XAFe", cote: "vente", type: "limite", prix: 619.0, quantite: 2000, restant: 1200, executee: 800, totalXafe: 495_200, bloque: 1200, prixMoyen: 619, etat: "partiel", creeLe: iso(t1 + 600_000), majLe: iso(t1 + 900_000) });
   d.soldes.USDT.bloque = 1200;
   d.executions.push({ id: uuid(), ordreId: d.ordres[1].id, prix: 619, quantite: 800, montantXafe: 495_200, frais: 248, fraisActif: "XAFe", cote: "vente", preneur: false, quand: iso(t1 + 900_000) });
   d.notifications.push({ id: uuid(), quand: iso(hier + 240_000), titre: "XAFe crédités", texte: "+3 000 000 XAFe reçus par MTN MoMo.", cible: "/historique/XAFe-DP-000401", lue: true });
@@ -232,7 +237,15 @@ function dossierVitrine(): Dossier {
 function charger(): Etat {
   try {
     const brut = typeof localStorage !== "undefined" ? localStorage.getItem(CLE_STOCKAGE) : null;
-    if (brut) { const e = JSON.parse(brut) as Partial<Etat>; return { ...e, verifications: e.verifications ?? [], echecs: e.echecs ?? [], utilisateurs: e.utilisateurs ?? {} } as Etat; }
+    if (brut) {
+      const e = JSON.parse(brut) as Partial<Etat>;
+      // un dossier d'avant l'USDC (0045) : son solde d'USDC vaut zéro, ses ordres sont d'USDT/XAFe
+      for (const d of Object.values(e.dossiers ?? {})) {
+        d.soldes.USDC ??= { disponible: 0, bloque: 0 };
+        for (const o of d.ordres) o.paire ??= "USDT/XAFe";
+      }
+      return { ...e, verifications: e.verifications ?? [], echecs: e.echecs ?? [], utilisateurs: e.utilisateurs ?? {} } as Etat;
+    }
   } catch { /* un stockage absent ou corrompu repart de zéro */ }
   return { session: null, codeAttendu: null, utilisateurs: {}, dossiers: {}, verifications: [], echecs: [], marche: marcheInitial() };
 }
@@ -403,13 +416,15 @@ export class GuichetDemo implements Guichet {
   private controlerRetraitCrypto(d: Dossier, actif: Actif, reseau: Reseau, adresse: string, montant: number) {
     if (!(montant > 0)) throw new ErreurMoteur("montant invalide");
     if (!RESEAUX_OUVERTS.includes(reseau)) throw new ErreurMoteur(RESEAUX[reseau] ? "réseau pas encore ouvert" : "réseau inconnu");
+    // comme _exiger_actif_sur_reseau : l'USDC ne passe pas par Tron
+    if (!infoReseau(reseau).actifs.includes(actif)) throw new ErreurMoteur("actif absent de ce réseau", `${actif} ne passe pas par ${infoReseau(reseau).chaine}`);
     if (!adresseValide(infoReseau(reseau).famille, adresse.trim())) throw new ErreurMoteur("adresse invalide");
-    if (d.soldes[actif].disponible < montant + FRAIS_CRYPTO[actif]) throw new ErreurMoteur("solde insuffisant");
+    if (d.soldes[actif].disponible < montant + fraisRetrait(actif, reseau)) throw new ErreurMoteur("solde insuffisant");
   }
 
   private controlerFermeture(d: Dossier) {
     if (d.compte.fermeLe) throw new ErreurMoteur("compte déjà fermé");
-    const reste = (["XAFe", "USDT"] as const).filter((a) => d.soldes[a].disponible + d.soldes[a].bloque > 0)
+    const reste = (["XAFe", "USDT", "USDC"] as const).filter((a) => d.soldes[a].disponible + d.soldes[a].bloque > 0)
       .map((a) => `${a === "XAFe" ? xafDe(d.soldes[a].disponible + d.soldes[a].bloque) : (d.soldes[a].disponible + d.soldes[a].bloque).toFixed(2)} ${a}`);
     if (reste.length) throw new ErreurMoteur("il reste de l'argent sur le compte", `sortez d'abord : ${reste.join(", ")}`);
     if (d.ordres.some((o) => o.etat === "ouvert" || o.etat === "partiel") || d.depots.some((x) => x.etat === "en_attente")
@@ -549,9 +564,20 @@ export class GuichetDemo implements Guichet {
     this.notifier(d, `${r.actif} envoyés`, `${r.montant} ${r.actif} partis vers ${r.adresse.slice(0, 8)}… (${r.reseau.toUpperCase()}).`, `/historique/${reference}`);
   }
 
-  /** Le prix marche ; ce qu'il croise de MES ordres au carnet s'exécute (frais placeur). */
+  /** le carnet d'une paire ; celui d'USDC naît au premier regard, un peu sous celui d'USDT */
+  private marcheDe(p: Paire): Marche {
+    if (p === "USDT/XAFe") return this.etat.marche;
+    this.etat.marcheUsdc ??= marcheInitial(615.4, 17);
+    return this.etat.marcheUsdc;
+  }
+
+  /** Le prix marche ; ce qu'il croise de MES ordres au carnet s'exécute (frais placeur). Chaque carnet pour lui. */
   private battreLeMarche() {
-    const m = this.etat.marche;
+    for (const p of PAIRES) this.battreUnCarnet(p);
+  }
+
+  private battreUnCarnet(paire: Paire) {
+    const m = this.marcheDe(paire);
     m.alea += 1;
     const pas = (alea(m.alea) - 0.5) * 0.3;
     m.mid = arrondi2(Math.max(600, Math.min(640, auPas(m.mid + pas))));
@@ -569,7 +595,7 @@ export class GuichetDemo implements Guichet {
     }
     for (const d of Object.values(this.etat.dossiers)) {
       for (const o of d.ordres) {
-        if (!["ouvert", "partiel"].includes(o.etat) || o.prix === null) continue;
+        if (o.paire !== paire || !["ouvert", "partiel"].includes(o.etat) || o.prix === null) continue;
         const croise = o.cote === "achat" ? m.mid <= o.prix : m.mid >= o.prix;
         if (!croise) continue;
         const part = alea(m.alea + o.quantite) < 0.5 ? o.restant : arrondi2(Math.max(0.01, o.restant * alea(m.alea + 3)));
@@ -580,16 +606,17 @@ export class GuichetDemo implements Guichet {
 
   /* --------------------------------------------------- l'appariement */
 
-  /** Une exécution de MON ordre `o` : `q` USDT au prix `px`. Le solde suit le moteur. */
+  /** Une exécution de MON ordre `o` : `q` USDT (ou USDC) au prix `px`. Le solde suit le moteur. */
   private executer(d: Dossier, o: Ordre, px: number, q: number, preneur: boolean) {
     q = arrondi2(q);
     if (q <= 0) return;
+    const base = baseDe(o.paire);
     const taux = preneur ? FRAIS.preneur : FRAIS.placeur;
     const xafe = arrondi2(q * px);
     let frais: number;
     let fraisActif: Actif;
     if (o.cote === "achat") {
-      frais = arrondi2(q * taux); fraisActif = "USDT";
+      frais = arrondi2(q * taux); fraisActif = base;
       if (o.type === "limite" && o.prix !== null) {
         /* les XAFe étaient bloqués à MON prix ; la différence avec le prix d'exécution revient */
         const diff = arrondi2(q * (o.prix - px));
@@ -598,10 +625,10 @@ export class GuichetDemo implements Guichet {
       } else {
         this.mouvement(d, "XAFe", -xafe, 0);
       }
-      this.mouvement(d, "USDT", arrondi2(q - frais), 0);
+      this.mouvement(d, base, arrondi2(q - frais), 0);
     } else {
       frais = Math.round(xafe * taux); fraisActif = "XAFe";
-      this.mouvement(d, "USDT", 0, -q);
+      this.mouvement(d, base, 0, -q);
       o.bloque = arrondi2(o.bloque - q);
       this.mouvement(d, "XAFe", xafe - frais, 0);
     }
@@ -613,13 +640,14 @@ export class GuichetDemo implements Guichet {
     o.majLe = iso();
     if (o.restant <= 0 && o.bloque > 0) {
       /* un reste d'arrondi bloqué revient */
-      this.mouvement(d, o.cote === "achat" ? "XAFe" : "USDT", o.bloque, -o.bloque);
+      this.mouvement(d, o.cote === "achat" ? "XAFe" : base, o.bloque, -o.bloque);
       o.bloque = 0;
     }
     d.executions.unshift({ id: uuid(), ordreId: o.id, prix: px, quantite: q, montantXafe: xafe, frais, fraisActif, cote: o.cote, preneur, quand: iso() });
-    this.etat.marche.transactions.unshift({ quand: iso(), prix: px, quantite: q, cote: o.cote });
-    this.etat.marche.mid = px;
-    if (o.etat === "execute") this.notifier(d, "Ordre exécuté", `${o.cote === "achat" ? "Achat" : "Vente"} de ${o.quantite} USDT à ${o.prixMoyen} en moyenne.`, `/marche/ordres/${o.id}`);
+    const m = this.marcheDe(o.paire);
+    m.transactions.unshift({ quand: iso(), prix: px, quantite: q, cote: o.cote });
+    m.mid = px;
+    if (o.etat === "execute") this.notifier(d, "Ordre exécuté", `${o.cote === "achat" ? "Achat" : "Vente"} de ${o.quantite} ${base} à ${o.prixMoyen} en moyenne.`, `/marche/ordres/${o.id}`);
   }
 
   /* ============================================================ session */
@@ -940,7 +968,7 @@ export class GuichetDemo implements Guichet {
 
   async soldes(): Promise<Soldes> {
     const s = this.dossier().soldes;
-    return { XAFe: { ...s.XAFe }, USDT: { ...s.USDT } };
+    return { XAFe: { ...s.XAFe }, USDT: { ...s.USDT }, USDC: { ...(s.USDC ?? { disponible: 0, bloque: 0 }) } };
   }
 
   /* ========================================================= entrer */
@@ -1177,11 +1205,11 @@ export class GuichetDemo implements Guichet {
 
   /* ========================================================= marché */
 
-  private mesNiveaux(cote: Cote): Niveau[] {
+  private mesNiveaux(cote: Cote, paire: Paire): Niveau[] {
     const d = this.etat.session ? this.etat.dossiers[this.etat.session.email] : undefined;
     if (!d) return [];
     const parPrix = new Map<number, number>();
-    for (const o of d.ordres) if (["ouvert", "partiel"].includes(o.etat) && o.cote === cote && o.prix !== null) parPrix.set(o.prix, arrondi2((parPrix.get(o.prix) ?? 0) + o.restant));
+    for (const o of d.ordres) if (o.paire === paire && ["ouvert", "partiel"].includes(o.etat) && o.cote === cote && o.prix !== null) parPrix.set(o.prix, arrondi2((parPrix.get(o.prix) ?? 0) + o.restant));
     return [...parPrix].map(([prix, quantite]) => ({ prix, quantite }));
   }
 
@@ -1191,28 +1219,28 @@ export class GuichetDemo implements Guichet {
     return [...m].map(([prix, quantite]) => ({ prix, quantite })).sort((x, y) => (sens === "asc" ? x.prix - y.prix : y.prix - x.prix)).slice(0, profondeur);
   }
 
-  async cotation(): Promise<Cotation> {
-    const m = this.etat.marche;
+  async cotation(paire: Paire): Promise<Cotation> {
+    const m = this.marcheDe(paire);
     const livre = livreSynthetique(m.mid, 1);
     const ilYa24h = m.chandelles[Math.max(0, m.chandelles.length - 25)]?.o ?? m.mid;
     const dernieres = m.chandelles.slice(-24);
     return {
-      dernier: m.mid, variation24h: arrondi2(((m.mid - ilYa24h) / ilYa24h) * 100),
+      paire, dernier: m.mid, variation24h: arrondi2(((m.mid - ilYa24h) / ilYa24h) * 100),
       haut24h: Math.max(...dernieres.map((c) => c.h)), bas24h: Math.min(...dernieres.map((c) => c.l)),
-      volume24hUsdt: dernieres.reduce((s, c) => s + c.v, 0),
+      volume24hBase: dernieres.reduce((s, c) => s + c.v, 0),
       meilleurAchat: livre.achats[0]?.prix ?? null, meilleureVente: livre.ventes[0]?.prix ?? null, reference: m.mid, releveLe: iso(),
     };
   }
 
-  async carnet(profondeur: number): Promise<Carnet> {
-    const livre = livreSynthetique(this.etat.marche.mid, profondeur);
+  async carnet(profondeur: number, paire: Paire): Promise<Carnet> {
+    const livre = livreSynthetique(this.marcheDe(paire).mid, profondeur);
     return {
-      achats: this.fusionner(livre.achats, this.mesNiveaux("achat"), "desc", profondeur),
-      ventes: this.fusionner(livre.ventes, this.mesNiveaux("vente"), "asc", profondeur),
+      achats: this.fusionner(livre.achats, this.mesNiveaux("achat", paire), "desc", profondeur),
+      ventes: this.fusionner(livre.ventes, this.mesNiveaux("vente", paire), "asc", profondeur),
     };
   }
 
-  async transactions(n: number) { return this.etat.marche.transactions.slice(0, n); }
+  async transactions(n: number, paire: Paire) { return this.marcheDe(paire).transactions.slice(0, n); }
 
   /*
    * Les bougies de la démonstration : le même dessin que le moteur (0025) —
@@ -1220,11 +1248,12 @@ export class GuichetDemo implements Guichet {
    * trente jours ici), les échanges ensuite —, fabriqué par une formule
    * reproductible : la même bougie ne change pas d'une lecture à l'autre.
    */
-  async bougies(intervalle: Intervalle, avant?: string | null, nb = 300): Promise<PageDeBougies> {
+  async bougies(intervalle: Intervalle, avant: string | null | undefined, nb: number | undefined, paire: Paire): Promise<PageDeBougies> {
+    nb ??= 300;
     const MIN = 60_000, JOUR = 86_400_000;
     const maint = maintenant();
     const debut = Math.floor((maint - 30 * JOUR) / JOUR) * JOUR;
-    const mid = this.etat.marche.mid;
+    const mid = this.marcheDe(paire).mid;
     // le marché : une marche lente, des vagues, un peu de bruit — recalée pour finir au dernier prix
     const brut = (minute: number) => 4 * Math.sin(minute / 2900) + 1.6 * Math.sin(minute / 310) + 0.7 * Math.sin(minute / 41) + (alea(minute) - 0.5) * 0.5;
     const prixA = (ms: number) => mid + brut(Math.floor(ms / MIN)) - brut(Math.floor(maint / MIN));
@@ -1270,8 +1299,8 @@ export class GuichetDemo implements Guichet {
     return { bougies: sortie, plusAncien, debutMarche: iso(debut) };
   }
 
-  async chandelles(intervalleMinutes: number, n: number): Promise<Chandelle[]> {
-    const base = this.etat.marche.chandelles;
+  async chandelles(intervalleMinutes: number, n: number, paire: Paire): Promise<Chandelle[]> {
+    const base = this.marcheDe(paire).chandelles;
     if (intervalleMinutes <= 60) return base.slice(-n);
     const groupe = Math.max(1, Math.round(intervalleMinutes / 60));
     const sortie: Chandelle[] = [];
@@ -1293,41 +1322,44 @@ export class GuichetDemo implements Guichet {
     return copie({ ordre: o, executions: d.executions.filter((e) => e.ordreId === id) });
   }
 
-  async placerOrdre({ cote, type, quantite, prix, cle }: { cote: Cote; type: TypeOrdre; quantite: number; prix?: number; cle: string }): Promise<ResultatOrdre> {
+  async placerOrdre({ cote, type, quantite, prix, cle, paire }: { cote: Cote; type: TypeOrdre; quantite: number; prix?: number; cle: string; paire: Paire }): Promise<ResultatOrdre> {
     const d = this.dossier();
     const deja = d.ordres.find((x) => (x as unknown as { cle?: string }).cle === cle);
     if (deja) return copie({ ordre: deja, executions: d.executions.filter((e) => e.ordreId === deja.id), autoNegociation: false, deja: true });
-    if (!quantiteValide(quantite)) throw new ErreurMoteur("quantité invalide", `au moins ${MARCHE.quantiteMin} USDT, deux décimales`);
+    if (!MARCHES[paire].ouvert) throw new ErreurMoteur("marché fermé", paire);
+    const base = baseDe(paire);
+    const marche = this.marcheDe(paire);
+    if (!quantiteValide(quantite)) throw new ErreurMoteur("quantité invalide", `au moins ${MARCHE.quantiteMin} ${base}, deux décimales`);
     if (type === "limite" && (prix === undefined || !prixValide(prix))) throw new ErreurMoteur("prix invalide", `un multiple de ${MARCHE.pasPrix}`);
     /* les règles du marché (0017), avec les mêmes phrases que le moteur */
-    if (quantite > MARCHE.quantiteMax) throw new ErreurMoteur("quantité trop grande", `au plus ${MARCHE.quantiteMax} USDT par ordre`);
-    if (type === "marche" && quantite > MARCHE.marcheQuantiteMax) throw new ErreurMoteur("ordre au marché trop grand", `au plus ${MARCHE.marcheQuantiteMax} USDT au marché`);
-    const bande = type === "limite" ? bandeDePrix(cote, this.etat.marche.mid) : null;
+    if (quantite > MARCHE.quantiteMax) throw new ErreurMoteur("quantité trop grande", `au plus ${MARCHE.quantiteMax} ${base} par ordre`);
+    if (type === "marche" && quantite > MARCHE.marcheQuantiteMax) throw new ErreurMoteur("ordre au marché trop grand", `au plus ${MARCHE.marcheQuantiteMax} ${base} au marché`);
+    const bande = type === "limite" ? bandeDePrix(cote, marche.mid) : null;
     if (bande && (prix! < bande.min || prix! > bande.max)) throw new ErreurMoteur("prix hors de la bande", `entre ${bande.min} et ${bande.max} XAFe`);
-    if (type === "limite" && d.ordres.filter((x) => x.etat === "ouvert" || x.etat === "partiel").length >= MARCHE.ordresOuvertsMax) {
+    if (type === "limite" && d.ordres.filter((x) => x.paire === paire && (x.etat === "ouvert" || x.etat === "partiel")).length >= MARCHE.ordresOuvertsMax) {
       throw new ErreurMoteur("trop d'ordres ouverts", `au plus ${MARCHE.ordresOuvertsMax}`);
     }
     const px = type === "limite" ? prix! : null;
 
     const o: Ordre & { cle: string } = {
-      id: uuid(), numero: this.reference(d, "ORD-"), cote, type, prix: px, quantite, restant: quantite, executee: 0, totalXafe: 0, bloque: 0, prixMoyen: null,
+      id: uuid(), numero: this.reference(d, "ORD-"), paire, cote, type, prix: px, quantite, restant: quantite, executee: 0, totalXafe: 0, bloque: 0, prixMoyen: null,
       etat: "ouvert", creeLe: iso(), majLe: iso(), cle,
     };
     /* tout ce qui est au carnet est déjà déposé */
     if (type === "limite") {
       if (cote === "achat") { o.bloque = arrondi2(px! * quantite); this.mouvement(d, "XAFe", -o.bloque, o.bloque); }
-      else { o.bloque = quantite; this.mouvement(d, "USDT", -quantite, quantite); }
+      else { o.bloque = quantite; this.mouvement(d, base, -quantite, quantite); }
     } else if (cote === "vente") {
-      o.bloque = quantite; this.mouvement(d, "USDT", -quantite, quantite);
+      o.bloque = quantite; this.mouvement(d, base, -quantite, quantite);
     } else if (d.soldes.XAFe.disponible <= 0) {
       throw new ErreurMoteur("solde insuffisant");
     }
     d.ordres.unshift(o);
 
     /* l'appariement : le meilleur prix d'abord ; mes propres ordres en face arrêtent l'entrant */
-    const livre = livreSynthetique(this.etat.marche.mid, 30);
+    const livre = livreSynthetique(marche.mid, 30);
     const enFace = cote === "achat" ? livre.ventes : livre.achats;
-    const miens = this.mesNiveaux(cote === "achat" ? "vente" : "achat");
+    const miens = this.mesNiveaux(cote === "achat" ? "vente" : "achat", paire);
     let auto = false;
     const avantIndex = d.executions.length;
     for (const niveau of enFace) {
@@ -1342,7 +1374,7 @@ export class GuichetDemo implements Guichet {
     }
     /* un ordre au marché ne reste pas ; un entrant arrêté par l'auto-négociation non plus */
     if (o.restant > 0 && (type === "marche" || auto)) {
-      if (o.bloque > 0) { this.mouvement(d, cote === "achat" ? "XAFe" : "USDT", o.bloque, -o.bloque); o.bloque = 0; }
+      if (o.bloque > 0) { this.mouvement(d, cote === "achat" ? "XAFe" : base, o.bloque, -o.bloque); o.bloque = 0; }
       o.etat = o.executee > 0 ? "execute" : "annule";
       o.restant = 0;
       o.majLe = iso();
@@ -1352,16 +1384,18 @@ export class GuichetDemo implements Guichet {
   }
 
   /** L'achat rapide de la démonstration : le même devis que le moteur, sur le carnet synthétique. */
-  async devisRapide({ sens, montant, ferme }: { sens: SensRapide; montant: number; ferme: boolean }) {
+  async devisRapide({ sens, montant, ferme, paire }: { sens: SensRapide; montant: number; ferme: boolean; paire: Paire }) {
     const d = this.dossier();
     if (!RAPIDE.ouvert) throw new ErreurMoteur("achat rapide fermé");
+    if (!MARCHES[paire].ouvert) throw new ErreurMoteur("marché fermé", paire);
     if (!(montant > 0) || Math.round(montant * 100) !== Math.round(montant * 100 * 1e6) / 1e6) throw new ErreurMoteur("montant invalide");
-    if (sens === "vente" && montant < MARCHE.quantiteMin) throw new ErreurMoteur("quantité invalide", `au moins ${MARCHE.quantiteMin} USDT`);
-    const livre = livreSynthetique(this.etat.marche.mid, 30);
-    const r = devisSurLeCarnet(sens, montant, sens === "achat" ? livre.ventes : livre.achats);
+    const qmin = MARCHES[paire].quantiteMin;
+    if (sens === "vente" && montant < qmin) throw new ErreurMoteur("quantité invalide", `au moins ${qmin} ${baseDe(paire)}`);
+    const livre = livreSynthetique(this.marcheDe(paire).mid, 30);
+    const r = devisSurLeCarnet(sens, montant, sens === "achat" ? livre.ventes : livre.achats, RAPIDE.marge, qmin);
     if (!r) throw new ErreurMoteur(sens === "achat" ? "pas assez de vendeurs au carnet" : "pas assez d'acheteurs au carnet");
     const v: DevisRapide = {
-      id: ferme ? uuid() : null, sens, quantite: r.quantite, total: r.total, prix: r.prix, frais: r.frais, marge: RAPIDE.marge,
+      id: ferme ? uuid() : null, paire, sens, quantite: r.quantite, total: r.total, prix: r.prix, frais: r.frais, marge: RAPIDE.marge,
       etat: ferme ? "propose" : "estimation", expireLe: ferme ? iso(maintenant() + RAPIDE.validiteSecondes * 1000) : null, ordre: null,
     };
     if (ferme) { (d.devis ??= []).unshift({ ...v, cout: r.cout }); this.sauver(); }
@@ -1375,18 +1409,20 @@ export class GuichetDemo implements Guichet {
     const { cout: _c, ...rendu } = v;
     if (v.etat === "execute") return copie(rendu);
     if (new Date(v.expireLe!).getTime() < maintenant()) throw new ErreurMoteur("devis expiré", "demandez un nouveau prix");
-    const livre = livreSynthetique(this.etat.marche.mid, 30);
+    const paire = v.paire ?? "USDT/XAFe";
+    const base = baseDe(paire);
+    const livre = livreSynthetique(this.marcheDe(paire).mid, 30);
     const cout = coutAuCarnet(v.sens === "achat" ? livre.ventes : livre.achats, v.quantite);
     if (cout === null || (v.sens === "achat" ? cout > v.cout : cout < v.cout)) throw new ErreurMoteur("le prix a changé", "le carnet a bougé : demandez un nouveau prix");
     if (v.sens === "achat") {
       if (d.soldes.XAFe.disponible < v.total) throw new ErreurMoteur("solde insuffisant");
-      this.mouvement(d, "XAFe", -v.total, 0); this.mouvement(d, "USDT", v.quantite, 0);
+      this.mouvement(d, "XAFe", -v.total, 0); this.mouvement(d, base, v.quantite, 0);
     } else {
-      if (d.soldes.USDT.disponible < v.quantite) throw new ErreurMoteur("solde insuffisant");
-      this.mouvement(d, "USDT", -v.quantite, 0); this.mouvement(d, "XAFe", v.total, 0);
+      if (d.soldes[base].disponible < v.quantite) throw new ErreurMoteur("solde insuffisant");
+      this.mouvement(d, base, -v.quantite, 0); this.mouvement(d, "XAFe", v.total, 0);
     }
     const o: Ordre = {
-      id: uuid(), numero: this.reference(d, "ORD-"), cote: v.sens, type: "marche", prix: null, quantite: v.quantite, restant: 0, executee: v.quantite,
+      id: uuid(), numero: this.reference(d, "ORD-"), paire, cote: v.sens, type: "marche", prix: null, quantite: v.quantite, restant: 0, executee: v.quantite,
       totalXafe: v.cout, bloque: 0, prixMoyen: arrondi2(v.cout / v.quantite), etat: "execute", creeLe: iso(), majLe: iso(),
       rapide: { total: v.total, frais: v.frais },
     };
@@ -1402,7 +1438,7 @@ export class GuichetDemo implements Guichet {
     const o = d.ordres.find((x) => x.id === id);
     if (!o) throw new ErreurMoteur("ordre inconnu");
     if (!["ouvert", "partiel"].includes(o.etat)) throw new ErreurMoteur("cet ordre ne peut plus être annulé", o.etat);
-    if (o.bloque > 0) this.mouvement(d, o.cote === "achat" ? "XAFe" : "USDT", o.bloque, -o.bloque);
+    if (o.bloque > 0) this.mouvement(d, o.cote === "achat" ? "XAFe" : baseDe(o.paire), o.bloque, -o.bloque);
     o.bloque = 0; o.restant = 0; o.etat = "annule"; o.majLe = iso();
     this.emettre();
     return copie(o);
@@ -1417,6 +1453,7 @@ export class GuichetDemo implements Guichet {
     for (const c of graine) h = (h * 31 + c.charCodeAt(0)) >>> 0;
     const hex = (n: number) => Array.from({ length: n }, (_, i) => ((h >> ((i * 5) % 28)) & 15).toString(16)).join("");
     if (!RESEAUX_OUVERTS.includes(reseau)) return null;   // comme le moteur : un réseau fermé ne montre pas d'adresse
+    if (!infoReseau(reseau).actifs.includes(actif)) return null;   // ni un actif que le réseau ne porte pas (l'USDC sur Tron)
     return infoReseau(reseau).famille === "tron" ? `T${hex(16).toUpperCase()}${hex(17)}` : `0x${hex(20)}${hex(20)}`;
   }
 
@@ -1427,7 +1464,7 @@ export class GuichetDemo implements Guichet {
     this.controlerRetraitCrypto(d, actif, reseau, adresse, montant);
     this.consommer({ operation: "retrait_crypto", actif, reseau, adresse, montant }, preuve);
     adresse = adresse.trim();
-    const frais = FRAIS_CRYPTO[actif];
+    const frais = fraisRetrait(actif, reseau);
     this.mouvement(d, actif, -(montant + frais), montant + frais);
     const r: RetraitCrypto & { cle: string } = { reference: this.reference(d, "XAFe-CR-"), actif, reseau, adresse, montant, frais, etat: "en_attente", txHash: null, creeLe: iso(), cle };
     d.retraits.unshift(r);

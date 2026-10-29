@@ -476,11 +476,13 @@ export function CompteFermer() {
   const [demander, setDemander] = useState(false);
 
   const charge = Boolean(soldes && ordres && depots);
-  const argent = soldes ? soldes.XAFe.disponible + soldes.XAFe.bloque > 0 || soldes.USDT.disponible + soldes.USDT.bloque > 0 : true;
+  const tout = (x: "XAFe" | "USDT" | "USDC") => (soldes ? soldes[x].disponible + soldes[x].bloque : 0);
+  const dollars = tout("USDT") + tout("USDC");
+  const argent = soldes ? tout("XAFe") > 0 || dollars > 0 : true;
   const ordresOuverts = (ordres ?? []).filter((o) => o.etat === "ouvert" || o.etat === "partiel").length;
   const enAttente = (depots ?? []).length;
   const points: { ok: boolean; texte: string; vers?: { label: string; to: string } }[] = [
-    { ok: !argent, texte: argent && soldes ? t(`Il reste ${xaf(soldes.XAFe.disponible + soldes.XAFe.bloque)} XAFe et ${(soldes.USDT.disponible + soldes.USDT.bloque).toFixed(2)} USDT`, `${xaf(soldes.XAFe.disponible + soldes.XAFe.bloque)} XAFe and ${(soldes.USDT.disponible + soldes.USDT.bloque).toFixed(2)} USDT remaining`) : t("Votre solde est à zéro", "Your balance is zero"), vers: argent ? { label: t("Sortir", "Withdraw"), to: soldes && soldes.USDT.disponible + soldes.USDT.bloque > 0 ? "/crypto" : "/sortir/montant" } : undefined },
+    { ok: !argent, texte: argent && soldes ? t(`Il reste ${xaf(tout("XAFe"))} XAFe, ${tout("USDT").toFixed(2)} USDT et ${tout("USDC").toFixed(2)} USDC`, `${xaf(tout("XAFe"))} XAFe, ${tout("USDT").toFixed(2)} USDT and ${tout("USDC").toFixed(2)} USDC remaining`) : t("Votre solde est à zéro", "Your balance is zero"), vers: argent ? { label: t("Sortir", "Withdraw"), to: soldes && dollars > 0 ? "/crypto" : "/sortir/montant" } : undefined },
     { ok: ordresOuverts === 0, texte: ordresOuverts ? t(`${ordresOuverts} ordre${ordresOuverts > 1 ? "s" : ""} encore ouvert${ordresOuverts > 1 ? "s" : ""}`, `${ordresOuverts} order${ordresOuverts > 1 ? "s" : ""} still open`) : t("Aucun ordre ouvert", "No open orders"), vers: ordresOuverts ? { label: t("Voir", "View"), to: "/marche/ordres" } : undefined },
     { ok: enAttente === 0, texte: enAttente ? t("Un dépôt attend encore son paiement", "A deposit is still awaiting payment") : t("Aucun dépôt en attente", "No pending deposits"), vers: enAttente ? { label: t("Voir", "View"), to: "/historique" } : undefined },
   ];
