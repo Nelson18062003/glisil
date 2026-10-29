@@ -60,7 +60,7 @@ begin
     return;
   end if;
   create extension if not exists pg_cron;
-  create extension if not exists pg_net;
+  create extension if not exists pg_net with schema extensions;
   perform cron.unschedule(jobid) from cron.job where jobname in ('xafe-veilleur-bep20', 'xafe-veilleur-trc20');
   perform cron.schedule('xafe-veilleur-bep20', '* * * * *', 'select public.reveiller_veilleur(''bep20'')');
   perform cron.schedule('xafe-veilleur-trc20', '* * * * *', 'select public.reveiller_veilleur(''trc20'')');

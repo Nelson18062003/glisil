@@ -3296,7 +3296,7 @@ begin
     return;
   end if;
   create extension if not exists pg_cron;
-  create extension if not exists pg_net;
+  create extension if not exists pg_net with schema extensions;
   perform cron.unschedule(jobid) from cron.job where jobname in ('xafe-veilleur-bep20', 'xafe-veilleur-trc20');
   perform cron.schedule('xafe-veilleur-bep20', '* * * * *', 'select public.reveiller_veilleur(''bep20'')');
   perform cron.schedule('xafe-veilleur-trc20', '* * * * *', 'select public.reveiller_veilleur(''trc20'')');
@@ -14395,6 +14395,27 @@ begin
   return _declaration_json(v_x);
 end $function$;
 $m0042_cent_declarations_par_jour$;
+  -- 0043_pg_net_hors_de_public.sql
+  execute $m0043_pg_net_hors_de_public$
+-- ╔════════════════════════════════════════════════════════════════════════╗
+-- ║  Glisil · 0043 · pg_net hors du schéma public                          ║
+-- ║                                                                        ║
+-- ║  0006 créait pg_net sans schéma : l'extension s'inscrivait dans        ║
+-- ║  « public », ce que le conseiller de sécurité de Supabase signale. Ses ║
+-- ║  fonctions vivent dans le schéma « net » quoi qu'il arrive (aucun code ║
+-- ║  de Glisil n'appelle autre chose que net.http_post) : on la recrée     ║
+-- ║  dans « extensions ». Les requêtes en file depuis moins d'une minute   ║
+-- ║  (un réveil du veilleur, un e-mail) se perdent ; le tour suivant les   ║
+-- ║  refait — l'e-mail reste dans sa boîte d'envoi jusqu'à l'accusé.      ║
+-- ╚════════════════════════════════════════════════════════════════════════╝
+do $$
+begin
+  if exists (select 1 from pg_extension where extname = 'pg_net' and extnamespace = 'public'::regnamespace) then
+    drop extension pg_net;
+    create extension pg_net with schema extensions;
+  end if;
+end $$;
+$m0043_pg_net_hors_de_public$;
   -- le constat d'une base NEUVE : il lève, et tout s'annule, si quoi que ce soit ne tient pas
   perform verifier_le_profil_production(true);
 end $installation$;

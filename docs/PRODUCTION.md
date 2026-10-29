@@ -30,6 +30,16 @@ Le constat du profil se lit à tout moment : admin → Paramètres → « Profil
 production » (pastille rouge **PRODUCTION · argent réel** en tête de chaque
 page), ou `select verifier_le_profil_production(false);`.
 
+## Où on en est (29/10)
+
+- **F, G faits par Claude** : Glisil est installé sur `glisil-prod` (profil
+  « production » posé à 12 h 28 UTC, constat vert, aucun refus, aucun
+  avertissement) ; le coffre porte `veilleur_url`, `veilleur_jeton`,
+  `courriel_url`. Reste au propriétaire : `courriel_jeton` (la même valeur que
+  `COURRIEL_JETON` dans Infisical).
+- Migrations déjà appliquées à la production après l'installation : 0043.
+  Toute migration suivante s'y applique seule, puis le constat.
+
 ## A [C] Le code et ses preuves
 
 - Tous les chantiers de la livraison 1 sur `main`, et le consolidé refait :

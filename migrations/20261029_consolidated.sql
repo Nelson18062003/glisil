@@ -3289,7 +3289,7 @@ $sql$;
   end if;
 end $consolide$;
 
--- ─── 0006_veilleur_en_ligne.sql (md5 7167ab2dcf4ed88c2289188aec7b0f83) ───
+-- ─── 0006_veilleur_en_ligne.sql (md5 38cf0f230426ddd52fd9426117de4b6c) ───
 -- déjà en place si : la table des tours du veilleur
 do $consolide$
 begin
@@ -3359,7 +3359,7 @@ begin
     return;
   end if;
   create extension if not exists pg_cron;
-  create extension if not exists pg_net;
+  create extension if not exists pg_net with schema extensions;
   perform cron.unschedule(jobid) from cron.job where jobname in ('xafe-veilleur-bep20', 'xafe-veilleur-trc20');
   perform cron.schedule('xafe-veilleur-bep20', '* * * * *', 'select public.reveiller_veilleur(''bep20'')');
   perform cron.schedule('xafe-veilleur-trc20', '* * * * *', 'select public.reveiller_veilleur(''trc20'')');
@@ -14819,5 +14819,36 @@ begin
 end $function$;
 $sql$;
     raise notice '0042_cent_declarations_par_jour.sql : appliquée';
+  end if;
+end $consolide$;
+
+-- ─── 0043_pg_net_hors_de_public.sql (md5 71873c134a46015f15a5526a89da4bee) ───
+-- déjà en place si : rejouable telle quelle
+do $consolide$
+begin
+  if false then
+    raise notice '0043_pg_net_hors_de_public.sql : déjà en place, rien à faire';
+  else
+    execute $sql$
+-- ╔════════════════════════════════════════════════════════════════════════╗
+-- ║  Glisil · 0043 · pg_net hors du schéma public                          ║
+-- ║                                                                        ║
+-- ║  0006 créait pg_net sans schéma : l'extension s'inscrivait dans        ║
+-- ║  « public », ce que le conseiller de sécurité de Supabase signale. Ses ║
+-- ║  fonctions vivent dans le schéma « net » quoi qu'il arrive (aucun code ║
+-- ║  de Glisil n'appelle autre chose que net.http_post) : on la recrée     ║
+-- ║  dans « extensions ». Les requêtes en file depuis moins d'une minute   ║
+-- ║  (un réveil du veilleur, un e-mail) se perdent ; le tour suivant les   ║
+-- ║  refait — l'e-mail reste dans sa boîte d'envoi jusqu'à l'accusé.      ║
+-- ╚════════════════════════════════════════════════════════════════════════╝
+do $$
+begin
+  if exists (select 1 from pg_extension where extname = 'pg_net' and extnamespace = 'public'::regnamespace) then
+    drop extension pg_net;
+    create extension pg_net with schema extensions;
+  end if;
+end $$;
+$sql$;
+    raise notice '0043_pg_net_hors_de_public.sql : appliquée';
   end if;
 end $consolide$;

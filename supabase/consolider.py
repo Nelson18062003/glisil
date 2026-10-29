@@ -98,6 +98,8 @@ TEMOINS = {
     "0041_profil_production.sql": ("false", "rejouable telle quelle"),
     # 0042 : declarer_transaction « or replace ».
     "0042_cent_declarations_par_jour.sql": ("false", "rejouable telle quelle"),
+    # 0043 : ne fait rien si pg_net est déjà hors de « public ».
+    "0043_pg_net_hors_de_public.sql": ("false", "rejouable telle quelle"),
 }
 
 
