@@ -7,7 +7,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Enrolement, GesteSortie, GuichetAdmin } from "./guichet";
 import { AUTH_VIDE, premierFacteurDe, type EtatAuth } from "../noyau/entree";
 import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets, ReseauRegistre, Beta, Signalement } from "./types";
-import type { Parite, SecuriteUtilisateur } from "./types";
+import type { Parite, ProfilDeLaBase, SecuriteUtilisateur } from "./types";
 import { verifierPreuve } from "./preuve";
 
 export class ErreurMoteur extends Error {
@@ -259,6 +259,7 @@ export class GuichetSupabase implements GuichetAdmin {
   }
 
   beta() { return this.rpc<Beta>("admin_beta"); }
+  profil() { return this.rpc<ProfilDeLaBase>("admin_profil"); }
   signalements(etat?: Signalement["etat"] | null) { return this.rpc<Signalement[]>("admin_signalements", { p_etat: etat ?? null, p_limite: 200 }); }
   async traiterSignalement(id: number, etat: Signalement["etat"], note?: string) { await this.rpc("admin_traiter_signalement", { p_id: id, p_etat: etat, p_note: note ?? null }); }
   releverLeCours() { return this.rpc<{ pose: boolean; erreur?: string | null }>("admin_relever_le_cours"); }

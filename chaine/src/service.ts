@@ -40,11 +40,14 @@ export type ConfigurationMoteur = {
 export function envDepuisConfiguration(c: ConfigurationMoteur, env: Env): Env {
   const e: Env = {};
   const reseau = (id: Reseau, r: ConfigReseau | null | undefined) => {
-    if (!r || !r.noeud) return;
+    if (!r) return;
     const p = prefixe(id);
-    e[variableDuNoeud(id)] = r.noeud;
-    e[`${p}_USDT`] = r.usdt;
-    e[`${p}_XAFE`] = r.xafe;
+    // En production, le nœud (et sa clé d'API) ne vit QUE dans les secrets de la fonction
+    // (BEP20_RPC, TRC20_NOEUD) : les paramètres sont lisibles par tout client connecté. Le
+    // reste de la configuration vient quand même de la base.
+    if (r.noeud) e[variableDuNoeud(id)] = r.noeud;
+    if (r.usdt) e[`${p}_USDT`] = r.usdt;
+    if (r.xafe) e[`${p}_XAFE`] = r.xafe;
     if (r.confirmations != null) e[`${p}_CONFIRMATIONS`] = String(r.confirmations);
     if (r.froid) e[`${p}_FROID`] = r.froid;
     if (r.plafond_chaud_usdt != null) e[`${p}_PLAFOND_CHAUD_USDT`] = String(r.plafond_chaud_usdt);

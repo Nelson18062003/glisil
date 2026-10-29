@@ -86,6 +86,16 @@ TEMOINS = {
     "0033_bandeau_beta_en_anglais.sql": ("false", "rejouable telle quelle"),
     # 0034 : fonctions « or replace », _apparier retirée (« if exists ») puis reposée avec le monde du SMS.
     "0034_revue_d_attaque.sql": ("false", "rejouable telle quelle"),
+    # 0035 à 0040 : colonnes et tables « if not exists », fonctions retirées « if exists » puis reposées,
+    # paramètres « on conflict do nothing », déclencheurs et tâches retirés puis reposés.
+    "0035_connexion_mot_de_passe_2fa.sql": ("false", "rejouable telle quelle"),
+    "0036_verification_avant_sortie.sql": ("false", "rejouable telle quelle"),
+    "0037_langue_des_courriels.sql": ("false", "rejouable telle quelle"),
+    "0038_sortie_manuelle_prouvee.sql": ("false", "rejouable telle quelle"),
+    "0039_continuite_des_soldes.sql": ("false", "rejouable telle quelle"),
+    "0040_reserve_dans_le_contrat.sql": ("false", "rejouable telle quelle"),
+    # 0041 : inerte hors production ; sur la production, re-tient le profil après 0021/0023/0032 rejouées.
+    "0041_profil_production.sql": ("false", "rejouable telle quelle"),
 }
 
 
@@ -102,10 +112,19 @@ def main() -> None:
         "-- ║  Fabriqué par supabase/consolider.py à partir de supabase/migrations : ║",
         "-- ║  ne pas modifier à la main, le refaire.                                 ║",
         "-- ║                                                                        ║",
-        "-- ║  Supabase → SQL Editor → coller → Run. Sur une base neuve, tout est    ║",
-        "-- ║  créé dans l'ordre ; sur une base où une partie est déjà en place,     ║",
+        "-- ║  Bêta : Supabase → SQL Editor → coller → Run. Sur une base neuve, tout ║",
+        "-- ║  est créé dans l'ordre ; sur une base où une partie est déjà en place, ║",
         "-- ║  cette partie le dit (NOTICE) et ne fait rien.                         ║",
+        "-- ║  Production : JAMAIS par l'éditeur — psql --single-transaction, avec   ║",
+        "-- ║  l'annonce à l'installation seulement (docs/PRODUCTION.md).            ║",
         "-- ╚════════════════════════════════════════════════════════════════════════╝",
+        "",
+        "-- Rejoué sur une base déjà en place, une migration ancienne repose des fonctions SQL dont",
+        "-- le corps nomme une table qu'une migration plus récente a retirée (0009 et codes_secrets,",
+        "-- retirée par 0036) : la plus récente les redéfinit juste après, dans le même passage.",
+        "-- Comme pg_dump, on ne valide donc pas les corps à la création — l'état final est celui",
+        "-- d'une base neuve (supabase/production/eprouver-le-profil.sh rejoue les deux).",
+        "set check_function_bodies = off;",
         "",
     ]
     for f in fichiers:

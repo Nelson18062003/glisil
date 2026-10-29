@@ -7,6 +7,7 @@
 // est un secret que le propriétaire saisit lui-même (chaine/README.md).
 import { envDepuisConfiguration, veilleursDepuis, type ConfigurationMoteur } from "../../../chaine/src/service.ts";
 import { estReseau, RESEAUX, variableDuNoeud, type Reseau } from "../../../chaine/src/cles.ts";
+import { entetesDeService } from "../../../chaine/src/moteur.ts";
 
 const env = Deno.env.toObject();
 // dans Supabase : l'API du projet et la clé de service, fournies d'office ; ailleurs (l'épreuve) : MOTEUR_URL, MOTEUR_CLE
@@ -16,7 +17,7 @@ const cle = env.MOTEUR_CLE ?? env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 const rpc = async (nom: string, args: Record<string, unknown>) => {
   const r = await fetch(`${moteur}/rpc/${nom}`, {
     method: "POST",
-    headers: { apikey: cle, authorization: `Bearer ${cle}`, "content-type": "application/json" },
+    headers: entetesDeService(cle),
     body: JSON.stringify(args),
   });
   const j = await r.json().catch(() => null);

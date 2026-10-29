@@ -11,7 +11,7 @@ import { useBeta, useGuichet, useRafraichir } from "../guichet";
 import type { Beta, Signalement } from "../guichet/types";
 import { enTranches, prix, quand, usdt, xaf } from "../noyau/format";
 import { useSession } from "../session/session";
-import { Coquille, Dialogue, Erreur, Etat, Section, Tableau, Tuile } from "../ui";
+import { Coquille, Dialogue, Erreur, Etat, Section, Tableau, Tuile, useEnvironnement } from "../ui";
 
 export function BetaPage() {
   const { data: b } = useBeta();
@@ -20,6 +20,16 @@ export function BetaPage() {
   const rafraichir = useRafraichir();
   const [erreur, setErreur] = useState<unknown>(null);
   const [enCours, setEnCours] = useState(false);
+  // en production, la bêta n'existe pas (0041) : ni robots, ni argent de test — seuls les signalements restent
+  const production = useEnvironnement() === "production";
+  if (production) {
+    return (
+      <Coquille titre="Signalements">
+        <Alert severity="info" sx={{ borderRadius: 4 }}>Cette base est la production : la bêta, ses robots et l'argent de test n'y existent pas, et ne peuvent pas y être rallumés.</Alert>
+        {b && peut("clients") && <Signalements liste={b.derniers_signalements} onErreur={setErreur} />}
+      </Coquille>
+    );
+  }
   if (!b) return <Coquille titre="Bêta"><Typography variant="body2">Chargement…</Typography></Coquille>;
 
   const actifs = Boolean(b.robots.parametre?.actif);

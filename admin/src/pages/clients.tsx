@@ -11,7 +11,7 @@ import { useClient, useClients, useGuichet, useRafraichir, useSecurite, useStati
 import { enTranches, heure, jourRelatif, numeroEnTranches, prix, quand, xaf } from "../noyau/format";
 import { EVENEMENTS } from "../noyau/securite";
 import { useSession } from "../session/session";
-import { Coquille, Dialogue, Erreur, Etat, Section, Tableau, Tuile } from "../ui";
+import { Coquille, Dialogue, Erreur, Etat, Section, Tableau, Tuile, useEnvironnement } from "../ui";
 
 const PALIERS = ["Palier 0 · e-mail vérifié", "Palier 1 · identité vérifiée", "Palier 2 · entreprise vérifiée"];
 
@@ -153,6 +153,7 @@ export function ClientDetail() {
   const { peut } = useSession();
   const { data } = useClient(id);
   const { data: securite } = useSecurite(id);
+  const production = useEnvironnement() === "production";
   const [dialogue, setDialogue] = useState<"palier" | "verification" | "desactiver" | "doter" | "deux_facteurs" | null>(null);
   const [dotation, setDotation] = useState({ xafe: "1000000", usdt: "0" });
   const [palier, setPalier] = useState(0);
@@ -173,7 +174,7 @@ export function ClientDetail() {
         {peut("paliers") && c.verification_en_cours && <Button variant="contained" onClick={() => setDialogue("verification")}>Examiner les pièces</Button>}
         {peut("paliers") && <Button variant="outlined" onClick={() => { setPalier(c.palier); setDialogue("palier"); }}>Changer le palier</Button>}
         {/* la bêta : de l'argent de test, refusé par le moteur hors bêta */}
-        {peut("parametres") && <Button variant="outlined" onClick={() => setDialogue("doter")}>Donner de l'argent de test</Button>}
+        {peut("parametres") && !production && <Button variant="outlined" onClick={() => setDialogue("doter")}>Donner de l'argent de test</Button>}
         {peut("administrateurs") && <Button variant="text" color="error" onClick={() => { setNote(""); setDialogue("deux_facteurs"); }}>Réinitialiser la double authentification</Button>}
         {peut("clients") && <Button variant="text" color="error" onClick={() => setDialogue("desactiver")}>{c.ferme_le ? "Rouvrir" : c.desactive_le ? "Réactiver" : "Désactiver"}</Button>}
       </Stack>

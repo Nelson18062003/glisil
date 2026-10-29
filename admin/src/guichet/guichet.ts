@@ -1,4 +1,4 @@
-import type { Parite } from "./types";
+import type { Parite, ProfilDeLaBase } from "./types";
 import type { EtatAuth } from "../noyau/entree";
 import type { SecuriteUtilisateur, Sortie as SortieT } from "./types";
 
@@ -129,6 +129,8 @@ export interface GuichetAdmin {
 
   /** La bêta (0021–0024) : testeurs, argent de test, robots, vrai dollar, signalements. */
   beta(): Promise<Beta>;
+  /** le profil de la base et son constat (admin_profil, 0041) */
+  profil(): Promise<ProfilDeLaBase>;
   signalements(etat?: Signalement["etat"] | null): Promise<Signalement[]>;
   /** Marquer un signalement vu ou réglé (droit « clients ») ; la note reste avec lui. */
   traiterSignalement(id: number, etat: Signalement["etat"], note?: string): Promise<void>;

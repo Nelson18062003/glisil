@@ -21,6 +21,9 @@
  *       --production : la clé CLE_DE_MISE_EN_SERVICE (jetable, jamais admin),
  *       --admin, --pauseur et --geleur exigés (le wallet matériel du
  *       propriétaire), l'USDT officiel du réseau, jamais d'USDT d'essai.
+ *       Un réseau PRINCIPAL (lu au nœud : BSC 56, Ethereum, Base, Polygon, le
+ *       nœud Tron de production) ne se déploie qu'en --production
+ *       (options-de-deploiement.ts, éprouvé seul).
  *       Écrit le bloc du paramètre « chaine » (noeud, xafe, usdt, depart).
  *
  *   npm run mise-en-service -- preinscrire --reseau … --xafe <contrat> --de 1 --a 2000 [--lot N] [--renoncer]
@@ -59,12 +62,13 @@
  */
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { formatUnits, Mnemonic, parseUnits } from "ethers";
+import { formatUnits, JsonRpcProvider, Mnemonic, parseUnits } from "ethers";
 import type { Actif, Chaine } from "./chaine.ts";
 import { CHAUD, deriver, estReseau, fiche, graineValide, prefixe, RESEAUX, variableDuNoeud, type Reseau } from "./cles.ts";
 import { ChaineEvm } from "./evm.ts";
 import { moteur } from "./moteur.ts";
 import { aLeRole, donnerLesRoles, INSCRIPTEUR, inscrire, preinscrire, renoncer, ROLES, ROLES_DE_GARDE, signataireEvm, signataireTron, type Artefact, type Signataire } from "./signataire.ts";
+import { estReseauPrincipal, USDT_OFFICIEL, verifierLesOptions } from "./options-de-deploiement.ts";
 import { ChaineTron, vingtOctets } from "./tron.ts";
 
 const env = process.env;
@@ -96,7 +100,6 @@ const reseauDe = (o: Record<string, string | true>): Reseau => {
 const valable = (r: Reseau, a: string) => fiche(r).famille === "evm" ? /^0x[0-9a-fA-F]{40}$/.test(a) : vingtOctets(a) !== null;
 
 /** l'USDT officiel de chaque réseau principal (à revérifier sur tether.to avant usage) */
-const USDT_OFFICIEL: Partial<Record<Reseau, string>> = { bep20: "0x55d398326f99059fF775485246999027B3197955", trc20: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t" };
 const memeAdresse = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 function signataire(r: Reseau, production = false): Signataire {
@@ -144,12 +147,20 @@ async function deployer(o: Record<string, string | true>) {
   const production = o.production === true;
   const chaud = String(o.chaud ?? "");
   if (!valable(r, chaud)) arreter(`--chaud : l'adresse du wallet chaud ${PREFIXE(r)} (donnée par « graine » ou « adresses »)`);
-  const s = signataire(r, production);
   const texte = (k: string) => (o[k] && o[k] !== true ? String(o[k]) : "");
+  // le réseau, lu AU NŒUD avant toute signature : un réseau principal ne se déploie qu'en --production
+  const noeud = env[variableDuNoeud(r)] ?? "";
+  const chainId = fiche(r).famille === "evm" && noeud
+    ? (await new JsonRpcProvider(noeud, undefined, { staticNetwork: false }).getNetwork()).chainId : null;
+  const { refus, plafondXaf } = verifierLesOptions({
+    reseau: r, principal: estReseauPrincipal(r, noeud, chainId), production,
+    admin: texte("admin") || undefined, pauseur: texte("pauseur") || undefined, geleur: texte("geleur") || undefined,
+    usdt: texte("usdt") || undefined, usdtEssai: Boolean(o["usdt-essai"]), plafond: texte("plafond") || undefined,
+  });
+  if (refus) arreter(refus);
+  const s = signataire(r, production);
   if (production) {
     for (const k of ["admin", "pauseur", "geleur"]) if (!valable(r, texte(k))) arreter(`--production : --${k} <adresse ${PREFIXE(r)}> (le wallet matériel du propriétaire)`);
-    if (o["usdt-essai"]) arreter("--production : jamais d'USDT d'essai");
-    if (!USDT_OFFICIEL[r] || !memeAdresse(texte("usdt"), USDT_OFFICIEL[r]!)) arreter(`--production : --usdt doit être l'USDT officiel du réseau (${USDT_OFFICIEL[r] ?? "inconnu ici"})`);
   }
   const admin = texte("admin") || s.adresse;
   if (!valable(r, admin)) arreter("--admin : une adresse du réseau");
@@ -163,7 +174,6 @@ async function deployer(o: Record<string, string | true>) {
   console.log(`· clé de déploiement ${s.adresse} : ${formatUnits(solde, n.decimales)} ${n.nom}`);
   if (solde < natif) arreter(`la clé n'a pas assez de ${n.nom} (il en faut au moins ${formatUnits(natif, n.decimales)} pour le chaud, plus les frais)`);
 
-  const plafondXaf = BigInt(texte("plafond") || "1000000000");
   const plafond = plafondXaf * 1_000_000n;
   const depart = await s.bloc();
   const args = [admin, plafond, chaud, chaud, pauseur, geleur, s.adresse];

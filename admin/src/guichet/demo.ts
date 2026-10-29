@@ -8,7 +8,7 @@ import { DROITS } from "../noyau/droits";
 import { ErreurMoteur } from "./supabase";
 import type { Enrolement, GesteSortie, GuichetAdmin } from "./guichet";
 import { AUTH_VIDE, motDePasseValide, type EtatAuth } from "../noyau/entree";
-import type { Beta, LigneParite, Parite, PreuvePaiement, Rapprochement, ReseauRegistre, ReleveCours, SecuriteUtilisateur, Signalement } from "./types";
+import type { Beta, LigneParite, Parite, ProfilDeLaBase, PreuvePaiement, Rapprochement, ReseauRegistre, ReleveCours, SecuriteUtilisateur, Signalement } from "./types";
 import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Transfert, Wallets } from "./types";
 import { verifierPreuve } from "./preuve";
 
@@ -172,6 +172,7 @@ function graine(): Etat {
       code_secret: { essais: 3, verrou_minutes: 15, longueur_min: 4, longueur_max: 6 },
       support: { email: "support@glisil.com", whatsapp: null },
       continuite: { mode: "exiger", demo: "eteinte" },
+      beta: { actif: true, depots_reels: false, dotation: { XAFe: 1_000_000, USDT: 2_000 } },
       conditions: { version: "2026-10-16" },
       paliers: { "0": { entree_jour: 500000, sortie_jour: 500000 }, "1": { entree_jour: 5000000, sortie_jour: 5000000 }, "2": null },
       operateurs: [{ id: "mtn", nom: "MTN MoMo", plafond_par_transfert: 1_000_000, plafond_jour: 100_000_000 }, { id: "om", nom: "Orange Money", plafond_par_transfert: 500_000, plafond_jour: 1_500_000 }],
@@ -1020,6 +1021,19 @@ export class GuichetDemo implements GuichetAdmin {
     { id: 2, reference: "SIG-000002", compte_id: "c2", nom: "Jean Kamdem", texte: "Je ne trouve pas où voir mes ordres annulés.", ecran: "/marche/ordres", appareil: "iPhone · Safari 18", etat: "vu", note: "à ajouter : filtre « annulés »", traite_le: iso(maintenant() - 2 * H), cree_le: iso(maintenant() - 5 * H) },
     { id: 1, reference: "SIG-000001", compte_id: "c9", nom: "Grace Fotso", texte: "Le bandeau bêta cache le bouton Retour sur mon petit écran.", ecran: "/", appareil: "Android 12 · Chrome 128", etat: "regle", note: "corrigé le 17", traite_le: iso(maintenant() - 20 * H), cree_le: iso(maintenant() - 26 * H) },
   ];
+  /* la démonstration n'est jamais la production — sauf pour que le parcours voie les écrans
+     de la production (sessionStorage « demo-profil »), sans un franc de plus */
+  async profil(): Promise<ProfilDeLaBase> {
+    let p: string | null = null;
+    try { p = sessionStorage.getItem("demo-profil"); } catch { /* pas de stockage : la bêta */ }
+    if (p !== "production") return { profil: null, refus: [], avertissements: [], etat: {} };
+    return {
+      profil: "production", refus: [], avertissements: ["coffre : veilleur_url ou veilleur_jeton manque"],
+      etat: { crypto: { depots_ouverts: false, retraits_ouverts: false }, sortie: { mode: "manuel", ouvertes: true },
+              reseaux_actifs: ["bep20"], reseaux_configures: [], taches: ["glisil-cours", "glisil-menage-cron", "glisil-rapprocher", "xafe-expirer-depots"] },
+    };
+  }
+
   async beta(): Promise<Beta> {
     this.exiger("voir");
     const t = maintenant();

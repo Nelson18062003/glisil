@@ -285,7 +285,7 @@ $$;
 -- ─────────────────────── 3 · le SMS d'argent reçu ──────────────────────────
 -- Le solde décide maintenant de l'argent : il ne se note plus APRÈS lui.
 drop function if exists totem_sms_recu(text, bigint, text, text, text, numeric, text, text, timestamptz);
-create function totem_sms_recu(p_terminal text, p_source_id bigint, p_operateur text, p_float_numero text, p_numero_payeur text,
+create or replace function totem_sms_recu(p_terminal text, p_source_id bigint, p_operateur text, p_float_numero text, p_numero_payeur text,
                                p_montant numeric, p_reference text, p_texte text, p_emis_le timestamptz,
                                p_solde_apres numeric default null, p_frais numeric default null, p_commission numeric default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
@@ -410,7 +410,7 @@ end $$;
 -- ─────────────────────── 4 · le SMS sortant ────────────────────────────────
 -- Il prolonge la chaîne, il ne bloque jamais rien.
 drop function if exists totem_sms_sortant(text, bigint, text, text, text, numeric, text, text, timestamptz);
-create function totem_sms_sortant(p_terminal text, p_source_id bigint, p_operateur text, p_float_numero text,
+create or replace function totem_sms_sortant(p_terminal text, p_source_id bigint, p_operateur text, p_float_numero text,
                                   p_numero text, p_montant numeric, p_reference text, p_texte text,
                                   p_emis_le timestamptz, p_solde_apres numeric default null, p_frais numeric default null,
                                   p_commission numeric default null)

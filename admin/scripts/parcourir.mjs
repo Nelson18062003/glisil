@@ -356,6 +356,20 @@ try {
 
   etape("Le support ne voit que ce qui est à lui");
 
+  etape("Le profil de la base : BÊTA ici ; en production (0041), la pastille rouge, pas de page Bêta, le constat dans Paramètres");
+  await page.goto(`${BASE}/`);
+  await page.locator('[data-environnement="beta"]').first().waitFor({ timeout: 15_000 });   // « BÊTA · argent de test »
+  await page.evaluate(() => sessionStorage.setItem("demo-profil", "production"));
+  await page.goto(`${BASE}/parametres`);
+  await page.locator('[data-environnement="production"]').first().waitFor();
+  exiger(await page.locator('[data-environnement="beta"]').count() === 0, "en production, jamais la pastille de la bêta");
+  exiger(await page.locator('a[href="/beta"]').count() === 0, "en production, la page Bêta n'est pas au menu");
+  await voir("Profil de production");
+  await voir("Le profil tient : aucun argent de test");
+  await voir("coffre : veilleur_url ou veilleur_jeton manque");
+  await capturer("parametres-production");
+  await page.evaluate(() => sessionStorage.removeItem("demo-profil"));
+
   etape("Wallets : le chaud, le froid, ce qui réclame quelqu'un, ce qu'on doit");
   await page.goto(`${BASE}/wallets`);
   await voir("BNB Smart Chain · BEP20");

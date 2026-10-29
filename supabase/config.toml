@@ -6,6 +6,9 @@
 # ces deux lignes, la passerelle refuserait la requête AVANT la porte, faute
 # d'en-tête Authorization — et le robot ne verrait qu'un « 401 » muet.
 
+# L'identifiant LOCAL du projet : celui de la BÊTA. Pour la production, toujours
+#   supabase functions deploy … --project-ref dfixghiwqlwulmzixlpf
+# (docs/PRODUCTION.md) — sans --project-ref, le déploiement partirait sur la bêta.
 project_id = "erngzpklfslbfznioxxr"
 
 [functions.totem-sms]

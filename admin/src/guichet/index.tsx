@@ -9,7 +9,11 @@ const Contexte = createContext<GuichetAdmin | null>(null);
 export function ouvrirLeGuichet(): GuichetAdmin {
   const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
   const cle = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-  return url && cle ? new GuichetSupabase(url, cle) : new GuichetDemo();
+  if (url && cle) return new GuichetSupabase(url, cle);
+  // second verrou (le premier est vite.config.ts) : la démonstration accepte le mot de passe « demo »,
+  // un build de production ne s'y rabat jamais
+  if (import.meta.env.PROD && import.meta.env.VITE_PROFIL === "production") throw new Error("guichet de production sans configuration");
+  return new GuichetDemo();
 }
 
 export const client = new QueryClient({ defaultOptions: { queries: { staleTime: 3_000, retry: 1 } } });
@@ -46,6 +50,7 @@ export function useWallets() { const g = useGuichet(); return useQuery({ queryKe
 /** La parité à trois colonnes : relue souvent, c'est la question qui compte. */
 export function useParite() { const g = useGuichet(); return useQuery({ queryKey: ["parite"], queryFn: () => g.parite(), refetchInterval: 20_000 }); }
 /** La page Bêta : relue souvent, les robots tournent toutes les trente secondes. */
+export function useProfil() { const g = useGuichet(); return useQuery({ queryKey: ["profil"], queryFn: () => g.profil(), staleTime: 60_000 }); }
 export function useBeta() { const g = useGuichet(); return useQuery({ queryKey: ["beta"], queryFn: () => g.beta(), refetchInterval: 15_000 }); }
 export function useSignalements(etat?: "nouveau" | "vu" | "regle" | null) { const g = useGuichet(); return useQuery({ queryKey: ["signalements", etat ?? "tout"], queryFn: () => g.signalements(etat), refetchInterval: 30_000 }); }
 export function useRafraichir() { const qc = useQueryClient(); return () => qc.invalidateQueries(); }

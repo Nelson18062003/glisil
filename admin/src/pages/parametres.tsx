@@ -3,9 +3,9 @@
  * des sorties, les paliers, la crypto, le code secret, le support, la version des conditions. Chaque bloc se modifie
  * en JSON, tel qu'il est en base ; le moteur le relit à l'appel suivant.
  */
-import { Button, Paper, Stack, TextField, Typography } from "@mui/material";
+import { Alert, Button, Chip, Paper, Stack, TextField, Typography } from "@mui/material";
 import { useEffect, useState } from "react";
-import { useGuichet, useParametres, useRafraichir } from "../guichet";
+import { useGuichet, useParametres, useProfil, useRafraichir } from "../guichet";
 import { xaf } from "../noyau/format";
 import { useSession } from "../session/session";
 import { Coquille, Erreur, Section, Tableau } from "../ui";
@@ -60,6 +60,7 @@ export function Parametres() {
   return (
     <Coquille titre="Paramètres">
       <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
+      <ProfilDeProduction />
       <Section titre="Opérateurs">
         <Tableau colonnes={["Opérateur", { label: "Plafond par transfert", align: "right" }, { label: "Plafond par jour", align: "right" }]} lignes={(data?.operateurs ?? []).map((o) => [o.nom, o.plafond_par_transfert != null ? `${xaf(o.plafond_par_transfert)} XAF` : "aucun", o.plafond_jour != null ? `${xaf(o.plafond_jour)} XAF` : "aucun"])} />
       </Section>
@@ -74,5 +75,33 @@ export function Parametres() {
         ))}
       </Stack>
     </Coquille>
+  );
+}
+
+/*
+ * Le profil de production (0041), en lecture : ce que le constat refuse (il
+ * ne devrait rien refuser), ce qu'il signale, et l'état des portes. Rien ne
+ * s'y règle : le profil ne se change pas.
+ */
+function ProfilDeProduction() {
+  const { data: p } = useProfil();
+  if (p?.profil !== "production") return null;
+  const e = p.etat as { crypto?: { depots_ouverts?: boolean; retraits_ouverts?: boolean }; sortie?: { mode?: string; ouvertes?: boolean };
+                        reseaux_actifs?: string[]; reseaux_configures?: string[]; taches?: string[] };
+  const ouiNon = (b?: boolean) => (b ? "ouverts" : "fermés");
+  return (
+    <Section titre="Profil de production">
+      <Paper sx={{ p: 2.5, borderRadius: 5, display: "flex", flexDirection: "column", gap: 1.5 }} data-profil="production">
+        {p.refus.length === 0
+          ? <Alert severity="success" sx={{ borderRadius: 4 }}>Le profil tient : aucun argent de test, ni bêta, ni robot, ni démo — et rien ne peut les rallumer.</Alert>
+          : p.refus.map((r) => <Alert key={r} severity="error" sx={{ borderRadius: 4 }}>{r}</Alert>)}
+        {p.avertissements.map((a) => <Alert key={a} severity="warning" sx={{ borderRadius: 4 }}>{a}</Alert>)}
+        <Typography variant="body2">
+          Crypto : dépôts {ouiNon(e.crypto?.depots_ouverts)}, retraits {ouiNon(e.crypto?.retraits_ouverts)} · sorties {e.sortie?.ouvertes ? "ouvertes" : "fermées"}, mode {e.sortie?.mode ?? "—"}
+        </Typography>
+        <Typography variant="body2">Réseaux ouverts : {(e.reseaux_actifs ?? []).join(", ") || "aucun"} · configurés : {(e.reseaux_configures ?? []).join(", ") || "aucun"}</Typography>
+        <Stack direction="row" gap={0.5} flexWrap="wrap">{(e.taches ?? []).map((t) => <Chip key={t} size="small" label={t} />)}</Stack>
+      </Paper>
+    </Section>
   );
 }

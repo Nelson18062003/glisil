@@ -31,3 +31,13 @@ test("un secret de la fonction passe avant la base ; une variable vide ne l'effa
   assert.equal(e.XAFE_GRAINE, "secret");
   assert.equal(e.BEP20_RPC, "https://bsc");
 });
+
+test("en production, sans nœud dans la base : contrats et départ viennent quand même de la base, le nœud du secret", () => {
+  // Témoin : l'ancien code (« if (!r || !r.noeud) return ») jetait tout le réseau — ni BEP20_XAFE ni BEP20_DEPART.
+  const prod: ConfigurationMoteur = { essai: false, reseaux: { bep20: { xafe: "0xX", usdt: "0x55d398326f99059fF775485246999027B3197955", depart: 1 } } } as ConfigurationMoteur;
+  const e = envDepuisConfiguration(prod, { BEP20_RPC: "https://n" });
+  assert.equal(e.BEP20_XAFE, "0xX");
+  assert.equal(e.BEP20_USDT, "0x55d398326f99059fF775485246999027B3197955");
+  assert.equal(e.BEP20_DEPART, "1");
+  assert.equal(e.BEP20_RPC, "https://n", "le nœud vient du secret de la fonction");
+});

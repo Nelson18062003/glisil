@@ -4228,6 +4228,132 @@ begin
 end $$;
 rollback;
 
+-- 11.84 · le profil de production : l'argent de test n'existe pas (0041).
+-- La bêta est allumée AVANT le profil (comme sur une base d'hier) : la garde
+-- doit tenir là où _doter, lui, laisserait passer. Témoin : sans 0041, la
+-- table du profil n'existe pas et _doter dote.
+begin;
+update parametres set valeur = '{"actif": true, "message": "bêta", "dotation": {"XAFe": 1000000, "USDT": 2000}, "depots_reels": false}' where cle = 'beta';
+insert into profil_de_la_base (nom) values ('production');
+do $$
+declare a uuid := '11111111-1111-1111-1111-111111111111'; n int; v_detail text;
+begin
+  begin perform _doter(a, 1000, 0, 'essai', null); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm like 'argent de test refusé%', 'une dotation sur la production : ' || sqlerrm; end;
+  begin insert into comptes (id, telephone, nom, palier) values ('b1840000-0000-0000-0000-000000000001', '670184001', 'Inscrit', 2); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm like 'argent de test refusé%', 'la dotation d''inscription aussi : ' || sqlerrm; end;
+  -- éteindre la bêta : permis ; la rallumer : jamais
+  update parametres set valeur = valeur || '{"actif": false, "dotation": {"XAFe": 0, "USDT": 0}}' where cle = 'beta';
+  begin update parametres set valeur = valeur || '{"actif": true}' where cle = 'beta'; raise exception 'aurait dû refuser';
+  exception when others then
+    get stacked diagnostics v_detail = pg_exception_detail;
+    assert sqlerrm like 'argent de test refusé%' and v_detail like '%la bêta ne s''allume pas%', sqlerrm || ' / ' || v_detail; end;
+  begin update parametres set valeur = valeur || '{"dotation": {"XAFe": 5, "USDT": 0}}' where cle = 'beta'; raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm like 'argent de test refusé%', sqlerrm; end;
+  begin update parametres set valeur = valeur || '{"actif": true}' where cle = 'robots'; raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm like 'argent de test refusé%', sqlerrm; end;
+  begin update parametres set valeur = '{"essai": true}' where cle = 'chaine'; raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm like 'argent de test refusé%', sqlerrm; end;
+  begin update parametres set valeur = '{"bep20": null}' where cle = 'chaine'; raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm like 'argent de test refusé%', 'chaine sans « essai » : refusée aussi'; end;
+  update parametres set valeur = '{"essai": false, "bep20": null, "trc20": null}' where cle = 'chaine';
+  begin update parametres set valeur = '{"reveil": "https://x"}' where cle = 'demo_totem'; raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm like 'argent de test refusé%', sqlerrm; end;
+  -- pas de terminal de démo, ni par son nom ni par l'interrupteur
+  begin insert into terminaux (id, nom) values ('totem-demo', 'x'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm like 'terminal de démo refusé%', sqlerrm; end;
+  begin update terminaux set demo = true where id = 'akwa-1'; raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm like 'terminal de démo refusé%', sqlerrm; end;
+  -- un robot rejoué par 0023 est ignoré, sans casser le passage ; un client ne devient pas robot
+  insert into comptes (id, nom, palier, genre) values (gen_random_uuid(), 'r', 2, 'robot');
+  get diagnostics n = row_count;
+  assert n = 0, 'un compte robot ne s''écrit pas sur la production';
+  begin update comptes set genre = 'test' where id = a; raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm like 'argent de test refusé%', sqlerrm; end;
+  -- une migration rejouée (« on conflict do nothing ») passe, et ne change rien
+  insert into parametres (cle, valeur) values ('beta', '{"actif": true}') on conflict (cle) do nothing;
+  assert not (parametre('beta') ->> 'actif')::boolean, 'la bêta reste éteinte';
+  -- le profil ne se change pas
+  begin update profil_de_la_base set pose_par = 'x'; raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'le profil de la base ne se change pas', sqlerrm; end;
+  begin delete from profil_de_la_base; raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'le profil de la base ne se change pas', sqlerrm; end;
+  raise notice '✓ 11.84 sur la production, aucune dotation, ni bêta, ni robot, ni réseau d''essai, ni démo — même en SQL, même rejoué';
+end $$;
+rollback;
+
+-- 11.85 · hors production, 0041 ne change rien. Témoin : un 0041 qui
+-- s'installerait sans annonce échouerait ici.
+begin;
+update parametres set valeur = '{"actif": true, "message": "bêta", "dotation": {"XAFe": 1000000, "USDT": 2000}, "depots_reels": false}' where cle = 'beta';
+do $$
+declare c uuid := 'b1850000-0000-0000-0000-000000000001';
+begin
+  assert not exists (select 1 from profil_de_la_base), 'aucun profil posé';
+  assert (select count(*) from comptes where genre = 'robot' and id::text like 'b0b00000-%') = 15, 'les quinze robots de 0023 sont là';
+  assert (select count(*) from pg_trigger where tgname in ('comptes_dotation_beta', 'depots_pendant_la_beta', 'sorties_reveiller_totem_demo')) = 3,
+         'les déclencheurs de la bêta et de la démo sont là';
+  insert into comptes (id, telephone, nom, palier) values (c, '670185001', 'Testeur', 2);
+  assert solde(c, 'XAFe', 'dispo') = 1000000, 'la bêta dote toujours';
+  insert into terminaux (id, nom) values ('totem-demo-1185', 'x');
+  update terminaux set demo = true where id = 'totem-demo-1185';
+  raise notice '✓ 11.85 hors production, 0041 est inerte : robots, dotation, démo, tout est là';
+end $$;
+rollback;
+
+-- 11.86 · une base qui a vécu ne devient jamais la production, même annoncée.
+-- Témoin : sans le regard sur ce que la base a vécu, l'installation passe.
+begin;
+do $$
+declare v_detail text;
+begin
+  perform set_config('glisil.profil', 'production', true);
+  begin perform _installer_le_profil_production(); raise exception 'aurait dû refuser';
+  exception when others then
+    get stacked diagnostics v_detail = pg_exception_detail;
+    assert sqlerrm = 'cette base a déjà vécu : elle ne devient pas la production', sqlerrm;
+    assert v_detail like '%comptes (clients)%' and v_detail like '%ecritures%', v_detail;
+  end;
+  assert not exists (select 1 from profil_de_la_base), 'rien n''est posé';
+  assert not _en_production();
+  raise notice '✓ 11.86 une base qui a déjà vécu ne devient pas la production (%)', left(v_detail, 60);
+end $$;
+rollback;
+
+-- 11.87 · le constat refuse ce qu'il doit refuser. Témoin : un constat qui ne
+-- regarderait que beta.actif passerait.
+begin;
+insert into profil_de_la_base (nom) values ('production');
+do $$
+declare v_detail text; v_res jsonb;
+begin
+  begin perform verifier_le_profil_production(); raise exception 'aurait dû refuser';
+  exception when others then
+    get stacked diagnostics v_detail = pg_exception_detail;
+    assert sqlerrm = 'le profil de production ne tient pas', sqlerrm;
+    assert v_detail like '%robot%' and v_detail like '%comptes_dotation_beta%' and v_detail like '%chaine.essai%', v_detail;
+  end;
+  perform _tenir_le_profil_production();
+  begin perform verifier_le_profil_production(); raise exception 'aurait dû refuser';
+  exception when others then
+    get stacked diagnostics v_detail = pg_exception_detail;
+    assert v_detail not like '%comptes_dotation_beta%' and v_detail not like '%depots_pendant_la_beta%', 'tenu : les déclencheurs de bêta sont partis ' || v_detail;
+    -- un robot qui a joué ne s'efface pas : le constat le dit, il ne l'oublie pas
+    assert not exists (select 1 from robots r where not exists (select 1 from ecritures e where e.compte_id = r.compte_id)), 'les robots sans activité sont partis';
+    assert (not exists (select 1 from robots)) or v_detail like '%un robot a de l''activité%', v_detail;
+  end;
+  -- un secret d'essai au coffre est refusé
+  if to_regclass('vault.secrets') is null then
+    create schema if not exists vault;
+    create table vault.secrets (name text);
+  end if;
+  insert into vault.secrets (name) values ('essai_graine');
+  v_res := _constats_du_profil(false);
+  assert v_res -> 'refus' @> to_jsonb('un secret d''essai est au coffre (essai_graine ou essai_admin_cle)'::text), v_res -> 'refus';
+  raise notice '✓ 11.87 le constat refuse robots, déclencheurs de bêta, réseau d''essai et secrets d''essai ; tenu, il ne garde que ce qui a vécu';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

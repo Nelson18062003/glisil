@@ -172,6 +172,8 @@ export type Marche = {
 export type Parametres = Record<string, unknown> & { operateurs?: { id: string; nom: string; plafond_par_transfert: number | null; plafond_jour: number | null }[] };
 export type LigneJournal = { id: number; admin: string | null; action: string; cible: string | null; detail: unknown; quand: string };
 
+/** Le profil de la base (0041) : la production, ou rien (la bêta, une démonstration). Lu seulement. */
+export type ProfilDeLaBase = { profil: "production" | null; refus: string[]; avertissements: string[]; etat: Record<string, unknown> };
 /** Ce que le veilleur de chaîne a publié à son dernier tour, réseau par réseau (admin_wallets). */
 export type EtatChaine = {
   chaud: string; usdt_chaud: number; natif_chaud: number;

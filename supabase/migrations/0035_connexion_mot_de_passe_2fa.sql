@@ -746,7 +746,16 @@ end $function$;
 -- Le code secret à 4 chiffres ne s'ouvre plus aux clients. Ses fonctions
 -- restent pour l'instant (les quatre sorties l'appellent encore) : 0036 les
 -- retire avec lui, en remplaçant chaque sortie par la vérification.
-revoke execute on function completer_profil(text, text), verifier_code_secret(text), changer_code_secret(text, text) from authenticated;
+-- (Rejouée après 0036, qui les a retirées : il n'y a plus rien à fermer.)
+do $$
+declare f text;
+begin
+  foreach f in array array['completer_profil(text, text)', 'verifier_code_secret(text)', 'changer_code_secret(text, text)'] loop
+    if to_regprocedure('public.' || f) is not null then
+      execute format('revoke execute on function public.%s from authenticated', f);
+    end if;
+  end loop;
+end $$;
 
 -- ─────────────────────── 4 · les tables lisibles ───────────────────────────
 -- Une politique RESTRICTIVE s'ajoute (ET) aux politiques de chaque table

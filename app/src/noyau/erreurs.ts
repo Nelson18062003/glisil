@@ -571,7 +571,7 @@ function dictionnaire(): Record<string, Entree> {
 function messageConnu(message: string): string | null {
   switch (message.toLowerCase()) {
     case "les inscriptions sont fermées pour le moment": // langue-ok
-      return t("les inscriptions sont fermées pour le moment", "Sign-ups are closed for now.");
+      return t("Les inscriptions ouvrent très bientôt.", "Sign-ups open very soon.");
     case "dépôt inconnu": // langue-ok
       return t("dépôt inconnu", "Unknown deposit.");
     default:

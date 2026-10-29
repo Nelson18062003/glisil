@@ -25,6 +25,7 @@ import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { NOMS_DES_ROLES, type Droit } from "../noyau/droits";
 import { initiales } from "../noyau/format";
+import { useParametres, useProfil } from "../guichet";
 import { useSession } from "../session/session";
 import { tones, type Tone } from "../theme";
 
@@ -50,8 +51,28 @@ const SECTIONS: { to: string; label: string; icone: ReactNode; droit: Droit }[] 
  * (une tablette, un téléphone), il se replie derrière un bouton dans une barre
  * en haut : un menu fixe de 248 px laissait 112 px au contenu sur un 360.
  */
+/*
+ * Une pastille PERMANENTE dit sur quelle base on travaille : un onglet de la
+ * production ne se confond jamais avec un onglet de la bêta.
+ */
+export function useEnvironnement(): "production" | "beta" | null {
+  const { data: p } = useProfil();
+  const { data: parametres } = useParametres();
+  if (p?.profil === "production") return "production";
+  if ((parametres?.beta as { actif?: boolean } | undefined)?.actif) return "beta";
+  return null;
+}
+function PastilleEnvironnement() {
+  const e = useEnvironnement();
+  if (!e) return null;
+  return e === "production"
+    ? <Chip size="small" label="PRODUCTION · argent réel" data-environnement="production" sx={{ bgcolor: tones.red.bg, color: tones.red.fg, fontWeight: 700 }} />
+    : <Chip size="small" label="BÊTA · argent de test" data-environnement="beta" sx={{ bgcolor: tones.amber.bg, color: tones.amber.fg, fontWeight: 700 }} />;
+}
+
 export function Coquille({ titre, actions, children }: { titre: string; actions?: ReactNode; children: ReactNode }) {
   const { profil, peut, deconnecter } = useSession();
+  const production = useEnvironnement() === "production";
   const large = useMediaQuery("(min-width:900px)", { noSsr: true });
   const [ouvert, setOuvert] = useState(false);
   return (
@@ -64,6 +85,7 @@ export function Coquille({ titre, actions, children }: { titre: string; actions?
             {/* le titre de la page est juste dessous : la barre dit où l'on est, pas deux fois la même chose */}
             <NomGlisil size={20} />
             <Typography variant="caption" sx={{ flex: 1, mt: 0.5 }}>Administration</Typography>
+            <PastilleEnvironnement />
           </Toolbar>
         </AppBar>
       )}
@@ -76,8 +98,10 @@ export function Coquille({ titre, actions, children }: { titre: string; actions?
             <Typography variant="caption">Administration</Typography>
           </Box>
         </Stack>
+        {large && <Box sx={{ px: 2.5, mt: -1, mb: 1 }}><PastilleEnvironnement /></Box>}
         <List sx={{ px: 1.5 }}>
-          {SECTIONS.filter((s) => peut(s.droit)).map((s) => (
+          {/* en production, la bêta n'existe pas : sa page non plus */}
+          {SECTIONS.filter((s) => peut(s.droit) && !(production && s.to === "/beta")).map((s) => (
             <ListItemButton key={s.to} component={NavLink} to={s.to} end={s.to === "/"} onClick={() => setOuvert(false)} sx={{ borderRadius: 3, mb: 0.5, "&.active": { bgcolor: tones.green.bg, color: tones.green.fg, "& .MuiListItemIcon-root": { color: tones.green.fg } } }}>
               <ListItemIcon sx={{ minWidth: 40 }}>{s.icone}</ListItemIcon>
               <ListItemText primary={s.label} primaryTypographyProps={{ fontWeight: 500 }} />
