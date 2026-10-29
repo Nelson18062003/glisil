@@ -160,6 +160,8 @@ if [ "$STATUT" != "0" ]; then
 fi
 echo "· courses"
 . "$ICI/moteur/courses.sh"
+echo "· la bêta change de contrat (supabase/beta/changer-de-contrat.sql)"
+. "$ICI/moteur/changer-de-contrat.sh"
 fi
 
 echo "· au hasard"

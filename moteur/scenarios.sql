@@ -4190,6 +4190,44 @@ begin
 end $$;
 rollback;
 
+-- 11.82 · la réserve se montre à l'adresse du CONTRAT (0040) : le contrat XAFe
+-- tient lui-même la réserve. Témoin : avant 0040, la trace et la page
+-- publique disaient l'adresse du wallet chaud publiée par le veilleur.
+begin;
+update parametres set valeur = valeur || jsonb_build_object('reserve', 'bep20',
+  'bep20', case when jsonb_typeof(valeur -> 'bep20') = 'object' then valeur -> 'bep20' else '{}'::jsonb end || '{"xafe": "0xCONTRAT"}') where cle = 'chaine';
+insert into chaine_etats (reseau, etat) values ('bep20', '{"chaud": "0xchaud", "plafond_jour": 1000000000, "en_pause": false}')
+on conflict (reseau) do update set etat = excluded.etat;
+do $$
+begin
+  insert into emissions (sens, montant, source_table, source_id) values ('emission', 2500, 'depots', 'XAFe-DP-990082');
+  assert _trace_chaine('depots', 'XAFe-DP-990082') -> 0 ->> 'reserve' = '0xCONTRAT', 'la trace d''un dépôt montre le contrat ' || _trace_chaine('depots', 'XAFe-DP-990082')::text;
+  assert exists (select 1 from jsonb_array_elements(_parite_json(false) -> 'contrats') c where c ->> 'reseau' = 'bep20' and c ->> 'reserve' = '0xCONTRAT'
+                                                                                          and c ->> 'plafond_jour' = '1000000000' and c ->> 'en_pause' = 'false'),
+         'la page publique montre la réserve au contrat, le plafond du jour et la pause ' || (_parite_json(false) -> 'contrats')::text;
+  assert (_parite_json(false))::text not like '%0xchaud%', 'le wallet chaud n''est plus montré comme réserve';
+  raise notice '✓ 11.82 la réserve se montre à l''adresse du contrat, avec le plafond de frappe du jour et la pause — plus jamais le wallet chaud';
+end $$;
+rollback;
+
+-- 11.83 · un réseau qui change de contrat (la bêta) : les retraits faits sur
+-- l'ancien ne sont plus attendus sur le nouveau ; la réserve, rejouée, l'est.
+begin;
+do $$
+declare a uuid := '11111111-1111-1111-1111-111111111111';
+begin
+  insert into retraits_crypto (reference, compte_id, actif, reseau, adresse, montant, etat, tx_hash, cree_le)
+  values ('XAFe-CR-990083', a, 'XAFe', 'bep20', '0x' || repeat('83', 20), 150, 'envoye', '0xancien83', now() - interval '1 day');
+  insert into emissions (sens, montant, source_table, source_id) values ('emission', 700, 'depots', 'XAFe-DP-990083');
+  assert exists (select 1 from _parite_lignes() where reference = 'XAFe-CR-990083' and nature = 'retrait'), 'sans depuis_le : attendu (rien ne change en production)';
+  update parametres set valeur = valeur || jsonb_build_object('bep20',
+    case when jsonb_typeof(valeur -> 'bep20') = 'object' then valeur -> 'bep20' else '{}'::jsonb end || jsonb_build_object('depuis_le', now())) where cle = 'chaine';
+  assert not exists (select 1 from _parite_lignes() where reference = 'XAFe-CR-990083'), 'fait sur l''ancien contrat : plus attendu sur le nouveau';
+  assert exists (select 1 from _parite_lignes() where reference = 'XAFe-DP-990083' and nature = 'reserve'), 'la réserve, elle, reste attendue (rejouée sur le nouveau contrat)';
+  raise notice '✓ 11.83 un contrat remplacé (chaine.<réseau>.depuis_le) : ce qui s''est fait sur l''ancien n''est plus attendu sur le nouveau, la réserve l''est toujours';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';
