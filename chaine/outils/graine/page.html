@@ -1,20 +1,30 @@
-<!doctype html>
-<html lang="en">
-<head>
+<!-- Le contenu de la page, sans enveloppe : fabriquer.mjs en fait le fichier autonome (avec son doctype)
+     et la version publiée en lien (que la publication enveloppe elle-même). -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- La page ne peut RIEN envoyer : aucune connexion, aucun script ni style venus d'ailleurs. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
-<title>Glisil · Master seed</title>
+<title>Glisil Master Seed</title>
+<meta name="claude:viewport-fit-sides" content="cover">
 <style>
-  :root { --vert: #0B6B3A; --vert-fonce: #06331B; --vert-pale: #CDEFD9; --ambre: #FFE3B5; --ambre-fg: #4A2E00; --rouge: #B3261E; --rouge-pale: #F9DEDC;
-          --fond: #F4F7F4; --carte: #FFFFFF; --texte: #191C1A; --doux: #5B615E; --trait: #E3E7E3; }
+  /* une carte par étape, au centre ; les couleurs de Glisil, claires et sombres */
+  :root { --vert: #0B6B3A; --sur-vert: #FFFFFF; --vert-fonce: #06331B; --vert-pale: #CDEFD9; --rouge: #B3261E; --rouge-pale: #F9DEDC; --rouge-fg: #7A1F17;
+          --fond: #F4F7F4; --carte: #FFFFFF; --texte: #191C1A; --doux: #5B615E; --trait: #E3E7E3; --champ: #FFFFFF; --bord-champ: #C4CAC5;
+          --inactif: #DDE2DD; --inactif-fg: #8A908C; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --vert: #6FD49B; --sur-vert: #04210F; --vert-fonce: #CDEFD9; --vert-pale: #12422A; --rouge: #FFB4AB; --rouge-pale: #4A1712; --rouge-fg: #FFDAD5;
+    --fond: #0F1411; --carte: #1A211C; --texte: #E2E8E3; --doux: #A3ACA6; --trait: #2E3731; --champ: #121814; --bord-champ: #46504A;
+    --inactif: #2A322C; --inactif-fg: #77807A; color-scheme: dark } }
+  :root[data-theme="dark"] {
+    --vert: #6FD49B; --sur-vert: #04210F; --vert-fonce: #CDEFD9; --vert-pale: #12422A; --rouge: #FFB4AB; --rouge-pale: #4A1712; --rouge-fg: #FFDAD5;
+    --fond: #0F1411; --carte: #1A211C; --texte: #E2E8E3; --doux: #A3ACA6; --trait: #2E3731; --champ: #121814; --bord-champ: #46504A;
+    --inactif: #2A322C; --inactif-fg: #77807A; color-scheme: dark }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--fond); color: var(--texte); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  main { max-width: 640px; margin: 0 auto; padding: 32px 16px 64px; }
+  main { max-width: 640px; margin: 0 auto; padding-block: 32px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   header { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
-  .logo { width: 40px; height: 40px; border-radius: 12px; background: var(--vert); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 20px; }
+  .logo { width: 40px; height: 40px; border-radius: 12px; background: var(--vert); color: var(--sur-vert); display: grid; place-items: center; font-weight: 700; font-size: 20px; }
   header b { font-size: 20px; } header span { color: var(--doux); font-size: 14px; display: block; }
   .carte { background: var(--carte); border-radius: 24px; padding: 32px 24px; }
   h1 { font-size: 24px; line-height: 1.25; margin: 0 0 8px; }
@@ -23,11 +33,12 @@
   ol.liste { margin: 0 0 24px; padding: 0; list-style: none; display: grid; gap: 12px; }
   ol.liste li { display: flex; gap: 12px; align-items: flex-start; }
   .pastille { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; background: var(--trait); color: var(--doux); }
-  .pastille.ok { background: var(--vert); color: #fff; } .pastille.non { background: var(--rouge); color: #fff; }
+  .pastille.ok { background: var(--vert); color: var(--sur-vert); } .pastille.non { background: var(--rouge); color: var(--carte); }
   .bandeau { border-radius: 16px; padding: 16px; font-size: 14px; margin-bottom: 24px; }
-  .bandeau.ambre { background: var(--ambre); color: var(--ambre-fg); } .bandeau.rouge { background: var(--rouge-pale); color: #7A1F17; } .bandeau.vert { background: var(--vert-pale); color: var(--vert-fonce); }
-  button { font: inherit; font-weight: 600; border: 0; border-radius: 100px; min-height: 52px; padding: 0 24px; width: 100%; cursor: pointer; background: var(--vert); color: #fff; }
-  button:disabled { background: #DDE2DD; color: #8A908C; cursor: not-allowed; }
+  .bandeau.rouge { background: var(--rouge-pale); color: var(--rouge-fg); }
+  button { font: inherit; font-weight: 600; border: 0; border-radius: 100px; min-height: 52px; padding: 0 24px; width: 100%; cursor: pointer; background: var(--vert); color: var(--sur-vert); }
+  button:disabled { background: var(--inactif); color: var(--inactif-fg); cursor: not-allowed; }
+  button:focus-visible { outline: 3px solid var(--vert); outline-offset: 2px; }
   button.second { background: transparent; color: var(--vert); margin-top: 8px; }
   .mots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 24px; counter-reset: mot; }
   @media (max-width: 480px) { .mots { grid-template-columns: repeat(2, 1fr); } }
@@ -35,7 +46,7 @@
   .mot i { font-style: normal; font-weight: 400; color: var(--doux); min-width: 22px; text-align: right; }
   .champs { display: grid; gap: 20px; margin-bottom: 20px; }
   label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 8px; }
-  input { font: 600 17px ui-monospace, Menlo, Consolas, monospace; width: 100%; height: 52px; border: 1px solid #C4CAC5; border-radius: 12px; padding: 0 14px; background: #fff; color: var(--texte); }
+  input { font: 600 17px ui-monospace, Menlo, Consolas, monospace; width: 100%; height: 52px; border: 1px solid var(--bord-champ); border-radius: 12px; padding: 0 14px; background: var(--champ); color: var(--texte); }
   input:focus { outline: 2px solid var(--vert); outline-offset: -1px; }
   .aide { font-size: 13px; margin-top: 4px; color: var(--doux); } .aide.faux { color: var(--rouge); }
   .adresse { border: 1px solid var(--trait); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; }
@@ -44,8 +55,6 @@
   .suite { margin: 24px 0 0; padding-left: 20px; display: grid; gap: 8px; font-size: 15px; }
   [hidden] { display: none !important; }
 </style>
-</head>
-<body>
 <main>
   <header><div class="logo">G</div><div><b>Glisil</b><span>Master seed · works offline, sends nothing</span></div></header>
 
@@ -169,5 +178,3 @@
   };
 })();
 </script>
-</body>
-</html>

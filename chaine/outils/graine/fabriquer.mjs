@@ -16,6 +16,10 @@ if (paquet.includes("</script")) throw new Error("le paquet contient « </script
 const page = readFileSync(`${ICI}page.html`, "utf8");
 if (!page.includes("/*BUNDLE*/")) throw new Error("page.html : la place du paquet (/*BUNDLE*/) manque");
 const sortie = page.replace("/*BUNDLE*/", () => paquet);
-const chemin = fileURLToPath(new URL("../glisil-graine.html", import.meta.url));
-writeFileSync(chemin, sortie);
-console.log(`✓ ${chemin} (${Math.round(sortie.length / 1024)} Ko, sha256 ${createHash("sha256").update(sortie).digest("hex").slice(0, 16)}…)`);
+// deux sorties, un seul contenu : le fichier à ouvrir hors ligne (avec son doctype), et la page publiée en
+// lien (la publication pose elle-même l'enveloppe)
+for (const [nom, texte] of [["glisil-graine.html", `<!doctype html>\n${sortie}`], ["glisil-graine-lien.html", sortie]]) {
+  const chemin = fileURLToPath(new URL(`../${nom}`, import.meta.url));
+  writeFileSync(chemin, texte);
+  console.log(`✓ ${chemin} (${Math.round(texte.length / 1024)} Ko, sha256 ${createHash("sha256").update(texte).digest("hex").slice(0, 16)}…)`);
+}

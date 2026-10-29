@@ -11,13 +11,13 @@ import { fileURLToPath } from "node:url";
 import { CHAUD, deriver } from "../../src/cles.ts";
 
 const { chromium } = createRequire(`${process.env.PLAYWRIGHT_ROOT || "/opt/node-tools/node_modules"}/`)("playwright");
-const PAGE = new URL("../glisil-graine.html", import.meta.url).href;
+const PAGE = new URL(`../${process.env.GRAINE_PAGE ?? "glisil-graine.html"}`, import.meta.url).href;
 let echecs = 0;
 const verifier = (cond, texte, detail = "") => { console.log(`${cond ? "✓" : "✗"} ${texte}${cond || !detail ? "" : `\n    ${detail}`}`); if (!cond) echecs++; };
 
 const navigateur = await chromium.launch();
 const passage = async () => {
-  const ctx = await navigateur.newContext({ permissions: ["clipboard-read", "clipboard-write"] });
+  const ctx = await navigateur.newContext({ permissions: ["clipboard-read", "clipboard-write"], viewport: { width: 390, height: 844 } });
   const page = await ctx.newPage();
   const requetes = [];
   page.on("request", (r) => { if (!r.url().startsWith("file:")) requetes.push(r.url()); });
