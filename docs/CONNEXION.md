@@ -49,10 +49,22 @@ Les suivants s'invitent par `admin_inviter_administrateur(email, nom, rôle)`.
 - Email : activé ; « Confirm email » : activé.
 - **Email OTP Length : 6** · **Email OTP Expiration : 600** secondes.
 
-**Authentication → Emails → Templates** : pour **« Confirm signup »** et
-**« Magic Link »**, coller le contenu de `supabase/templates/code-par-email.html`,
-avec pour objet `Votre code Glisil · Your Glisil code : {{ .Token }}`. Le modèle ne montre que le
-code : aucun lien à cliquer.
+**Authentication → Emails → Templates** : chaque e-mail part dans UNE langue,
+celle de la personne (anglais par défaut, français si elle l'a choisi). Pour
+chaque modèle, coller le fichier dans « Body » et la ligne dans « Subject » :
+
+| Modèle Supabase | Fichier à coller | Objet (Subject) |
+|---|---|---|
+| Confirm signup | `supabase/templates/code-par-email.html` | `{{ if eq (printf "%v" .Data.langue) "fr" }}Votre code Glisil : {{ .Token }}{{ else }}Your Glisil code: {{ .Token }}{{ end }}` |
+| Magic Link | `supabase/templates/code-par-email.html` | le même que « Confirm signup » |
+| Reset Password | `supabase/templates/reinitialisation.html` | `{{ if eq (printf "%v" .Data.langue) "fr" }}Glisil · changer votre mot de passe{{ else }}Glisil · reset your password{{ end }}` |
+| Reauthentication | `supabase/templates/reauthentification.html` | `{{ if eq (printf "%v" .Data.langue) "fr" }}Glisil · confirmer le changement de mot de passe{{ else }}Glisil · confirm your password change{{ end }}` |
+
+Les modèles ne montrent qu'un code : aucun lien à cliquer. La langue vient des
+métadonnées d'Auth (« langue ») : l'application la pose à l'inscription, et
+chaque changement de langue dans l'application la met à jour (0037). Un compte
+sans langue — inscrit avec Google, par exemple — reçoit l'anglais. Après avoir
+collé, s'envoyer un code à soi-même pour vérifier.
 
 **Authentication → URL Configuration**
 - Site URL : `https://app.glisil.com`
@@ -71,3 +83,30 @@ Create API Key* (accès « Sending »).
 Sans SMTP personnalisé, Supabase n'envoie que **quelques e-mails par heure**,
 et seulement aux membres de l'équipe du projet : assez pour un essai, pas pour
 des clients.
+
+### Les e-mails de Glisil : le code avant chaque sortie
+
+Le SMTP ci-dessus ne sert qu'à Supabase Auth. Le code envoyé avant une sortie
+d'argent (avec le montant et la destination) et l'alerte « retraits bloqués »
+sont écrits par la base dans sa boîte d'envoi (0036) et envoyés par la
+fonction `courriel`, avec la MÊME clé Resend. Une fois :
+
+1. **Secrets de la fonction** (Edge Functions → Secrets, ou la synchronisation
+   Infisical → Supabase) :
+   - `RESEND_API_KEY` : la clé Resend (la même que celle du SMTP) ;
+   - `COURRIEL_JETON` : une longue valeur au hasard (au moins 32 caractères),
+     que personne n'a besoin de connaître ;
+   - `COURRIEL_EXPEDITEUR` (facultatif) : `Glisil <code@glisil.com>` par défaut.
+2. **Deux secrets du Vault** (Database → Vault), pour que la base réveille la
+   fonction :
+   - `courriel_url` : `https://<projet>.supabase.co/functions/v1/courriel` ;
+   - `courriel_jeton` : la MÊME valeur que `COURRIEL_JETON`.
+3. **Extensions** (Database → Extensions) : `pg_cron` et `pg_net` activées.
+4. **Déployer** : `npx supabase functions deploy courriel --no-verify-jwt`
+   (la fonction vérifie elle-même son jeton ; personne d'autre ne l'appelle).
+
+Chaque e-mail part dans la langue du compte (anglais par défaut). Le code
+n'est jamais dans l'objet, ni au journal. Un e-mail que Resend refuse
+momentanément (429, 5xx) est repris ; la même ligne ne part jamais deux fois
+(clé d'idempotence). Éprouvé par
+`node --experimental-strip-types supabase/functions/verifier-les-courriels.ts`.

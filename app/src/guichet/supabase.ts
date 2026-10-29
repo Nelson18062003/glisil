@@ -147,6 +147,7 @@ function compte(j: J): Compte {
     entreDuJour: n(j.entre_du_jour),
     /* une base d'avant 0012 ne dit rien des conditions : on ne bloque personne pour ça */
     conditionsAJour: j.conditions_a_jour === undefined ? true : Boolean(j.conditions_a_jour),
+    langue: j.langue === "fr" ? "fr" : "en",
     fermeLe: sn(j.ferme_le), desactive: Boolean(j.desactive),
   };
 }
@@ -470,6 +471,7 @@ export class GuichetSupabase implements Guichet {
     return complet.length ? { prenom: complet[0], nom: complet.slice(1).join(" ") } : null;
   }
   async accepterConditions(version: string) { return compte(await this.rpc<J>("accepter_conditions", { p_version: version })); }
+  async choisirLangue(l: "fr" | "en") { await this.rpc("choisir_ma_langue", { p_langue: l }); }
   async fermerCompte({ motif, preuve }: { motif: string; preuve: PreuveDeVerification }) {
     const r = await this.rpc<J>("fermer_mon_compte", { ...argsDeLaPreuve(preuve), p_motif: motif });
     return compte(r.compte as J);

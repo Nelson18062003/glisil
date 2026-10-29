@@ -11,6 +11,7 @@ import { achatMax, adresseValide, arrondi2, FRAIS_CRYPTO, bandeDePrix, coutAuCar
 import { ErreurMoteur } from "../noyau/erreurs";
 import { emailNormalise, emailValide } from "../noyau/identite";
 import { codeDeSecoursNormalise } from "../noyau/codesDeSecours";
+import { langue } from "../noyau/langue";
 import { motDePasseValide } from "../noyau/motDePasse";
 import { numeroSaisi, operateurDuNumero, transactionIdNormalise, xaf as xafDe } from "../noyau/format";
 import { VERSION_CONDITIONS } from "../noyau/conditions";
@@ -47,7 +48,7 @@ type Tache =
   | { quand: number; type: "retrait"; reference: string }
   | { quand: number; type: "expiration"; reference: string };
 
-type CompteDemo = Omit<Compte, "entreDuJour" | "conditionsAJour"> & { conditionsVersion: string | null };
+type CompteDemo = Omit<Compte, "entreDuJour" | "conditionsAJour" | "langue"> & { conditionsVersion: string | null; langue?: "fr" | "en" };
 
 /** Ce que Supabase Auth tient pour une adresse : son mot de passe, son application, ses codes de secours. */
 type UtilisateurDemo = {
@@ -311,7 +312,7 @@ export class GuichetDemo implements Guichet {
   private compteParId(): Compte {
     const d = this.dossier();
     const { conditionsVersion, ...compte } = d.compte;
-    return { ...compte, entreDuJour: entreDuJour(d), conditionsAJour: conditionsVersion === VERSION_CONDITIONS, fermeLe: compte.fermeLe ?? null, desactive: Boolean(compte.desactive) };
+    return { ...compte, entreDuJour: entreDuJour(d), conditionsAJour: conditionsVersion === VERSION_CONDITIONS, langue: compte.langue === "fr" ? "fr" : "en", fermeLe: compte.fermeLe ?? null, desactive: Boolean(compte.desactive) };
   }
 
   private reference(d: Dossier, prefixe: string): string {
@@ -875,11 +876,19 @@ export class GuichetDemo implements Guichet {
     if (Object.values(this.etat.dossiers).some((d) => d.compte.telephone === p.telephone)) throw new ErreurMoteur("ce numéro est déjà utilisé", "il appartient à un autre compte");
     if (p.conditions !== VERSION_CONDITIONS) throw new ErreurMoteur("conditions non acceptées", "lisez et acceptez les conditions en vigueur");
     this.etat.dossiers[email] = dossierVide(email, p);
+    /* comme la base : la langue donnée à l'inscription devient celle du compte */
+    this.etat.dossiers[email].compte.langue = langue();
     this.emettre();
     return copie(this.compteParId());
   }
 
   async nomPropose() { return null; }
+
+  async choisirLangue(l: "fr" | "en") {
+    if (l !== "fr" && l !== "en") throw new ErreurMoteur("langue inconnue");
+    this.dossier().compte.langue = l;
+    this.emettre();
+  }
 
   async accepterConditions(version: string) {
     const d = this.dossier();

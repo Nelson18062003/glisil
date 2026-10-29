@@ -30,6 +30,8 @@ export type Compte = {
   entreDuJour: number;
   /** la version des conditions acceptée est celle en vigueur ; sinon, à relire avant de continuer */
   conditionsAJour: boolean;
+  /** la langue des e-mails (0037) : l'anglais par défaut */
+  langue: "fr" | "en";
   /** fermé par son titulaire : plus aucun geste, l'équipe peut le rouvrir */
   fermeLe: string | null;
   /** suspendu par l'équipe (ou fermé) */

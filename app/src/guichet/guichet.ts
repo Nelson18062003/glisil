@@ -96,6 +96,8 @@ export interface Guichet {
   ouvrirCompte(p: ProfilInscription): Promise<Compte>;
   /** Le prénom et le nom que Google a donnés, pour préremplir le profil (rien d'autre n'en est lu). */
   nomPropose(): Promise<{ prenom: string; nom: string } | null>;
+  /** La langue du compte : celle de ses e-mails, et de l'écran sur un appareil neuf (0037). */
+  choisirLangue(l: "fr" | "en"): Promise<void>;
   /** Accepte la version des conditions en vigueur (quand elle a changé depuis l'inscription). */
   accepterConditions(version: string): Promise<Compte>;
   /** Ferme le compte : tout l'argent sorti, rien en cours, avec la vérification avant sortie. */

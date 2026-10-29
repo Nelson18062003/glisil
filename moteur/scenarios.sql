@@ -3681,6 +3681,138 @@ begin
 end $$;
 rollback;
 
+-- 11.76 · choisir sa langue (0037). Le choix se range dans le compte (lu par
+-- la boîte d'envoi) ET dans les métadonnées d'Auth (lues par les gabarits de
+-- Supabase), sans effacer ce que signUp y avait mis. Une langue qu'on ne sait
+-- pas écrire est refusée à la lettre ; une session faible ne choisit rien.
+-- Témoin : le compte voisin, qui n'a rien choisi, reste en anglais.
+begin;
+do $$
+declare c uuid := 'b1760000-0000-0000-0000-000000000001'; t uuid := 'b1760000-0000-0000-0000-000000000002'; r jsonb;
+begin
+  insert into comptes (id, telephone, nom) values (c, '+237677176001', 'Langue Un'), (t, '+237677176002', 'Langue Témoin');
+  insert into auth.users (id, email, raw_user_meta_data) values (c, 'langue.un@example.com', '{"prenom": "Lou"}'),
+                                                                (t, 'langue.temoin@example.com', null);
+  assert (select langue from comptes where id = c) = 'en', 'l''anglais est la langue par défaut';
+  perform set_config('xafe.compte', c::text, true);
+  r := choisir_ma_langue('fr');
+  assert (r ->> 'ok')::boolean and r ->> 'langue' = 'fr', r;
+  assert (select langue from comptes where id = c) = 'fr', 'le compte garde le choix';
+  assert (select raw_user_meta_data from auth.users where id = c) = '{"prenom": "Lou", "langue": "fr"}'::jsonb,
+         format('les métadonnées d''Auth suivent, le reste intact : %s', (select raw_user_meta_data from auth.users where id = c));
+  begin perform choisir_ma_langue('de'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'langue inconnue', sqlerrm; end;
+  begin perform choisir_ma_langue('FR'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'langue inconnue', sqlerrm; end;
+  begin perform choisir_ma_langue(null); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'langue inconnue', sqlerrm; end;
+  assert (select langue from comptes where id = c) = 'fr', 'un refus ne change rien';
+  -- aal1 : le mot de passe sans le code de l'application
+  perform set_config('xafe.aal', 'aal1', true);
+  perform set_config('xafe.amr', jsonb_build_array(jsonb_build_object('method', 'password', 'timestamp', extract(epoch from now())::bigint))::text, true);
+  begin perform choisir_ma_langue('en'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'double authentification requise', sqlerrm; end;
+  assert (select langue from comptes where id = c) = 'fr' and (select raw_user_meta_data ->> 'langue' from auth.users where id = c) = 'fr',
+         'en session faible, rien ne bouge';
+  perform set_config('xafe.aal', '', true); perform set_config('xafe.amr', '', true);
+  -- et l'on revient à l'anglais
+  r := choisir_ma_langue('en');
+  assert (select langue from comptes where id = c) = 'en' and (select raw_user_meta_data ->> 'langue' from auth.users where id = c) = 'en', r;
+  assert (select langue from comptes where id = t) = 'en' and (select raw_user_meta_data from auth.users where id = t) is null,
+         'le voisin n''a rien choisi : rien n''a changé chez lui';
+  assert not has_function_privilege('anon', 'choisir_ma_langue(text)', 'execute')
+     and has_function_privilege('authenticated', 'choisir_ma_langue(text)', 'execute')
+     and not has_function_privilege('authenticated', '_langue_d_auth(uuid)', 'execute'), 'les droits de la langue';
+  raise notice '✓ 11.76 choisir sa langue : le compte et les métadonnées d''Auth suivent (le reste intact) ; « de », « FR » et rien refusés ; en aal1 rien ne bouge ; le voisin reste en anglais';
+end $$;
+rollback;
+
+-- 11.77 · ouvrir son compte dans sa langue (0037). L'écran d'inscription a
+-- passé la langue à signUp : elle devient celle du compte. Sans langue, ou
+-- avec une qu'on ne sait pas écrire, c'est l'anglais.
+begin;
+select _essai_utilisateur('f5770000-0000-0000-0000-000000000001', 'inscrit.fr@example.com');
+select _essai_utilisateur('f5770000-0000-0000-0000-000000000002', 'inscrit.sans@example.com');
+select _essai_utilisateur('f5770000-0000-0000-0000-000000000003', 'inscrit.de@example.com');
+select _essai_utilisateur('f5770000-0000-0000-0000-000000000004', 'inscrit.en@example.com');
+update auth.users set raw_user_meta_data = '{"langue": "fr"}' where id = 'f5770000-0000-0000-0000-000000000001';
+update auth.users set raw_user_meta_data = '{"langue": "de"}' where id = 'f5770000-0000-0000-0000-000000000003';
+update auth.users set raw_user_meta_data = '{"langue": "en"}' where id = 'f5770000-0000-0000-0000-000000000004';
+do $$
+declare r jsonb; v_cond text := parametre('conditions') ->> 'version';
+begin
+  perform set_config('xafe.compte', 'f5770000-0000-0000-0000-000000000001', true);
+  r := ouvrir_mon_compte('Fanny', 'Francaise', date '1990-05-14', '+237677177001', 'Douala', 'CM', v_cond);
+  assert r ->> 'langue' = 'fr' and (select langue from comptes where id = 'f5770000-0000-0000-0000-000000000001') = 'fr', r;
+  perform set_config('xafe.compte', 'f5770000-0000-0000-0000-000000000002', true);
+  r := ouvrir_mon_compte('Sam', 'Sanslangue', date '1990-05-14', '+237677177002', 'Douala', 'CM', v_cond);
+  assert r ->> 'langue' = 'en', format('sans langue donnée, l''anglais : %s', r);
+  perform set_config('xafe.compte', 'f5770000-0000-0000-0000-000000000003', true);
+  r := ouvrir_mon_compte('Dieter', 'Deutsch', date '1990-05-14', '+237677177003', 'Douala', 'CM', v_cond);
+  assert r ->> 'langue' = 'en', format('une langue qu''on ne sait pas écrire, l''anglais : %s', r);
+  perform set_config('xafe.compte', 'f5770000-0000-0000-0000-000000000004', true);
+  r := ouvrir_mon_compte('Emma', 'English', date '1990-05-14', '+237677177004', 'Douala', 'CM', v_cond);
+  assert r ->> 'langue' = 'en', r;
+  raise notice '✓ 11.77 ouvrir son compte : la langue donnée à l''inscription devient celle du compte ; sans elle, ou inconnue, l''anglais';
+end $$;
+rollback;
+
+-- 11.78 · la boîte d'envoi dit dans quelle langue écrire (0037). Celle du
+-- compte, lue AU MOMENT de prendre la ligne : un client qui change d'avis est
+-- entendu pour l'e-mail déjà en file. Une adresse de l'équipe (sans compte)
+-- prend la langue que le moteur a posée, sinon l'anglais.
+begin;
+do $$
+declare
+  c uuid := 'b1780000-0000-0000-0000-000000000001'; e uuid := 'b1780000-0000-0000-0000-000000000002';
+  k1 bigint; k2 bigint; k3 bigint; k4 bigint; k5 bigint; r jsonb;
+begin
+  insert into comptes (id, telephone, nom, langue) values (c, '+237677178001', 'Boîte Française', 'fr'), (e, '+237677178002', 'Boîte Anglaise', 'en');
+  insert into auth.users (id, email, raw_user_meta_data) values (c, 'boite.fr@example.com', '{"langue": "fr"}'),
+                                                                (e, 'boite.en@example.com', '{"langue": "fr"}');
+  insert into courriels_a_envoyer (compte_id, gabarit, donnees) values (c, 'essai', '{}') returning id into k1;
+  insert into courriels_a_envoyer (compte_id, gabarit, donnees) values (e, 'essai', '{"langue": "fr"}') returning id into k2;
+  insert into courriels_a_envoyer (destinataire, gabarit, donnees) values ('equipe@example.com', 'essai', '{}') returning id into k3;
+  insert into courriels_a_envoyer (destinataire, gabarit, donnees) values ('equipe@example.com', 'essai', '{"langue": "fr"}') returning id into k4;
+  insert into courriels_a_envoyer (destinataire, gabarit, donnees) values ('equipe@example.com', 'essai', '{"langue": "de"}') returning id into k5;
+  r := courriel_prendre(k1);
+  assert r ->> 'langue' = 'fr' and r ->> 'email' = 'boite.fr@example.com', r;
+  -- le COMPTE décide, ni les métadonnées ni les données de la ligne
+  r := courriel_prendre(k2);
+  assert r ->> 'langue' = 'en', format('le compte est en anglais : %s', r);
+  r := courriel_prendre(k3);
+  assert r ->> 'langue' = 'en' and r ->> 'email' = 'equipe@example.com', format('l''équipe, sans langue posée : l''anglais — %s', r);
+  r := courriel_prendre(k4);
+  assert r ->> 'langue' = 'fr', r;
+  r := courriel_prendre(k5);
+  assert r ->> 'langue' = 'en', format('une langue qu''on ne sait pas écrire : l''anglais — %s', r);
+  -- changer d'avis avec un e-mail en file : il part dans la nouvelle langue
+  insert into courriels_a_envoyer (compte_id, gabarit, donnees) values (c, 'essai', '{}') returning id into k1;
+  perform set_config('xafe.compte', c::text, true);
+  perform choisir_ma_langue('en');
+  perform set_config('xafe.compte', '', true);
+  r := courriel_prendre(k1);
+  assert r ->> 'langue' = 'en', format('le choix d''après l''inscription en file compte : %s', r);
+  raise notice '✓ 11.78 la boîte d''envoi dit la langue du compte, lue au moment d''envoyer ; une adresse de l''équipe prend celle posée par le moteur, sinon l''anglais';
+end $$;
+rollback;
+
+-- 11.79 · l'écran lit la langue du compte (0037) : mon_compte la montre, et
+-- elle suit le choix.
+begin;
+do $$
+declare c uuid := 'b1790000-0000-0000-0000-000000000001';
+begin
+  insert into comptes (id, telephone, nom) values (c, '+237677179001', 'Écran Langue');
+  insert into auth.users (id, email) values (c, 'ecran.langue@example.com');
+  perform set_config('xafe.compte', c::text, true);
+  assert mon_compte() ->> 'langue' = 'en', mon_compte();
+  perform choisir_ma_langue('fr');
+  assert mon_compte() ->> 'langue' = 'fr', mon_compte();
+  raise notice '✓ 11.79 mon_compte montre la langue du compte, et elle suit le choix';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

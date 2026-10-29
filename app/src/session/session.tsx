@@ -14,6 +14,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useGuichet } from "../guichet";
 import type { Compte } from "../guichet/types";
 import { phaseDEntree, type PhaseDEntree } from "../noyau/entree";
+import { abonnerLangue, choisirLangue, choixDeLAppareil, langue, type Langue } from "../noyau/langue";
 
 export type Etat =
   | { phase: "chargement" }
@@ -127,6 +128,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   /* le temps réel ne s'ouvre qu'à une session complète : avant aal2, la base ne montre rien, et le canal garderait l'ancien jeton */
   const connecte = etat.phase === "connecte";
   useEffect(() => { guichet.tempsReel(connecte); }, [guichet, connecte]);
+
+  /* La langue suit la personne (0037) : ses e-mails partent dans celle de son COMPTE. Un choix fait
+     sur cet appareil l'emporte et monte au compte ; sans choix ici, l'écran prend celle du compte (un
+     client français sur un téléphone neuf voit le français). Un échec ne bloque rien : le prochain
+     choix, ou la prochaine ouverture, réessaie. */
+  const langueDuCompte = useRef<Langue | null>(null);
+  const langueEnCompte = etat.phase === "connecte" ? etat.compte.langue : null;
+  const monterLangue = useCallback((l: Langue) => {
+    const avant = langueDuCompte.current;
+    langueDuCompte.current = l;
+    guichet.choisirLangue(l).catch(() => { if (langueDuCompte.current === l) langueDuCompte.current = avant; });
+  }, [guichet]);
+  useEffect(() => {
+    langueDuCompte.current = langueEnCompte;
+    if (!langueEnCompte) return;
+    const ici = choixDeLAppareil();
+    if (ici === null) { if (langue() !== langueEnCompte) choisirLangue(langueEnCompte); }
+    else if (ici !== langueEnCompte) monterLangue(ici);
+  }, [langueEnCompte, monterLangue]);
+  useEffect(() => abonnerLangue(() => {
+    if (langueDuCompte.current !== null && langue() !== langueDuCompte.current) monterLangue(langue());
+  }), [monterLangue]);
 
   const valeur = useMemo<Session>(() => ({
     etat,
