@@ -13,6 +13,8 @@
 //   · Les liens tel:, wa.me, mailto: → le téléphone ; les autres sites →
 //     le navigateur intégré.
 //   · Un plantage de la WebView → rechargement, pas un écran blanc.
+//   · « Continuer avec Google » : dans un onglet du système (Google refuse
+//     une WebView), le code rendu à la page par glisil://auth-retour.
 // ============================================================
 import NetInfo from '@react-native-community/netinfo';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -27,7 +29,7 @@ import type { ShouldStartLoadRequest, WebViewMessageEvent, WebViewOpenWindowEven
 import { REVERROUILLER_APRES_MS, START_URL, USER_AGENT_SUFFIX, estUrlDeLApp } from './config';
 import { traiterMessage } from './fichiers';
 import { appliquerMiseAJour, chercherMiseAJour } from './miseAJour';
-import { SCRIPT_INJECTE, lireMessage } from './pont';
+import { RETOUR_GOOGLE, SCRIPT_INJECTE, estAdresseGoogleDeSupabase, lireMessage, scriptDeRetourGoogle } from './pont';
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -134,7 +136,21 @@ export function App() {
     if (!msg) return;
     if (msg.type === 'theme') { setFond(msg.fond); return; }
     if (msg.type === 'route') { setChemin(msg.chemin); return; }
+    if (msg.type === 'connexion-google') { void connexionGoogle(msg.url); return; }
     void traiterMessage(msg, (url) => void ouvrirDehors(url));
+  }, []);
+
+  /* ---- « Continuer avec Google » : un onglet du système, puis le code rendu à la page */
+  const connexionGoogle = useCallback(async (url: string) => {
+    if (!estAdresseGoogleDeSupabase(url)) return;
+    let retour = `${RETOUR_GOOGLE}?error=access_denied`;
+    try {
+      const r = await WebBrowser.openAuthSessionAsync(url, RETOUR_GOOGLE);
+      if (r.type === 'success' && r.url.startsWith(RETOUR_GOOGLE)) retour = r.url;
+    } catch {
+      /* l'onglet n'a pas pu s'ouvrir : la page l'apprend comme un abandon */
+    }
+    web.current?.injectJavaScript(scriptDeRetourGoogle(retour));
   }, []);
 
   const surNavigation = useCallback((nav: WebViewNavigation) => setPeutRevenir(nav.canGoBack), []);

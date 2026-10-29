@@ -8,6 +8,7 @@
     "start": "expo start",
     "android": "expo start --android",
     "typecheck": "tsc --noEmit",
+    "verifier": "node --experimental-strip-types scripts/verifier-google.ts",
     "doctor": "npx expo-doctor",
     "build:android:test": "npx eas-cli@latest build -p android --profile preview",
     "build:android": "npx eas-cli@latest build -p android --profile production",

@@ -196,7 +196,11 @@ mots de passe divulgués, au moins 100 e-mails par heure. **Sessions**
 (Authentication → Sessions) : « Inactivity timeout » **7 jours**,
 « Time-box user sessions » **30 jours** (votre décision du 29/10). URL : Site URL
 `https://app.glisil.com` ; Redirect URLs `https://app.glisil.com/**`,
-`https://admin.glisil.com/**` — **aucun domaine de la bêta**. Google Cloud :
+`https://admin.glisil.com/**`, `glisil://auth-retour` (Google dans l'application
+Android : la coque l'ouvre dans un onglet du système et Google revient par
+là) — **aucun domaine de la bêta**. La coque qui sait le faire (pont v2) part
+chez les téléphones par une mise à jour à distance (`cd coque && npm run
+update:production`) : rien de natif n'a changé. Google Cloud :
 écran de consentement « Glisil », client Web (origines app et admin ; retour
 `https://dfixghiwqlwulmzixlpf.supabase.co/auth/v1/callback`), l'ID et le
 secret dans Supabase → Providers → Google, et dans `/auth`.

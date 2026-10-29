@@ -19,7 +19,32 @@ export type MessageDuPont =
   | { type: 'presse-papiers'; texte: string }
   | { type: 'theme'; fond: string }
   | { type: 'route'; chemin: string }
+  | { type: 'connexion-google'; url: string }
   | { type: 'erreur'; message: string };
+
+/**
+ * « Continuer avec Google » : Google refuse une WebView (disallowed_useragent). L'application
+ * demande l'adresse à Supabase et la confie à la coque, qui l'ouvre dans un onglet du système ;
+ * Google revient par glisil://auth-retour?code=…, que la coque rend à la page (l'événement
+ * « glisil:retour-oauth »), où le vérificateur PKCE attend. On n'ouvre QUE la page
+ * d'autorisation d'un projet Supabase, en https.
+ */
+export function estAdresseGoogleDeSupabase(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && /^[a-z0-9]+\.supabase\.co$/.test(u.hostname) && u.pathname === '/auth/v1/authorize'
+      && u.searchParams.get('provider') === 'google';
+  } catch {
+    return false;
+  }
+}
+
+export const RETOUR_GOOGLE = 'glisil://auth-retour';
+
+/** Le script qui rend à la page le retour de Google (ou son abandon). */
+export function scriptDeRetourGoogle(url: string): string {
+  return `window.dispatchEvent(new CustomEvent('glisil:retour-oauth', { detail: ${JSON.stringify(url)} })); true;`;
+}
 
 export function lireMessage(brut: string): MessageDuPont | null {
   try {
@@ -34,7 +59,8 @@ export function lireMessage(brut: string): MessageDuPont | null {
 export const SCRIPT_INJECTE = `
 (function () {
   if (window.__xafeCoque) return;
-  window.__xafeCoque = { version: 1 };
+  // version 2 : la coque sait ouvrir Google hors de la WebView (connexion-google)
+  window.__xafeCoque = { version: 2, google: true };
   function poster(m) { try { window.ReactNativeWebView.postMessage(JSON.stringify(m)); } catch (e) {} }
   function enBase64(blob) {
     return new Promise(function (resoudre, rejeter) {
