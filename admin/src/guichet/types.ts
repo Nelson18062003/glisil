@@ -35,11 +35,20 @@ export type Entree = {
 };
 export type Retenue = {
   id: number; terminal: string; operateur: string; float_numero: string; numero_payeur: string | null; montant: number | null; reference_operateur: string | null;
-  transaction_id: string | null; texte: string | null; emis_le: string | null; etat: "retenue" | "rapprochee" | "remboursee"; depot_reference: string | null; cree_le: string;
+  transaction_id: string | null; texte: string | null; emis_le: string | null; etat: "retenue" | "rapprochee" | "remboursee" | "rejetee"; depot_reference: string | null; cree_le: string;
   /** pourquoi l'appariement automatique a refusé ; « bloquee » : seule l'équipe la dénoue */
   motif?: string | null; bloquee?: boolean;
   compte_suggere: { id: string; nom: string | null; telephone: string } | null;
+  /* 0039 : la garde des faux SMS. Le solde annoncé suit-il le dernier solde sûr du float ? */
+  continuite?: Continuite | null;
+  /** retenue POUR SON SOLDE : ni rapprochée ni remboursée tant que l'équipe ne l'a pas libérée ou rejetée */
+  solde_a_verifier?: boolean;
+  solde_apres?: number | null; solde_attendu?: number | null;
+  /** le dernier solde sûr qui a servi d'appui */
+  ancre?: { solde: number; annonce_le: string; source: "sms" | "ussd" | "releve" } | null;
+  liberee_le?: string | null; liberee_par?: string | null; note_equipe?: string | null;
 };
+export type Continuite = "verifiee" | "incoherente" | "absente" | "sans_ancre" | "ignoree" | "liberee" | "rejetee";
 export type Transfert = { id: number; terminal: string; etat: string; montant_xafe: number; montant_envoye: number; reprises: number; resultat: string | null; reference_operateur: string | null; reclamee_le: string | null };
 export type Sortie = {
   reference: string; etat: string; operateur: string; numero: string; montant: number; frais: number; montant_xaf: number; montant_envoye: number; montant_rendu: number;
@@ -89,6 +98,8 @@ export type ATraiter = {
   sorties_manuelles: number; sorties_a_confirmer: number; montant_a_payer: number; sorties_non_expliquees: number;
   /** payées, en attente du SMS de la puce (0038) ; dont en écart */
   sorties_en_preuve?: number; sorties_en_ecart?: number;
+  /** les SMS d'encaissement retenus parce que leur solde ne suit pas (0039) */
+  retenues_solde?: number;
   /** le dernier relevé de parité (0016) : null tant qu'aucun n'a été fait */
   parite?: { statut: StatutParite; ecart: number | null; couverture: number | null; fait_le: string; alertes: number } | null;
 };

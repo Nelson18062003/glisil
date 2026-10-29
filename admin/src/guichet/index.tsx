@@ -27,7 +27,7 @@ export function useGuichet(): GuichetAdmin {
 
 export function useTableau() { const g = useGuichet(); return useQuery({ queryKey: ["tableau"], queryFn: () => g.tableau(), refetchInterval: 10_000 }); }
 export function useEntrees(etat?: string | null) { const g = useGuichet(); return useQuery({ queryKey: ["entrees", etat ?? "tout"], queryFn: () => g.entrees(etat), refetchInterval: 10_000 }); }
-export function useRetenues(etat: "retenue" | "rapprochee" | "remboursee") { const g = useGuichet(); return useQuery({ queryKey: ["retenues", etat], queryFn: () => g.retenues(etat), refetchInterval: 10_000 }); }
+export function useRetenues(etat: "retenue" | "rapprochee" | "remboursee" | "rejetee") { const g = useGuichet(); return useQuery({ queryKey: ["retenues", etat], queryFn: () => g.retenues(etat), refetchInterval: 10_000 }); }
 export function useSorties(etat?: string | null) { const g = useGuichet(); return useQuery({ queryKey: ["sorties", etat ?? "tout"], queryFn: () => g.sorties(etat), refetchInterval: 10_000 }); }
 export function useSortiesNonExpliquees() { const g = useGuichet(); return useQuery({ queryKey: ["sorties-non-expliquees"], queryFn: () => g.sortiesNonExpliquees(), refetchInterval: 30_000 }); }
 /** Ce qui attend l'équipe : remboursements à payer, à confirmer, argent sorti sans explication. */

@@ -118,10 +118,20 @@ function graine(): Etat {
       compte: { id: c.id, telephone: c.telephone, nom: c.nom, palier: c.palier },
     };
   });
+  // le dossier que le SMS au solde à vérifier (44) paiera, une fois libéré
+  entrees.push({ reference: ref("XAFe-DP-"), etat: "en_attente", operateur: "mtn", montant_recu: 0, float_numero: "677000001", code_agent: null,
+    cree_le: iso(t - 40 * 60_000), expire_le: iso(t - 10 * 60_000), credite_le: null,
+    declarations: [{ id: "x44", transaction_id: "MP2610290951F33018", etat: "attendu", montant: null, numero_payeur: null, motif: null, declare_le: iso(t - 31 * 60_000), credite_le: null }],
+    compte: { id: clients[10].id, telephone: clients[10].telephone, nom: clients[10].nom, palier: clients[10].palier } });
   const retenues: Retenue[] = [
     { id: 41, terminal: "akwa-1", operateur: "om", float_numero: "699000000", numero_payeur: clients[1].telephone, montant: 150_000, reference_operateur: "PP261012.1402.A20394817501", transaction_id: "PP2610121402A20394817501", texte: "Vous avez recu 150000 FCFA de JEAN KAMDEM. Ref: PP261012.1402.A20394817501", emis_le: iso(t - 50 * 60_000), etat: "retenue", depot_reference: null, cree_le: iso(t - 49 * 60_000), compte_suggere: { id: clients[1].id, nom: clients[1].nom, telephone: clients[1].telephone } },
     { id: 42, terminal: "bonaberi-2", operateur: "mtn", float_numero: "677000001", numero_payeur: "655443322", montant: 48_000, reference_operateur: "20394817502", transaction_id: "20394817502", texte: "Vous avez recu 48,000 FCFA de INCONNU (655443322). ID: 20394817502", emis_le: iso(t - 6 * H), etat: "retenue", depot_reference: null, cree_le: iso(t - 6 * H), compte_suggere: null,
       motif: "plusieurs comptes ont tapé ce transaction ID : l'équipe vérifie", bloquee: true },
+    // 0039 : le SMS annonce un solde qui ne suit pas le dernier solde sûr du float — un faux, ou un mouvement manqué
+    { id: 44, terminal: "bonaberi-2", operateur: "mtn", float_numero: "677000001", numero_payeur: clients[10].telephone, montant: 750_000, reference_operateur: "MP261029.0951.F33018", transaction_id: "MP2610290951F33018",
+      texte: `Vous avez recu 750 000 FCFA de DESK LAGOS TRADING (${clients[10].telephone}). Ref: MP261029.0951.F33018. Nouveau solde: 4 312 500 FCFA.`, emis_le: iso(t - 30 * 60_000), etat: "retenue", depot_reference: null, cree_le: iso(t - 30 * 60_000),
+      compte_suggere: { id: clients[10].id, nom: clients[10].nom, telephone: clients[10].telephone }, motif: "solde incohérent : à vérifier", bloquee: true,
+      continuite: "incoherente", solde_a_verifier: true, solde_apres: 4_312_500, solde_attendu: 4_062_500, ancre: { solde: 3_312_500, annonce_le: iso(t - 3 * H), source: "ussd" } },
     { id: 43, terminal: "akwa-1", operateur: "om", float_numero: "699000000", numero_payeur: clients[9].telephone, montant: 600_000, reference_operateur: "PP261012.0912.B77410", transaction_id: "PP2610120912B77410", texte: "Vous avez recu 600000 FCFA de BOB ESSOMBA. Ref: PP261012.0912.B77410", emis_le: iso(t - 14 * H), etat: "retenue", depot_reference: entrees[2].reference, cree_le: iso(t - 14 * H), compte_suggere: { id: clients[9].id, nom: clients[9].nom, telephone: clients[9].telephone } },
   ];
   // un identifiant par transfert, unique dans toute la démonstration : deux transferts au même numéro, et un geste visait l'autre
@@ -161,6 +171,7 @@ function graine(): Etat {
       depot: { validite_minutes: 30, grace_minutes: 120 }, sortie: { reprises_max: 3, mode: "manuel", seuil_deux_personnes: 500_000 }, rapide: { marge: 0.01, validite_secondes: 20, ouvert: true }, crypto: { frais: { USDT: 1, XAFe: 0 }, confirmations: { bep20: 15, trc20: 20 } },
       code_secret: { essais: 3, verrou_minutes: 15, longueur_min: 4, longueur_max: 6 },
       support: { email: "support@glisil.com", whatsapp: null },
+      continuite: { mode: "exiger", demo: "eteinte" },
       conditions: { version: "2026-10-16" },
       paliers: { "0": { entree_jour: 500000, sortie_jour: 500000 }, "1": { entree_jour: 5000000, sortie_jour: 5000000 }, "2": null },
       operateurs: [{ id: "mtn", nom: "MTN MoMo", plafond_par_transfert: 1_000_000, plafond_jour: 100_000_000 }, { id: "om", nom: "Orange Money", plafond_par_transfert: 500_000, plafond_jour: 1_500_000 }],
@@ -371,12 +382,13 @@ export class GuichetDemo implements GuichetAdmin {
   }
 
   async entrees(etat?: string | null) { this.exiger("voir"); return copie(this.e.entrees.filter((x) => !etat || x.etat === etat)); }
-  async retenues(etat: "retenue" | "rapprochee" | "remboursee" = "retenue") { this.exiger("voir"); return copie(this.e.retenues.filter((r) => r.etat === etat)); }
+  async retenues(etat: "retenue" | "rapprochee" | "remboursee" | "rejetee" = "retenue") { this.exiger("voir"); return copie(this.e.retenues.filter((r) => r.etat === etat)); }
 
   async rapprocher(id: number, reference: string): Promise<Declaration> {
     this.exiger("rapprocher");
     const r = this.e.retenues.find((x) => x.id === id);
     if (!r) throw new ErreurMoteur("entrée inconnue");
+    if (r.solde_a_verifier && r.etat === "retenue") throw new ErreurMoteur("solde à vérifier : libérez ou rejetez d'abord ce SMS");
     if (r.etat !== "retenue") throw new ErreurMoteur("cette entrée n'est plus retenue", r.etat);
     const d = this.e.entrees.find((x) => x.reference === reference);
     if (!d) throw new ErreurMoteur("dépôt inconnu");
@@ -397,12 +409,46 @@ export class GuichetDemo implements GuichetAdmin {
     this.exiger("rembourser");
     const r = this.e.retenues.find((x) => x.id === id);
     if (!r) throw new ErreurMoteur("entrée inconnue");
+    if (r.solde_a_verifier && r.etat === "retenue") throw new ErreurMoteur("solde à vérifier : libérez ou rejetez d'abord ce SMS");
     if (r.etat !== "retenue") throw new ErreurMoteur("cette entrée n'est plus retenue", r.etat);
     if (!r.numero_payeur || !r.montant) throw new ErreurMoteur("payeur ou montant inconnu : remboursement manuel");
     r.etat = "remboursee";
     this.noter("rembourser_retenue", String(id), { montant: r.montant, note });
     this.emettre();
     return { montant: r.montant, numero: r.numero_payeur };
+  }
+  /* 0039, par les règles de la base : libéré, le SMS reprend la voie automatique — la déclaration qui l'attend le prend */
+  async liberer(id: number, ancrer: boolean, note: string) {
+    this.exiger("rapprocher");
+    const r = this.e.retenues.find((x) => x.id === id);
+    if (!r) throw new ErreurMoteur("entrée inconnue");
+    if (!(r.etat === "retenue" && r.solde_a_verifier)) throw new ErreurMoteur("ce SMS n'attend pas de vérification de solde");
+    if (note.trim().length < 10) throw new ErreurMoteur("dites comment le paiement a été vérifié", "par exemple : vu dans l'historique MoMo *126#");
+    if (ancrer && r.solde_apres == null) throw new ErreurMoteur("ce SMS n'annonce pas de solde");
+    Object.assign(r, { continuite: "liberee", solde_a_verifier: false, bloquee: false, motif: null, liberee_le: iso(maintenant()), liberee_par: this.moi(), note_equipe: note.trim() });
+    let reference: string | undefined;
+    const d = this.e.entrees.find((x) => x.operateur === r.operateur && x.declarations.some((y) => y.etat === "attendu" && y.transaction_id === r.transaction_id));
+    if (d && r.montant) {
+      const y = d.declarations.find((x) => x.etat === "attendu" && x.transaction_id === r.transaction_id)!;
+      Object.assign(y, { etat: "credite", montant: r.montant, numero_payeur: r.numero_payeur, credite_le: iso(maintenant()) });
+      d.montant_recu += r.montant; d.etat = "credite"; d.credite_le = y.credite_le;
+      const c = this.e.clients.find((x) => x.id === d.compte.id)!;
+      c.soldes.XAFe.disponible += r.montant; c.xafe += r.montant;
+      r.etat = "rapprochee"; r.depot_reference = d.reference; reference = d.reference;
+    }
+    this.noter("liberer_retenue", String(id), { montant: r.montant, ancre: ancrer, note: note.trim() });
+    this.emettre();
+    return { credite: Boolean(reference), reference, reexaminees: 0 };
+  }
+  async rejeter(id: number, note: string) {
+    this.exiger("rapprocher");
+    const r = this.e.retenues.find((x) => x.id === id);
+    if (!r) throw new ErreurMoteur("entrée inconnue");
+    if (r.etat !== "retenue") throw new ErreurMoteur("cette entrée n'est plus retenue", r.etat);
+    if (note.trim().length < 3) throw new ErreurMoteur("une note est exigée", "pourquoi ce SMS est faux");
+    Object.assign(r, { etat: "rejetee", continuite: "rejetee", solde_a_verifier: false, note_equipe: note.trim(), liberee_le: iso(maintenant()), liberee_par: this.moi() });
+    this.noter("rejeter_retenue", String(id), { montant: r.montant, note: note.trim() });
+    this.emettre();
   }
 
   async sorties(etat?: string | null) { this.exiger("voir"); return copie(this.e.sorties.filter((s) => !etat || s.etat === etat).map((s) => this.vue(s))); }
@@ -645,6 +691,7 @@ export class GuichetDemo implements GuichetAdmin {
              sorties_a_confirmer: enPreuve.filter((s) => this.seuilAtteint(s) && !s.confirmee_par).length,
              sorties_en_ecart: enPreuve.filter((s) => this.rapprochementDe(s)?.etat === "ecart").length,
              montant_a_payer: ouvertes.reduce((x, s) => x + this.resteDe(s), 0), sorties_non_expliquees: this.nonExpliquees().length,
+             retenues_solde: this.e.retenues.filter((r) => r.etat === "retenue" && r.solde_a_verifier).length,
              parite: { statut: p.statut, ecart: p.ecart, couverture: p.couverture, fait_le: p.fait_le, alertes: 0 } };
   }
 
@@ -864,7 +911,7 @@ export class GuichetDemo implements GuichetAdmin {
   async parametres() { this.exiger("voir"); return copie(this.e.parametres); }
   async modifierParametre(cle: string, valeur: unknown) {
     this.exiger("parametres");
-    if (!["frais", "marche", "depot", "sortie", "paliers", "crypto", "code_secret", "rapide", "conditions", "support", "numeros", "beta", "cours", "robots"].includes(cle)) throw new ErreurMoteur("paramètre inconnu");
+    if (!["frais", "marche", "depot", "sortie", "paliers", "crypto", "code_secret", "rapide", "conditions", "support", "numeros", "beta", "cours", "robots", "continuite"].includes(cle)) throw new ErreurMoteur("paramètre inconnu");
     this.e.parametres[cle] = valeur;
     if (cle === "robots") this.robotsActifs = Boolean((valeur as { actif?: boolean } | null)?.actif);
     this.noter("modifier_parametre", cle, valeur); this.emettre();

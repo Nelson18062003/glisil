@@ -48,6 +48,12 @@ export function Tableau() {
             <Typography variant="body2">Remboursements à payer{a && (a.sorties_en_preuve ?? 0) > 0 ? ` · ${a.sorties_en_preuve} en preuve` : ""}{a && (a.sorties_en_ecart ?? 0) > 0 ? ` · ${a.sorties_en_ecart} en écart` : ""}{a && a.sorties_a_confirmer > 0 ? ` · ${a.sorties_a_confirmer} à confirmer` : ""}</Typography>
             <Typography variant="h5">{a?.sorties_manuelles ?? "—"} · {xaf(a?.montant_a_payer ?? 0)} XAF</Typography>
           </Paper>
+          {a && (a.retenues_solde ?? 0) > 0 && (
+            <Paper component={Link} to="/entrees?onglet=retenues" data-solde-a-verifier={a.retenues_solde} sx={{ p: 2.5, borderRadius: 5, flex: 1, minWidth: 220, textDecoration: "none", color: "inherit", bgcolor: "#F9DEDC" }}>
+              <Typography variant="body2">SMS au solde à vérifier</Typography>
+              <Typography variant="h5">{a.retenues_solde}</Typography>
+            </Paper>
+          )}
           {a && a.sorties_non_expliquees > 0 && (
             <Paper component={Link} to="/sorties" sx={{ p: 2.5, borderRadius: 5, flex: 1, minWidth: 220, textDecoration: "none", color: "inherit", bgcolor: "#F9DEDC" }}>
               <Typography variant="body2">Sorti du float sans sortie en face</Typography>

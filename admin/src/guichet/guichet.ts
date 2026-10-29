@@ -42,9 +42,14 @@ export interface GuichetAdmin {
   tableau(): Promise<Tableau>;
 
   entrees(etat?: string | null): Promise<Entree[]>;
-  retenues(etat?: "retenue" | "rapprochee" | "remboursee"): Promise<Retenue[]>;
+  retenues(etat?: "retenue" | "rapprochee" | "remboursee" | "rejetee"): Promise<Retenue[]>;
   rapprocher(id: number, reference: string): Promise<Declaration>;
   rembourser(id: number, note: string): Promise<{ montant: number; numero: string }>;
+  /** Un SMS au solde à vérifier, vu dans l'historique de l'opérateur : il reprend la voie automatique. « Ancrer » :
+   *  son solde est bien celui de l'opérateur, il devient un appui et les SMS suivants se vérifient d'eux-mêmes (0039). */
+  liberer(id: number, ancrer: boolean, note: string): Promise<{ credite: boolean; reference?: string; reexaminees?: number }>;
+  /** Un faux SMS : rien n'est crédité, rien n'est remboursé, il ne revient jamais. */
+  rejeter(id: number, note: string): Promise<void>;
 
   sorties(etat?: string | null): Promise<Sortie[]>;
   libererCommande(id: number): Promise<void>;

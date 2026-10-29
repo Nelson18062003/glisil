@@ -162,9 +162,11 @@ export class GuichetSupabase implements GuichetAdmin {
 
   tableau() { return this.rpc<Tableau>("admin_tableau"); }
   entrees(etat?: string | null) { return this.rpc<Entree[]>("admin_entrees", { p_etat: etat ?? null, p_n: 200 }); }
-  retenues(etat: "retenue" | "rapprochee" | "remboursee" = "retenue") { return this.rpc<Retenue[]>("admin_retenues", { p_etat: etat, p_n: 200 }); }
+  retenues(etat: "retenue" | "rapprochee" | "remboursee" | "rejetee" = "retenue") { return this.rpc<Retenue[]>("admin_retenues", { p_etat: etat, p_n: 200 }); }
   rapprocher(id: number, reference: string) { return this.rpc<Declaration>("admin_rapprocher_retenue", { p_id: id, p_reference: reference }); }
   rembourser(id: number, note: string) { return this.rpc<{ montant: number; numero: string }>("admin_rembourser_retenue", { p_id: id, p_note: note }); }
+  liberer(id: number, ancrer: boolean, note: string) { return this.rpc<{ credite: boolean; reference?: string; reexaminees?: number }>("admin_liberer_retenue", { p_id: id, p_ancrer: ancrer, p_note: note }); }
+  async rejeter(id: number, note: string) { await this.rpc("admin_rejeter_retenue", { p_id: id, p_note: note }); }
   sorties(etat?: string | null) { return this.rpc<Sortie[]>("admin_sorties", { p_etat: etat ?? null, p_n: 200 }); }
   async libererCommande(id: number) { await this.rpc("admin_liberer_commande", { p_id: id }); }
   async reaffecterCommande(id: number, terminal: string) { await this.rpc("admin_reaffecter_commande", { p_id: id, p_terminal: terminal }); }

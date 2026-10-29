@@ -98,6 +98,27 @@ try {
   await page.getByText("Remboursés").click();
   await voir("20394817502");
 
+  etape("Entrées : un SMS au solde qui ne suit pas (0039) n'est ni rapproché ni remboursé ; vérifié, il est libéré et crédité");
+  await page.goto(`${BASE}/`);
+  await voir("SMS au solde à vérifier");
+  await page.goto(`${BASE}/entrees?onglet=retenues`);
+  const suspect = page.getByRole("row").filter({ hasText: "MP2610290951F33018" });
+  await suspect.getByText("Solde à vérifier").waitFor();
+  await voir(/annoncé 4.312.500 XAF · attendu 4.062.500 XAF/);
+  exiger(await suspect.getByRole("button", { name: "Rapprocher" }).count() === 0 && await suspect.getByRole("button", { name: "Rembourser" }).count() === 0,
+    "un SMS au solde à vérifier n'offre ni Rapprocher ni Rembourser");
+  await capturer("entrees-solde-a-verifier");
+  await suspect.getByRole("button", { name: "Libérer" }).click();
+  await page.getByLabel("Comment vous l'avez vérifié").fill("vu");
+  exiger(await page.getByRole("dialog").getByRole("button", { name: "Libérer" }).isDisabled(), "une note de dix caractères au moins");
+  await page.getByLabel("Comment vous l'avez vérifié").fill("vu dans l'historique MoMo *126#, à 10 h 12");
+  await page.getByRole("checkbox").check();
+  await page.waitForFunction(() => { const c = document.querySelector(".MuiDialog-container"); return c && getComputedStyle(c).opacity === "1"; });
+  await capturer("entrees-liberer");
+  await page.getByRole("dialog").getByRole("button", { name: "Libérer" }).click();
+  await voir(/libéré : crédité au dossier XAFe-DP-/);
+  exiger(await page.getByRole("row").filter({ hasText: "MP2610290951F33018" }).count() === 0, "libéré et crédité, il quitte les retenus");
+
   etape("Sorties : libérer le transfert coincé");
   await page.goto(`${BASE}/sorties`);
   await voir("XAFe-WD-");
@@ -299,6 +320,7 @@ try {
   await page.goto(`${BASE}/journal`);
   await voir("a rapproché un SMS retenu");
   await voir("a remboursé un SMS retenu");
+  await voir("a libéré un SMS au solde à vérifier");
   await voir("a créé un terminal");
   await voir("a validé des pièces");
   await capturer("journal");

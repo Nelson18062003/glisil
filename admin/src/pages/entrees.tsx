@@ -1,9 +1,11 @@
 /*
  * Les Entrées : les dossiers de dépôt et leurs transaction ID ; les SMS
  * retenus, à rapprocher (par la même voie que l'automatique) ou à rembourser
- * (par TOTEM).
+ * (par TOTEM). Un SMS dont le solde ne suit pas celui du float (0039) n'est ni
+ * rapproché ni remboursé : l'équipe le vérifie chez l'opérateur, puis le
+ * libère ou le rejette comme faux.
  */
-import { Autocomplete, Button, Chip, Stack, Tab, Tabs, TextField, Typography } from "@mui/material";
+import { Alert, Autocomplete, Button, Checkbox, Chip, FormControlLabel, Stack, Tab, Tabs, TextField, Typography } from "@mui/material";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useEntrees, useGuichet, useRafraichir, useRetenues } from "../guichet";
@@ -59,19 +61,20 @@ function Retenues() {
   const guichet = useGuichet();
   const rafraichir = useRafraichir();
   const { peut } = useSession();
-  const [etat, setEtat] = useState<"retenue" | "rapprochee" | "remboursee">("retenue");
+  const [etat, setEtat] = useState<"retenue" | "rapprochee" | "remboursee" | "rejetee">("retenue");
   const { data } = useRetenues(etat);
   const { data: dossiers } = useEntrees(null);
   const [cible, setCible] = useState<Retenue | null>(null);
-  const [action, setAction] = useState<"rapprocher" | "rembourser" | null>(null);
+  const [action, setAction] = useState<"rapprocher" | "rembourser" | "liberer" | "rejeter" | null>(null);
+  const [ancrer, setAncrer] = useState(false);
   const [reference, setReference] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState<unknown>(null);
   const [fait, setFait] = useState<string | null>(null);
 
-  const ouvrir = (r: Retenue, a: "rapprocher" | "rembourser") => {
-    setCible(r); setAction(a); setErreur(null); setNote("");
+  const ouvrir = (r: Retenue, a: "rapprocher" | "rembourser" | "liberer" | "rejeter") => {
+    setCible(r); setAction(a); setErreur(null); setNote(""); setAncrer(false);
     const suggere = dossiers?.find((d) => d.operateur === r.operateur && d.compte.id === r.compte_suggere?.id && d.etat === "en_attente") ?? dossiers?.find((d) => d.reference === r.depot_reference);
     setReference(suggere?.reference ?? null);
   };
@@ -80,7 +83,12 @@ function Retenues() {
     setEnCours(true); setErreur(null);
     try {
       if (action === "rapprocher") { const d = await guichet.rapprocher(cible.id, reference!); setFait(`${cible.transaction_id} rapproché au dossier ${reference} : ${d.etat === "credite" ? `${xaf(d.montant ?? 0)} XAFe crédités` : d.motif ?? d.etat}.`); }
-      else { const r = await guichet.rembourser(cible.id, note); setFait(`${xaf(r.montant)} XAF à rembourser au ${numeroEnTranches(r.numero)} : TOTEM composera le transfert.`); }
+      else if (action === "rembourser") { const r = await guichet.rembourser(cible.id, note); setFait(`${xaf(r.montant)} XAF à rembourser au ${numeroEnTranches(r.numero)} : TOTEM composera le transfert.`); }
+      else if (action === "liberer") {
+        const r = await guichet.liberer(cible.id, ancrer, note);
+        const suite = r.reexaminees ? ` ${r.reexaminees} SMS suivant${r.reexaminees > 1 ? "s" : ""} vérifié${r.reexaminees > 1 ? "s" : ""} d'eux-mêmes.` : "";
+        setFait(`${cible.transaction_id ?? "SMS"} libéré : ${r.credite ? `crédité au dossier ${r.reference}` : "en attente de la déclaration du client"}.${suite}`);
+      } else { await guichet.rejeter(cible.id, note); setFait(`${cible.transaction_id ?? "SMS"} rejeté comme faux : rien n'est crédité ni remboursé.`); }
       setCible(null); setAction(null); await rafraichir();
     } catch (e) { setErreur(e); } finally { setEnCours(false); }
   };
@@ -88,7 +96,7 @@ function Retenues() {
   return (
     <>
       <Stack direction="row" gap={1} alignItems="center">
-        {([["Retenus", "retenue"], ["Rapprochés", "rapprochee"], ["Remboursés", "remboursee"]] as const).map(([l, v]) => (
+        {([["Retenus", "retenue"], ["Rapprochés", "rapprochee"], ["Remboursés", "remboursee"], ["Rejetés", "rejetee"]] as const).map(([l, v]) => (
           <Chip key={v} label={l} onClick={() => setEtat(v)} color={etat === v ? "primary" : undefined} variant={etat === v ? "filled" : "outlined"} />
         ))}
         <Typography variant="body2" sx={{ ml: 2 }}>Un SMS d'argent que personne n'a pu prendre. Rien n'est crédité au hasard : c'est le numéro qui a payé qui décide, et quand il ne suffit pas, c'est vous. On rattache au bon dossier, ou on rembourse.</Typography>
@@ -109,9 +117,18 @@ function Retenues() {
           <Stack key="t" gap={0.25}>
             <Typography fontFamily="Roboto Mono, monospace" fontSize={13}>{r.transaction_id || "—"}</Typography>
             {/* pourquoi l'appariement a refusé : en rouge quand l'équipe seule peut trancher */}
-            {r.etat === "retenue" && r.motif && <Typography variant="caption" color={r.bloquee ? "error" : "text.secondary"} sx={{ whiteSpace: "normal", maxWidth: 260 }}>{r.motif}</Typography>}
+            {r.solde_a_verifier ? <SoldeAVerifier r={r} />
+              : r.etat === "retenue" && r.motif && <Typography variant="caption" color={r.bloquee ? "error" : "text.secondary"} sx={{ whiteSpace: "normal", maxWidth: 260 }}>{r.motif}</Typography>}
+            {r.note_equipe && <Typography variant="caption" sx={{ whiteSpace: "normal", maxWidth: 260 }}>{r.etat === "rejetee" ? "Rejeté" : "Libéré"}{r.liberee_par ? ` par ${r.liberee_par}` : ""} : {r.note_equipe}</Typography>}
           </Stack>,
-          r.etat === "retenue" ? (
+          r.etat === "retenue" && r.solde_a_verifier ? (
+            peut("rapprocher") ? (
+              <Stack direction="row" gap={0.5} key="a">
+                <Button size="small" variant="contained" onClick={() => ouvrir(r, "liberer")} sx={{ minHeight: 32 }}>Libérer</Button>
+                <Button size="small" variant="outlined" color="error" onClick={() => ouvrir(r, "rejeter")} sx={{ minHeight: 32 }}>Rejeter : faux SMS</Button>
+              </Stack>
+            ) : <span key="a" />
+          ) : r.etat === "retenue" ? (
             <Stack direction="row" gap={0.5} key="a">
               {peut("rapprocher") && <Button size="small" variant="contained" onClick={() => ouvrir(r, "rapprocher")} sx={{ minHeight: 32 }}>Rapprocher</Button>}
               {peut("rembourser") && <Button size="small" variant="outlined" color="error" onClick={() => ouvrir(r, "rembourser")} sx={{ minHeight: 32 }}>Rembourser</Button>}
@@ -136,6 +153,33 @@ function Retenues() {
         <TextField label="Pourquoi" value={note} onChange={(e) => setNote(e.target.value)} fullWidth autoFocus placeholder="au-delà du palier · payeur inconnu · demande du client" />
         <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
       </Dialogue>
+      <Dialogue ouvert={Boolean(cible && action === "liberer")} titre={`Libérer ${cible?.transaction_id ?? "ce SMS"}`} onFermer={() => setCible(null)} onValider={() => void valider()} libelle="Libérer" enCours={enCours} desactive={note.trim().length < 10}>
+        <Alert severity="info" sx={{ borderRadius: 3 }}>Vérifiez dans l'historique de l'opérateur (*126# ou l'application MoMo, #150# pour Orange) que ce transaction ID existe, avec ce montant{cible?.montant != null ? ` (${xaf(cible.montant)} XAF)` : ""}. Libéré, le SMS reprend la voie automatique : la déclaration du client le prend.</Alert>
+        <TextField label="Comment vous l'avez vérifié" value={note} onChange={(e) => setNote(e.target.value)} fullWidth autoFocus multiline minRows={2} placeholder="vu dans l'historique MoMo *126#, à 10 h 12" helperText="Dix caractères au moins : la note reste au journal." />
+        <FormControlLabel disabled={cible?.solde_apres == null} control={<Checkbox checked={ancrer} onChange={(e) => setAncrer(e.target.checked)} />}
+          label={cible?.solde_apres != null ? `Le solde annoncé (${xaf(cible.solde_apres)} XAF) est bien celui que montre l'opérateur : il devient le point de départ` : "Ce SMS n'annonce pas de solde : il ne peut pas servir de point de départ"} />
+        <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
+      </Dialogue>
+      <Dialogue ouvert={Boolean(cible && action === "rejeter")} titre={`Rejeter ${cible?.transaction_id ?? "ce SMS"}`} onFermer={() => setCible(null)} onValider={() => void valider()} libelle="Rejeter : faux SMS" couleur="error" enCours={enCours} desactive={note.trim().length < 3}>
+        <Typography variant="body2">Absent de l'historique de l'opérateur : un faux. Rien n'est crédité, rien n'est remboursé, et le SMS ne revient jamais.</Typography>
+        <TextField label="Pourquoi" value={note} onChange={(e) => setNote(e.target.value)} fullWidth autoFocus placeholder="absent de l'historique MoMo" />
+        <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
+      </Dialogue>
     </>
+  );
+}
+
+const SOURCES = { ussd: "par USSD", releve: "par relevé", sms: "par SMS vérifié" } as const;
+
+/** Pourquoi le solde bloque : ce que le SMS annonce, et ce que la chaîne attendait. */
+function SoldeAVerifier({ r }: { r: Retenue }) {
+  const pourquoi = r.continuite === "absente" ? "aucun solde annoncé"
+    : r.continuite === "sans_ancre" ? "premier solde du float inconnu"
+    : `annoncé ${r.solde_apres != null ? xaf(r.solde_apres) : "?"} XAF · attendu ${r.solde_attendu != null ? xaf(r.solde_attendu) : "?"} XAF${r.ancre ? ` (dernier solde sûr ${xaf(r.ancre.solde)}, ${jourRelatif(r.ancre.annonce_le).toLowerCase()} à ${heure(r.ancre.annonce_le)}, ${SOURCES[r.ancre.source]})` : ""}`;
+  return (
+    <Stack gap={0.25} data-solde-a-verifier>
+      <Chip size="small" label="Solde à vérifier" sx={{ height: 22, bgcolor: "#F9DEDC", color: "#8C1D18", fontWeight: 600, alignSelf: "flex-start" }} />
+      <Typography variant="caption" color="error" sx={{ whiteSpace: "normal", maxWidth: 260 }}>{pourquoi}</Typography>
+    </Stack>
   );
 }
