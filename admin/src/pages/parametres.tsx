@@ -14,7 +14,7 @@ const BLOCS: { cle: string; titre: string; aide: string }[] = [
   { cle: "frais", titre: "Frais", aide: "placeur et preneur en fraction (0.001 = 0,10 %) ; sortie en fraction du montant" },
   { cle: "marche", titre: "Marché", aide: "la paire, le pas de prix, quantite_min (au centime d'USDT), montant_min (le minimum d'un ordre, en XAFe), ouvert ou fermé ; quantite_max et marche_quantite_max absents = aucun plafond" },
   { cle: "depot", titre: "Dépôts", aide: "validité d'un dossier (minutes) et grâce après expiration" },
-  { cle: "sortie", titre: "Sorties", aide: "ouvertes : true/false ; mode : \"manuel\" (l'équipe paie et tape le transaction ID) ou \"totem\" (le boîtier compose) ; seuil_deux_personnes : au-delà de ce montant en XAF, une autre personne confirme (null = jamais) ; reprises_max : essais d'un transfert TOTEM" },
+  { cle: "sortie", titre: "Sorties", aide: "ouvertes : true/false ; mode : \"manuel\" (l'équipe paie et tape le transaction ID) ou \"totem\" (le boîtier compose) ; seuil_deux_personnes : au-delà de ce montant en XAF, une autre personne confirme (null = jamais) ; reprises_max : essais d'un transfert TOTEM ; forcage : true autorise le super admin à clore une sortie sans le SMS de la puce, 30 min après le paiement (false par défaut)" },
   { cle: "rapide", titre: "Achat rapide", aide: "la marge de la plateforme (0.01 = 1 %), la validité du prix en secondes, ouvert ou fermé" },
   { cle: "paliers", titre: "Paliers", aide: "plafonds par jour en entrée et en sortie ; null = sans plafond" },
   { cle: "crypto", titre: "Crypto", aide: "frais fixes par actif et confirmations par réseau" },

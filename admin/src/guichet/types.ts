@@ -55,14 +55,40 @@ export type Sortie = {
   /** payée, attend qu'une AUTRE personne confirme (au-delà du seuil) */
   a_confirmer?: boolean;
   motif?: string | null;
-  /** le SMS que la puce a reçu pour ce paiement : concorde, écart, ou absent */
+  /** le SMS que la puce a reçu pour chaque paiement : concorde, écart, absent, ou payé en partie */
   rapprochement?: Rapprochement | null;
+  /* 0038 : le remboursement PROUVÉ. Les XAFe ne sont détruits que lorsque le SMS de la puce montre chaque paiement. */
+  /** ce que le client voit : les paiements actifs */
+  paiements?: { transaction_id: string; montant: number }[];
+  /** ce que l'équipe voit : tous les paiements, retirés compris (un ID mal tapé, remplacé) */
+  paiements_equipe?: PaiementEquipe[];
+  /** ce qui reste à payer (XAF) : un gros remboursement se paie en plusieurs transferts */
+  reste?: number;
+  en_preuve?: boolean;
+  prouvee_le?: string | null;
+  /** la preuve était là, la clôture a échoué : « Revérifier » */
+  cloture_erreur?: string | null;
+  forcee_par?: string | null; forcee_le?: string | null; forcee_note?: string | null;
+  /** le forçage est ouvert, 30 minutes sont passées, tout est payé, et la preuve manque */
+  forcage_possible?: boolean;
+  /** les SMS relevés qui pourraient prouver ce qui reste à payer */
+  candidats?: Candidat[];
 };
-export type Rapprochement = { etat: "concorde" | "ecart" | "absent"; montant?: number; numero?: string | null; terminal?: string; emis_le?: string | null; texte?: string | null };
+export type PaiementEquipe = { transaction_id: string; montant: number; saisi_par: string | null; saisi_le: string; retire_le: string | null; retire_note: string | null; constatee_id: number | null };
+export type Candidat = { id: number; transaction_id: string; montant: number | null; emis_le: string | null; terminal: string };
+/** Un paiement jugé contre les SMS de la puce. */
+export type PreuvePaiement = { transaction_id: string; montant_saisi: number; etat: "concorde" | "ecart" | "absent"; motif?: string | null; constatee_id?: number; montant?: number | null; numero?: string | null; terminal?: string; emis_le?: string | null; texte?: string | null };
+export type Rapprochement = {
+  etat: "concorde" | "ecart" | "absent" | "partiel"; motif?: string | null; paye?: number; reste?: number; paiements?: PreuvePaiement[];
+  /* un seul paiement : ses clés à plat, comme avant */
+  montant?: number | null; numero?: string | null; terminal?: string; emis_le?: string | null; texte?: string | null;
+};
 /** Ce que les puces ont vu partir et qu'aucune sortie n'explique. */
 export type SortieNonExpliquee = { id: number; terminal: string; operateur: string; float_numero: string | null; numero: string | null; montant: number | null; transaction_id: string | null; texte: string | null; emis_le: string | null };
 export type ATraiter = {
   sorties_manuelles: number; sorties_a_confirmer: number; montant_a_payer: number; sorties_non_expliquees: number;
+  /** payées, en attente du SMS de la puce (0038) ; dont en écart */
+  sorties_en_preuve?: number; sorties_en_ecart?: number;
   /** le dernier relevé de parité (0016) : null tant qu'aucun n'a été fait */
   parite?: { statut: StatutParite; ecart: number | null; couverture: number | null; fait_le: string; alertes: number } | null;
 };

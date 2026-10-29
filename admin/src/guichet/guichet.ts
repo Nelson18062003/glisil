@@ -1,9 +1,11 @@
 import type { Parite } from "./types";
 import type { EtatAuth } from "../noyau/entree";
-import type { SecuriteUtilisateur } from "./types";
+import type { SecuriteUtilisateur, Sortie as SortieT } from "./types";
 
 /** Ce que l'application d'authentification doit recevoir : la clé, en lien (otpauth://), en texte et en image. */
 export type Enrolement = { facteurId: string; secret: string; uri: string; qr: string };
+/** Ce que rend un geste sur une sortie manuelle : son état, et ce que dit la puce. */
+export type GesteSortie = { etat: string; reste?: number; a_confirmer?: boolean; deja?: boolean; rapprochement?: SortieT["rapprochement"] };
 import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets, ReseauRegistre, Beta, Signalement } from "./types";
 
 /** LE GUICHET DE L'ADMINISTRATION : tout ce que les écrans demandent au moteur. */
@@ -52,9 +54,17 @@ export interface GuichetAdmin {
   annulerSortie(reference: string, note: string): Promise<{ rendu: number; etat: string }>;
   /** Les remboursements payés à la main (0014). */
   prendreSortie(reference: string): Promise<void>;
-  /** L'ID du paiement fait, et la capture déjà déposée. Au-delà du seuil, la sortie attend une autre personne. */
-  payerSortie(reference: string, transactionId: string, preuve: string | null): Promise<{ etat: string; a_confirmer?: boolean; rapprochement?: Sortie["rapprochement"] }>;
-  confirmerSortie(reference: string): Promise<{ etat: string; rapprochement?: Sortie["rapprochement"] }>;
+  /** L'ID d'un paiement fait (et son montant : par défaut, ce qui reste), la capture déjà déposée. La sortie passe
+   *  « en preuve » ; ses XAFe ne sont détruits que lorsque le SMS de la puce montre ce paiement (0038). */
+  payerSortie(reference: string, transactionId: string, preuve: string | null, montant?: number | null): Promise<GesteSortie>;
+  /** Au-delà du seuil : une AUTRE personne confirme. Ne remplace pas le SMS. */
+  confirmerSortie(reference: string): Promise<GesteSortie>;
+  /** Relire la preuve, et clore si elle est là. */
+  verifierSortie(reference: string): Promise<GesteSortie>;
+  /** Un ID ou un montant mal tapé, remplacé — jamais un paiement déjà prouvé. */
+  corrigerPaiement(reference: string, ancien: string, nouveau: string, note: string, montant?: number | null): Promise<GesteSortie>;
+  /** Dernier recours, super admin, forçage ouvert, 30 min après le paiement : clore SANS le SMS de la puce. */
+  forcerSortie(reference: string, note: string): Promise<GesteSortie>;
   refuserSortie(reference: string, motif: string): Promise<void>;
   /** Déposer la capture d'un paiement : image ou PDF, 10 Mo au plus ; rend son chemin. */
   deposerPreuve(reference: string, fichier: File): Promise<string>;

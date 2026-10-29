@@ -44,8 +44,8 @@ export function Tableau() {
       <Section titre="Ce qui attend quelqu'un">
         <Stack direction="row" gap={2} flexWrap="wrap">
           {/* en premier : un client attend son argent */}
-          <Paper component={Link} to="/sorties" data-a-payer={a?.sorties_manuelles ?? 0} sx={{ p: 2.5, borderRadius: 5, flex: 1, minWidth: 220, textDecoration: "none", color: "inherit", bgcolor: (a?.sorties_manuelles ?? 0) + (a?.sorties_a_confirmer ?? 0) > 0 ? "#FFE3B5" : "background.paper" }}>
-            <Typography variant="body2">Remboursements à payer{a && a.sorties_a_confirmer > 0 ? ` · ${a.sorties_a_confirmer} à confirmer` : ""}</Typography>
+          <Paper component={Link} to="/sorties" data-a-payer={a?.sorties_manuelles ?? 0} sx={{ p: 2.5, borderRadius: 5, flex: 1, minWidth: 220, textDecoration: "none", color: "inherit", bgcolor: (a?.sorties_en_ecart ?? 0) > 0 ? "#F9DEDC" : (a?.sorties_manuelles ?? 0) + (a?.sorties_a_confirmer ?? 0) > 0 ? "#FFE3B5" : "background.paper" }}>
+            <Typography variant="body2">Remboursements à payer{a && (a.sorties_en_preuve ?? 0) > 0 ? ` · ${a.sorties_en_preuve} en preuve` : ""}{a && (a.sorties_en_ecart ?? 0) > 0 ? ` · ${a.sorties_en_ecart} en écart` : ""}{a && a.sorties_a_confirmer > 0 ? ` · ${a.sorties_a_confirmer} à confirmer` : ""}</Typography>
             <Typography variant="h5">{a?.sorties_manuelles ?? "—"} · {xaf(a?.montant_a_payer ?? 0)} XAF</Typography>
           </Paper>
           {a && a.sorties_non_expliquees > 0 && (

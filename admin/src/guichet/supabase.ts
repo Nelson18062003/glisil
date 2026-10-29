@@ -4,7 +4,7 @@
  * gardée en base par admin_a_droit(), qui exige cette session complète.
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { Enrolement, GuichetAdmin } from "./guichet";
+import type { Enrolement, GesteSortie, GuichetAdmin } from "./guichet";
 import { AUTH_VIDE, premierFacteurDe, type EtatAuth } from "../noyau/entree";
 import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets, ReseauRegistre, Beta, Signalement } from "./types";
 import type { Parite, SecuriteUtilisateur } from "./types";
@@ -169,10 +169,15 @@ export class GuichetSupabase implements GuichetAdmin {
   async libererCommande(id: number) { await this.rpc("admin_liberer_commande", { p_id: id }); }
   async reaffecterCommande(id: number, terminal: string) { await this.rpc("admin_reaffecter_commande", { p_id: id, p_terminal: terminal }); }
   async prendreSortie(reference: string) { await this.rpc("admin_prendre_sortie", { p_reference: reference }); }
-  payerSortie(reference: string, transactionId: string, preuve: string | null) {
-    return this.rpc<{ etat: string; a_confirmer?: boolean; rapprochement?: Sortie["rapprochement"] }>("admin_payer_sortie", { p_reference: reference, p_transaction_id: transactionId, p_preuve: preuve });
+  payerSortie(reference: string, transactionId: string, preuve: string | null, montant?: number | null) {
+    return this.rpc<GesteSortie>("admin_payer_sortie", { p_reference: reference, p_transaction_id: transactionId, p_preuve: preuve, p_montant: montant ?? null });
   }
-  confirmerSortie(reference: string) { return this.rpc<{ etat: string; rapprochement?: Sortie["rapprochement"] }>("admin_confirmer_sortie", { p_reference: reference }); }
+  confirmerSortie(reference: string) { return this.rpc<GesteSortie>("admin_confirmer_sortie", { p_reference: reference }); }
+  verifierSortie(reference: string) { return this.rpc<GesteSortie>("admin_verifier_sortie", { p_reference: reference }); }
+  corrigerPaiement(reference: string, ancien: string, nouveau: string, note: string, montant?: number | null) {
+    return this.rpc<GesteSortie>("admin_corriger_paiement", { p_reference: reference, p_ancien: ancien, p_nouveau: nouveau, p_note: note, p_montant: montant ?? null });
+  }
+  forcerSortie(reference: string, note: string) { return this.rpc<GesteSortie>("admin_forcer_sortie", { p_reference: reference, p_note: note }); }
   async refuserSortie(reference: string, motif: string) { await this.rpc("admin_refuser_sortie", { p_reference: reference, p_motif: motif }); }
   async deposerPreuve(reference: string, fichier: File) {
     const ext = verifierPreuve(fichier);

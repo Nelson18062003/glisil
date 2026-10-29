@@ -175,7 +175,7 @@ export function Tableau({ colonnes, lignes, vide = "Rien ici." }: { colonnes: (s
 
 const ETATS: Record<string, { label: string; tone: Tone }> = {
   en_attente: { label: "en attente", tone: "amber" }, attendu: { label: "attend le SMS", tone: "amber" }, credite: { label: "crédité", tone: "green" }, expire: { label: "expiré", tone: "neutral" }, annule: { label: "annulé", tone: "neutral" }, annulee: { label: "annulée", tone: "neutral" },
-  refuse: { label: "refusé", tone: "red" }, en_cours: { label: "en cours", tone: "blue" }, envoyee: { label: "envoyée", tone: "green" }, partielle: { label: "partielle", tone: "amber" }, echouee: { label: "échouée", tone: "red" },
+  refuse: { label: "refusé", tone: "red" }, en_cours: { label: "en cours", tone: "blue" }, en_preuve: { label: "en preuve", tone: "blue" }, envoyee: { label: "envoyée", tone: "green" }, partielle: { label: "partielle", tone: "amber" }, echouee: { label: "échouée", tone: "red" },
   faite: { label: "fait", tone: "green" }, retenue: { label: "retenue", tone: "amber" }, rapprochee: { label: "rapprochée", tone: "green" }, remboursee: { label: "remboursée", tone: "blue" },
   concorde: { label: "concorde", tone: "green" }, en_route: { label: "en route", tone: "blue" }, en_retard: { label: "en retard", tone: "amber" },
   refusee: { label: "refusée par la chaîne", tone: "red" }, ecart: { label: "écart", tone: "red" }, inconnue: { label: "inconnue du registre", tone: "red" },

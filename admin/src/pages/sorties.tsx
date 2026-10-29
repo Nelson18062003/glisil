@@ -45,7 +45,7 @@ export function Sorties() {
   return (
     <Coquille titre="Sorties de XAF">
       <Stack direction="row" gap={1} flexWrap="wrap">
-        {[["Toutes", null], ["En attente", "en_attente"], ["En cours", "en_cours"], ["Envoyées", "envoyee"], ["Partielles", "partielle"], ["Échouées", "echouee"], ["Annulées", "annulee"]].map(([l, v]) => (
+        {[["Toutes", null], ["En attente", "en_attente"], ["En cours", "en_cours"], ["En preuve", "en_preuve"], ["Envoyées", "envoyee"], ["Partielles", "partielle"], ["Échouées", "echouee"], ["Annulées", "annulee"]].map(([l, v]) => (
           <Chip key={String(v)} label={l as string} onClick={() => setEtat(v as string | null)} color={etat === v ? "primary" : undefined} variant={etat === v ? "filled" : "outlined"} />
         ))}
       </Stack>
@@ -65,7 +65,10 @@ export function Sorties() {
             {s.mode === "manuel" ? (
               <Stack gap={0.5}>
                 <Typography variant="caption">à la main{s.payee_par ? ` · payée par ${s.payee_par}` : ""}{s.confirmee_par ? ` · confirmée par ${s.confirmee_par}` : ""}</Typography>
-                {s.transaction_id && <Typography variant="caption" fontFamily="Roboto Mono, monospace">{s.transaction_id}</Typography>}
+                {(s.paiements?.length ? s.paiements.map((p) => p.transaction_id) : s.transaction_id ? [s.transaction_id] : []).map((id) => (
+                  <Typography key={id} variant="caption" fontFamily="Roboto Mono, monospace">{id}</Typography>
+                ))}
+                {s.forcee_le && <Typography variant="caption" color="error">forcée par {s.forcee_par} : {s.forcee_note}</Typography>}
                 {s.motif && <Typography variant="caption" color="error">{s.motif}</Typography>}
                 <PuceDit r={s.rapprochement} />
               </Stack>

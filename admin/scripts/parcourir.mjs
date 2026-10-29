@@ -38,7 +38,7 @@ page.on("pageerror", (e) => erreurs.push(`pageerror: ${e.message}`));
 page.on("console", (m) => { if (m.type() === "error" && !/favicon|fonts.googleapis|net::ERR/.test(m.text())) erreurs.push(`console: ${m.text()}`); });
 let n = 0;
 const capturer = (nom) => page.screenshot({ path: `${OUT}${String(++n).padStart(2, "0")}-${nom}.png`, fullPage: true });
-const voir = (t, delai = 15_000) => page.getByText(t, { exact: false }).first().waitFor({ timeout: delai });
+const voir = (t, delai = 15_000) => (t instanceof RegExp ? page.getByText(t) : page.getByText(t, { exact: false })).first().waitFor({ timeout: delai });
 const exiger = (c, m) => { if (!c) throw new Error(`✗ ${m}`); };
 const etape = (t) => console.log(`· ${t}`);
 
@@ -106,15 +106,47 @@ try {
   await page.getByRole("button", { name: "Libérer" }).click();
   await voir("en attente");
 
-  etape("Remboursements à la main : confirmer le paiement d'une autre personne ; payer avec l'ID et la capture");
+  etape("Remboursements à la main (0038) : rien n'est détruit sans le SMS de la puce");
   await page.goto(`${BASE}/sorties`);
-  await voir("À payer · 2");
+  await voir("À payer · 1 · en preuve · 2");
   await voir("SMS de la puce : concorde");
+  await voir(/le SMS dit 95.000 XAF, ce paiement 99.500 XAF/);
+  exiger(await page.getByRole("button", { name: "Forcer" }).count() === 0, "le forçage est fermé par défaut : pas de bouton");
+  exiger(await page.locator('[data-etat="en_preuve"]').getByRole("button", { name: "Refuser" }).count() === 0, "payée, une sortie ne se refuse plus");
   await capturer("sorties-a-payer");
-  await page.locator("[data-demande]").filter({ hasText: "à confirmer" }).getByRole("button", { name: "Confirmer le paiement" }).click();
-  await voir("confirmée : les XAFe sont détruits");
-  await page.locator("[data-demande]").filter({ hasText: "à payer" }).getByRole("button", { name: "J'ai payé" }).click();
-  await page.getByLabel("Transaction ID (du SMS de l'opérateur)").fill("MP261016.1530.A77001");
+  const carte = (texte) => page.locator("[data-demande]").filter({ hasText: texte });
+
+  etape("· au-delà du seuil, prouvée par la puce : une autre personne confirme, et la sortie se clôt");
+  await carte("à confirmer").getByRole("button", { name: "Confirmer le paiement" }).click();
+  await voir(/envoyée : le SMS de la puce concorde, les XAFe sont détruits/);
+
+  etape("· l'écart : Revérifier ne clôt rien ; l'ID mal tapé se corrige ; le reste se paie, et la puce le prouve");
+  await carte("écart").getByRole("button", { name: "Revérifier" }).click();
+  await voir(/reste ouverte : le SMS dit 95.000 XAF/);
+  exiger(await carte("écart").count() === 1, "un écart reste ouvert");
+  await carte("écart").getByRole("button", { name: "Corriger l'ID" }).click();
+  await page.getByLabel("Le bon transaction ID").fill("MP261029.0812.A31207");
+  await page.getByLabel("Le bon montant (XAF, facultatif)").fill("95000");
+  await page.getByLabel("Ce qui était mal tapé").fill("le montant envoyé était 95 000");
+  await page.waitForFunction(() => { const c = document.querySelector(".MuiDialog-container"); return c && getComputedStyle(c).opacity === "1"; });
+  await capturer("sorties-corriger");
+  await page.getByRole("dialog").getByRole("button", { name: "Remplacer" }).click();
+  await voir(/payée en partie : il reste 4.500 XAF/);
+  await carte("payée en partie").getByRole("button", { name: "Payer le reste" }).click();
+  exiger((await page.getByLabel("Montant de ce paiement (XAF)").inputValue()) === "4500", "le reste est proposé");
+  await page.getByLabel("Transaction ID (du SMS de l'opérateur)").fill("MP261029.1015.A31299");
+  await page.getByRole("dialog").getByRole("button", { name: "Enregistrer le paiement" }).click();
+  await voir(/en preuve : elle se clôt toute seule dès que TOTEM relève le SMS de la puce/);
+  await voir("payée · attend le SMS de la puce");
+  await capturer("sorties-en-preuve");
+  /* TOTEM « relève » le SMS quelques secondes après : la sortie se clôt seule */
+  await page.locator('[data-etat="en_preuve"]').waitFor({ state: "detached", timeout: 20_000 });
+
+  etape("· à payer : le SMS déjà relevé s'offre en candidat ; il remplit l'ID et le montant ; la sortie se clôt aussitôt");
+  await carte("à payer").getByRole("button", { name: "J'ai payé" }).click();
+  await page.locator('[data-candidat="MP261029.1003.D55120"]').click();
+  exiger((await page.getByLabel("Transaction ID (du SMS de l'opérateur)").inputValue()) === "MP261029.1003.D55120", "le candidat remplit l'ID");
+  exiger((await page.getByLabel("Montant de ce paiement (XAF)").inputValue()) === "248750", "…et le montant");
   /* une vraie image, pas un nom : le contrôle lit le type et la taille */
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
   await page.locator('input[type="file"]').setInputFiles({ name: "capture-momo.png", mimeType: "image/png", buffer: png });
@@ -122,9 +154,12 @@ try {
   await page.waitForFunction(() => { const c = document.querySelector(".MuiDialog-container"); return c && getComputedStyle(c).opacity === "1"; });
   await capturer("sorties-payer");
   await page.getByRole("dialog").getByRole("button", { name: "Enregistrer le paiement" }).click();
-  await voir("payée : les XAFe sont détruits");
+  await voir(/envoyée : le SMS de la puce concorde/);
   exiger(await page.locator("[data-demande]").count() === 0, "plus rien à payer");
   await voir("Sorti du float, sans sortie en face");
+  const sansSortie = page.getByText("Sorti du float, sans sortie en face").locator("xpath=ancestor::*[.//table][1]//table");
+  exiger(await sansSortie.getByText("MP261016.0912.B09311").count() === 1, "le SMS que rien n'explique y reste");
+  exiger(await sansSortie.getByText("MP261029.1003.D55120").count() === 0, "le SMS qui prouve une sortie n'est plus « sans sortie en face »");
 
   etape("Terminaux : créer un boîtier, voir sa clé une fois");
   await page.goto(`${BASE}/terminaux`);
