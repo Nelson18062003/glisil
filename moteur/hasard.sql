@@ -14,7 +14,8 @@
 --   I5  un achat limite ouvert bloque exactement round(restant × prix) ;
 --       une vente limite ouverte, exactement son restant
 --   I6  le bloqué de chaque compte est exactement la somme de ce qui le
---       justifie : ordres ouverts, transferts pas encore faits, retraits en cours
+--       justifie : ordres ouverts, transferts pas encore faits, retraits en
+--       cours, remboursements manuels pas encore envoyés (en preuve compris)
 --   I7  un SMS est crédité OU retenu, jamais les deux ; un transaction ID ne
 --       crédite qu'une fois, et du montant de SON SMS
 --
@@ -84,6 +85,9 @@ begin
         select compte_id, case cote when 'achat' then 'XAFe' else 'USDT' end actif, bloque m from ordres where etat in ('ouvert', 'partiel')
         union all
         select s2.compte_id, 'XAFe', k.montant_xafe from commandes k join sorties s2 on s2.id = k.sortie_id where k.etat in ('en_attente', 'en_cours')
+        union all
+        -- un remboursement manuel (0014, 0038) tient son montant tant qu'il n'est ni envoyé ni rendu
+        select compte_id, 'XAFe', montant from sorties where mode = 'manuel' and etat in ('en_attente', 'en_cours', 'en_preuve')
         union all
         select compte_id, actif, montant + frais from retraits_crypto where etat in ('en_attente', 'en_cours')
       ) x group by 1, 2) j using (compte_id, actif)

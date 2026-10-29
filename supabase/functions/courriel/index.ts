@@ -6,7 +6,7 @@
 // est dans _shared/courriel.ts, éprouvée par verifier-les-courriels.ts.
 //
 // Secrets de la fonction : RESEND_API_KEY, COURRIEL_JETON (le même que le
-// secret « courriel_jeton » du Vault), COURRIEL_EXPEDITEUR (facultatif).
+// secret « courriel_jeton » du Vault), COURRIEL_EXPEDITEUR et APP_URL (facultatifs).
 // Voir docs/CONNEXION.md.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.10";
 import { envoyerParResend, jetonValide, traiterLaBoite } from "../_shared/courriel.ts";
@@ -31,6 +31,7 @@ Deno.serve(async (req) => {
     rpc,
     envoyer: envoyerParResend(resend, Deno.env.get("COURRIEL_EXPEDITEUR") || "Glisil <code@glisil.com>"),
     journal: (m) => console.log(m),
+    appUrl: Deno.env.get("APP_URL") || undefined,
   });
   return json(200, bilan);
 });

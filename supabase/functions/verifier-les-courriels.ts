@@ -82,6 +82,29 @@ const OPERATIONS = {
   ok("la double authentification retirée : par quel moyen, quand, et quoi faire si ce n'est pas vous");
 }
 
+/* ------------------------------------- le remboursement payé, ou refusé */
+{
+  const un = { reference: "XAFe-WD-000123", montant: 1250000, frais: 6250, montant_xaf: 1243750, operateur: "mtn", operateur_nom: "MTN MoMo",
+    numero: "677444054", nom_beneficiaire: "Awa Ngono", transaction_id: "MP2610290900A54001", paiements: [{ transaction_id: "MP2610290900A54001", montant: 1243750 }],
+    payee_le: "2026-10-29T09:00:00Z", envoyee_le: "2026-10-29T09:02:00Z", lien: "/historique/XAFe-WD-000123" };
+  const fr = rendre("sortie_payee", un, "fr"), en = rendre("sortie_payee", un, "en");
+  for (const attendu of ["1\u00a0243\u00a0750 XAF", "6 77 44 40 54", "MP2610290900A54001", "XAFe-WD-000123", "Awa Ngono", "29/10/2026 à 10:00"]) {
+    assert.ok(fr.html.includes(attendu) && fr.texte.includes(attendu), `payé (fr) : « ${attendu} »`);
+  }
+  assert.ok(fr.sujet === "Glisil · 1\u00a0243\u00a0750 XAF envoyés au 6 77 44 40 54" && en.sujet === "Glisil · 1,243,750 XAF sent to 6 77 44 40 54", fr.sujet + " | " + en.sujet);
+  assert.ok(en.texte.includes("Oct 29, 2026, 10:00") && en.html.includes('href="https://app.glisil.com/historique/XAFe-WD-000123"'), "le lien mène au reçu");
+  assert.ok(rendre("sortie_payee", un, "en", "https://essai.glisil.com/").html.includes('href="https://essai.glisil.com/historique/XAFe-WD-000123"'), "l'adresse de l'application se règle");
+  const deux = rendre("sortie_payee", { ...un, transaction_id: "MPA00001, MPA00002", paiements: [{ transaction_id: "MPA00001", montant: 1000000 }, { transaction_id: "MPA00002", montant: 243750 }] }, "en");
+  assert.ok(deux.texte.includes("MPA00001 · 1,000,000 XAF") && deux.texte.includes("MPA00002 · 243,750 XAF"), "deux transferts : chaque ID avec son montant");
+  const piege = rendre("sortie_payee", { ...un, nom_beneficiaire: "<script>x</script>" }, "fr");
+  assert.ok(!piege.html.includes("<script>") && piege.html.includes("&lt;script&gt;"), "le nom du compte est échappé");
+  assert.throws(() => rendre("sortie_payee", { ...un, paiements: [], transaction_id: undefined }, "fr"), /transaction ID/, "jamais un e-mail de paiement sans ID");
+  const refus = rendre("sortie_refusee", { reference: "XAFe-WD-000124", montant: 50000, motif: "le nom <b>MoMo</b> ne correspond pas", lien: "/historique/XAFe-WD-000124" }, "fr");
+  assert.ok(refus.texte.includes("50\u00a0000 XAFe") && refus.texte.includes("le nom <b>MoMo</b> ne correspond pas") && refus.sujet.includes("XAFe-WD-000124"));
+  assert.ok(!refus.html.includes("<b>MoMo</b>") && refus.html.includes("&lt;b&gt;MoMo&lt;/b&gt;"), "le motif de l'équipe est échappé");
+  ok("le remboursement payé dit chaque ID, ce qui est parti, où et quand ; le refus dit le montant rendu et le motif — échappés");
+}
+
 /* ----------------- chaque e-mail que la base met en file a son rendu */
 {
   /* Lu dans les migrations : le nom écrit juste après le compte dans un appel à _envoyer_courriel (même

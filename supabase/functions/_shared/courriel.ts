@@ -190,20 +190,70 @@ function deuxFacteursRetires(d: Donnees, l: Langue): Rendu {
   };
 }
 
+const bouton = (texte: string, lien: string) =>
+  `<p style="margin:0 0 20px 0;"><a href="${echapper(lien)}" style="display:inline-block;padding:12px 22px;background:#0B6B3A;border-radius:999px;color:#FFFFFF;font-size:15px;font-weight:bold;text-decoration:none;">${echapper(texte)}</a></p>`;
+
+/** L'adresse de l'application, pour les liens « voir dans Glisil » (secret APP_URL de la fonction, sinon celle de production). */
+export const APP_URL_PAR_DEFAUT = "https://app.glisil.com";
+const lienDe = (d: Donnees, appUrl: string) => (typeof d.lien === "string" && d.lien.startsWith("/") ? appUrl.replace(/\/$/, "") + d.lien : appUrl);
+
+/** Le remboursement payé (0038) : prouvé par le SMS de la puce, les XAFe détruits. Chaque ID, ce qui est parti, quand. */
+function sortiePayee(d: Donnees, l: Langue, appUrl: string): Rendu {
+  const paiements = (Array.isArray(d.paiements) ? d.paiements : []) as { transaction_id?: unknown; montant?: unknown }[];
+  if (!paiements.length && !d.transaction_id) throw new Error("aucun transaction ID");
+  const vers = `${String(d.operateur_nom ?? d.operateur ?? "")} · ${numero(d.numero)}`;
+  const lignes: Ligne[] = (paiements.length ? paiements : [{ transaction_id: d.transaction_id }]).map((p) =>
+    ["Transaction ID", paiements.length > 1 ? `${String(p.transaction_id)} · ${montant(p.montant, l)} XAF` : String(p.transaction_id)] as Ligne);
+  lignes.push(
+    [t(l, "Montant envoyé", "Amount sent"), `${montant(d.montant_xaf, l)} XAF`],
+    [t(l, "XAFe débités", "XAFe debited"), `${montant(d.montant, l)} XAFe (${t(l, "frais", "fees")} ${montant(d.frais ?? 0, l)})`],
+    [t(l, "Vers", "To"), vers],
+    [t(l, "Payé le", "Paid on"), `${heureDeDouala(d.payee_le ?? d.envoyee_le, l, true)} (${t(l, "heure de Douala", "Douala time")})`],
+    [t(l, "Référence Glisil", "Glisil reference"), String(d.reference ?? "")],
+  );
+  const titre = t(l, "Votre retrait est payé", "Your withdrawal is paid");
+  const phrase = t(l,
+    `${montant(d.montant_xaf, l)} XAF ont été envoyés sur votre compte ${vers}${d.nom_beneficiaire ? ` (${String(d.nom_beneficiaire)})` : ""}.`,
+    `${montant(d.montant_xaf, l)} XAF were sent to your account ${vers}${d.nom_beneficiaire ? ` (${String(d.nom_beneficiaire)})` : ""}.`);
+  const aide = t(l,
+    `Si cet argent n'est pas sur votre compte ${String(d.operateur_nom ?? "")} d'ici une heure, écrivez au support avec la référence ${String(d.reference ?? "")}.`,
+    `If this money is not in your ${String(d.operateur_nom ?? "")} account within an hour, contact support with the reference ${String(d.reference ?? "")}.`);
+  return {
+    sujet: t(l, `Glisil · ${montant(d.montant_xaf, l)} XAF envoyés au ${numero(d.numero)}`, `Glisil · ${montant(d.montant_xaf, l)} XAF sent to ${numero(d.numero)}`),
+    html: habit(l, titre, paragraphe(echapper(phrase)) + tableau(lignes) + bouton(t(l, "Voir dans Glisil", "View in Glisil"), lienDe(d, appUrl)) + paragraphe(echapper(aide), true)),
+    texte: [titre, "", phrase, "", texteDeLignes(lignes), "", lienDe(d, appUrl), "", aide].join("\n"),
+  };
+}
+
+/** Le remboursement refusé avant paiement : les XAFe reviennent, avec le motif de l'équipe. */
+function sortieRefusee(d: Donnees, l: Langue, appUrl: string): Rendu {
+  const titre = t(l, "Votre retrait est refusé", "Your withdrawal was declined");
+  const phrase = t(l, `Les ${montant(d.montant, l)} XAFe sont de nouveau disponibles sur votre compte.`, `The ${montant(d.montant, l)} XAFe are available in your account again.`);
+  const motif = `${t(l, "Motif", "Reason")} : ${String(d.motif ?? "")}`;
+  const ref = `${t(l, "Référence", "Reference")} : ${String(d.reference ?? "")}`;
+  return {
+    sujet: t(l, `Glisil · votre retrait ${String(d.reference ?? "")} est refusé`, `Glisil · your withdrawal ${String(d.reference ?? "")} was declined`),
+    html: habit(l, titre, paragraphe(echapper(phrase)) + paragraphe(echapper(motif)) + paragraphe(echapper(ref), true) + bouton(t(l, "Voir dans Glisil", "View in Glisil"), lienDe(d, appUrl))),
+    texte: [titre, "", phrase, motif, ref, "", lienDe(d, appUrl)].join("\n"),
+  };
+}
+
 /* Chaque gabarit que la base met en file (les migrations) a son rendu ici : verifier-les-courriels.ts le vérifie. */
-const GABARITS: Record<string, (d: Donnees, l: Langue) => Rendu> = {
+const GABARITS: Record<string, (d: Donnees, l: Langue, appUrl: string) => Rendu> = {
   verification,
   verification_verrouillee: verificationVerrouillee,
   deux_facteurs_retires: deuxFacteursRetires,
+  sortie_payee: sortiePayee,
+  sortie_refusee: sortieRefusee,
 };
 
 export const GABARITS_CONNUS = Object.keys(GABARITS);
 
 /** Le rendu d'une ligne de la boîte. Un gabarit inconnu LÈVE : jamais d'e-mail vide. */
-export function rendre(gabarit: string, donnees: Donnees, langue: unknown): Rendu {
+export function rendre(gabarit: string, donnees: Donnees, langue: unknown, appUrl: string = APP_URL_PAR_DEFAUT): Rendu {
   const f = Object.prototype.hasOwnProperty.call(GABARITS, gabarit) ? GABARITS[gabarit] : undefined;
   if (!f) throw new Error(`gabarit inconnu : ${gabarit}`);
-  return f(donnees ?? {}, langueDe(langue));
+  return f(donnees ?? {}, langueDe(langue), appUrl);
 }
 
 /* ------------------------------------------------------------- l'envoi */
@@ -252,7 +302,7 @@ type Prise = { id: number; gabarit: string; donnees: Donnees; email: string; lan
  * d'un e-mail n'arrête jamais les autres. Le journal ne reçoit que des
  * numéros de ligne et des raisons — ni code, ni adresse.
  */
-export async function traiterLaBoite(deps: { rpc: Rpc; envoyer: Envoyer; lot?: number; journal?: (m: string) => void }): Promise<Bilan> {
+export async function traiterLaBoite(deps: { rpc: Rpc; envoyer: Envoyer; lot?: number; journal?: (m: string) => void; appUrl?: string }): Promise<Bilan> {
   const journal = deps.journal ?? (() => {});
   const bilan: Bilan = { vus: 0, envoyes: 0, a_reessayer: 0, echoues: 0 };
   const ids = ((await deps.rpc("courriels_a_traiter", { p_n: deps.lot ?? 20 })) ?? []) as unknown[];
@@ -265,7 +315,7 @@ export async function traiterLaBoite(deps: { rpc: Rpc; envoyer: Envoyer; lot?: n
       if (!p) continue; // pris par un autre, expiré, déjà servi : la base a tranché
       let rendu: Rendu;
       try {
-        rendu = rendre(p.gabarit, p.donnees, p.langue);
+        rendu = rendre(p.gabarit, p.donnees, p.langue, deps.appUrl);
       } catch (e) {
         bilan.echoues++;
         journal(`courriel ${id} : rendu impossible (${e instanceof Error ? e.message : String(e)})`);

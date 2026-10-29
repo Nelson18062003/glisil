@@ -1912,12 +1912,16 @@ begin
   begin perform admin_payer_sortie(ref1, '12'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'transaction ID invalide', sqlerrm; end;
   r := admin_payer_sortie(ref1, 'mp261016.1200.a00001', ref1 || '/capture.png');
-  assert r ->> 'etat' = 'envoyee' and r -> 'rapprochement' ->> 'etat' = 'concorde' and not (r ? 'a_confirmer'), r;
+  assert r ->> 'etat' = 'envoyee' and r -> 'rapprochement' ->> 'etat' = 'concorde' and not coalesce((r ->> 'a_confirmer')::boolean, false), r;
   assert solde(a, 'XAFe', 'bloque') = bloque0, 'les XAFe mis de côté sont partis';
   assert (select s.reference from sorties_constatees k join sorties s on s.id = k.sortie_id where k.source_id = 7001) = ref1, 'le SMS est rattaché au paiement';
   assert (select coalesce(sum(montant), 0) from emissions where sens = 'destruction') = detruit0 + 50000 - ceil(50000 * taux), 'détruits : ce qui est parti en XAF';
+  -- (0038) le client est prévenu par e-mail, une seule fois, avec l'ID et ce qui est parti
+  assert (select count(*) from courriels_a_envoyer where cle = 'sortie_payee:' || ref1) = 1, 'l''e-mail de la sortie payée est en file';
+  assert (select donnees ->> 'transaction_id' = 'MP2610161200A00001' and (donnees ->> 'montant_xaf')::numeric = 50000 - ceil(50000 * taux)
+            from courriels_a_envoyer where cle = 'sortie_payee:' || ref1), 'l''e-mail dit l''ID et le montant envoyé';
   begin perform admin_refuser_sortie(ref1, 'trop tard'); raise exception 'aurait dû refuser';
-  exception when others then assert sqlerrm = 'cette sortie est déjà close', sqlerrm; end;
+  exception when others then assert sqlerrm = 'un paiement est enregistré', sqlerrm; end;
 
   -- C · au-dessus du seuil : le même ID ne prouve pas deux sorties ; payé, il attend une AUTRE personne ; il ne se refuse plus
   perform set_config('xafe.compte', a::text, true);
@@ -1926,7 +1930,7 @@ begin
   begin perform admin_payer_sortie(ref2, 'MP261016.1200.A00001'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'ce transaction ID prouve déjà une autre sortie', sqlerrm; end;
   r := admin_payer_sortie(ref2, 'MP261016.1300.B00002');
-  assert (r ->> 'a_confirmer')::boolean and r ->> 'etat' = 'en_cours' and r -> 'rapprochement' ->> 'etat' = 'absent', r;
+  assert (r ->> 'a_confirmer')::boolean and r ->> 'etat' = 'en_preuve' and r -> 'rapprochement' ->> 'etat' = 'absent', r;
   assert solde(a, 'XAFe', 'bloque') = bloque0 + 200000, 'pas encore détruits : la preuve n''a vu qu''un œil';
   begin perform admin_confirmer_sortie(ref2); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'une autre personne confirme', sqlerrm; end;
@@ -1935,7 +1939,10 @@ begin
   perform totem_sms_sortant('akwa-1', 7002, 'mtn', '677000000', '677444001', 150000, 'MP261016.1300.B00002', 'Transfert de 150 000 FCFA…', now());
   perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000001', true);
   r := admin_confirmer_sortie(ref2);
-  assert r ->> 'etat' = 'envoyee' and r -> 'rapprochement' ->> 'etat' = 'ecart', 'le SMS dit 150 000 : l''écart se montre ' || r::text;
+  -- (0038) une seconde personne ne remplace pas le SMS : il dit 150 000, la sortie reste ouverte et dit pourquoi
+  -- (avant 0038, elle se clôturait sur l'écart : c'est ce que ce scénario figeait)
+  assert r ->> 'etat' = 'en_preuve' and r -> 'rapprochement' ->> 'etat' = 'ecart' and r -> 'rapprochement' ->> 'motif' like 'le SMS dit 150%', 'le SMS dit 150 000 : l''écart garde la sortie ouverte ' || r::text;
+  assert solde(a, 'XAFe', 'bloque') = bloque0 + 200000, 'en écart, rien n''est détruit';
 
   -- D · refusée avant paiement : tout revient, avec le motif
   perform set_config('xafe.compte', a::text, true);
@@ -1945,7 +1952,7 @@ begin
   exception when others then assert sqlerrm = 'un motif est exigé', sqlerrm; end;
   r := admin_refuser_sortie(ref3, 'le nom MoMo ne correspond pas au compte');
   assert r ->> 'etat' = 'annulee' and r ->> 'motif' like 'le nom MoMo%', r;
-  assert solde(a, 'XAFe', 'dispo') = dispo0 - 250000 and solde(a, 'XAFe', 'bloque') = bloque0, 'les 10 000 sont revenus';
+  assert solde(a, 'XAFe', 'dispo') = dispo0 - 250000 and solde(a, 'XAFe', 'bloque') = bloque0 + 200000, 'les 10 000 sont revenus (les 200 000 en écart restent de côté)';
 
   -- E · ce que la puce a vu partir et que rien n'explique se voit
   perform totem_sms_sortant('akwa-1', 7003, 'mtn', '677000000', '677999000', 30000, 'MP261016.1400.C00003', 'Transfert de 30 000 FCFA…', now());
@@ -2876,6 +2883,7 @@ begin
   assert solde(a, 'XAFe', 'dispo') = dispo0 - 20000 and solde(a, 'XAFe', 'bloque') = bloque0, 'les XAFe mis de côté sont partis';
   assert (select coalesce(sum(montant), 0) from emissions where sens = 'destruction') = detruit0 + (r ->> 'montant_xaf')::numeric, 'détruits';
   assert (totem_sortie_demo_payee('totem-demo', ref1, '18300000077') ->> 'deja')::boolean, 'le même ID rendu deux fois ne clôt pas deux fois';
+  assert not exists (select 1 from courriels_a_envoyer where cle like 'sortie_%:' || ref1), '(0038) une sortie de démo n''envoie pas d''e-mail';
 
   -- échouée : rien n'est parti, les XAFe reviennent avec le motif
   r := _demander_sortie(30000, nid, 'k-1152-2', 'Alice Demo');
@@ -3810,6 +3818,195 @@ begin
   perform choisir_ma_langue('fr');
   assert mon_compte() ->> 'langue' = 'fr', mon_compte();
   raise notice '✓ 11.79 mon_compte montre la langue du compte, et elle suit le choix';
+end $$;
+rollback;
+
+-- 11.80 · le remboursement manuel PROUVÉ par la puce (0038). Taper un ID ne
+-- détruit plus rien : la sortie passe « en preuve », et ses XAFe ne sont
+-- détruits que lorsque TOTEM relève, sur un float de Glisil, le SMS qui montre
+-- CE paiement (même ID, même montant, même numéro, après la demande, du même
+-- monde, ne prouvant pas déjà une autre sortie). Témoin : avant 0038,
+-- admin_payer_sortie rendait « envoyee » à la première ligne de A.
+begin;
+update parametres set valeur = valeur || '{"ouvertes": true, "mode": "manuel", "seuil_deux_personnes": null, "forcage": false}' where cle = 'sortie';
+insert into numeros (compte_id, operateur, numero, verifie_le, actif_des)
+values ('11111111-1111-1111-1111-111111111111', 'mtn', '677444054', now() - interval '3 days', now() - interval '2 days');
+insert into terminaux (id, nom, cle, demo) values ('demo-80', 'Démo 80', 'cle-demo-80-assez-longue', true);
+insert into floats (operateur, numero, terminal) values ('mtn', '600000080', 'demo-80');
+create or replace function pg_temp.demander(p_montant numeric, p_cle text) returns text language plpgsql as $f$
+begin
+  perform set_config('xafe.compte', '11111111-1111-1111-1111-111111111111', true);
+  return _demander_sortie(p_montant, (select id from numeros where numero = '677444054'), p_cle, 'Alice Mballa') ->> 'reference';
+end $f$;
+do $$
+declare
+  a     uuid := '11111111-1111-1111-1111-111111111111';
+  nelson text := 'dddddddd-0000-0000-0000-000000000001'; ops text := 'dddddddd-0000-0000-0000-000000000002';
+  r jsonb; ref text; x numeric; bloque0 numeric; detruit0 numeric;
+begin
+  perform _mouvement(a, 'XAFe', 5000000, 0, 'test', 'test', 'T-11.80');
+  insert into emissions (sens, montant, source_table, source_id) values ('emission', 5000000, 'test', 'T-11.80');   -- l'argent d'essai est créé, comme un dépôt
+  update terminaux set vu_le = now() where id = 'akwa-1';
+  detruit0 := (select coalesce(sum(montant), 0) from emissions where sens = 'destruction');
+
+  -- A · l'ID d'abord, le SMS ensuite (le propriétaire seul)
+  ref := pg_temp.demander(100000, 'k-80-a');
+  x := (select montant_xaf from sorties where reference = ref);
+  bloque0 := solde(a, 'XAFe', 'bloque');
+  perform set_config('xafe.compte', nelson, true);
+  r := admin_payer_sortie(ref, 'MP261029.0900.A54001');
+  assert r ->> 'etat' = 'en_preuve' and r -> 'rapprochement' ->> 'etat' = 'absent', 'A · un ID tapé ne détruit rien ' || r::text;
+  assert solde(a, 'XAFe', 'bloque') = bloque0 and (select coalesce(sum(montant), 0) from emissions where sens = 'destruction') = detruit0, 'A · rien de détruit';
+  assert not exists (select 1 from notifications where compte_id = a and titre = 'Sortie envoyée' and cible = '/historique/' || ref), 'A · pas encore de « Sortie envoyée »';
+  assert not exists (select 1 from courriels_a_envoyer where cle = 'sortie_payee:' || ref), 'A · pas encore d''e-mail';
+  begin perform admin_refuser_sortie(ref, 'je me ravise'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'un paiement est enregistré', sqlerrm; end;
+  r := totem_sms_sortant('akwa-1', 75401, 'mtn', '677000000', '677444054', x, 'MP261029.0900.A54001', 'Transfert reussi. ID: MP261029.0900.A54001', now());
+  assert (r ->> 'cloture')::boolean, 'A · le SMS clôt la sortie ' || r::text;
+  assert (select etat = 'envoyee' and prouvee_le is not null from sorties where reference = ref), 'A · envoyée, prouvée';
+  assert (select constatee_id = (r ->> 'id')::bigint from sortie_paiements where sortie_id = (select id from sorties where reference = ref)), 'A · le paiement garde son SMS';
+  assert (select sortie_id = (select id from sorties where reference = ref) from sorties_constatees where id = (r ->> 'id')::bigint), 'A · le SMS garde sa sortie';
+  assert solde(a, 'XAFe', 'bloque') = bloque0 - 100000 and (select coalesce(sum(montant), 0) from emissions where sens = 'destruction') = detruit0 + x, 'A · détruits : ce qui est parti';
+  assert (select texte from notifications where compte_id = a and cible = '/historique/' || ref and titre = 'Sortie envoyée')
+         = format('%s XAF envoyés au %s. Transaction ID : %s.', to_char(x, 'FM999G999G999G999'), '677444054', 'MP2610290900A54001'), 'A · la notification d''avant, au caractère près';
+  assert (select count(*) from courriels_a_envoyer where cle = 'sortie_payee:' || ref) = 1, 'A · un e-mail';
+  r := totem_sms_sortant('akwa-1', 75401, 'mtn', '677000000', '677444054', x, 'MP261029.0900.A54001', 'Transfert reussi. ID: MP261029.0900.A54001', now());
+  assert (r ->> 'deja')::boolean and (select coalesce(sum(montant), 0) from emissions where sens = 'destruction') = detruit0 + x
+     and (select count(*) from courriels_a_envoyer where cle = 'sortie_payee:' || ref) = 1, 'A · le même SMS relu : rien de plus';
+  detruit0 := detruit0 + x;
+
+  -- B · le SMS d'abord, l'ID ensuite : clos dans le même geste
+  ref := pg_temp.demander(80000, 'k-80-b');
+  x := (select montant_xaf from sorties where reference = ref);
+  perform totem_sms_sortant('akwa-1', 75402, 'mtn', '677000000', '677444054', x, 'MP261029.0900.A54002', '…', now());
+  perform set_config('xafe.compte', nelson, true);
+  assert admin_payer_sortie(ref, 'MP261029.0900.A54002') ->> 'etat' = 'envoyee', 'B · le SMS était là : clos tout de suite';
+  detruit0 := detruit0 + x;
+
+  -- C · un montant mal tapé, corrigé, puis le reste payé en un second transfert
+  ref := pg_temp.demander(300000, 'k-80-c');
+  x := (select montant_xaf from sorties where reference = ref);
+  perform totem_sms_sortant('akwa-1', 75403, 'mtn', '677000000', '677444054', x - 1000, 'MP261029.0900.A54003', '…', now());
+  perform set_config('xafe.compte', nelson, true);
+  r := admin_payer_sortie(ref, 'MP261029.0900.A54003');
+  assert r ->> 'etat' = 'en_preuve' and r -> 'rapprochement' ->> 'etat' = 'ecart' and r -> 'rapprochement' ->> 'motif' like 'le SMS dit %', 'C · l''écart se dit ' || r::text;
+  assert admin_verifier_sortie(ref) ->> 'etat' = 'en_preuve', 'C · revérifier ne clôt pas un écart';
+  begin perform admin_corriger_paiement(ref, 'MP261029.0900.A54003', 'MP261029.0900.A54003', '', x - 1000); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'une note est exigée', sqlerrm; end;
+  r := admin_corriger_paiement(ref, 'MP261029.0900.A54003', 'MP261029.0900.A54003', 'montant mal tapé', x - 1000);
+  assert r -> 'rapprochement' ->> 'etat' = 'partiel' and (r -> 'rapprochement' ->> 'reste')::numeric = 1000, 'C · il reste 1 000 ' || r::text;
+  begin perform admin_corriger_paiement(ref, 'MP261029.0900.A54003', 'MP261029.0900.A54099', 'essai', null); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'ce paiement est prouvé', sqlerrm; end;
+  r := admin_payer_sortie(ref, 'MP261029.0900.A54004');   -- le montant : ce qui reste
+  assert r ->> 'etat' = 'en_preuve' and (r -> 'paiements' -> 1 ->> 'montant')::numeric = 1000, 'C · le reste, par défaut ' || r::text;
+  r := totem_sms_sortant('akwa-1', 75404, 'mtn', '677000000', '677444054', 1000, 'MP261029.0900.A54004', '…', now());
+  assert (r ->> 'cloture')::boolean, 'C · les deux paiements prouvés : clos';
+  assert (select texte like '%Transaction ID : MP2610290900A54003, MP2610290900A54004.' from notifications where cible = '/historique/' || ref and titre = 'Sortie envoyée'), 'C · la notification dit les deux ID';
+  assert (select jsonb_array_length(donnees -> 'paiements') = 2 from courriels_a_envoyer where cle = 'sortie_payee:' || ref), 'C · l''e-mail aussi';
+  detruit0 := detruit0 + x;
+
+  -- D · le bon ID, le bon montant, un autre bénéficiaire
+  ref := pg_temp.demander(50000, 'k-80-d');
+  x := (select montant_xaf from sorties where reference = ref);
+  perform totem_sms_sortant('akwa-1', 75405, 'mtn', '677000000', '677999054', x, 'MP261029.0900.A54005', '…', now());
+  perform set_config('xafe.compte', nelson, true);
+  r := admin_payer_sortie(ref, 'MP261029.0900.A54005');
+  assert r ->> 'etat' = 'en_preuve' and r -> 'rapprochement' ->> 'motif' like 'le SMS dit le 677999054%', 'D · un autre numéro ' || r::text;
+
+  -- E · un SMS sans numéro, relu avec : il se complète et clôt
+  ref := pg_temp.demander(40000, 'k-80-e');
+  x := (select montant_xaf from sorties where reference = ref);
+  perform set_config('xafe.compte', nelson, true);
+  perform admin_payer_sortie(ref, 'MP261029.0900.A54006');
+  r := totem_sms_sortant('akwa-1', 75406, 'mtn', '677000000', null, x, 'MP261029.0900.A54006', 'Transfert reussi', now());
+  assert (select _rapprochement(s) ->> 'motif' from sorties s where reference = ref) like 'le SMS ne dit pas le numéro%', 'E · le numéro manque';
+  r := totem_sms_sortant('akwa-1', 75406, 'mtn', '677000000', '677444054', x, 'MP261029.0900.A54006', 'Transfert reussi', now());
+  assert (r ->> 'deja')::boolean and (r ->> 'cloture')::boolean, 'E · le même SMS, relu avec le numéro : complété, et clos ' || r::text;
+  detruit0 := detruit0 + x;
+
+  -- F · un paiement relevé AVANT la demande ne la prouve pas
+  perform totem_sms_sortant('akwa-1', 75407, 'mtn', '677000000', '677444054', 29850, 'MP261029.0800.A54007', '…', now());
+  update sorties_constatees set recu_le = now() - interval '1 hour' where source_id = 75407;
+  ref := pg_temp.demander(30000, 'k-80-f');
+  perform set_config('xafe.compte', nelson, true);
+  r := admin_payer_sortie(ref, 'MP261029.0800.A54007');
+  assert r -> 'rapprochement' ->> 'motif' like '%avant la demande%', 'F · antérieur à la demande ' || r::text;
+
+  -- G · le bon SMS, mais d'un terminal de démo ; puis d'une puce qui n'est pas un float
+  ref := pg_temp.demander(20000, 'k-80-g');
+  x := (select montant_xaf from sorties where reference = ref);
+  perform totem_sms_sortant('demo-80', 75408, 'mtn', '600000080', '677444054', x, 'MP261029.0900.A54008', '…', now());
+  perform set_config('xafe.compte', nelson, true);
+  r := admin_payer_sortie(ref, 'MP261029.0900.A54008');
+  assert r -> 'rapprochement' ->> 'motif' = 'le SMS vient d''un terminal de démo', 'G · terminal de démo ' || r::text;
+  ref := pg_temp.demander(20000, 'k-80-g2');
+  x := (select montant_xaf from sorties where reference = ref);
+  perform totem_sms_sortant('akwa-1', 75409, 'mtn', '699999999', '677444054', x, 'MP261029.0900.A54009', '…', now());
+  perform set_config('xafe.compte', nelson, true);
+  assert admin_payer_sortie(ref, 'MP261029.0900.A54009') -> 'rapprochement' ->> 'motif' like '%pas un float Glisil%', 'G · une puce inconnue ne prouve rien';
+
+  -- H · au-delà du seuil : prouvé, il attend une AUTRE personne
+  update parametres set valeur = valeur || '{"seuil_deux_personnes": 100000}' where cle = 'sortie';
+  ref := pg_temp.demander(200000, 'k-80-h');
+  x := (select montant_xaf from sorties where reference = ref);
+  perform set_config('xafe.compte', ops, true);
+  perform admin_payer_sortie(ref, 'MP261029.0900.A54010');
+  perform totem_sms_sortant('akwa-1', 75410, 'mtn', '677000000', '677444054', x, 'MP261029.0900.A54010', '…', now());
+  assert (select etat from sorties where reference = ref) = 'en_preuve' and (admin_a_traiter() ->> 'sorties_a_confirmer')::int >= 1, 'H · prouvé, mais une seule personne';
+  begin perform admin_confirmer_sortie(ref); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'une autre personne confirme', sqlerrm; end;
+  perform set_config('xafe.compte', nelson, true);
+  assert admin_confirmer_sortie(ref) ->> 'etat' = 'envoyee', 'H · la seconde personne clôt';
+  detruit0 := detruit0 + x;
+  update parametres set valeur = valeur || '{"seuil_deux_personnes": null}' where cle = 'sortie';
+
+  -- I · la règle vit DANS la clôture : sans preuve, ou deux fois, elle refuse
+  ref := pg_temp.demander(15000, 'k-80-i');
+  perform set_config('xafe.compte', nelson, true);
+  perform admin_payer_sortie(ref, 'MP261029.0900.A54011');
+  begin perform _clore_sortie_manuelle((select id from sorties where reference = ref)); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paiement pas encore prouvé', sqlerrm; end;
+  begin perform _clore_sortie_manuelle((select id from sorties where cle = 'k-80-a')); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'cette sortie ne se clôt pas', sqlerrm; end;
+  assert (select coalesce(sum(montant), 0) from emissions where sens = 'destruction') = detruit0, 'I · aucune destruction de trop';
+
+  -- J · forcer : fermé, réservé au super admin, trente minutes après, journalisé, une alerte
+  begin perform admin_forcer_sortie(ref, 'relevé MTN reçu par e-mail'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'le forçage est fermé', sqlerrm; end;
+  update parametres set valeur = valeur || '{"forcage": true}' where cle = 'sortie';
+  perform set_config('xafe.compte', ops, true);
+  begin perform admin_forcer_sortie(ref, 'relevé MTN reçu par e-mail'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'accès non autorisé', sqlerrm; end;
+  perform set_config('xafe.compte', nelson, true);
+  begin perform admin_forcer_sortie(ref, 'relevé MTN reçu par e-mail'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'attendez le SMS de la puce', sqlerrm; end;
+  update sorties set payee_le = now() - interval '31 minutes' where reference = ref;
+  begin perform admin_forcer_sortie(ref, 'court'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'une note est exigée', sqlerrm; end;
+  r := admin_forcer_sortie(ref, 'relevé MTN reçu par e-mail');
+  assert r ->> 'etat' = 'envoyee' and (select forcee_le is not null and prouvee_le is null from sorties where reference = ref), 'J · forcée, pas prouvée ' || r::text;
+  assert exists (select 1 from journal_admin where action = 'forcer_sortie' and cible = ref), 'J · journalisé';
+  assert exists (select 1 from parite_alertes where code = 'sortie_forcee:' || ref and close_le is null), 'J · une alerte';
+  update parametres set valeur = valeur || '{"forcage": false}' where cle = 'sortie';
+
+  -- K · un ID ne prouve qu'une sortie ; le même ID retapé sur la même : rien de plus
+  ref := pg_temp.demander(10000, 'k-80-k');
+  perform set_config('xafe.compte', nelson, true);
+  begin perform admin_payer_sortie(ref, 'MP261029.0900.A54001'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'ce transaction ID prouve déjà une autre sortie', sqlerrm; end;
+  perform admin_payer_sortie(ref, 'MP261029.0900.A54012');
+  assert (admin_payer_sortie(ref, 'mp261029.0900.a54012') ->> 'deja')::boolean, 'K · le même ID retapé : rien de plus';
+
+  -- L · on ne paie pas plus que la sortie
+  ref := pg_temp.demander(10000, 'k-80-l');
+  perform set_config('xafe.compte', nelson, true);
+  begin perform admin_payer_sortie(ref, 'MP261029.0900.A54013', null, 1000000); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'montant du paiement invalide', sqlerrm; end;
+
+  -- le SMS d'un second paiement n'est pas « inexpliqué »
+  assert not exists (select 1 from jsonb_array_elements(admin_sorties_non_expliquees()) k where k ->> 'transaction_id' = 'MP2610290900A54004'), 'le second paiement de C est expliqué';
+  assert total('XAFe') = circulation(), format('XAFe : %s en soldes, %s en circulation', total('XAFe'), circulation());
+  raise notice '✓ 11.80 le remboursement manuel prouvé : un ID tapé ne détruit rien ; le SMS de la puce (même ID, montant, numéro, après la demande, d''un float du même monde) clôt, une fois ; payé en plusieurs transferts ; corrigé ; au-delà du seuil, deux personnes ; forcé seulement par le super admin, tard, journalisé ; un e-mail au client';
 end $$;
 rollback;
 

@@ -137,3 +137,61 @@ sql c3-nettoyer.sql || { cat "$GRAPPE/c3-nettoyer.sql.log"; exit 1; }
 r=$(course_sorties k-c3)
 [ "$r" = "1" ] || { echo "✗ 12.3 deux sorties ensemble : $r passées au lieu d'une"; exit 1; }
 echo "✓ 12.3 deux sorties lancées ensemble ne franchissent pas le plafond du palier (témoin : sans verrou, les deux passent)"
+
+# ── 4 · (0038) l'ID d'un remboursement tapé à l'instant où le SMS de la puce
+# arrive. A tape l'ID (la sortie passe « en preuve ») et attend avant de
+# valider ; B pousse le SMS pendant ce temps. Ils prennent le même verrou
+# (l'opérateur et l'ID) : B attend A, voit son paiement, et clôt. Sans le
+# verrou côté SMS, B ne voit pas le paiement pas encore validé, A n'a pas vu le
+# SMS pas encore écrit : ils se ratent, et la sortie reste en preuve.
+NELSON=dddddddd-0000-0000-0000-000000000001
+cat >"$GRAPPE/c4-decor.sql" <<SQL
+update parametres set valeur = valeur || '{"ouvertes": true, "mode": "manuel", "seuil_deux_personnes": null}' where cle = 'sortie';
+update terminaux set vu_le = now() where id = 'akwa-1';
+select _mouvement('$ALICE', 'XAFe', 40000, 0, 'test', 'test', 'C-12.4');
+insert into emissions (sens, montant, source_table, source_id) values ('emission', 40000, 'test', 'C-12.4');
+SQL
+sql c4-decor.sql || { cat "$GRAPPE/c4-decor.sql.log"; exit 1; }
+course_preuve() { # course_preuve <clé> <source_id> <transaction id> : l'état de la sortie après la course
+  cat >"$GRAPPE/c4-demande.sql" <<SQL
+begin; set local ${CLE_COMPTE:-xafe.compte} = '$ALICE';
+select _demander_sortie(15000, 'aaaaaaaa-0000-0000-0000-000000000001', '$1', 'Alice Mballa');
+commit;
+SQL
+  sql c4-demande.sql || { cat "$GRAPPE/c4-demande.sql.log"; exit 1; }
+  ref=$(valeur "select reference from sorties where cle = '$1'")
+  x=$(valeur "select montant_xaf from sorties where cle = '$1'")
+  cat >"$GRAPPE/c4-a.sql" <<SQL
+begin; set local ${CLE_COMPTE:-xafe.compte} = '$NELSON';
+select admin_payer_sortie('$ref', '$3');
+select pg_sleep(1.5);
+commit;
+SQL
+  cat >"$GRAPPE/c4-b.sql" <<SQL
+select totem_sms_sortant('akwa-1', $2, 'mtn', '677000000', '677123456', $x, '$3', 'Transfert reussi. ID: $3', now());
+SQL
+  ensemble c4-a.sql c4-b.sql
+  valeur "select etat from sorties where cle = '$1'"
+}
+sans 'totem_sms_sortant(text,bigint,text,text,text,numeric,text,text,timestamp with time zone)' "  if v_id is not null then perform pg_advisory_xact_lock(hashtext('sortie_tx:' || p_operateur || ':' || v_id)); end if;"
+r=$(course_preuve k-c4t 91240 MP261029C124T)
+rendre 'totem_sms_sortant(text,bigint,text,text,text,numeric,text,text,timestamp with time zone)'
+[ "$r" = "en_preuve" ] || { echo "✗ témoin : sans le verrou du SMS, l'ID et le SMS devaient se rater (vu : $r)"; exit 1; }
+# le témoin a laissé une sortie en preuve : on la défait, pour que la suite parte d'une base juste
+cat >"$GRAPPE/c4-nettoyer.sql" <<SQL
+do \$\$
+declare s sorties := (select x from sorties x where cle = 'k-c4t');
+begin
+  perform _mouvement(s.compte_id, 'XAFe', s.montant, -s.montant, 'temoin_rendu', 'sorties', s.reference);
+  delete from sortie_paiements where sortie_id = s.id;
+  delete from sorties_constatees where source_id = 91240;
+  delete from sorties where id = s.id;
+end \$\$;
+SQL
+sql c4-nettoyer.sql || { cat "$GRAPPE/c4-nettoyer.sql.log"; exit 1; }
+r=$(course_preuve k-c4 91241 MP261029C124)
+n=$(valeur "select count(*) from emissions where sens = 'destruction' and source_id = (select reference from sorties where cle = 'k-c4')")
+[ "$r" = "envoyee" ] && [ "$n" = "1" ] || { echo "✗ 12.4 l'ID tapé pendant que le SMS arrive : « $r », $n destruction(s)"; exit 1; }
+echo "update parametres set valeur = valeur || '{\"mode\": \"totem\"}' where cle = 'sortie';" >"$GRAPPE/c4-fin.sql"
+sql c4-fin.sql
+echo "✓ 12.4 l'ID d'un remboursement tapé à l'instant où le SMS de la puce arrive : ils se trouvent, une destruction (témoin : sans verrou, ils se ratent)"

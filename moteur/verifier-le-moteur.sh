@@ -117,6 +117,10 @@ $COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = valeur || '
 $COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = valeur || '{\\\"quantite_min\\\": 10, \\\"quantite_max\\\": 1000000, \\\"marche_quantite_max\\\": 100000, \\\"montant_min\\\": 0}' where cle = 'marche'\"" >/dev/null
 $COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = '{\\\"0\\\": {\\\"entree_jour\\\": 500000, \\\"sortie_jour\\\": 500000}, \\\"1\\\": {\\\"entree_jour\\\": 5000000, \\\"sortie_jour\\\": 5000000}, \\\"2\\\": null}' where cle = 'paliers'\"" >/dev/null
 
+# 0038 met les sorties en manuel : les scénarios d'avant éprouvent la composition par TOTEM. La règle
+# d'aujourd'hui (le remboursement manuel prouvé par la puce) est éprouvée par 11.36 et 11.80+, dans leur transaction.
+$COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = valeur || '{\\\"mode\\\": \\\"totem\\\"}' where cle = 'sortie'\"" >/dev/null
+
 # ATTAQUES=1 : les migrations, puis les attaques de la revue seules (moteur/rouge-puis-vert).
 if [ "${ATTAQUES:-0}" = "1" ]; then
   $COMME "PATH=$PATH $PSQL -d xafe -f $ICI/moteur/rouge-puis-vert/attaques.sql" 2>&1 | grep -E '^#|ERROR|CONTEXT'
