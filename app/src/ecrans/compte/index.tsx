@@ -38,6 +38,7 @@ import { tones } from "../../theme";
 import { Card, Cases, ChoixDeLangue, Feuille, FeuilleErreur, Icon, Keypad, Line, List, Row, Screen, Squelette } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
 import { EtapeDeVerification } from "../../ui/verification";
+import { Actions, Champs, EnTete, Groupes } from "../../ui/formulaire";
 
 /* Le support vient de l'équipe (paramètre « support ») ou de la configuration :
    un numéro écrit en dur ici était un bouche-trou, et les messages des clients
@@ -387,8 +388,10 @@ export function CompteAide() {
           </Accordion>
         ))}
       </Box>
-      <Typography variant="subtitle1" sx={{ mt: 1 }}>{t("Signaler un problème", "Report a problem")}</Typography>
-      <Typography variant="body2">{t("Dites ce qui s'est passé ; gardez la référence de l'opération (XAFe-…) si vous l'avez. Personne chez Glisil ne vous demandera votre mot de passe ni vos codes.", "Tell us what happened; include the transaction reference (XAFe-…) if you have it. No one at Glisil will ever ask for your password or your codes.")}</Typography>
+      <Groupes sx={{ mt: 1 }}>
+      <EnTete variante="subtitle1" titre={t("Signaler un problème", "Report a problem")}
+        texte={t("Dites ce qui s'est passé ; gardez la référence de l'opération (XAFe-…) si vous l'avez. Personne chez Glisil ne vous demandera votre mot de passe ni vos codes.", "Tell us what happened; include the transaction reference (XAFe-…) if you have it. No one at Glisil will ever ask for your password or your codes.")} />
+      <Champs>
       <TextField label={t("Ce qui s'est passé", "What happened")} value={texte} onChange={(e) => { setTexte(e.target.value); setRecu(null); }} fullWidth multiline minRows={3} inputProps={{ maxLength: 2000 }} />
       {recu && (
         <Stack direction="row" gap={1} alignItems="center" role="status" data-signalement-recu
@@ -397,12 +400,16 @@ export function CompteAide() {
           <Typography variant="body2" sx={{ color: "inherit" }}>{t(`Reçu (${recu}) : l'équipe le lit et revient vers vous si besoin. Merci !`, `Received (${recu}): the team will read it and get back to you if needed. Thank you!`)}</Typography>
         </Stack>
       )}
-      <Button variant="contained" startIcon={<SendRounded />} onClick={() => void envoyer()} disabled={enCours || texte.trim().length < 5}>
-        {enCours ? t("Envoi…", "Sending…") : t("Envoyer à l'équipe Glisil", "Send to the Glisil team")}
-      </Button>
-      {lien
-        ? <Button variant="outlined" startIcon={<WhatsApp />} href={lien} target="_blank" rel="noopener" disabled={texte.trim().length < 5}>{t("Envoyer sur WhatsApp", "Send on WhatsApp")}</Button>
-        : null}
+      <Actions>
+        <Button variant="contained" startIcon={<SendRounded />} onClick={() => void envoyer()} disabled={enCours || texte.trim().length < 5}>
+          {enCours ? t("Envoi…", "Sending…") : t("Envoyer à l'équipe Glisil", "Send to the Glisil team")}
+        </Button>
+        {lien
+          ? <Button variant="outlined" startIcon={<WhatsApp />} href={lien} target="_blank" rel="noopener" disabled={texte.trim().length < 5}>{t("Envoyer sur WhatsApp", "Send on WhatsApp")}</Button>
+          : null}
+      </Actions>
+      </Champs>
+      </Groupes>
       <FeuilleErreur erreur={erreur} onFermer={effacerErreur} />
       <Contact sujet={ref ? t(`Problème · ${ref}`, `Problem · ${ref}`) : t("Un problème avec Glisil", "A problem with Glisil")} texte={`${qui}\n\n${texte}`} />
       <Typography variant="caption" textAlign="center">{t("L'équipe répond de 8 h à 20 h, sept jours sur sept.", "The team answers from 8 am to 8 pm, seven days a week.")}</Typography>

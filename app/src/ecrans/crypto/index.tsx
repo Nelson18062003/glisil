@@ -30,6 +30,7 @@ import { langue, t } from "../../noyau/langue";
 import { parcours, useParcours } from "../../navigation/parcours";
 import { Attente, Card, Keypad, Line, List, Row, Screen, Success } from "../../ui";
 import { EtapeDeVerification } from "../../ui/verification";
+import { Champs } from "../../ui/formulaire";
 
 const actifDe = (a: string | undefined): Actif => (a === "XAFe" ? "XAFe" : a === "USDC" ? "USDC" : "USDT");
 const fmt = (a: Actif, n: number) => (a === "XAFe" ? xaf(n) : enTranches(n, 2));
@@ -215,6 +216,7 @@ export function CryptoRetirerAdresse() {
         {t(`L'adresse de votre wallet, sur ${listeFormes}.`, `Your wallet address, on ${listeFormes}.`)}{" "}
         {partagee ? t("Une adresse 0x vaut pour plusieurs réseaux : vous choisirez lequel.", "A 0x address works on several networks: you'll choose which one.") : t("Le réseau se reconnaît tout seul.", "The network is detected automatically.")}
       </Typography>
+      <Champs>
       <TextField
         label={t("Adresse du wallet", "Wallet address")}
         value={c.adresse}
@@ -224,10 +226,11 @@ export function CryptoRetirerAdresse() {
         minRows={2}
         autoComplete="off"
         error={tape && !possibles.length}
-        helperText={tape && !possibles.length ? t(`Ce n'est une adresse d'aucun réseau ouvert aux ${actif} (${nomsDesReseaux(actif)}). Copiez-la depuis votre wallet.`, `This isn't an address on any network open to ${actif} (${nomsDesReseaux(actif)}). Copy it from your wallet.`) : " "}
+        helperText={tape && !possibles.length ? t(`Ce n'est une adresse d'aucun réseau ouvert aux ${actif} (${nomsDesReseaux(actif)}). Copiez-la depuis votre wallet.`, `This isn't an address on any network open to ${actif} (${nomsDesReseaux(actif)}). Copy it from your wallet.`) : undefined}
         slotProps={{ input: { sx: { fontFamily: "Roboto Mono, monospace", fontSize: 16 } }, htmlInput: { spellCheck: false, autoCapitalize: "off", autoCorrect: "off" } }}
       />
       <Button variant="outlined" startIcon={<ContentPasteRounded />} onClick={() => void coller()}>{t("Coller", "Paste")}</Button>
+      </Champs>
       {possibles.length > 1 && (
         <Stack gap={1}>
           <Typography variant="body2" fontWeight={500}>{t(`Sur quel réseau votre wallet attend-il les ${actif} ?`, `Which network does your wallet expect the ${actif} on?`)}</Typography>

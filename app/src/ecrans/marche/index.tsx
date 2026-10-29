@@ -173,7 +173,8 @@ function CompactBook({ onPick }: { onPick: (p: number) => void }) {
 
 function Field({ label, value, unit, onChange, onStep, placeholder }: { label: string; value: string; unit?: string; onChange?: (v: string) => void; onStep?: (d: 1 | -1) => void; placeholder?: string }) {
   return (
-    <Paper sx={{ bgcolor: "background.default", borderRadius: 2, height: 48, display: "flex", alignItems: "center", px: 0.5 }}>
+    // le ticket d'ordre, compact comme sur une plateforme d'échange : hors de la règle des formulaires (scripts/mesure-des-formulaires.mjs)
+    <Paper data-ticket sx={{ bgcolor: "background.default", borderRadius: 2, height: 48, display: "flex", alignItems: "center", px: 0.5 }}>
       {onStep ? <IconButton size="small" aria-label={t("Moins", "Less")} onClick={() => onStep(-1)}><RemoveRounded fontSize="small" /></IconButton> : <Box sx={{ width: 8 }} />}
       <Stack sx={{ flex: 1, alignItems: "center", minWidth: 0 }}>
         {onChange ? (

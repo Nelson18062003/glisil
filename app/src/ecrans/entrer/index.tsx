@@ -28,6 +28,7 @@ import { tones } from "../../theme";
 import { Amount, Attente, Card, Chips, FeuilleErreur, Keypad, Line, List, Row, Screen, Success } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
 import { SurLaChaine } from "../../ui/chaine";
+import { Actions, Champs } from "../../ui/formulaire";
 
 /* ------------------------------------------------------- 1 · opérateur */
 
@@ -293,11 +294,11 @@ export function EntrerTransaction() {
   const enAttente = depot.declarations.filter((d) => d.etat === "attendu");
 
   return (
-    <Screen title={t("J'ai payé", "I've paid")} back={`/entrer/payer/${depot.reference}`} fermer="/" gap={1.5}>
+    <Screen title={t("J'ai payé", "I've paid")} back={`/entrer/payer/${depot.reference}`} fermer="/" gap={3}>
       <Typography variant="body2">
         {correction ? t(`Corrigez ce paiement : le SMS de ${op.nom} reçu ne dit pas la même chose.`, `Correct this payment: the ${op.nom} SMS we received says something different.`) : t(`Recopiez le SMS de ${op.nom}. Un formulaire par paiement : si vous avez payé en trois fois, faites-le trois fois.`, `Copy the details from your ${op.nom} SMS. One form per payment: if you paid in three goes, fill it in three times.`)}
       </Typography>
-      <Stack component="form" gap={1.5} onSubmit={(e) => { e.preventDefault(); if (pret) void valider(); }}>
+      <Champs component="form" onSubmit={(e) => { e.preventDefault(); if (pret) void valider(); }}>
         <TextField
           label={t("Transaction ID", "Transaction ID")}
           value={tx}
@@ -338,11 +339,13 @@ export function EntrerTransaction() {
           inputMode="numeric"
           slotProps={{ input: { endAdornment: <InputAdornment position="end">XAF</InputAdornment> } }}
         />
-        <Button type="submit" variant="contained" disabled={!pret || enCours} startIcon={correction ? undefined : <AddRounded />}>
-          {enCours ? t("Un instant…", "One moment…") : correction ? t("Envoyer la correction", "Send correction") : t("Valider ce paiement", "Submit this payment")}
-        </Button>
-        {correction && <Button variant="text" onClick={() => { setCorrection(null); setTx(""); }}>{t("Annuler la correction", "Cancel correction")}</Button>}
-      </Stack>
+        <Actions>
+          <Button type="submit" variant="contained" disabled={!pret || enCours} startIcon={correction ? undefined : <AddRounded />}>
+            {enCours ? t("Un instant…", "One moment…") : correction ? t("Envoyer la correction", "Send correction") : t("Valider ce paiement", "Submit this payment")}
+          </Button>
+          {correction && <Button variant="text" onClick={() => { setCorrection(null); setTx(""); }}>{t("Annuler la correction", "Cancel correction")}</Button>}
+        </Actions>
+      </Champs>
 
       {depot.declarations.length > 0 && (
         <Paper sx={{ p: 1, borderRadius: 6 }}>

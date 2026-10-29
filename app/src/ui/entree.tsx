@@ -36,7 +36,7 @@ export function ChampMotDePasse({
       autoFocus={autoFocus}
       disabled={disabled}
       error={erreur}
-      helperText={aide ?? " "}
+      helperText={aide}
       slotProps={{
         htmlInput: { maxLength: 200 },
         input: {
@@ -53,7 +53,8 @@ export function ChampMotDePasse({
   );
 }
 
-/** La règle d'Auth, cochée à mesure : dix caractères, des lettres, des chiffres. */
+/** La règle d'Auth, cochée à mesure : dix caractères, des lettres, des chiffres. Elle se lit comme l'aide de
+ *  son champ : posée dans un groupe de champs (20 px), elle remonte à 4 px de lui. */
 export function RegleDuMotDePasse({ valeur }: { valeur: string }) {
   const manques = manquesDuMotDePasse(valeur);
   const lignes: { ok: boolean; texte: string }[] = [
@@ -62,7 +63,7 @@ export function RegleDuMotDePasse({ valeur }: { valeur: string }) {
     { ok: !manques.includes("chiffres"), texte: t("des chiffres", "digits") },
   ];
   return (
-    <Stack direction="row" gap={1.5} flexWrap="wrap" role="status" aria-live="polite" sx={{ mt: -1.5 }}>
+    <Stack direction="row" gap={1.5} flexWrap="wrap" role="status" aria-live="polite" sx={{ mt: "-16px" }}>
       {lignes.map((l) => (
         <Stack key={l.texte} direction="row" gap={0.5} alignItems="center">
           {l.ok ? <CheckCircleRounded sx={{ fontSize: 18, color: "primary.main" }} /> : <RadioButtonUncheckedRounded sx={{ fontSize: 18, color: "text.secondary" }} />}
@@ -74,7 +75,8 @@ export function RegleDuMotDePasse({ valeur }: { valeur: string }) {
   );
 }
 
-/** Six chiffres, en grand : un code reçu par e-mail ou affiché par l'application. Coller « 482 913 » marche aussi. */
+/** Six chiffres, en grand : un code reçu par e-mail ou affiché par l'application. Coller « 482 913 » marche aussi.
+ *  L'étiquette se voit toujours, au-dessus (même en grand : un champ sans nom visible ne dit pas ce qu'il attend). */
 export const ChampCode = forwardRef<HTMLInputElement, {
   valeur: string; onChange: (v: string) => void; label: string; erreur?: boolean; aide?: string; autoFocus?: boolean; disabled?: boolean; compact?: boolean;
 }>(function ChampCode({ valeur, onChange, label, erreur, aide, autoFocus, disabled, compact }, ref) {
@@ -90,9 +92,9 @@ export const ChampCode = forwardRef<HTMLInputElement, {
       disabled={disabled}
       fullWidth
       error={erreur}
-      label={compact ? label : undefined}
-      helperText={aide ?? " "}
-      slotProps={{ htmlInput: { maxLength: 7, "aria-label": label, pattern: "[0-9]*", style: compact ? { fontSize: 22, letterSpacing: "0.3em", fontVariantNumeric: "tabular-nums" } : { textAlign: "center", fontSize: 32, letterSpacing: "0.45em", fontVariantNumeric: "tabular-nums", paddingLeft: "0.45em" } } }}
+      label={label}
+      helperText={aide}
+      slotProps={{ htmlInput: { maxLength: 7, pattern: "[0-9]*", style: compact ? { fontSize: 22, letterSpacing: "0.3em", fontVariantNumeric: "tabular-nums" } : { textAlign: "center", fontSize: 32, letterSpacing: "0.45em", fontVariantNumeric: "tabular-nums", paddingLeft: "0.45em" } } }}
     />
   );
 });

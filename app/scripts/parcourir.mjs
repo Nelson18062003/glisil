@@ -15,6 +15,7 @@ import { spawn } from "node:child_process";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createConnection } from "node:net";
+import { mesurerLesFormulaires } from "./mesure-des-formulaires.mjs";
 
 const PORT = 4180;
 const BASE = `http://localhost:${PORT}`;
@@ -63,6 +64,15 @@ const capturer = async (nom) => {
   /* les couleurs des boutons glissent sur 250 ms : une photo prise avant montre un état qui n'existe pas */
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${OUT}${String(numero).padStart(2, "0")}-${nom}.png`, fullPage: true });
+  await mesurer(page, nom);
+};
+/* chaque écran photographié est aussi MESURÉ : les espacements de ses formulaires (mesure-des-formulaires.mjs) */
+const espacements = [];
+let champsDuTicket = 0;
+const mesurer = async (p, nom) => {
+  const m = await mesurerLesFormulaires(p);
+  champsDuTicket += m.ticket;
+  for (const e of m.ecarts) espacements.push(`${String(numero).padStart(2, "0")}-${nom} · ${e}`);
 };
 const etape = (texte) => console.log(`· ${texte}`);
 const exiger = (condition, message) => { if (!condition) throw new Error(`✗ ${message}`); };
@@ -72,12 +82,13 @@ const taper = async (touches) => { for (const t of touches) await page.getByRole
 const MDP_VITRINE = "Glisil-2026";
 const CODE = "123456";
 /* se connecter : l'adresse et le mot de passe, puis le code de l'application */
-const entrer = async (p, email, mdp) => {
+const entrer = async (p, email, mdp, photo) => {
   await p.getByRole("tab", { name: "Se connecter" }).click();
   await p.getByLabel("Adresse e-mail").fill(email);
   await p.getByLabel("Mot de passe", { exact: true }).fill(mdp);
   await p.getByRole("button", { name: "Se connecter", exact: true }).click();
   await p.waitForURL(/\/bienvenue\/deux-facteurs\/code$/);
+  if (photo) await photo("bienvenue-code-application");
   await p.getByLabel("Code de l'application d'authentification").fill(CODE);
 };
 /* la vérification avant sortie : les trois preuves, puis le bouton de l'opération (le dernier : une feuille s'ouvre par-dessus son écran) */
@@ -109,7 +120,7 @@ try {
   await page.goto(`${BASE}/`);
   await page.waitForURL(/\/bienvenue$/);
   await capturer("bienvenue");
-  await entrer(page, "demo@glisil.com", MDP_VITRINE);
+  await entrer(page, "demo@glisil.com", MDP_VITRINE, capturer);
   await page.waitForURL(`${BASE}/`);
   await voir("Bonjour Nelson");
   await voir("3 250 000");
@@ -600,7 +611,7 @@ try {
     const p2 = await ctx.newPage();
     p2.on("pageerror", (e) => erreurs.push(`pageerror: ${e.message}`));
     p2.on("console", (m) => { if (m.type() === "error" && !/favicon|fonts.googleapis|net::ERR/.test(m.text())) erreurs.push(`console: ${m.text()}`); });
-    const shot = async (nom) => { numero += 1; await p2.waitForTimeout(400); await p2.screenshot({ path: `${OUT}${String(numero).padStart(2, "0")}-${nom}.png`, fullPage: true }); };
+    const shot = async (nom) => { numero += 1; await p2.waitForTimeout(400); await p2.screenshot({ path: `${OUT}${String(numero).padStart(2, "0")}-${nom}.png`, fullPage: true }); await mesurer(p2, nom); };
     /* les conditions se lisent sans compte */
     await p2.goto(`${BASE}/conditions`);
     await p2.getByRole("heading", { name: "1. Glisil et le XAFe" }).waitFor();
@@ -613,8 +624,10 @@ try {
     await p2.getByLabel("Choisissez un mot de passe").fill("awa");
     exiger(await p2.getByRole("button", { name: "Créer mon compte" }).isDisabled(), "un mot de passe trop court ne crée rien");
     await p2.getByLabel("Choisissez un mot de passe").fill(MDP_AWA);
+    await shot("bienvenue-creer-un-compte");
     await p2.getByRole("button", { name: "Créer mon compte" }).click();
     await p2.waitForURL(/\/bienvenue\/code$/);
+    await shot("bienvenue-code-e-mail");
     await p2.getByLabel("Code reçu par e-mail").fill(CODE);
     /* la double authentification n'est pas facultative : sans elle, rien ne s'ouvre */
     await p2.waitForURL(/\/bienvenue\/deux-facteurs$/);
@@ -630,12 +643,16 @@ try {
     await p2.waitForURL(/\/bienvenue\/inscription$/);
     await p2.getByLabel("Prénom").fill("awa");
     await p2.getByLabel("Nom de famille").fill("ngono");
+    await shot("inscription-identite");
     await p2.getByRole("button", { name: "Continuer" }).click();
     await p2.getByLabel("Jour").fill("12"); await p2.getByLabel("Mois").fill("03"); await p2.getByLabel("Année").fill("1994");
+    await shot("inscription-naissance");
     await p2.getByRole("button", { name: "Continuer" }).click();
     await p2.getByLabel("Numéro de téléphone").fill("677998877");
+    await shot("inscription-telephone");
     await p2.getByRole("button", { name: "Continuer" }).click();
     await p2.getByLabel("Ville").fill("Douala"); await p2.keyboard.press("Escape");
+    await shot("inscription-residence");
     await p2.getByRole("button", { name: "Continuer" }).click();
     await p2.getByText("Je certifie").click();
     const ouvrir = p2.getByRole("button", { name: "Ouvrir mon compte" });
@@ -809,6 +826,8 @@ try {
   await page.evaluate(() => { sessionStorage.removeItem("xafe-beta"); globalThis.__xafeEpreuve = {}; });
 
   exiger(erreurs.length === 0, `des erreurs ont été vues dans le navigateur :\n  ${erreurs.join("\n  ")}`);
+  console.log(`  (${champsDuTicket} champ(s) du ticket d'ordre laissés hors de la règle des formulaires, par choix)`);
+  exiger(espacements.length === 0, `${espacements.length} espacement(s) de formulaire hors de la règle :\n  ${espacements.join("\n  ")}`);
   console.log(`✓ le parcours tient (${numero} captures dans app/captures/)`);
 } catch (e) {
   await page.screenshot({ path: `${OUT}echec.png`, fullPage: true }).catch(() => {});

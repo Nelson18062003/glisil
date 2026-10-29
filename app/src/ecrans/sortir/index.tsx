@@ -27,6 +27,7 @@ import { parcours, useParcours } from "../../navigation/parcours";
 import { Amount, Attente, Card, Chips, Dot, EtatVide, FeuilleErreur, Keypad, Line, List, Row, Screen, Squelette, Success } from "../../ui";
 import { tones } from "../../theme";
 import { useGesteUnique } from "../../ui/gestes";
+import { Actions } from "../../ui/formulaire";
 
 /* --------------------------------------------------------- 1 · montant */
 
@@ -101,9 +102,11 @@ export function SortirMontant() {
       <Chips items={[xaf(100000), xaf(500000), TOUT]} selected={saisie === String(Math.trunc(dispo)) && dispo > 0 ? TOUT : xaf(montant)} onSelect={choisir} />
       <Box sx={{ flex: 1 }} />
       <Keypad onKey={(k) => setSaisie(apresFrappe(saisie, k))} />
-      <Button variant="contained" disabled={!ok} onClick={() => { poser({ montant }); navigate("/sortir/destination"); }}>{t("Continuer", "Continue")}</Button>
-      {/* l'autre façon de sortir ses XAFe : vers son propre wallet, sur la chaîne */}
-      {ouvert.cryptoRetraits && <Button variant="text" startIcon={<AccountBalanceWalletOutlined />} component={Link} to="/crypto/retirer/XAFe/adresse">{t(`Ou vers mon wallet · ${nomsDesReseaux()}`, `Or to my wallet · ${nomsDesReseaux()}`)}</Button>}
+      <Actions>
+        <Button variant="contained" disabled={!ok} onClick={() => { poser({ montant }); navigate("/sortir/destination"); }}>{t("Continuer", "Continue")}</Button>
+        {/* l'autre façon de sortir ses XAFe : vers son propre wallet, sur la chaîne */}
+        {ouvert.cryptoRetraits && <Button variant="text" startIcon={<AccountBalanceWalletOutlined />} component={Link} to="/crypto/retirer/XAFe/adresse">{t(`Ou vers mon wallet · ${nomsDesReseaux()}`, `Or to my wallet · ${nomsDesReseaux()}`)}</Button>}
+      </Actions>
     </Screen>
   );
 }
@@ -165,7 +168,7 @@ export function SortirDestination() {
           <Typography variant="body2" fontWeight={500}>{numeros.length ? t("Ou un autre numéro", "Or another number") : t("Le numéro Mobile Money qui reçoit", "The receiving Mobile Money number")}</Typography>
           <Stack direction="row" gap={1} alignItems="flex-start">
             <TextField label={t("Numéro MoMo ou Orange Money", "MoMo or Orange Money number")} value={numeroEnTranches(nouveau)} onChange={(e) => setNouveau(numeroSaisi(e.target.value))} type="tel" inputMode="numeric" fullWidth
-              helperText={horsDemo ? t("Pendant la bêta : seulement une carte de démo TOTEM (600 …)", "During the beta: TOTEM demo cards only (600 …)") : nouveau.length >= 9 && !opNouveau ? t("Ce n'est ni un numéro MTN ni un numéro Orange", "This is neither an MTN nor an Orange number") : opNouveau ? opDe(opNouveau).nom : " "}
+              helperText={horsDemo ? t("Pendant la bêta : seulement une carte de démo TOTEM (600 …)", "During the beta: TOTEM demo cards only (600 …)") : nouveau.length >= 9 && !opNouveau ? t("Ce n'est ni un numéro MTN ni un numéro Orange", "This is neither an MTN nor an Orange number") : opNouveau ? opDe(opNouveau).nom : undefined}
               error={horsDemo || (nouveau.length >= 9 && !opNouveau)}
               slotProps={{ input: { startAdornment: <Typography sx={{ mr: 1, color: "text.secondary" }}>+237</Typography>, sx: { fontVariantNumeric: "tabular-nums" } } }} />
             <Button variant="outlined" disabled={!numeroValide(nouveau) || !opNouveau || horsDemo || enCours} onClick={() => void ajouter()} sx={{ minHeight: 56, flexShrink: 0 }}>{t("Ajouter", "Add")}</Button>

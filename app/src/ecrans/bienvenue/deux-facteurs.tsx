@@ -29,6 +29,7 @@ import { useSession } from "../../session/session";
 import { tones } from "../../theme";
 import { FeuilleErreur, Screen, useFenetre } from "../../ui";
 import { ChampCode, Etape } from "../../ui/entree";
+import { Actions, Champs } from "../../ui/formulaire";
 import { useGesteUnique } from "../../ui/gestes";
 
 /** « JBSWY3DPEHPK3PXP » → « JBSW Y3DP EHPK 3PXP » : une clé se recopie par paquets de quatre. */
@@ -88,7 +89,7 @@ export function BlocEnrolement({ enrolement, code, onCode, erreurCode, enCours }
       </Etape>
       <Etape numero={3} titre={t("Entrez les six chiffres affichés", "Enter the six digits shown")}>
         <ChampCode valeur={code} onChange={onCode} label={t("Code de l'application d'authentification", "Authenticator app code")} erreur={erreurCode} disabled={!enrolement || enCours}
-          aide={erreurCode ? t("Ce code ne marche pas : tapez celui affiché maintenant.", "This code doesn't work: enter the one shown right now.") : guichet.mode === "demo" ? t(`Démonstration : l'application affiche ${CODE_TOTP_DEMO}.`, `Demo: the app shows ${CODE_TOTP_DEMO}.`) : " "} />
+          aide={erreurCode ? t("Ce code ne marche pas : tapez celui affiché maintenant.", "This code doesn't work: enter the one shown right now.") : guichet.mode === "demo" ? t(`Démonstration : l'application affiche ${CODE_TOTP_DEMO}.`, `Demo: the app shows ${CODE_TOTP_DEMO}.`) : undefined} />
       </Etape>
     </Stack>
   );
@@ -116,16 +117,17 @@ export function DeuxFacteurs() {
   });
 
   return (
-    <Screen onBack={() => void session.deconnecter()} gap={2.5}>
+    <Screen onBack={() => void session.deconnecter()} gap={3}>
       <Avatar sx={{ width: 64, height: 64, bgcolor: tones.green.bg, color: "primary.main" }}><PhonelinkLockRounded sx={{ fontSize: 32 }} /></Avatar>
-      <Stack gap={0.75}>
+      <Stack data-en-tete gap={1}>
         <Typography variant="h5">{t("Protégez votre compte", "Protect your account")}</Typography>
         <Typography variant="body2">{t("Votre téléphone devient la seconde clé de Glisil : à chaque connexion et avant chaque sortie d'argent, il donne un code que vous seul avez.", "Your phone becomes Glisil's second key: every time you sign in and before every withdrawal, it gives a code only you have.")}</Typography>
       </Stack>
-      <BlocEnrolement enrolement={enrolement} code={code} enCours={enCours} erreurCode={faux}
-        onCode={(c) => { setFaux(false); setCode(c); if (c.length === 6 && enrolement) void confirmer(c); }} />
-      <Box sx={{ flex: 1 }} />
-      <Button variant="contained" disabled={!enrolement || code.length < 6 || enCours} onClick={() => void confirmer(code)}>{enCours ? t("Vérification…", "Verifying…") : t("Activer", "Turn on")}</Button>
+      <Champs sx={{ flex: 1 }}>
+        <BlocEnrolement enrolement={enrolement} code={code} enCours={enCours} erreurCode={faux}
+          onCode={(c) => { setFaux(false); setCode(c); if (c.length === 6 && enrolement) void confirmer(c); }} />
+        <Button variant="contained" sx={{ mt: "auto" }} disabled={!enrolement || code.length < 6 || enCours} onClick={() => void confirmer(code)}>{enCours ? t("Vérification…", "Verifying…") : t("Activer", "Turn on")}</Button>
+      </Champs>
       <FeuilleErreur erreur={erreur} onFermer={effacerErreur} onRecommencer={enrolement ? undefined : () => void enroler()} />
     </Screen>
   );
@@ -144,18 +146,21 @@ export function DeuxFacteursCode() {
     catch (e) { if (codeRefuse(e)) { setFaux(true); setCode(""); return; } throw e; }
   });
   return (
-    <Screen onBack={() => void session.deconnecter()} gap={2.5}>
+    <Screen onBack={() => void session.deconnecter()} gap={3}>
       <Avatar sx={{ width: 64, height: 64, bgcolor: tones.green.bg, color: "primary.main" }}><PhonelinkLockRounded sx={{ fontSize: 32 }} /></Avatar>
-      <Stack gap={0.75}>
+      <Stack data-en-tete gap={1}>
         <Typography variant="h5">{recuperation ? t("Prouvez que c'est vous", "Prove it's you") : t("Le code de votre application", "The code from your app")}</Typography>
         <Typography variant="body2">{t("Ouvrez votre application d'authentification et tapez les six chiffres affichés pour Glisil.", "Open your authenticator app and enter the six digits shown for Glisil.")}</Typography>
       </Stack>
+      <Champs sx={{ flex: 1 }}>
       <ChampCode valeur={code} onChange={(c) => { setFaux(false); setCode(c); if (c.length === 6) void verifier(c); }} label={t("Code de l'application d'authentification", "Authenticator app code")} autoFocus erreur={faux} disabled={enCours}
-        aide={faux ? t("Ce code ne marche pas : tapez celui affiché maintenant. L'heure du téléphone doit être juste.", "This code doesn't work: enter the one shown right now. Your phone's clock must be correct.") : guichet.mode === "demo" ? t(`Démonstration : l'application affiche ${CODE_TOTP_DEMO}.`, `Demo: the app shows ${CODE_TOTP_DEMO}.`) : " "} />
+        aide={faux ? t("Ce code ne marche pas : tapez celui affiché maintenant. L'heure du téléphone doit être juste.", "This code doesn't work: enter the one shown right now. Your phone's clock must be correct.") : guichet.mode === "demo" ? t(`Démonstration : l'application affiche ${CODE_TOTP_DEMO}.`, `Demo: the app shows ${CODE_TOTP_DEMO}.`) : undefined} />
       <Button component={Link} to="/bienvenue/secours" variant="text" sx={{ alignSelf: "flex-start" }}>{t("J'ai perdu mon téléphone", "I lost my phone")}</Button>
-      <Box sx={{ flex: 1 }} />
-      <Button variant="contained" disabled={code.length < 6 || enCours} onClick={() => void verifier(code)}>{enCours ? t("Vérification…", "Verifying…") : t("Continuer", "Continue")}</Button>
-      <Button variant="text" color="inherit" sx={{ color: "text.secondary" }} onClick={() => void session.deconnecter()}>{t("Changer de compte", "Switch account")}</Button>
+      <Actions sx={{ mt: "auto" }}>
+        <Button variant="contained" disabled={code.length < 6 || enCours} onClick={() => void verifier(code)}>{enCours ? t("Vérification…", "Verifying…") : t("Continuer", "Continue")}</Button>
+        <Button variant="text" color="inherit" sx={{ color: "text.secondary" }} onClick={() => void session.deconnecter()}>{t("Changer de compte", "Switch account")}</Button>
+      </Actions>
+      </Champs>
       <FeuilleErreur erreur={erreur} onFermer={effacerErreur} />
     </Screen>
   );
@@ -183,8 +188,8 @@ export function Secours() {
     }
   });
   return (
-    <Screen back="/bienvenue/deux-facteurs/code" gap={2.5}>
-      <Stack gap={0.75}>
+    <Screen back="/bienvenue/deux-facteurs/code" gap={3}>
+      <Stack data-en-tete gap={1}>
         <Typography variant="h5">{t("Un code de secours", "A recovery code")}</Typography>
         <Typography variant="body2">{t("Tapez l'un des dix codes notés quand vous avez activé l'application. Il ne sert qu'une fois : l'application perdue sera retirée, et vous en activerez une sur votre nouveau téléphone.", "Enter one of the ten codes you wrote down when you turned on the app. It works only once: the lost app will be removed, and you'll set one up on your new phone.")}</Typography>
       </Stack>

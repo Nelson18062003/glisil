@@ -23,6 +23,7 @@ import { dateDepuis, nomPropre, nomValide, PAYS, paysDe, telephoneE164, telephon
 import { t } from "../../noyau/langue";
 import { useSession } from "../../session/session";
 import { FeuilleErreur, Screen } from "../../ui";
+import { EnTete, ESPACE } from "../../ui/formulaire";
 import { useGesteUnique } from "../../ui/gestes";
 
 type Brouillon = {
@@ -48,13 +49,9 @@ const dateLisible = (jour: string, mois: string, annee: string) =>
 
 /* ------------------------------------------------------------ morceaux */
 
+/** L'en-tête d'une étape. Il vit dans le groupe des champs (20 px) : il y prend 24, comme tout en-tête. */
 function Question({ titre, texte }: { titre: string; texte: string }) {
-  return (
-    <Stack gap={0.75}>
-      <Typography variant="h5" sx={{ textWrap: "balance" }}>{titre}</Typography>
-      <Typography variant="body2">{texte}</Typography>
-    </Stack>
-  );
+  return <Box sx={{ mb: `${ESPACE.groupes - ESPACE.entreChamps}px` }}><EnTete titre={titre} texte={texte} /></Box>;
 }
 
 const Bon = () => <CheckCircleRounded sx={{ color: "primary.main" }} aria-label={t("valide", "valid")} />;
@@ -159,11 +156,11 @@ export function Inscription() {
         <Question titre={t("Comment vous appelez-vous ?", "What's your name?")} texte={t("Comme sur votre pièce d'identité : c'est le nom qui figurera sur vos reçus.", "As shown on your ID: this is the name that will appear on your receipts.")} />
         <TextField label={t("Prénom", "First name")} value={b.prenom} onChange={(e) => maj({ prenom: nomPropre(e.target.value) })} onBlur={() => voir("prenom")}
           autoComplete="given-name" autoFocus fullWidth error={vu.prenom && !prenomOk}
-          helperText={vu.prenom && !prenomOk ? t("Des lettres seulement, au moins deux.", "Letters only, at least two.") : " "}
+          helperText={vu.prenom && !prenomOk ? t("Des lettres seulement, au moins deux.", "Letters only, at least two.") : undefined}
           slotProps={{ input: { endAdornment: prenomOk ? <InputAdornment position="end"><Bon /></InputAdornment> : null } }} />
         <TextField label={t("Nom de famille", "Last name")} value={b.nom} onChange={(e) => maj({ nom: nomPropre(e.target.value) })} onBlur={() => voir("nom")}
           autoComplete="family-name" fullWidth error={vu.nom && !nomOk}
-          helperText={vu.nom && !nomOk ? t("Des lettres seulement, au moins deux.", "Letters only, at least two.") : " "}
+          helperText={vu.nom && !nomOk ? t("Des lettres seulement, au moins deux.", "Letters only, at least two.") : undefined}
           slotProps={{ input: { endAdornment: nomOk ? <InputAdornment position="end"><Bon /></InputAdornment> : null } }} />
       </>
     );
@@ -209,7 +206,7 @@ export function Inscription() {
           onBlur={() => voir("tel")} type="tel" inputMode="tel" autoComplete="tel-national" autoFocus fullWidth
           placeholder={b.paysTel === "CM" ? "6 77 12 34 56" : undefined}
           error={vu.tel && b.tel.length > 0 && !e164}
-          helperText={vu.tel && b.tel.length > 0 && !e164 ? (b.paysTel === "CM" ? t("Au Cameroun : 9 chiffres, commençant par 6 (mobile) ou 2 (fixe).", "In Cameroon: 9 digits, starting with 6 (mobile) or 2 (landline).") : t("Ce numéro n'est pas valide pour ce pays.", "This number isn't valid for this country.")) : e164 ? t(`Sera enregistré : ${telephoneLisible(e164)}`, `Will be saved as: ${telephoneLisible(e164)}`) : " "}
+          helperText={vu.tel && b.tel.length > 0 && !e164 ? (b.paysTel === "CM" ? t("Au Cameroun : 9 chiffres, commençant par 6 (mobile) ou 2 (fixe).", "In Cameroon: 9 digits, starting with 6 (mobile) or 2 (landline).") : t("Ce numéro n'est pas valide pour ce pays.", "This number isn't valid for this country.")) : e164 ? t(`Sera enregistré : ${telephoneLisible(e164)}`, `Will be saved as: ${telephoneLisible(e164)}`) : undefined}
           slotProps={{
             input: {
               startAdornment: <InputAdornment position="start"><Typography sx={{ color: "text.secondary", fontVariantNumeric: "tabular-nums" }}>{p?.indicatif}</Typography></InputAdornment>,
@@ -231,7 +228,7 @@ export function Inscription() {
           onInputChange={(_, v) => maj({ ville: nomPropre(v) })}
           renderInput={(params) => (
             <TextField {...params} label={t("Ville", "City")} autoComplete="address-level2" onBlur={() => voir("ville")}
-              error={vu.ville && !villeOk} helperText={vu.ville && !villeOk ? t("Le nom de votre ville, en lettres.", "Your city's name, in letters.") : villes.length ? t("Tapez les premières lettres, ou une ville qui n'est pas dans la liste.", "Type the first few letters, or a city that isn't on the list.") : " "} />
+              error={vu.ville && !villeOk} helperText={vu.ville && !villeOk ? t("Le nom de votre ville, en lettres.", "Your city's name, in letters.") : villes.length ? t("Tapez les premières lettres, ou une ville qui n'est pas dans la liste.", "Type the first few letters, or a city that isn't on the list.") : undefined} />
           )}
         />
       </>

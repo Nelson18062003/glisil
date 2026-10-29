@@ -27,6 +27,7 @@ import { useSession, type Annonce } from "../../session/session";
 import { tones } from "../../theme";
 import { ChoixDeLangue, FeuilleErreur, Marque, NomGlisil, Screen } from "../../ui";
 import { ChampCode, ChampMotDePasse, RegleDuMotDePasse } from "../../ui/entree";
+import { ESPACE, Champs, EnTete } from "../../ui/formulaire";
 import { useGesteUnique } from "../../ui/gestes";
 
 /** la longueur du code envoyé par e-mail (réglage « Email OTP Length » de Supabase) */
@@ -176,7 +177,7 @@ export function Bienvenue() {
       </Box>
 
       <Box component="form" onSubmit={(e) => { e.preventDefault(); if (valide) void continuer(); }}
-        sx={{ flex: 1, px: 2, pt: { xs: 2.5, md: 0 }, pb: "calc(env(safe-area-inset-bottom) + 24px)", display: "flex", flexDirection: "column", gap: 2,
+        sx={{ flex: 1, px: 2, pt: { xs: 2.5, md: 0 }, pb: "calc(env(safe-area-inset-bottom) + 24px)", display: "flex", flexDirection: "column", gap: `${ESPACE.groupes}px`,
               justifyContent: { md: "center" }, width: "100%", maxWidth: { md: 440 }, mx: { md: "auto" } }}>
         <Tabs value={onglet} onChange={(_, v) => changerOnglet(v)} variant="fullWidth" aria-label={t("Créer un compte ou se connecter", "Create an account or sign in")}>
           <Tab value="creer" label={t("Créer un compte", "Create account")} />
@@ -197,6 +198,7 @@ export function Bienvenue() {
           <Annonce tone="blue" texte={t("Pour entrer avec Google, ouvrez Glisil dans votre navigateur (Chrome, Safari) : WhatsApp et Facebook ne le permettent pas.", "To sign in with Google, open Glisil in your browser (Chrome, Safari): WhatsApp and Facebook don't allow it.")} />
         )}
 
+        <Champs>
         <TextField
           label={t("Adresse e-mail", "Email address")}
           value={email}
@@ -209,16 +211,17 @@ export function Bienvenue() {
           spellCheck={false}
           fullWidth
           error={vu && email.length > 0 && !emailValide(email)}
-          helperText={vu && email.length > 0 && !emailValide(email) ? t("Écrivez l'adresse en entier, par exemple awa@exemple.com.", "Enter the full address, for example awa@example.com.") : " "}
+          helperText={vu && email.length > 0 && !emailValide(email) ? t("Écrivez l'adresse en entier, par exemple awa@exemple.com.", "Enter the full address, for example awa@example.com.") : undefined}
           slotProps={{ input: { sx: { fontSize: 18 } } }}
         />
         <ChampMotDePasse valeur={motDePasse} onChange={setMotDePasse} nouveau={onglet === "creer"}
           label={onglet === "creer" ? t("Choisissez un mot de passe", "Choose a password") : t("Mot de passe", "Password")}
-          aide={onglet === "creer" ? t("Il sera demandé à chaque connexion et avant chaque sortie d'argent.", "You'll need it every time you sign in and before every withdrawal.") : " "} />
+          aide={onglet === "creer" ? t("Il sera demandé à chaque connexion et avant chaque sortie d'argent.", "You'll need it every time you sign in and before every withdrawal.") : undefined} />
         {onglet === "creer" && <RegleDuMotDePasse valeur={motDePasse} />}
         <Button type="submit" variant="contained" disabled={!valide || enCours}>
           {enCours ? (onglet === "creer" ? t("Création…", "Creating…") : t("Connexion…", "Signing in…")) : onglet === "creer" ? t("Créer mon compte", "Create my account") : t("Se connecter", "Sign in")}
         </Button>
+        </Champs>
         <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
           <Button component={Link} to="/bienvenue/oubli" variant="text" size="small" onClick={() => { if (emailValide(email)) garderEmail(emailNormalise(email)); }}>
             {t("Mot de passe oublié ?", "Forgot password?")}
@@ -294,14 +297,11 @@ export function BienvenueCode() {
   const changerDAdresse = () => { session.retenirInscription(null, null); void session.avancer(); navigate("/bienvenue", { replace: true }); };
 
   return (
-    <Screen onBack={changerDAdresse} gap={2.5}>
+    <Screen onBack={changerDAdresse} gap={3}>
       <Avatar sx={{ width: 64, height: 64, bgcolor: tones.green.bg, color: "primary.main" }}><MarkEmailReadOutlined sx={{ fontSize: 32 }} /></Avatar>
-      <Stack gap={0.75}>
-        <Typography variant="h5">{t("Confirmez votre adresse", "Confirm your address")}</Typography>
-        <Typography variant="body1">
-          {t("Nous avons envoyé un code à six chiffres à ", "We sent a six-digit code to ")}<Box component="b" sx={{ overflowWrap: "anywhere" }}>{email}</Box>.
-        </Typography>
-      </Stack>
+      <EnTete titre={t("Confirmez votre adresse", "Confirm your address")}
+        texte={<>{t("Nous avons envoyé un code à six chiffres à ", "We sent a six-digit code to ")}<Box component="b" sx={{ overflowWrap: "anywhere" }}>{email}</Box>.</>} />
+      <Champs sx={{ flex: 1 }}>
       <ChampCode ref={champ} valeur={code} onChange={saisir} label={t("Code reçu par e-mail", "Code received by email")} autoFocus erreur={faux} disabled={enCours}
         aide={faux ? t("Ce code n'est pas le bon, ou il a expiré. Réessayez ou demandez-en un nouveau.", "This code is wrong or has expired. Try again or request a new one.") : guichet.mode === "demo" ? t(`Démonstration : le code est ${CODE_DEMO}.`, `Demo: the code is ${CODE_DEMO}.`) : t("Le code arrive en moins d'une minute. Regardez aussi vos courriers indésirables.", "The code arrives in under a minute. Check your spam folder too.")} />
       <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
@@ -311,10 +311,11 @@ export function BienvenueCode() {
         <Button variant="text" size="small" color="inherit" sx={{ color: "text.secondary" }} onClick={changerDAdresse}>{t("Changer d'adresse", "Change address")}</Button>
       </Stack>
       {renvoye && reste > 0 && <Typography variant="body2" role="status" sx={{ color: "primary.main" }}>{t("Un nouveau code est parti.", "A new code is on its way.")}</Typography>}
-      <Box sx={{ flex: 1 }} />
-      <Button variant="contained" disabled={code.length < LONGUEUR_CODE || enCours} onClick={() => void valider(code)}>
+      {/* « mt: auto » pousse le bouton en bas d'un grand écran sans ajouter d'écart sur un petit (un bloc vide, lui, en ajoutait un) */}
+      <Button variant="contained" sx={{ mt: "auto" }} disabled={code.length < LONGUEUR_CODE || enCours} onClick={() => void valider(code)}>
         {enCours ? t("Vérification…", "Verifying…") : t("Valider", "Confirm")}
       </Button>
+      </Champs>
       <FeuilleErreur erreur={erreur} onFermer={effacerErreur} />
     </Screen>
   );

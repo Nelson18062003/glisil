@@ -408,7 +408,8 @@ export function Success({
         <Typography variant="body2">{caption}</Typography>
         {children && <Box sx={{ width: "100%", mt: 2 }}>{children}</Box>}
       </Box>
-      <Stack gap={1}>
+      {/* le contenu et les actions sont deux groupes : 24 px au moins entre eux, 8 entre les actions */}
+      <Stack gap={1} sx={{ mt: 1 }}>
         <Button variant="contained" component={Link} to={primary.to} replace>{primary.label}</Button>
         {secondary && <Button variant="text" component={Link} to={secondary.to} replace>{secondary.label}</Button>}
       </Stack>

@@ -11,7 +11,7 @@
  */
 import LockRounded from "@mui/icons-material/LockRounded";
 import MarkEmailReadOutlined from "@mui/icons-material/MarkEmailReadOutlined";
-import { Alert, Box, Button, CircularProgress, Stack, Typography } from "@mui/material";
+import { Alert, Button, CircularProgress, Stack, Typography } from "@mui/material";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { useGuichet } from "../guichet";
@@ -19,6 +19,7 @@ import type { OperationAVerifier, PreuveDeVerification, Verification } from "../
 import { t } from "../noyau/langue";
 import { champDeLErreur, courrielEnPanne, preuvesCompletes, type ChampDeLErreur } from "../noyau/verification";
 import { ChampCode, ChampMotDePasse } from "./entree";
+import { Champs, Groupes } from "./formulaire";
 import { useGesteUnique } from "./gestes";
 import { Card, FeuilleErreur, useCompteARebours } from "./index";
 
@@ -142,7 +143,7 @@ export function EtapeDeVerification({
 
   const panne = courrielEnPanne(courriel);
   return (
-    <Stack gap={2}>
+    <Groupes>
       {resume && <Card>{resume}</Card>}
       <Stack direction="row" gap={1} alignItems="center">
         <MarkEmailReadOutlined color={panne ? "error" : "primary"} />
@@ -158,6 +159,7 @@ export function EtapeDeVerification({
         </Button>
       </Stack>
 
+      <Champs>
       <ChampCode compact label={t("Code de l'application d'authentification", "Authenticator app code")} valeur={totp} onChange={(v) => { setTotp(v); if (champ?.ou === "totp") setChamp(null); }}
         erreur={champ?.ou === "totp"} aide={champ?.ou === "totp" ? champ.texte : t("Les 6 chiffres affichés maintenant dans l'application.", "The 6 digits shown now in the app.")} />
       <ChampMotDePasse valeur={mdp} onChange={(v) => { setMdp(v); if (champ?.ou === "mot_de_passe") setChamp(null); }}
@@ -168,14 +170,13 @@ export function EtapeDeVerification({
 
       {champ && (champ.ou === "verrou" || champ.ou === "nouveau_code") && <Alert severity={champ.ou === "verrou" ? "error" : "info"}>{champ.texte}</Alert>}
       {champ?.ou === "mot_de_passe_a_choisir" && <Button component={RouterLink} to="/compte/securite" variant="outlined">{t("Choisir mon mot de passe", "Choose my password")}</Button>}
-
-      <Box sx={{ flex: 1 }} />
       <Button variant="contained" size="large" disabled={!pret} onClick={() => void envoyer()}
         startIcon={enCours || totpEnCours ? <CircularProgress size={18} color="inherit" /> : <LockRounded />}>
         {libelle}
       </Button>
+      </Champs>
       <FeuilleErreur erreur={erreur} onFermer={effacerErreur} />
-    </Stack>
+    </Groupes>
   );
 }
 

@@ -69,7 +69,7 @@ export function CodesDeSecoursAEcrire() {
   return (
     <Screen onBack={() => void session.deconnecter()} gap={2.5}>
       <Avatar sx={{ width: 64, height: 64, bgcolor: tones.amber.bg, color: tones.amber.fg }}><KeyRounded sx={{ fontSize: 32 }} /></Avatar>
-      <Stack gap={0.75}>
+      <Stack data-en-tete gap={1}>
         <Typography variant="h5">{t("Vos codes de secours", "Your recovery codes")}</Typography>
         <Typography variant="body2">{t("Si vous perdez votre téléphone, l'un de ces codes vous rend l'accès. Notez-les sur papier ou gardez le fichier ailleurs que sur ce téléphone : ils ne s'afficheront plus.", "If you lose your phone, one of these codes gets you back in. Write them on paper or keep the file somewhere other than this phone: they won't be shown again.")}</Typography>
       </Stack>

@@ -80,5 +80,40 @@ export const theme = createTheme({
       },
     },
     MuiListItemButton: { styleOverrides: { root: { borderRadius: 16 } } },
+    /*
+     * LES CHAMPS, d'après la leçon « Stop guessing your UI form spacing » (Zander Whitehurst,
+     * 29/10/2026) : une grille de 4 px, en groupes de contenu. L'étiquette est AU-DESSUS du champ,
+     * à 8 px — jamais dedans, où elle disparaît dès qu'on tape ; l'aide colle à SON champ, à 4 px ;
+     * tous les champs d'une ligne font 52 px, la hauteur des boutons. Les écarts entre les groupes
+     * (20 entre deux champs, 24 sous un en-tête, 8 entre deux boutons) sont dans ui/formulaire.tsx.
+     * scripts/mesure-des-formulaires.mjs le mesure sur chaque écran du parcours.
+     */
+    MuiInputLabel: {
+      defaultProps: { shrink: true },
+      styleOverrides: {
+        root: {
+          position: "static", transform: "none", maxWidth: "none", whiteSpace: "normal", overflow: "visible",
+          fontSize: 14, fontWeight: 500, lineHeight: "20px", color: "#191C1A", marginBottom: 8,
+          "&.Mui-focused": { color: "#0B6B3A" }, "&.Mui-error": { color: "#B3261E" }, "&.Mui-disabled": { color: "#5B615E" },
+        },
+        shrink: { transform: "none" },
+        outlined: { transform: "none", "&.MuiInputLabel-shrink": { transform: "none" } },
+      },
+    },
+    MuiOutlinedInput: {
+      defaultProps: { notched: false },
+      /* 52 px quelle que soit la taille du texte (un code en 32 px tient dans la même hauteur) ; une zone de texte grandit, elle */
+      styleOverrides: { root: { "& input.MuiOutlinedInput-input": { height: 52, boxSizing: "border-box", paddingTop: 0, paddingBottom: 0 } } },
+    },
+    MuiFormHelperText: { styleOverrides: { root: { margin: "4px 0 0", lineHeight: "18px" } } },
+    /* la liste à choix (pays, ville) garde la hauteur des autres champs : sans cela, son propre rembourrage en fait 70 */
+    MuiAutocomplete: {
+      styleOverrides: {
+        root: {
+          "& .MuiOutlinedInput-root.MuiAutocomplete-inputRoot": { paddingTop: 0, paddingBottom: 0 },
+          "& .MuiOutlinedInput-root .MuiAutocomplete-input": { paddingTop: 0, paddingBottom: 0 },
+        },
+      },
+    },
   },
 });
