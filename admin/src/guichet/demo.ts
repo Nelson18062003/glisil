@@ -94,8 +94,8 @@ function graine(): Etat {
       id: `c${i + 1}`, telephone: tel, nom, entreprise: nom.includes("SARL") || nom.startsWith("ETS") || nom.startsWith("Desk") ? nom : null,
       palier: (i === 4 ? 0 : i === 7 ? 1 : i % 4 === 0 ? 2 : i % 3 === 0 ? 1 : 0) as 0 | 1 | 2, verification_en_cours: i === 4 ? "identite" : i === 7 ? "entreprise" : null,
       cree_le: iso(t - (30 - i) * 24 * H), desactive_le: i === 11 ? iso(t - 5 * 24 * H) : null,
-      xafe: Math.round((i + 1) * 437_000 + (i % 5) * 12_345), usdt: Math.round((i + 1) * 310.5 * 100) / 100,
-      soldes: { XAFe: { disponible: Math.round((i + 1) * 437_000), bloque: (i % 5) * 12_345 }, USDT: { disponible: Math.round((i + 1) * 310.5 * 100) / 100, bloque: 0 } },
+      xafe: Math.round((i + 1) * 437_000 + (i % 5) * 12_345), usdt: Math.round((i + 1) * 310.5 * 100) / 100, usdc: i % 3 === 0 ? (i + 1) * 120 : 0,
+      soldes: { XAFe: { disponible: Math.round((i + 1) * 437_000), bloque: (i % 5) * 12_345 }, USDT: { disponible: Math.round((i + 1) * 310.5 * 100) / 100, bloque: 0 }, USDC: { disponible: i % 3 === 0 ? (i + 1) * 120 : 0, bloque: 0 } },
       numeros: [{ id: `n${i}`, operateur: tel.startsWith("69") ? "om" : "mtn", numero: tel, verifie_le: iso(t - (30 - i) * 24 * H), actif_des: iso(t - (29 - i) * 24 * H), retire_le: null }],
       a_code: true,
       email: `${sansAccents(nom).toLowerCase().replace(/[^a-z]+/g, ".").replace(/^\.|\.$/g, "")}@exemple.cm`,
@@ -360,13 +360,13 @@ export class GuichetDemo implements GuichetAdmin {
     const debutJour = new Date().setHours(0, 0, 0, 0);
     return copie({
       circulation: somme("XAFe", "disponible") + somme("XAFe", "bloque"),
-      soldes: { XAFe: { disponible: somme("XAFe", "disponible"), bloque: somme("XAFe", "bloque") }, USDT: { disponible: somme("USDT", "disponible"), bloque: somme("USDT", "bloque") } },
-      maison: { XAFe: 2_418_500, USDT: 1_204.75 },
+      soldes: { XAFe: { disponible: somme("XAFe", "disponible"), bloque: somme("XAFe", "bloque") }, USDT: { disponible: somme("USDT", "disponible"), bloque: somme("USDT", "bloque") }, USDC: { disponible: somme("USDC", "disponible"), bloque: somme("USDC", "bloque") } },
+      maison: { XAFe: 2_418_500, USDT: 1_204.75, USDC: 212.4 },
       comptes: e.clients.length,
       jour: {
         entrees: e.entrees.flatMap((x) => x.declarations).filter((d) => d.etat === "credite" && d.credite_le && new Date(d.credite_le).getTime() >= debutJour).reduce((s, d) => s + (d.montant ?? 0), 0),
         sorties: e.sorties.filter((s) => new Date(s.cree_le).getTime() >= debutJour).reduce((s, x) => s + x.montant_envoye, 0),
-        volume_usdt: 41_298, frais_xafe: 93_420,
+        volume_usdt: 41_298, frais_xafe: 93_420, volumes: { "USDT/XAFe": 41_298, "USDC/XAFe": 6_120 },
       },
       retenues: { nombre: e.retenues.filter((r) => r.etat === "retenue").length, montant: e.retenues.filter((r) => r.etat === "retenue").reduce((s, r) => s + (r.montant ?? 0), 0) },
       sorties_en_cours: e.sorties.filter((s) => ["en_attente", "en_cours"].includes(s.etat)).length,
@@ -894,16 +894,20 @@ export class GuichetDemo implements GuichetAdmin {
     a.actif = actif; this.noter(actif ? "activer_administrateur" : "desactiver_administrateur", id); this.emettre();
   }
 
-  async marche(): Promise<Marche> {
+  async marche(paire = "USDT/XAFe"): Promise<Marche> {
     this.exiger("voir");
-    const mid = this.e.mid;
+    // le carnet USDC de la démonstration : un peu sous celui de l'USDT, plus mince
+    const usdc = paire === "USDC/XAFe";
+    const mid = usdc ? Math.round((this.e.mid - 1.3) * 20) / 20 : this.e.mid;
+    const regles = { ...(this.e.parametres.marche as Record<string, unknown>), ...((this.e.parametres.marche as { paires?: Record<string, Record<string, unknown>> }).paires?.[paire] ?? {}) };
     const niveau = (i: number) => Math.round(200 + Math.abs(Math.sin(i * 7.3)) * 9000);
     const t = maintenant();
     return copie({
       cotation: this.cotation(),
       carnet: { achats: Array.from({ length: 12 }, (_, i) => ({ prix: Math.round((mid - (i + 1) * 0.05) * 100) / 100, quantite: niveau(i), ordres: 1 + (i % 4) })), ventes: Array.from({ length: 12 }, (_, i) => ({ prix: Math.round((mid + (i + 1) * 0.05) * 100) / 100, quantite: niveau(i + 20), ordres: 1 + (i % 3) })), dernier: mid },
       transactions: Array.from({ length: 20 }, (_, i) => ({ prix: Math.round((mid + (Math.sin(i) * 0.2)) * 20) / 20, quantite: niveau(i + 40) / 10, preneur: i % 2 ? "achat" : "vente", cree_le: iso(t - i * 37_000) })),
-      ordres_ouverts: 37,
+      ordres_ouverts: usdc ? 9 : 37,
+      paire: paire as Marche["paire"], paires: ["USDT/XAFe", "USDC/XAFe"], regles: { ...regles, paire, base: usdc ? "USDC" : "USDT" },
       parametres: this.e.parametres.marche as Marche["parametres"],
       frais: this.e.parametres.frais as Marche["frais"],
       chandelles: Array.from({ length: 48 }, (_, i) => { const o = mid - 2 + Math.sin(i / 3) * 1.5; const c = o + (Math.cos(i / 2) * 0.4); return { t: iso(t - (48 - i) * H), o: Math.round(o * 100) / 100, h: Math.round((Math.max(o, c) + 0.2) * 100) / 100, l: Math.round((Math.min(o, c) - 0.2) * 100) / 100, c: Math.round(c * 100) / 100, v: niveau(i + 60) }; }),
@@ -924,17 +928,21 @@ export class GuichetDemo implements GuichetAdmin {
     const t = maintenant();
     const du = Math.round(this.e.clients.reduce((s, c) => s + (c.soldes.USDT?.disponible ?? 0) + (c.soldes.USDT?.bloque ?? 0), 0) * 100) / 100;
     // la démo montre un réseau en ordre (BEP20) et un réseau qui réclame quelqu'un (TRC20) : la page doit savoir dire les deux
+    const duUsdc = Math.round(this.e.clients.reduce((s, c) => s + (c.soldes.USDC?.disponible ?? 0) + (c.soldes.USDC?.bloque ?? 0), 0) * 100) / 100;
     return {
-      du_usdt: du, maison_usdt: 1_284.5,
+      du_usdt: du, maison_usdt: 1_284.5, du_usdc: duUsdc, maison_usdc: 212.4,
       reseaux: [
         {
-          reseau: "bep20", maj_le: iso(t - 9_000), muet: false, adresses_attribuees: 214, adresses_libres: 20, retraits_en_cours: 1, retraits_remplaces: 0, curseur: 48_210_377,
+          reseau: "bep20", maj_le: iso(t - 9_000), muet: false, adresses_attribuees: 214, adresses_libres: 60, retraits_en_cours: 1, retraits_remplaces: 0, curseur: 48_210_377,
+          actifs: ["XAFe", "USDT", "USDC"], libres: { XAFe: 20, USDT: 20, USDC: 20 },
           etat: { chaud: "0x8F3a5b7C2d1E4f6A9b0C3d5E7f9A1b2C4d6E8f0A", usdt_chaud: 8_412.37, natif_chaud: 0.4821, froid: "0x2b9C4e6F8a0B1c3D5e7F9a1B3c5D7e9F0a2B4c6D", usdt_froid: Math.max(0, Math.round((du - 8_412.37 + 500) * 100) / 100), plafond_chaud: 20_000, garder_chaud: 10_000, a_inscrire: [], alertes: [],
             reserve_adresse: "0x750E774368240063BD5CF52b30b91183Efa4dAf3", reserve_xafe: 412_850_000, xafe_chaud: 0,
-            plafond_jour: 1_000_000_000, reste_du_jour: 873_500_000, en_pause: false, stock_xafe_ok: true },
+            plafond_jour: 1_000_000_000, reste_du_jour: 873_500_000, en_pause: false, stock_xafe_ok: true,
+            dollars: { USDT: { chaud: 8_412.37, froid: Math.max(0, Math.round((du - 8_412.37 + 500) * 100) / 100) }, USDC: { chaud: Math.round((duUsdc + 300) * 100) / 100, froid: 0 } } },
         },
         {
           reseau: "trc20", maj_le: iso(t - 12_000), muet: false, adresses_attribuees: 37, adresses_libres: 18, retraits_en_cours: 2, retraits_remplaces: 1, curseur: 71_402_118,
+          actifs: ["XAFe", "USDT"], libres: { XAFe: 9, USDT: 9 },
           etat: {
             chaud: "TMcQ8t4Fxyn28RZrRJZSizMTRi1x6ddnq5", usdt_chaud: 640.0, natif_chaud: 41.2, froid: null, usdt_froid: null, plafond_chaud: null, garder_chaud: null,
             a_inscrire: ["TAffsRJMFoskcaySKwsLFR3tvVvasrn2s7", "TVt5DUppUWwWQWjpPjvrhxXvGJZQTaX3Au"],

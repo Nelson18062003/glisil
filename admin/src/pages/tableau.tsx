@@ -14,18 +14,21 @@ export function Tableau() {
   if (!t) return <Coquille titre="Tableau"><Typography variant="body2">Chargement…</Typography></Coquille>;
   const xafe = t.soldes.XAFe ?? { disponible: 0, bloque: 0 };
   const usdt = t.soldes.USDT ?? { disponible: 0, bloque: 0 };
+  const usdc = t.soldes.USDC ?? { disponible: 0, bloque: 0 };
   return (
     <Coquille titre="Tableau">
       <Stack direction="row" gap={2} flexWrap="wrap">
         <Tuile label="XAFe en circulation (ce qu'on doit)" valeur={xaf(t.circulation)} unite="XAFe" tone="green" aide={`${xaf(xafe.disponible)} disponibles · ${xaf(xafe.bloque)} bloqués`} />
         <Tuile label="USDT des clients" valeur={enTranches(usdt.disponible + usdt.bloque, 2)} unite="USDT" tone="blue" aide={`${enTranches(usdt.bloque, 2)} bloqués au carnet`} />
-        <Tuile label="Maison · frais encaissés" valeur={xaf(t.maison.XAFe ?? 0)} unite="XAFe" tone="amber" aide={`${enTranches(t.maison.USDT ?? 0, 2)} USDT`} />
+        <Tuile label="USDC des clients" valeur={enTranches(usdc.disponible + usdc.bloque, 2)} unite="USDC" tone="blue" aide={`${enTranches(usdc.bloque, 2)} bloqués au carnet`} />
+        <Tuile label="Maison · frais encaissés" valeur={xaf(t.maison.XAFe ?? 0)} unite="XAFe" tone="amber" aide={`${enTranches(t.maison.USDT ?? 0, 2)} USDT · ${enTranches(t.maison.USDC ?? 0, 2)} USDC`} />
         <Tuile label="USDT/XAFe" valeur={t.cotation.dernier != null ? prix(t.cotation.dernier) : "—"} tone="neutral" aide={`${xaf(t.cotation.volume_usdt)} USDT sur 24 h`} />
       </Stack>
       <Stack direction="row" gap={2} flexWrap="wrap">
         <Tuile label="Entré aujourd'hui" valeur={xaf(t.jour.entrees)} unite="XAF" />
         <Tuile label="Sorti aujourd'hui" valeur={xaf(t.jour.sorties)} unite="XAF" />
-        <Tuile label="Volume du jour" valeur={xaf(Math.round(t.jour.volume_usdt))} unite="USDT" />
+        <Tuile label="Volume du jour" valeur={xaf(Math.round(t.jour.volumes?.["USDT/XAFe"] ?? t.jour.volume_usdt))} unite="USDT"
+          aide={t.jour.volumes?.["USDC/XAFe"] != null ? `et ${xaf(Math.round(t.jour.volumes["USDC/XAFe"]))} USDC` : undefined} />
         <Tuile label="Frais du jour" valeur={xaf(t.jour.frais_xafe)} unite="XAFe" />
       </Stack>
 

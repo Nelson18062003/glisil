@@ -257,14 +257,20 @@ try {
   await voir("Appel vidéo, CNI comparée au selfie du dossier");
   await capturer("client-securite");
 
-  etape("Marché : fermer puis rouvrir");
+  etape("Marché : deux carnets (0045) ; fermer puis rouvrir l'un ne touche pas l'autre");
   await page.goto(`${BASE}/marche`);
   await voir("Dernières transactions");
+  await voir("Marché USDT/XAFe");
   await capturer("marche");
-  await page.getByLabel("marché ouvert").click();
-  await voir("Marché fermé");
-  await page.getByLabel("marché ouvert").click();
-  await voir("Marché ouvert");
+  await page.getByLabel("USDT/XAFe ouvert").click();
+  await voir("USDT/XAFe fermé");
+  await page.getByRole("tab", { name: "USDC/XAFe" }).click();
+  await voir("Marché USDC/XAFe");
+  await voir("USDC/XAFe ouvert");
+  await capturer("marche-usdc");
+  await page.getByRole("tab", { name: "USDT/XAFe" }).click();
+  await page.getByLabel("USDT/XAFe ouvert").click();
+  await voir("USDT/XAFe ouvert");
 
   etape("Bêta : les testeurs, l'argent de test, les robots, le vrai dollar, les signalements");
   await page.goto(`${BASE}/beta`);
@@ -384,6 +390,8 @@ try {
   await voir("stock d'adresses de dépôt XAFe inscrites d'avance s'épuise");
   exiger(!(await page.getByText("Le contrat XAFe est en pause").count()), "pas de pause annoncée quand le contrat tourne");
   exiger(await page.locator('[data-tuile="Couverture"]').count() === 1, "la couverture des USDT dus est dite");
+  exiger(await page.locator('[data-tuile="Couverture USDC"]').count() === 1, "la couverture des USDC dus est dite, à part");
+  await voir("ce réseau ne porte pas l'USDC");
   await capturer("wallets");
 
   etape("Réseaux : BSC maison ne se ferme pas, Solana ne s'ouvre pas, Base (contrat posé) s'ouvre après confirmation");

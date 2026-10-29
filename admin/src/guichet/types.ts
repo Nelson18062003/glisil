@@ -15,7 +15,7 @@ export type Tableau = {
   soldes: Record<string, { disponible: number; bloque: number }>;
   maison: Record<string, number>;
   comptes: number;
-  jour: { entrees: number; sorties: number; volume_usdt: number; frais_xafe: number };
+  jour: { entrees: number; sorties: number; volume_usdt: number; frais_xafe: number; volumes?: Record<string, number> };
   retenues: { nombre: number; montant: number };
   sorties_en_cours: number;
   declarations_attendues: number;
@@ -25,7 +25,7 @@ export type Tableau = {
   cotation: Cotation;
 };
 
-export type Cotation = { dernier: number | null; il_y_a_24h: number | null; haut: number | null; bas: number | null; volume_usdt: number; volume_xafe: number; meilleur_achat: number | null; meilleure_vente: number | null };
+export type Cotation = { paire?: string; base?: string; volume_base?: number; dernier: number | null; il_y_a_24h: number | null; haut: number | null; bas: number | null; volume_usdt: number; volume_xafe: number; meilleur_achat: number | null; meilleure_vente: number | null };
 
 export type Declaration = { id: string; transaction_id: string; etat: "attendu" | "credite" | "refuse"; montant: number | null; numero_payeur: string | null; motif: string | null; declare_le: string; credite_le: string | null };
 export type Entree = {
@@ -136,7 +136,7 @@ export type Parite = {
 };
 export type Client = {
   id: string; telephone: string; nom: string | null; entreprise: string | null; palier: number; verification_en_cours: "identite" | "entreprise" | null;
-  cree_le: string; desactive_le: string | null; xafe: number; usdt: number;
+  cree_le: string; desactive_le: string | null; xafe: number; usdt: number; usdc?: number;
   email: string | null; ville: string | null; pays: string | null;
   /** la dernière écriture sur son compte (un mouvement d'argent) */
   derniere_operation: string | null;
@@ -160,12 +160,19 @@ export type ClientDetail = {
   ordres: { id: string; numero: string; cote: string; type: string; prix: number | null; quantite: number; executee: number; total_xafe: number; etat: string; cree_le: string }[];
   ecritures: { actif: string; disponible: number; bloque: number; nature: string; source: string; quand: string }[];
 };
+/** Les deux carnets (0045) : USDT/XAFe et USDC/XAFe. */
+export const PAIRES = ["USDT/XAFe", "USDC/XAFe"] as const;
+export type Paire = (typeof PAIRES)[number];
 export type Marche = {
+  /** le carnet lu, et ceux qui existent (0045) ; absents d'une base d'avant */
+  paire?: Paire; paires?: Paire[];
+  /** les règles de CE carnet : « marche », plus ce que « marche.paires.<paire> » change */
+  regles?: { ouvert?: boolean; base?: string } & Record<string, unknown>;
   cotation: Cotation;
   carnet: { achats: { prix: number; quantite: number; ordres: number }[]; ventes: { prix: number; quantite: number; ordres: number }[]; dernier: number | null };
   transactions: { prix: number; quantite: number; preneur: string; cree_le: string }[];
   ordres_ouverts: number;
-  parametres: { paire: string; pas_prix: number; quantite_min: number; ouvert: boolean };
+  parametres: { paire: string; pas_prix: number; quantite_min: number; ouvert: boolean; paires?: Record<string, Record<string, unknown>> };
   frais: { placeur: number; preneur: number; sortie: number };
   chandelles: { t: string; o: number; h: number; l: number; c: number; v: number }[];
 };
@@ -185,6 +192,8 @@ export type EtatChaine = {
      d'un veilleur d'avant le correctif. */
   reserve_adresse?: string | null; reserve_xafe?: number | null; xafe_chaud?: number | null;
   plafond_jour?: number | null; reste_du_jour?: number | null; en_pause?: boolean | null; stock_xafe_ok?: boolean | null;
+  /** chaque dollar porté par ce veilleur (USDT, USDC), au chaud et au froid — absent d'un veilleur d'avant l'USDC */
+  dollars?: Partial<Record<"USDT" | "USDC", { chaud: number; froid: number | null }>>;
 };
 /** Un réseau du registre (0018) : ouvert aux clients ou non, configuré, lisible par un veilleur. */
 export type ReseauRegistre = {
@@ -195,9 +204,11 @@ export type ReseauRegistre = {
 export type ReseauWallets = {
   reseau: string; nom?: string; actif?: boolean; etat: EtatChaine | null; maj_le: string | null; muet: boolean;
   adresses_attribuees: number; adresses_libres: number; retraits_en_cours: number; retraits_remplaces: number; curseur: number | null;
+  /** ce que le réseau porte (0045), et les adresses prêtes de chacun */
+  actifs?: string[]; libres?: Record<string, number>;
 };
 export type Orphelin = { reseau: string; actif: string; adresse: string; montant: number; preuve: string; raison: string; vu_le: string };
-export type Wallets = { reseaux: ReseauWallets[]; orphelins: Orphelin[]; du_usdt: number; maison_usdt: number };
+export type Wallets = { reseaux: ReseauWallets[]; orphelins: Orphelin[]; du_usdt: number; maison_usdt: number; du_usdc?: number; maison_usdc?: number };
 
 /** Les chiffres en tête de la page Clients (admin_statistiques_clients). */
 export type StatsClients = {

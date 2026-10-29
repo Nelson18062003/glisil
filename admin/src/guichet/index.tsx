@@ -42,7 +42,7 @@ export function useStatistiquesClients() { const g = useGuichet(); return useQue
 export function useClient(id: string | undefined) { const g = useGuichet(); return useQuery({ queryKey: ["client", id], queryFn: () => g.client(id!), enabled: Boolean(id) }); }
 export function useSecurite(id: string | undefined) { const g = useGuichet(); return useQuery({ queryKey: ["securite", id], queryFn: () => g.securite(id!), enabled: Boolean(id) }); }
 export function useEquipe() { const g = useGuichet(); return useQuery({ queryKey: ["equipe"], queryFn: () => g.equipe() }); }
-export function useMarche() { const g = useGuichet(); return useQuery({ queryKey: ["marche"], queryFn: () => g.marche(), refetchInterval: 5_000 }); }
+export function useMarche(paire?: string) { const g = useGuichet(); return useQuery({ queryKey: ["marche", paire ?? ""], queryFn: () => g.marche(paire), refetchInterval: 5_000 }); }
 export function useParametres() { const g = useGuichet(); return useQuery({ queryKey: ["parametres"], queryFn: () => g.parametres() }); }
 export function useJournal() { const g = useGuichet(); return useQuery({ queryKey: ["journal"], queryFn: () => g.journal(), refetchInterval: 15_000 }); }
 export function useReseaux() { const g = useGuichet(); return useQuery({ queryKey: ["reseaux"], queryFn: () => g.reseaux() }); }

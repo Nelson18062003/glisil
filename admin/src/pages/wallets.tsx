@@ -86,18 +86,26 @@ function Reseau({ r }: { r: ReseauWallets }) {
             )}
             <Ligne label="Wallet chaud"><Adresse valeur={e.chaud} /></Ligne>
             <Ligne label="Au chaud">
-              <Typography>{enTranches(e.usdt_chaud, 2)} USDT · {enTranches(e.natif_chaud, decimalesNatif(r.reseau))} {NATIF[r.reseau] ?? ""} pour les frais</Typography>
+              {/* chaque dollar que ce veilleur porte (0045) ; un veilleur d'avant l'USDC ne publie que l'USDT */}
+              <Typography>{e.dollars
+                ? Object.entries(e.dollars).map(([d, v]) => `${enTranches(v?.chaud ?? 0, 2)} ${d}`).join(" · ")
+                : `${enTranches(e.usdt_chaud, 2)} USDT`} · {enTranches(e.natif_chaud, decimalesNatif(r.reseau))} {NATIF[r.reseau] ?? ""} pour les frais</Typography>
             </Ligne>
             <Ligne label="Wallet froid">
               {e.froid ? <Adresse valeur={e.froid} /> : <Typography variant="body2">Aucun : rien ne part au froid automatiquement.</Typography>}
             </Ligne>
             {e.froid && (
               <Ligne label="Au froid">
-                <Typography>{e.usdt_froid != null ? `${enTranches(e.usdt_froid, 2)} USDT` : "—"}</Typography>
-                {e.plafond_chaud != null && <Typography variant="caption">Au-delà de {enTranches(e.plafond_chaud, 0)} USDT au chaud, le surplus part au froid ; il en reste {enTranches(e.garder_chaud ?? 0, 0)} au chaud, plus ce que les retraits en attente demandent.</Typography>}
+                <Typography>{e.dollars
+                  ? Object.entries(e.dollars).map(([d, v]) => `${v?.froid != null ? enTranches(v.froid, 2) : "—"} ${d}`).join(" · ")
+                  : e.usdt_froid != null ? `${enTranches(e.usdt_froid, 2)} USDT` : "—"}</Typography>
+                {e.plafond_chaud != null && <Typography variant="caption">Au-delà de {enTranches(e.plafond_chaud, 0)} {e.dollars ? "USDT (ou USDC)" : "USDT"} au chaud, le surplus part au froid ; il en reste {enTranches(e.garder_chaud ?? 0, 0)} au chaud, plus ce que les retraits en attente demandent. Chaque dollar a ce même plafond, pour lui.</Typography>}
               </Ligne>
             )}
-            <Ligne label="Adresses de dépôt"><Typography>{r.adresses_attribuees} données à des clients · {r.adresses_libres} prêtes</Typography></Ligne>
+            <Ligne label="Adresses de dépôt">
+              <Typography>{r.adresses_attribuees} données à des clients · {r.adresses_libres} prêtes</Typography>
+              {r.libres && <Typography variant="caption">Prêtes, par actif : {Object.entries(r.libres).map(([a, n]) => `${a} ${n}`).join(" · ")}{r.actifs && !r.actifs.includes("USDC") ? " — ce réseau ne porte pas l'USDC" : ""}</Typography>}
+            </Ligne>
             <Ligne label="Retraits">
               <Typography>{r.retraits_en_cours} en cours</Typography>
               {r.retraits_remplaces > 0 && <Typography variant="caption">{r.retraits_remplaces} transaction{r.retraits_remplaces > 1 ? "s" : ""} remplacée{r.retraits_remplaces > 1 ? "s" : ""} (elle ne pouvait plus entrer dans un bloc) — chaque retrait n'est parti qu'une fois, la base garde l'ancienne et la nouvelle.</Typography>}
@@ -176,8 +184,12 @@ function Registre() {
 export function Wallets() {
   const { data: w } = useWallets();
   if (!w) return <Coquille titre="Wallets"><Typography variant="body2">Chargement…</Typography></Coquille>;
-  const tenu = w.reseaux.reduce((s, r) => s + (r.etat?.usdt_chaud ?? 0) + (r.etat?.usdt_froid ?? 0), 0);
+  const tenu = w.reseaux.reduce((s, r) => s + (r.etat?.dollars?.USDT ? (r.etat.dollars.USDT.chaud + (r.etat.dollars.USDT.froid ?? 0)) : (r.etat?.usdt_chaud ?? 0) + (r.etat?.usdt_froid ?? 0)), 0);
   const couverture = w.du_usdt > 0 ? tenu / w.du_usdt : null;
+  /* l'USDC (0045) : ce qu'on doit et ce qu'on tient, à part — un dollar ne couvre pas l'autre */
+  const tenuUsdc = w.reseaux.reduce((s, r) => s + (r.etat?.dollars?.USDC ? r.etat.dollars.USDC.chaud + (r.etat.dollars.USDC.froid ?? 0) : 0), 0);
+  const duUsdc = w.du_usdc ?? 0;
+  const couvertureUsdc = duUsdc > 0 ? tenuUsdc / duUsdc : null;
   return (
     <Coquille titre="Wallets">
       <Stack direction="row" gap={2} flexWrap="wrap">
@@ -186,6 +198,14 @@ export function Wallets() {
         <Tuile label="Couverture" valeur={couverture == null ? "—" : `${enTranches(couverture * 100, 1)} %`} tone={couverture == null || couverture >= 1 ? "green" : "amber"}
           aide={couverture != null && couverture < 1 ? "sous 100 % : un dépôt n'est peut-être pas encore balayé, ou un wallet manque" : "ce que l'on tient, rapporté à ce que l'on doit"} />
       </Stack>
+      {(duUsdc > 0 || tenuUsdc > 0 || w.du_usdc != null) && (
+        <Stack direction="row" gap={2} flexWrap="wrap">
+          <Tuile label="USDC dus aux clients" valeur={enTranches(duUsdc, 2)} unite="USDC" tone="blue" aide={`plus ${enTranches(w.maison_usdc ?? 0, 2)} USDC de frais à la maison`} />
+          <Tuile label="USDC sur nos wallets (chaud + froid)" valeur={enTranches(tenuUsdc, 2)} unite="USDC" tone="green" aide="BNB Chain et Ethereum ; hors adresses de dépôt pas encore balayées" />
+          <Tuile label="Couverture USDC" valeur={couvertureUsdc == null ? "—" : `${enTranches(couvertureUsdc * 100, 1)} %`} tone={couvertureUsdc == null || couvertureUsdc >= 1 ? "green" : "amber"}
+            aide={couvertureUsdc != null && couvertureUsdc < 1 ? "sous 100 % : un dépôt n'est peut-être pas encore balayé, ou un wallet manque" : "un USDC dû est un USDC tenu"} />
+        </Stack>
+      )}
       <Registre />
       {w.reseaux.map((r) => <Reseau key={r.reseau} r={r} />)}
       <Section titre="Dépôts qui n'ont crédité personne">

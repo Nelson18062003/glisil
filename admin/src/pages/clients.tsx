@@ -124,7 +124,7 @@ export function Clients() {
         <Typography variant="body2">{lignes.length} compte{lignes.length > 1 ? "s" : ""}</Typography>
       </Stack>
       <Tableau
-        colonnes={["Client", "Téléphone", "Résidence", "Palier", { label: "XAFe", align: "right" }, { label: "USDT", align: "right" }, "Dernière opération", "Dernière connexion", "Inscrit", "État"]}
+        colonnes={["Client", "Téléphone", "Résidence", "Palier", { label: "XAFe", align: "right" }, { label: "USDT", align: "right" }, { label: "USDC", align: "right" }, "Dernière opération", "Dernière connexion", "Inscrit", "État"]}
         lignes={lignes.map((c) => [
           <Link key="n" to={`/clients/${c.id}`} style={{ color: "inherit" }}>
             <Typography component="span" fontWeight={600} sx={{ display: "block" }}>{c.nom ?? "—"}</Typography>
@@ -135,6 +135,7 @@ export function Clients() {
           c.verification_en_cours ? <Chip key="v" size="small" label={`${c.palier} · ${c.verification_en_cours === "identite" ? "identité à vérifier" : "entreprise à vérifier"}`} sx={{ height: 24, bgcolor: "#DBEAFF", color: "#0B3B78" }} /> : String(c.palier),
           xaf(c.xafe),
           enTranches(c.usdt, 2),
+          enTranches(c.usdc ?? 0, 2),
           c.derniere_operation ? jourRelatif(c.derniere_operation) : "jamais",
           c.derniere_connexion ? `${jourRelatif(c.derniere_connexion)} ${heure(c.derniere_connexion)}` : "—",
           jourRelatif(c.cree_le),
@@ -183,6 +184,7 @@ export function ClientDetail() {
       <Stack direction="row" gap={2} flexWrap="wrap">
         <Tuile label="XAFe" valeur={xaf(data.soldes.XAFe?.disponible ?? 0)} tone="green" aide={`${xaf(data.soldes.XAFe?.bloque ?? 0)} bloqués`} />
         <Tuile label="USDT" valeur={enTranches(data.soldes.USDT?.disponible ?? 0, 2)} tone="blue" aide={`${enTranches(data.soldes.USDT?.bloque ?? 0, 2)} bloqués`} />
+        <Tuile label="USDC" valeur={enTranches(data.soldes.USDC?.disponible ?? 0, 2)} tone="blue" aide={`${enTranches(data.soldes.USDC?.bloque ?? 0, 2)} bloqués`} />
         <Tuile label="Palier" valeur={String(c.palier)} tone="amber" aide={PALIERS[c.palier]} />
         <Tuile label="Compte" valeur={c.ferme_le ? "fermé" : c.desactive_le ? "désactivé" : "actif"} tone={c.desactive_le ? "red" : "neutral"}
           aide={c.ferme_le ? `fermé par le client ${jourRelatif(c.ferme_le).toLowerCase()}` : `depuis ${jourRelatif(c.cree_le)} · ${c.entreprise ?? "particulier"}${securite && !securite.deux_facteurs ? " · sans double authentification" : ""}`} />
@@ -262,7 +264,7 @@ export function ClientDetail() {
             </Section>
           ) : null}
           <Section titre="Grand livre (100 dernières écritures)">
-            <Tableau colonnes={["Quand", "Actif", { label: "Disponible", align: "right" }, { label: "Bloqué", align: "right" }, "Nature", "Source"]} lignes={data.ecritures.map((e) => [`${jourRelatif(e.quand)} ${heure(e.quand)}`, e.actif, enTranches(e.disponible, e.actif === "USDT" ? 2 : 0), enTranches(e.bloque, e.actif === "USDT" ? 2 : 0), e.nature, e.source])} vide="Aucune écriture." />
+            <Tableau colonnes={["Quand", "Actif", { label: "Disponible", align: "right" }, { label: "Bloqué", align: "right" }, "Nature", "Source"]} lignes={data.ecritures.map((e) => [`${jourRelatif(e.quand)} ${heure(e.quand)}`, e.actif, enTranches(e.disponible, e.actif === "XAFe" ? 0 : 2), enTranches(e.bloque, e.actif === "XAFe" ? 0 : 2), e.nature, e.source])} vide="Aucune écriture." />
           </Section>
         </Stack>
       </Stack>

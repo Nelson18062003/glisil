@@ -12,12 +12,12 @@ import { Coquille, Erreur, Section, Tableau } from "../ui";
 
 const BLOCS: { cle: string; titre: string; aide: string }[] = [
   { cle: "frais", titre: "Frais", aide: "placeur et preneur en fraction (0.001 = 0,10 %) ; sortie en fraction du montant" },
-  { cle: "marche", titre: "Marché", aide: "la paire, le pas de prix, quantite_min (au centime d'USDT), montant_min (le minimum d'un ordre, en XAFe), ouvert ou fermé ; quantite_max et marche_quantite_max absents = aucun plafond" },
+  { cle: "marche", titre: "Marché", aide: "les règles des deux carnets : le pas de prix, quantite_min (au centime d'USDT ou d'USDC), montant_min (le minimum d'un ordre, en XAFe), ouvert ou fermé ; quantite_max et marche_quantite_max absents = aucun plafond. « paire » reste USDT/XAFe (la principale). paires : ce qui change pour un carnet, par exemple {\"USDC/XAFe\": {\"ouvert\": false}} — le reste vient d'au-dessus" },
   { cle: "depot", titre: "Dépôts", aide: "validité d'un dossier (minutes) et grâce après expiration" },
   { cle: "sortie", titre: "Sorties", aide: "ouvertes : true/false ; mode : \"manuel\" (l'équipe paie et tape le transaction ID) ou \"totem\" (le boîtier compose) ; seuil_deux_personnes : au-delà de ce montant en XAF, une autre personne confirme (null = jamais) ; reprises_max : essais d'un transfert TOTEM ; forcage : true autorise le super admin à clore une sortie sans le SMS de la puce, 30 min après le paiement (false par défaut)" },
   { cle: "rapide", titre: "Achat rapide", aide: "la marge de la plateforme (0.01 = 1 %), la validité du prix en secondes, ouvert ou fermé" },
   { cle: "paliers", titre: "Paliers", aide: "plafonds par jour en entrée et en sortie ; null = sans plafond" },
-  { cle: "crypto", titre: "Crypto", aide: "frais fixes par actif et confirmations par réseau" },
+  { cle: "crypto", titre: "Crypto", aide: "frais fixes par actif (XAFe, USDT, USDC) et confirmations par réseau (bep20, trc20, erc20) ; frais_reseaux : les frais d'un réseau qui coûte plus, par exemple {\"erc20\": {\"USDT\": 5, \"USDC\": 5, \"XAFe\": 3000}} pour Ethereum — sinon ceux de l'actif" },
   { cle: "code_secret", titre: "Code secret", aide: "essais avant verrou, minutes de verrou, longueur" },
   { cle: "support", titre: "Support", aide: "ce que l'application propose dans Aide : l'e-mail, et le WhatsApp au format +2376XXXXXXXX (ou null)" },
   { cle: "parite", titre: "Parité", aide: "alerte_numero : le numéro qui reçoit l'alarme par SMS (null = aucun) ; alerte_operateur : \"mtn\" ou \"om\" ; fraicheur_heures : au-delà, le solde d'un float n'est plus « connu » ; delai_minutes : au-delà, une opération absente de la chaîne est une anomalie ; publier_floats : la page publique montre le total des floats" },

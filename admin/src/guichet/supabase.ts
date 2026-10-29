@@ -233,7 +233,7 @@ export class GuichetSupabase implements GuichetAdmin {
   async retirerInvitation(email: string) { await this.rpc("admin_retirer_invitation", { p_email: email }); }
   async changerRole(id: string, role: string) { await this.rpc("admin_changer_role", { p_id: id, p_role: role }); }
   async activerAdministrateur(id: string, actif: boolean) { await this.rpc("admin_desactiver_administrateur", { p_id: id, p_actif: actif }); }
-  marche() { return this.rpc<Marche>("admin_marche"); }
+  marche(paire?: string) { return this.rpc<Marche>("admin_marche", paire ? { p_paire: paire } : {}); }
   parametres() { return this.rpc<Parametres>("admin_parametres"); }
   async modifierParametre(cle: string, valeur: unknown) { await this.rpc("admin_modifier_parametre", { p_cle: cle, p_valeur: valeur }); }
   journal() { return this.rpc<LigneJournal[]>("admin_journal", { p_n: 200 }); }

@@ -106,7 +106,8 @@ export interface GuichetAdmin {
   changerRole(id: string, role: string): Promise<void>;
   activerAdministrateur(id: string, actif: boolean): Promise<void>;
 
-  marche(): Promise<Marche>;
+  /** un carnet (0045) : la paire principale si rien n'est dit */
+  marche(paire?: string): Promise<Marche>;
   parametres(): Promise<Parametres>;
   modifierParametre(cle: string, valeur: unknown): Promise<void>;
   journal(): Promise<LigneJournal[]>;
