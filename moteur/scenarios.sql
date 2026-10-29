@@ -3282,7 +3282,7 @@ begin;
 select _essai_utilisateur('f5700000-0000-0000-0000-000000000001', 'nouvel-admin@example.com', false);
 select _essai_utilisateur('f5700000-0000-0000-0000-000000000002', 'cible@example.com');
 insert into administrateurs_invites (email, nom, role) values ('nouvel-admin@example.com', 'Nouvel', 'support');
-insert into auth.mfa_factors (user_id, factor_type, status) values ('f5700000-0000-0000-0000-000000000002', 'totp', 'verified');
+insert into auth.mfa_factors (id, user_id, factor_type, status, created_at, updated_at) values (gen_random_uuid(), 'f5700000-0000-0000-0000-000000000002', 'totp', 'verified', now(), now());
 insert into codes_de_secours (utilisateur_id, empreinte)
 values ('f5700000-0000-0000-0000-000000000002', _empreinte_de_secours('f5700000-0000-0000-0000-000000000002', 'ABCDEFGHJK'));
 do $$
@@ -4347,7 +4347,12 @@ begin
     create schema if not exists vault;
     create table vault.secrets (name text);
   end if;
-  insert into vault.secrets (name) values ('essai_graine');
+  -- le vrai coffre de Supabase ne s'écrit que par vault.create_secret (la table chiffre elle-même) ; l'imitation, à la main
+  if exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'vault' and p.proname = 'create_secret') then
+    perform vault.create_secret('essai', 'essai_graine', 'secret d''essai du scénario 11.87');
+  else
+    insert into vault.secrets (name) values ('essai_graine');
+  end if;
   v_res := _constats_du_profil(false);
   assert v_res -> 'refus' @> to_jsonb('un secret d''essai est au coffre (essai_graine ou essai_admin_cle)'::text), v_res -> 'refus';
   raise notice '✓ 11.87 le constat refuse robots, déclencheurs de bêta, réseau d''essai et secrets d''essai ; tenu, il ne garde que ce qui a vécu';

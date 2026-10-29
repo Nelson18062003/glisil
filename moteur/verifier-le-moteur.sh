@@ -74,29 +74,9 @@ for m in "${MIGRATIONS:-$ICI/supabase/migrations}"/*.sql; do
   $COMME "PATH=$PATH $PSQL -d xafe -f $m" >"$GRAPPE/migration.log" 2>&1 || { cat "$GRAPPE/migration.log"; echo "✗ la migration $(basename "$m") ne passe pas"; exit 1; }
 done
 
-# Les scénarios, les courses, le hasard et la charge ont été écrits avant 0013 : ils déclarent
-# l'ID seul. La règle stricte (numéro, montant, nom) est éprouvée à part, par le scénario 11.34,
-# qui la rallume dans sa transaction ; ailleurs, on l'éteint ici — et SEULEMENT ici.
-$COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = valeur || '{\\\"declaration_complete\\\": false}' where cle = 'depot'\"" >/dev/null
-# Même chose pour les numéros (0020) : les scénarios d'avant éprouvent le code SMS et le délai de 24 h.
-# La règle d'aujourd'hui (ni code ni délai) est éprouvée par le scénario 11.41, dans sa transaction.
-$COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = '{\\\"verification_sms\\\": true, \\\"delai_heures\\\": 24}' where cle = 'numeros'\"" >/dev/null
-# La bêta (0021) ferme les dépôts réels et dote chaque inscrit : les scénarios d'avant jouent hors bêta.
-# La bêta elle-même est éprouvée par le scénario 11.42, dans sa transaction.
-$COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = valeur || '{\\\"actif\\\": false}' where cle = 'beta'\"" >/dev/null
-# Sans plafond (0027) : la plateforme n'a plus de taille maximale ni de plafond de palier, et compte un minimum
-# en XAFe. Les scénarios d'avant éprouvent les plafonds (le mécanisme existe toujours, vide en service) :
-# ils jouent avec les règles d'avant. La règle d'aujourd'hui est éprouvée par le scénario 11.48.
-$COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = valeur || '{\\\"quantite_min\\\": 10, \\\"quantite_max\\\": 1000000, \\\"marche_quantite_max\\\": 100000, \\\"montant_min\\\": 0}' where cle = 'marche'\"" >/dev/null
-$COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = '{\\\"0\\\": {\\\"entree_jour\\\": 500000, \\\"sortie_jour\\\": 500000}, \\\"1\\\": {\\\"entree_jour\\\": 5000000, \\\"sortie_jour\\\": 5000000}, \\\"2\\\": null}' where cle = 'paliers'\"" >/dev/null
-
-# 0038 met les sorties en manuel : les scénarios d'avant éprouvent la composition par TOTEM. La règle
-# d'aujourd'hui (le remboursement manuel prouvé par la puce) est éprouvée par 11.36 et 11.80+, dans leur transaction.
-$COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = valeur || '{\\\"mode\\\": \\\"totem\\\"}' where cle = 'sortie'\"" >/dev/null
-# 0039 retient tout SMS d'argent dont le solde ne suit pas : les scénarios d'avant n'annoncent aucun solde.
-# Ils jouent la garde en « surveiller » (crédité, signalé) ; la garde elle-même (« exiger ») est éprouvée
-# par le scénario 11.81, dans sa transaction, et par l'attaque #F1 de rouge-puis-vert.
-$COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = valeur || '{\\\"mode\\\": \\\"surveiller\\\"}' where cle = 'continuite'\"" >/dev/null
+# Les règles d'avant, pour les scénarios écrits avant elles : un seul fichier, joué aussi par la vraie pile.
+cp "$ICI/moteur/regles-d-avant.sql" "$GRAPPE/regles-d-avant.sql" && chmod a+r "$GRAPPE/regles-d-avant.sql"
+$COMME "PATH=$PATH $PSQL -d xafe -f $GRAPPE/regles-d-avant.sql" >/dev/null
 
 # ATTAQUES=1 : les migrations, puis les attaques de la revue seules (moteur/rouge-puis-vert).
 if [ "${ATTAQUES:-0}" = "1" ]; then

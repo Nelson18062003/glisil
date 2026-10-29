@@ -32,4 +32,4 @@ grant execute on function auth.jwt() to anon, authenticated;
 create table auth.users (id uuid primary key, phone text, email text, phone_confirmed_at timestamptz, email_confirmed_at timestamptz,
                          last_sign_in_at timestamptz, encrypted_password text, banned_until timestamptz);
 -- les facteurs de GoTrue : lus seulement (la fiche « Sécurité » de l'équipe), jamais écrits par nos migrations
-create table auth.mfa_factors (id uuid primary key default gen_random_uuid(), user_id uuid, factor_type text, status text, created_at timestamptz default now());
+create table auth.mfa_factors (id uuid primary key default gen_random_uuid(), user_id uuid, factor_type text, status text, created_at timestamptz default now(), updated_at timestamptz default now());

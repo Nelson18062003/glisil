@@ -45,6 +45,7 @@ import type { Chaine } from "../src/chaine.ts";
 import { adresseTron, deriver, type Reseau } from "../src/cles.ts";
 import { ChaineEvm } from "../src/evm.ts";
 import { moteur, type Rpc } from "../src/moteur.ts";
+import { client as inscrireClient } from "../../supabase/epreuve/inscription.mjs";
 import { aLeRole, donnerLesRoles, INSCRIPTEUR, preinscrire, renoncer, signataireEvm, signataireTron, type Artefact, type Signataire } from "../src/signataire.ts";
 import { ChaineTron } from "../src/tron.ts";
 import { Veilleur } from "../src/veilleur.ts";
@@ -99,13 +100,11 @@ const http = async (url: string, corps?: unknown, jeton?: string) => {
   if (!r.ok) throw new Error(`${url} ${r.status} ${JSON.stringify(j)}`);
   return j;
 };
-const client = async (telephone: string) => {
-  await http(`${AUTH}/otp`, { phone: telephone });
-  const j = await http(`${AUTH}/verify`, { type: "sms", phone: telephone, token: "123456" });
-  const jeton = j.access_token as string;
-  await http(`${REST}/rpc/completer_profil`, { p_nom: "Client des wallets", p_code: "2580" }, jeton).catch(() => null);
-  return { jeton, id: j.user.id as string, appel: (nom: string, args: Record<string, unknown>) => http(`${REST}/rpc/${nom}`, args, jeton) };
-};
+// Le client s'inscrit comme dans l'application (e-mail, mot de passe, TOTP vérifié par GoTrue, codes de secours).
+// Chaque retrait passe la vérification avant sortie : TOTP retapé, mot de passe, code e-mail — lu dans la file
+// des courriels, qui tient lieu de boîte de réception.
+const codeEmail = (verification: string) =>
+  sql(`select c.donnees ->> 'code' from verifications v join courriels_a_envoyer c on c.id = v.courriel_id where v.id = '${verification}'`);
 
 /* -------------------------------------------------------------- le banc
  * Ce qui diffère d'un réseau à l'autre, et rien d'autre : qui a des fonds,
@@ -275,7 +274,9 @@ verifier(etat.libres.USDT >= 3 && etat.libres.XAFe >= 3, "une réserve d'adresse
 
 // chaque passe a son client : un témoin ne rejoue pas sur les soldes d'un autre
 const telephone = { bep20: ["237677130001", "237677130002", "237677130005", "237677130006"], trc20: ["237677130003", "237677130004", "237677130007", "237677130008"] }[RESEAU][TEMOIN];
-const ama = await client(telephone);
+const ama = await inscrireClient(AUTH, REST, { email: `wallets.${telephone}@example.com`, telephone: `+${telephone}`, prenom: "Ama", nom: "Wallets" });
+// une passe fait sept retraits en quelques minutes : au-delà des cinq vérifications du quart d'heure de la production
+sql(`update parametres set valeur = valeur || '{"par_quart_heure": 50}' where cle = 'verification'`);
 sql(`update comptes set palier = 2 where id = '${ama.id}'`);  // le palier a ses scénarios ; ici, les wallets
 const adresseUsdt = await ama.appel("adresse_depot", { p_actif: "USDT", p_reseau: RESEAU }) as string;
 const indice = Number(sql(`select indice from adresses_crypto where compte_id = '${ama.id}' and actif = 'USDT' and reseau = '${RESEAU}'`));
@@ -299,8 +300,11 @@ verifier(await soldeChaine("USDT", adresseUsdt) === 0n && await soldeChaine("USD
   `dépôt ${await soldeChaine("USDT", adresseUsdt)}, chaud ${await soldeChaine("USDT", chaudAdresse)} — ${journal.filter((l) => l.startsWith("ALERTE")).join(" | ")}`);
 
 /* ----------------------------------------- 4 · un retrait coupé en route */
+const retirer = (actif: string, adresse: string, montant: number, cle: string) =>
+  ama.sortir("demander_retrait_crypto", "retrait_crypto", { actif, reseau: RESEAU, adresse, montant },
+             { p_actif: actif, p_reseau: RESEAU, p_adresse: adresse, p_montant: montant, p_cle: `${RESEAU}-${cle}` }, codeEmail);
 const retrait = (adresse: string, montant: number, cle: string) =>
-  ama.appel("demander_retrait_crypto", { p_actif: "USDT", p_reseau: RESEAU, p_adresse: adresse, p_montant: montant, p_cle: `${RESEAU}-${cle}`, p_code: "2580" });
+  retirer("USDT", adresse, montant, cle);
 const ligne = (reference: string) => sql(`select etat || ' ' || coalesce(tx_hash, '-') || ' ' || cardinality(tx_remplacees) from retraits_crypto where reference = '${reference}'`).split(" ");
 const jusquA = async (reference: string, n = 6) => {
   for (let i = 0; i < n && ligne(reference)[0] !== "envoye"; i++) { await tour(); await banc.miner(CONFIRMATIONS); }
@@ -370,7 +374,7 @@ verifier(pauvre.alertes.some((a) => a.includes("manque de")), `un chaud sans ass
 /* --------------------------------------------- 8 · XAFe sortis puis rendus */
 const destXafe = await banc.nouveauWallet();
 sql(`select _mouvement('${ama.id}', 'XAFe', 200000, 0, 'essai_wallets', 'essai', 'w-${RESEAU}'); insert into emissions (sens, montant, source_table, source_id) values ('emission', 200000, 'essai', 'w-${RESEAU}')`);
-const rx = await ama.appel("demander_retrait_crypto", { p_actif: "XAFe", p_reseau: RESEAU, p_adresse: destXafe.adresse, p_montant: 150000, p_cle: `${RESEAU}-w-5`, p_code: "2580" });
+const rx = await retirer("XAFe", destXafe.adresse, 150000, "w-5");
 await jusquA(rx.reference);
 verifier(await soldeChaine("XAFe", destXafe.adresse) === parseUnits("150000", 6), "150 000 XAFe frappés vers le wallet du client, par le wallet chaud");
 verifier(ligne(rx.reference)[0] === "envoye", "et le retrait XAFe est « envoyé »");
@@ -380,13 +384,20 @@ await destXafe.ecrire(xafeAdresse, "transfer(address,uint256)", ["address", "uin
 await banc.miner(CONFIRMATIONS); await tour(); await banc.miner(CONFIRMATIONS); await tour();
 const xafeApres = Number((await ama.appel("mes_soldes", {})).XAFe.disponible);
 verifier(xafeApres === xafeAvant + 100000, "100 000 XAFe rendus sur l'adresse de dépôt : détruits là, recrédités une fois", `${xafeAvant} → ${xafeApres}`);
-verifier(await soldeChaine("XAFe", adresseXafe) === 0n && await chaine.offreXafe() === parseUnits("51000", 6), "sur la chaîne, ils n'existent plus : l'offre totale est de 50 000 chez le client, plus les 1 000 de la réserve", `offre ${await chaine.offreXafe()}`);
+// La réserve grossit encore : le veilleur joue, vingt par tour, ce que le moteur lui donne pour les XAFe nés hors
+// chaîne (les dépôts MoMo/OM des étapes d'avant, sur cette même base). Entre deux tours rien ne se frappe : on
+// mesure là ce qui compte — hors de la réserve, seuls les 50 000 du client existent.
+const horsReserve = (await chaine.offreXafe()) - (await xafeDuContrat());
+verifier(await soldeChaine("XAFe", adresseXafe) === 0n && horsReserve === parseUnits("50000", 6),
+  "sur la chaîne, ils n'existent plus : hors de la réserve, l'offre est des 50 000 chez le client", `hors réserve ${horsReserve}`);
+await banc.miner(CONFIRMATIONS);  // sans tour : le bloc lu rattrape la tête, rien de neuf n'est frappé
 const lu = await veilleur.lireLeJeton(rpc);
-verifier(lu.a_jour && lu.reserve === "1000.0" && await xafeDuContrat() === parseUnits("1000", 6), "la réserve se lit au contrat, au bloc lu", JSON.stringify(lu));
+verifier(lu.a_jour && lu.reserve !== null && parseUnits(lu.reserve, 6) === await xafeDuContrat() && Number(lu.reserve) >= 1000
+         && parseUnits(lu.offre ?? "0", 6) === await chaine.offreXafe(), "la réserve se lit au contrat, au bloc lu", JSON.stringify(lu));
 
 /* ---------------------------------------------- 8b · le plafond de frappe du jour */
 await banc.admin.ecrire(xafeAdresse, "fixerPlafondJour(uint256)", ["uint256"], [parseUnits("100", 6)]);
-const rp = await ama.appel("demander_retrait_crypto", { p_actif: "XAFe", p_reseau: RESEAU, p_adresse: destXafe.adresse, p_montant: 150, p_cle: `${RESEAU}-w-6`, p_code: "2580" });
+const rp = await retirer("XAFe", destXafe.adresse, 150, "w-6");
 await tour(); await banc.miner(CONFIRMATIONS); await tour();
 const publieP = JSON.parse(sql(`select etat from chaine_etats where reseau = '${RESEAU}'`) || "{}");
 verifier(ligne(rp.reference)[1] === "-" && ["en_attente", "en_cours"].includes(ligne(rp.reference)[0]) && (publieP.alertes ?? []).some((x: string) => x.includes(rp.reference)),

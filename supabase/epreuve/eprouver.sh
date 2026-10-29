@@ -30,8 +30,18 @@ N=$(psql_admin -Atc "select count(*) from cron.job where jobname = 'xafe-expirer
 [ "$N" = "1" ] || { echo "✗ expirer_depots() n'est pas planifiée par pg_cron sur la vraie base"; exit 1; }
 echo "✓ pg_cron planifie expirer_depots() toutes les cinq minutes"
 
+# les règles d'avant, pour les scénarios écrits avant elles — le même fichier que le harnais du moteur
+psql_postgres -v ON_ERROR_STOP=1 -q -f "$ICI/moteur/regles-d-avant.sql" >/dev/null
+echo "· les règles d'avant posées (moteur/regles-d-avant.sql)"
+
 echo "· scénarios du moteur (auth.uid() de Supabase : request.jwt.claim.sub)"
-sed 's/xafe\.compte/request.jwt.claim.sub/g' "$ICI/moteur/scenarios.sql" >"$TMP/scenarios.sql"
+# le jeton faible (0035) : xafe.aal, xafe.amr, xafe.session → les claims de la requête (supabase/epreuve/jeton-d-essai.sql)
+psql_postgres -v ON_ERROR_STOP=1 -q -f "$ICI/supabase/epreuve/jeton-d-essai.sql" >/dev/null
+sed -e "s/^set local xafe\.compte = \('[^']*'\);$/call essai.compte(\1);/" \
+    -e "s/set_config('xafe\.compte', */essai.jeton('sub', /g" \
+    -e "s/set_config('xafe\.aal', */essai.jeton('aal', /g" -e "s/set_config('xafe\.amr', */essai.jeton('amr', /g" \
+    -e "s/set_config('xafe\.session', */essai.jeton('session_id', /g" \
+    -e 's/xafe\.compte/request.jwt.claim.sub/g' "$ICI/moteur/scenarios.sql" >"$TMP/scenarios.sql"
 STATUT=0
 psql_postgres -v ON_ERROR_STOP=1 -q -f "$TMP/scenarios.sql" >"$TMP/scenarios.log" 2>&1 || STATUT=$?
 sed 's/^psql:.*NOTICE:  //; s/^NOTICE:  //' "$TMP/scenarios.log" | grep -v '^$'

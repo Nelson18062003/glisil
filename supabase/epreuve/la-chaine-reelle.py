@@ -12,15 +12,15 @@ Ce qui est réel ici :
     méthode, chemin et corps) — et une réclamation capturée, rejouée ailleurs ;
   · la porte : `supabase/functions/_shared/porte.ts` (porte-locale.mjs) ;
   · le moteur, la base, l'auth : la pile Supabase de supabase/epreuve ;
-  · les clients : inscrits par OTP chez GoTrue, avec le numéro qui paie, et
+  · les clients : inscrits chez GoTrue (e-mail, mot de passe, TOTP), avec le numéro qui paie, et
     qui tapent le transaction ID TEL QU'IL EST ÉCRIT dans leur SMS.
 
 Ce qu'on exige : chaque encaissement est crédité, au franc près, au client
 dont le numéro a payé — qu'il ait tapé l'ID avant ou après l'arrivée du SMS ;
-un intrus qui a tapé un ID d'avance ne reçoit rien ; un SMS de sortie
-(transfert, cash in, dépôt vers un client) ne part jamais chez XAFe.
+un intrus qui a tapé un ID d'avance ne reçoit rien (le paiement disputé va à l'équipe) ; un SMS de sortie
+(transfert, cash in, dépôt vers un client) n'y crédite jamais personne : il n'y vaut que preuve d'un remboursement.
 """
-import json, os, subprocess, sys, urllib.request, importlib.util
+import base64, hashlib, hmac, json, os, struct, subprocess, sys, time, urllib.request, importlib.util
 from datetime import datetime, timezone
 
 TOTEM = os.path.abspath(os.environ.get("TOTEM", os.path.join(os.path.dirname(__file__), "../../../totem")))
@@ -62,10 +62,31 @@ def http(url, corps=None, jeton=None, methode=None):
     except urllib.error.HTTPError as e:
         return e.code, json.loads(e.read() or b"null")
 
+def totp(secret):
+    """RFC 6238, comme l'application d'authentification du client."""
+    cle = base64.b32decode(secret.upper() + "=" * (-len(secret) % 8))
+    h = hmac.new(cle, struct.pack(">Q", int(time.time()) // 30), hashlib.sha1).digest()
+    o = h[-1] & 15
+    return f"{(struct.unpack('>I', h[o:o + 4])[0] & 0x7fffffff) % 1_000_000:06d}"
+
 def inscrire(telephone):
-    http(f"{AUTH}/otp", {"phone": telephone})
-    _, j = http(f"{AUTH}/verify", {"type": "sms", "phone": telephone, "token": "123456"})
-    return j["access_token"], j["user"]["id"]
+    """Comme l'application : e-mail et mot de passe, l'application d'authentification enrôlée et
+    vérifiée par GoTrue (aal2), les codes de secours, puis le compte ouvert avec le numéro qui paie."""
+    chiffres = telephone[-9:]
+    _, a = http(f"{AUTH}/signup", {"email": f"chaine.{chiffres}@example.com", "password": "Glisil-essai-2026"})
+    faible = a["access_token"]
+    _, f = http(f"{AUTH}/factors", {"factor_type": "totp", "friendly_name": "essai"}, faible)
+    _, c = http(f"{AUTH}/factors/{f['id']}/challenge", {}, faible)
+    _, v = http(f"{AUTH}/factors/{f['id']}/verify", {"challenge_id": c["id"], "code": totp(f["totp"]["secret"])}, faible)
+    jeton = v["access_token"]
+    rpc("generer_codes_de_secours", {}, jeton)
+    rpc("confirmer_codes_de_secours", {}, jeton)
+    nom = "".join("abcdefghij"[int(x)] for x in chiffres)        # un nom ne porte pas de chiffres
+    statut, r = rpc("ouvrir_mon_compte", {"p_prenom": "Client", "p_nom": nom, "p_naissance": "1990-05-14", "p_telephone": "+" + telephone,
+                                          "p_ville": "Douala", "p_pays": "CM", "p_conditions": "2026-10-29"}, jeton)
+    if statut != 200:
+        raise RuntimeError(f"ouvrir_mon_compte {telephone} : {statut} {r}")
+    return jeton, a["user"]["id"]
 
 def rpc(nom, args, jeton):
     return http(f"{REST}/rpc/{nom}", args, jeton)
@@ -87,6 +108,7 @@ sql(f"""insert into terminaux (id, nom, cle, vu_le) values ('akwa-1', 'Akwa 1', 
 porte = PorteXafe(PORTE, CLE, "akwa-1", None)
 porte.fournir_float = lambda iccid: ("om", "696103864") if iccid == "orange" else ("mtn", "677000000")
 
+conteste = None
 clients = {}          # numéro payeur (9 chiffres) -> (jeton, id, dossier, attendu)
 mallory_jeton, mallory_id = inscrire("237677120009")
 envoyes = 0
@@ -98,9 +120,15 @@ for f_i, gabarit in enumerate(FORMATS):
         p = analyser(texte, numeros=NOS_CARTES)
         if p is None or p.sens != "entree":
             # Ce que le robot fait d'une sortie : la porte la clôt « sans objet », sans réseau.
+            # Une SORTIE part chez XAFe comme PREUVE d'un remboursement payé à la main (même ID, même montant,
+            # même numéro) — jamais comme un crédit ; un sens que TOTEM ne sait pas trancher reste au boîtier.
             ligne = porte._ligne(source, datetime.now(timezone.utc).isoformat(), "MobileMoney", texte, "carte", "x", None, NOS_CARTES)
-            sorties_ecartees += ligne == "sans objet"
             source += 1
+            if isinstance(ligne, dict) and ligne["sens"] == "sortie":
+                statut, rep = porte._appel("POST", "totem-sms", {"lignes": [ligne]})[:2]
+                if statut != 200:
+                    verifier(False, f"la porte répond à la sortie « {texte[:40]}… »", f"{statut} {rep}")
+            sorties_ecartees += ligne == "sans objet" or (isinstance(ligne, dict) and ligne["sens"] == "sortie")
             continue
         # une référence à lui : neuf noms, neuf paiements différents
         ref = p.reference[:-1] + str(k)
@@ -113,8 +141,10 @@ for f_i, gabarit in enumerate(FORMATS):
             _, d = rpc("ouvrir_depot", {"p_operateur": "om" if carte == "orange" else "mtn", "p_cle": f"chaine-{payeur}"}, jeton)
             clients[payeur] = [jeton, ident, d["reference"], 0]
         jeton, ident, dossier, _ = clients[payeur]
-        if f_i == 0 and k == 2:
-            # l'intrus tape cet ID d'avance, sur son propre dossier
+        dispute = f_i == 0 and k == 2
+        if dispute:
+            # l'intrus tape cet ID d'avance, sur son propre dossier. Le numéro d'un compte n'est pas prouvé
+            # (aucun code par SMS) : il ne départage personne, et ce paiement part chez l'équipe.
             _, dm = rpc("ouvrir_depot", {"p_operateur": "mtn"}, mallory_jeton)
             rpc("declarer_transaction", {"p_reference": dm["reference"], "p_transaction_id": ref}, mallory_jeton)
         emis = datetime.now(timezone.utc).isoformat()
@@ -126,21 +156,27 @@ for f_i, gabarit in enumerate(FORMATS):
         statut, rep = porte._appel("POST", "totem-sms", {"lignes": [ligne]})[:2]
         if not avant:
             rpc("declarer_transaction", {"p_reference": dossier, "p_transaction_id": ref}, jeton)
-        clients[payeur][3] += p.montant
+        if dispute:
+            conteste = (source - 1, p.montant)
+        else:
+            clients[payeur][3] += p.montant
         envoyes += 1
         if statut != 200:
             verifier(False, f"la porte répond à « {texte[:40]}… »", f"{statut} {rep}")
 
 verifier(envoyes == 5 * len(NOMS), f"{envoyes} encaissements réels lus par TOTEM et poussés, signés, à la porte")
-verifier(sorties_ecartees == 4 * len(NOMS), f"{sorties_ecartees} SMS de sortie écartés par TOTEM, jamais poussés chez XAFe")
+verifier(sorties_ecartees == 4 * len(NOMS), f"{sorties_ecartees} SMS de sortie : preuves de remboursement ou gardés au boîtier, jamais crédités")
 for payeur, (jeton, ident, dossier, attendu) in clients.items():
     _, s = rpc("mes_soldes", {}, jeton)
     recu = float((s or {}).get("XAFe", {}).get("disponible", 0))
     verifier(recu == attendu, f"le client du {payeur} reçoit exactement {attendu:,} XAFe".replace(",", " "), f"reçu {recu}")
 _, s = rpc("mes_soldes", {}, mallory_jeton)
 verifier(not s or float(s.get("XAFe", {}).get("disponible", 0)) == 0, "l'intrus qui a tapé un ID d'avance ne reçoit rien", json.dumps(s))
-reste = int(sql("select count(*) from entrees_retenues where etat = 'retenue' and source_id between 50000 and 59999"))
-verifier(reste == 0, "aucun encaissement ne reste retenu : chaque ID tapé tel qu'écrit dans le SMS a trouvé son paiement", f"{reste} retenus")
+retenus = sql("select source_id || '|' || montant::bigint || '|' || bloquee || '|' || motif from entrees_retenues"
+               " where etat = 'retenue' and source_id between 50000 and 59999").splitlines()
+verifier(retenus == [f"{conteste[0]}|{conteste[1]}|true|plusieurs comptes ont tapé ce transaction ID : l'équipe vérifie"],
+         "seul le paiement dont l'ID a été tapé par deux comptes reste retenu, bloqué pour l'équipe ; "
+         "chaque autre ID tapé tel qu'écrit dans le SMS a trouvé son paiement", "\n".join(retenus))
 # ---- la relève et la réclamation, signées par le robot, rejouées par un intrus --
 # Deux SMS à faire partir de ce boîtier. Le robot relève et prend le premier ;
 # quelqu'un capture ce PATCH en route et le rejoue — sur l'autre, sur un autre

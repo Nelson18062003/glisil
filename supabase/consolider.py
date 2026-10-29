@@ -104,6 +104,8 @@ TEMOINS = {
     "0044_politiques_une_lecture.sql": ("false", "rejouable telle quelle"),
     # 0045 : anciennes signatures retirées « if exists », tout le reste « or replace » ou « if not exists ».
     "0045_usdc_et_deux_carnets.sql": ("false", "rejouable telle quelle"),
+    # 0046 : _nom_propre « or replace ».
+    "0046_nom_propre_apostrophe.sql": ("false", "rejouable telle quelle"),
 }
 
 
