@@ -97,6 +97,20 @@ synchronisé : `VEILLEUR_JETON` (le coffre de la base en est la seule source).
 
 ## E [P] La graine, sur votre ordinateur
 
+**Sans terminal (le chemin du propriétaire)** : télécharger
+`chaine/outils/glisil-graine.html`, couper le Wi-Fi, l'ouvrir dans le
+navigateur. La page crée les 24 mots (le bouton reste verrouillé tant que
+l'ordinateur est en ligne), fait relire trois mots sur le papier, puis montre
+les wallets chauds de BNB Chain, Tron et Ethereum — dérivés par `src/cles.ts`,
+le code même du veilleur. Elle ne peut rien envoyer (politique de contenu
+`default-src 'none'`) et n'écrit rien dans le navigateur. Fermer la page,
+rétablir le Wi-Fi, taper les mots dans Infisical `/supabase-fonctions
+XAFE_GRAINE`. Refaire la page : `node outils/graine/fabriquer.mjs` ;
+l'éprouver : `node --experimental-strip-types outils/graine/verifier.mjs`
+(depuis `chaine/`).
+
+Avec un terminal :
+
 1. En ligne : `cd chaine && npm ci`.
 2. **Wi-Fi coupé** : `npm run mise-en-service -- graine` ; recopier les 24 mots
    sur papier, deux fois, rangés en deux lieux.
