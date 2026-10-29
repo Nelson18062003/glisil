@@ -25,9 +25,6 @@ export type Compte = {
   pays: string | null;
   entreprise: string | null;
   palier: 0 | 1 | 2;
-  /** le code secret des gestes d'argent est posé */
-  aCode: boolean;
-  verrouJusqua: string | null;
   verificationEnCours: "identite" | "entreprise" | null;
   /** XAF déjà crédités aujourd'hui (journée de Douala) : ce qui reste du plafond s'en déduit */
   entreDuJour: number;
@@ -268,7 +265,52 @@ export type Notification = {
   lue: boolean;
 };
 
-export type ResultatCode = { ok: boolean; essaisRestants?: number; verrouJusqua?: string | null };
+/* ───────────────────── l'entrée : mot de passe, code e-mail, double authentification (0035) ───────────────────── */
+
+/**
+ * Où en est la personne qui ouvre l'application : ce que Supabase Auth dit de
+ * sa session (le niveau atteint, le facteur par lequel elle est entrée) et ce
+ * que la base dit du reste (mon_etat_d_entree, la seule lecture permise à aal1).
+ */
+export type EtatDEntree = {
+  session: boolean;
+  /** le premier facteur de la session : un code e-mail seul (« autre ») n'est jamais une entrée forte */
+  premierFacteur: "password" | "oauth" | "autre" | null;
+  aalActuel: "aal1" | "aal2" | null;
+  /** aal2 : un facteur TOTP vérifié existe ; aal1 : il faut en enrôler un */
+  aalSuivant: "aal1" | "aal2" | null;
+  emailConfirme: boolean;
+  motDePasse: boolean;
+  /** les codes de secours sont générés ET notés */
+  codesDeSecours: boolean;
+  compte: boolean;
+  facteurTotpId: string | null;
+};
+
+/** Un facteur TOTP en cours d'enrôlement : la clé ne se montre qu'à ce moment-là. */
+export type EnrolementTotp = { facteurId: string; qr: string; secret: string; uri: string };
+
+export type EtatCodesDeSecours = { confirmes: boolean; restants: number; creesLe: string | null };
+
+/* ───────────────────── la vérification avant sortie (0036) ───────────────────── */
+
+/** L'opération qu'un code e-mail confirme, et rien d'autre : un autre montant, une autre destination demandent un autre code. */
+export type OperationAVerifier =
+  | { operation: "sortie_momo"; montant: number; numeroId: string; nom?: string }
+  | { operation: "retrait_crypto"; actif: Actif; reseau: Reseau; adresse: string; montant: number }
+  | { operation: "fermer_compte" }
+  | { operation: "retirer_numero"; numeroId: string };
+
+/** Une vérification ouverte : le code est parti par e-mail ; il n'est jamais rendu à l'écran. */
+export type Verification = { id: string; expireLe: string; renvoiDes: string; emailMasque: string };
+
+export type EtatVerification = {
+  courriel: "en_attente" | "en_cours" | "envoye" | "echoue" | "abandonne";
+  essaisRestants: number;
+};
+
+/** Ce que l'écran apporte à l'opération : la vérification, le mot de passe, le code e-mail (le TOTP frais est dans la session). */
+export type PreuveDeVerification = { verification: string; motDePasse: string; codeEmail: string };
 
 /** L'achat (ou la vente) rapide : un prix ferme pris au carnet, marge comprise. */
 export type SensRapide = "achat" | "vente";

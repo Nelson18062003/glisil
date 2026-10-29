@@ -94,7 +94,14 @@ test("une erreur du moteur se dit en français", () => {
   assert.equal(lisible(new Error("plafond du palier atteint")).recommencer, true);
   /* les phrases du moteur corrigé : chacune a ses trois lignes, aucune ne tombe sur « Ça n'a pas marché » */
   for (const phrase of ["compte désactivé", "transaction ID déjà utilisé", "transaction ID déjà déclaré", "trop de transaction ID en attente",
-    "trop de transaction ID aujourd'hui", "retraits crypto pas encore ouverts", "aucun boîtier en ligne pour cet opérateur", "code secret déjà choisi",
+    "trop de transaction ID aujourd'hui", "retraits crypto pas encore ouverts", "aucun boîtier en ligne pour cet opérateur",
+    "adresse ou mot de passe incorrect", "adresse e-mail non confirmée", "cette adresse a déjà un compte", "cette adresse est déjà utilisée", "mot de passe trop faible",
+    "choisissez un mot de passe différent", "confirmation par e-mail nécessaire", "trop de demandes : attendez une minute", "connexion Google annulée",
+    "mot de passe à choisir", "double authentification requise", "codes de secours à noter", "confirmez avec votre application d'authentification",
+    "code de secours incorrect", "trop d'essais", "aucun code de secours", "réessayez dans un instant", "code de l'application incorrect", "aucune application d'authentification",
+    "vérifications verrouillées", "trop de vérifications demandées", "vérification inconnue", "vérification expirée", "vérification épuisée",
+    "vérification remplacée par un code plus récent", "vérification déjà utilisée", "la vérification ne correspond pas à cette opération",
+    "code de l'application d'authentification à saisir", "mot de passe incorrect", "code e-mail incorrect", "vérification du mot de passe indisponible", "opération inconnue",
     "code SMS incorrect", "code SMS expiré", "un code vient de partir", "trop de codes demandés pour ce numéro", "ce numéro est déjà sur un autre compte",
     "numéro invalide", "pièce invalide", "pas de cours de référence"]) {
     assert.notEqual(lisible(new Error(phrase)).titre, "Ça n'a pas marché", phrase);

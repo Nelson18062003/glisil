@@ -105,7 +105,8 @@ export const cles = {
 
 const MARCHE_MS = 4_000;
 
-export function useCompte() { const g = useGuichet(); return useQuery({ queryKey: cles.compte, queryFn: () => g.compte() }); }
+/** `actif` : faux tant que la session n'est pas complète — la base refuserait, et la session se relirait pour rien. */
+export function useCompte(actif = true) { const g = useGuichet(); return useQuery({ queryKey: cles.compte, queryFn: () => g.compte(), enabled: actif }); }
 export function useSoldes() { const g = useGuichet(); return useQuery({ queryKey: cles.soldes, queryFn: () => g.soldes(), refetchInterval: 15_000 }); }
 export function useNumeros() { const g = useGuichet(); return useQuery({ queryKey: cles.numeros, queryFn: () => g.numeros() }); }
 export function useDepot(ref: string | undefined) { const g = useGuichet(); return useQuery({ queryKey: cles.depot(ref ?? ""), queryFn: () => g.depot(ref!), enabled: Boolean(ref), refetchInterval: 3_000 }); }

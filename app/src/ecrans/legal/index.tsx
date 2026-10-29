@@ -80,7 +80,8 @@ export function FeuilleLegale({ doc, onFermer }: { doc: Document | null; onFerme
 }
 
 /** « J'accepte les conditions et la politique » : la case, avec les deux textes à portée de doigt. */
-export function CaseConditions({ coche, onChange }: { coche: boolean; onChange: (v: boolean) => void }) {
+/** `certifie` : la même case vaut aussi « ces informations sont exactes et les miennes » (l'inscription, sur un écran). */
+export function CaseConditions({ coche, onChange, certifie = false }: { coche: boolean; onChange: (v: boolean) => void; certifie?: boolean }) {
   const [lu, setLu] = useState<Document | null>(null);
   const lien = (doc: Document, texte: string) => (
     <LienMui component="button" type="button" variant="body2" onClick={(e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); setLu(doc); }}
@@ -91,7 +92,7 @@ export function CaseConditions({ coche, onChange }: { coche: boolean; onChange: 
       <FormControlLabel
         control={<Checkbox checked={coche} onChange={(e) => onChange(e.target.checked)} />}
         label={<Typography variant="body2" sx={{ color: "text.primary" }}>
-          {t("J'accepte les ", "I accept the ")}{lien(CONDITIONS, t("conditions d'utilisation", "terms of use"))}{t(" et la ", " and the ")}{lien(CONFIDENTIALITE, t("politique de confidentialité", "privacy policy"))}.
+          {t("J'accepte les ", "I accept the ")}{lien(CONDITIONS, t("conditions d'utilisation", "terms of use"))}{t(" et la ", " and the ")}{lien(CONFIDENTIALITE, t("politique de confidentialité", "privacy policy"))}{certifie ? t(", et je certifie que ces informations sont exactes et les miennes.", ", and I certify that this information is accurate and my own.") : "."}
         </Typography>}
         sx={{ alignItems: "flex-start", "& .MuiCheckbox-root": { pt: 0.5 } }}
       />

@@ -51,6 +51,117 @@ function dictionnaire(): Record<string, Entree> {
       argent: aucunCompte(),
       suite: t("Reconnectez-vous avec le code reçu par e-mail.", "Sign in again with the code we emailed you."),
     },
+    "adresse ou mot de passe incorrect": { // langue-ok
+      titre: t("Adresse ou mot de passe incorrect", "Wrong email or password"),
+      argent: rienNaBouge(),
+      suite: t("Vérifiez l'adresse et le mot de passe (majuscules comprises). Vous ne vous en souvenez plus ? « Mot de passe oublié » vous en fait choisir un nouveau.",
+        "Check the email address and the password (capital letters included). Can't remember it? \"Forgot password\" lets you choose a new one."),
+    },
+    "adresse e-mail non confirmée": { // langue-ok
+      titre: t("Votre adresse n'est pas encore confirmée", "Your email address isn't confirmed yet"),
+      argent: aucunCompte(),
+      suite: t("Un nouveau code vient de partir : tapez-le pour confirmer l'adresse.", "A new code is on its way: enter it to confirm your address."),
+    },
+    "cette adresse a déjà un compte": { // langue-ok
+      titre: t("Cette adresse a déjà un compte", "This email address already has an account"),
+      argent: rienNaBouge(),
+      suite: t("Connectez-vous avec son mot de passe, ou choisissez « Mot de passe oublié ».", "Sign in with its password, or choose \"Forgot password\"."),
+      recommencer: false,
+    },
+    "cette adresse est déjà utilisée": { // langue-ok
+      titre: t("Cette adresse est déjà utilisée", "This email address is already in use"),
+      argent: aucunCompte(),
+      suite: t("Une adresse ne sert qu'à un seul compte. Écrivez au support si c'est une erreur.", "An email address can only be used for one account. Contact support if this is a mistake."),
+      recommencer: false,
+    },
+    "mot de passe trop faible": { // langue-ok
+      titre: t("Ce mot de passe est trop faible", "This password is too weak"),
+      argent: rienNaChange(),
+      suite: t("Dix caractères au moins, avec des lettres et des chiffres, et qui n'a jamais fuité ailleurs. Une petite phrase marche bien.",
+        "At least ten characters, with letters and digits, never leaked elsewhere. A short sentence works well."),
+    },
+    "choisissez un mot de passe différent": { // langue-ok
+      titre: t("C'est déjà votre mot de passe", "That's already your password"),
+      argent: rienNaChange(),
+      suite: t("Choisissez-en un autre.", "Choose a different one."),
+    },
+    "confirmation par e-mail nécessaire": { // langue-ok
+      titre: t("Confirmez avec le code reçu par e-mail", "Confirm with the code we emailed you"),
+      argent: rienNaChange(),
+      suite: t("Un code vient de partir à votre adresse : tapez-le pour changer le mot de passe.", "A code has just been sent to your address: enter it to change your password."),
+    },
+    "trop de demandes : attendez une minute": { // langue-ok
+      titre: t("Trop de demandes", "Too many requests"),
+      argent: rienNaBouge(),
+      suite: t("Attendez une minute, puis réessayez.", "Wait a minute, then try again."),
+    },
+    "connexion google annulée": { // langue-ok
+      titre: t("La connexion avec Google n'a pas abouti", "Signing in with Google didn't complete"),
+      argent: rienNaBouge(),
+      suite: t("Recommencez, ou entrez avec votre adresse e-mail et un mot de passe.", "Try again, or sign in with your email address and a password."),
+    },
+    "mot de passe à choisir": { // langue-ok
+      titre: t("Choisissez d'abord un mot de passe", "Choose a password first"),
+      argent: rienNaBouge(),
+      suite: t("Il est demandé avant chaque sortie d'argent. Il se choisit dans Compte → Sécurité.", "It's required before every withdrawal. You can set it in Account → Security."),
+      recommencer: false,
+    },
+    "double authentification requise": { // langue-ok
+      titre: t("Entrez le code de votre application", "Enter the code from your authenticator app"),
+      argent: rienNaBouge(),
+      suite: t("Votre session doit être confirmée par l'application d'authentification avant de continuer.", "Your session must be confirmed with your authenticator app before you continue."),
+      recommencer: false,
+    },
+    "code de l'application d'authentification à saisir": { // langue-ok
+      titre: t("Un code tout neuf de votre application", "A fresh code from your authenticator app"),
+      argent: rienNaBouge(),
+      suite: t("Tapez les six chiffres affichés maintenant par votre application d'authentification.", "Enter the six digits your authenticator app shows right now."),
+    },
+    "code de l'application incorrect": { // langue-ok
+      titre: t("Ce code de l'application ne marche pas", "This authenticator code doesn't work"),
+      argent: rienNaBouge(),
+      suite: t("Tapez les six chiffres affichés maintenant : ils changent toutes les trente secondes. L'heure du téléphone doit être juste.",
+        "Enter the six digits shown right now: they change every thirty seconds. Your phone's clock must be correct."),
+    },
+    "aucune application d'authentification": { // langue-ok
+      titre: t("Aucune application d'authentification", "No authenticator app"),
+      argent: rienNaBouge(),
+      suite: t("Reconnectez-vous : Glisil vous fera enrôler une application.", "Sign in again: Glisil will have you set up an authenticator app."),
+      recommencer: false,
+    },
+    "codes de secours à noter": { // langue-ok
+      titre: t("Notez d'abord vos codes de secours", "Write down your recovery codes first"),
+      argent: aucunCompte(),
+      suite: t("Ils vous rendent l'accès si vous perdez votre téléphone.", "They give you access back if you lose your phone."),
+      recommencer: false,
+    },
+    "confirmez avec votre application d'authentification": { // langue-ok
+      titre: t("Confirmez avec votre application", "Confirm with your authenticator app"),
+      argent: rienNaChange(),
+      suite: t("Tapez un code tout neuf de l'application, puis recommencez.", "Enter a fresh code from the app, then try again."),
+    },
+    "code de secours incorrect": { // langue-ok
+      titre: t("Ce code de secours ne marche pas", "This recovery code doesn't work"),
+      argent: rienNaBouge(),
+      suite: t("Recopiez un code de votre liste, tel qu'il est écrit. Un code ne sert qu'une fois.", "Copy a code from your list exactly as written. Each code works only once."),
+    },
+    "trop d'essais": { // langue-ok
+      titre: t("Trop d'essais", "Too many attempts"),
+      argent: rienNaBouge(),
+      suite: t("Les codes de secours sont bloqués un quart d'heure. Réessayez ensuite, ou écrivez au support.", "Recovery codes are blocked for fifteen minutes. Try again later, or contact support."),
+      recommencer: false,
+    },
+    "aucun code de secours": { // langue-ok
+      titre: t("Aucun code de secours", "No recovery codes"),
+      argent: rienNaBouge(),
+      suite: t("Ce compte n'a pas de codes de secours. Écrivez au support, qui vérifiera votre identité.", "This account has no recovery codes. Contact support, who will verify your identity."),
+      recommencer: false,
+    },
+    "réessayez dans un instant": { // langue-ok
+      titre: t("Ça n'a pas pu se faire", "That couldn't be done"),
+      argent: rienNaBouge(),
+      suite: t("Réessayez dans un instant : votre code de secours n'a pas été consommé.", "Try again in a moment: your recovery code hasn't been used up."),
+    },
     "il faut avoir 18 ans": { // langue-ok
       titre: t("Il faut avoir 18 ans", "You must be 18 or older"),
       argent: aucunCompte(),
@@ -217,15 +328,72 @@ function dictionnaire(): Record<string, Entree> {
       suite: t("Regardez son détail dans Mes ordres.", "See its details in My orders."),
       recommencer: false,
     },
-    "code secret incorrect": { // langue-ok
-      titre: t("Code secret incorrect", "Incorrect PIN"),
-      argent: rienNaBouge(),
-      suite: t("Réessayez. Après trois erreurs, le compte se verrouille 15 minutes.", "Try again. After three wrong attempts, your account locks for 15 minutes."),
+    /* ---- la vérification avant sortie (0036) : rien ne bouge tant qu'elle n'est pas passée */
+    "vérifications verrouillées": { // langue-ok
+      titre: t("Sorties bloquées une heure", "Withdrawals blocked for an hour"),
+      argent: t("Rien n'a bougé : votre argent reste sur votre compte.", "Nothing has changed: your money stays in your account."),
+      suite: t("Trop de mots de passe ou de codes faux. Si ce n'est pas vous, changez votre mot de passe et écrivez au support.",
+        "Too many wrong passwords or codes. If this wasn't you, change your password and contact support."),
+      recommencer: false,
     },
-    "compte verrouillé": { // langue-ok
-      titre: t("Compte verrouillé 15 minutes", "Account locked for 15 minutes"),
+    "trop de vérifications demandées": { // langue-ok
+      titre: t("Trop de codes demandés", "Too many codes requested"),
       argent: rienNaBouge(),
-      suite: t("Trois codes faux : attendez avant de réessayer.", "Three wrong PINs: please wait before trying again."),
+      suite: t("Attendez un peu avant de demander un nouveau code par e-mail.", "Wait a little before requesting a new code by email."),
+      recommencer: false,
+    },
+    "vérification inconnue": { // langue-ok
+      titre: t("Ce code ne vaut pas pour cette session", "This code isn't valid for this session"),
+      argent: rienNaBouge(),
+      suite: t("Demandez un nouveau code par e-mail.", "Request a new code by email."),
+    },
+    "vérification expirée": { // langue-ok
+      titre: t("Le code e-mail a expiré", "The email code has expired"),
+      argent: rienNaBouge(),
+      suite: t("Un code vaut dix minutes. Demandez-en un nouveau.", "A code is valid for ten minutes. Request a new one."),
+    },
+    "vérification épuisée": { // langue-ok
+      titre: t("Trop d'essais pour ce code", "Too many attempts for this code"),
+      argent: rienNaBouge(),
+      suite: t("Demandez un nouveau code par e-mail.", "Request a new code by email."),
+    },
+    "vérification remplacée par un code plus récent": { // langue-ok
+      titre: t("Un code plus récent est parti", "A newer code has been sent"),
+      argent: rienNaBouge(),
+      suite: t("Seul le dernier code reçu par e-mail compte.", "Only the latest code you received by email counts."),
+    },
+    "vérification déjà utilisée": { // langue-ok
+      titre: t("Ce code a déjà servi", "This code has already been used"),
+      argent: t("Regardez Historique : l'opération est peut-être déjà partie.", "Check History: the operation may already have gone through."),
+      suite: t("Un code ne sert qu'une fois. Demandez-en un nouveau pour une autre opération.", "Each code works only once. Request a new one for another operation."),
+      recommencer: false,
+    },
+    "la vérification ne correspond pas à cette opération": { // langue-ok
+      titre: t("Ce code vaut pour une autre opération", "This code is for a different operation"),
+      argent: rienNaBouge(),
+      suite: t("Le montant ou la destination a changé : un nouveau code est nécessaire.", "The amount or destination changed: a new code is needed."),
+    },
+    "mot de passe incorrect": { // langue-ok
+      titre: t("Mot de passe incorrect", "Wrong password"),
+      argent: rienNaBouge(),
+      suite: t("Tapez le mot de passe de votre compte Glisil.", "Enter your Glisil account password."),
+    },
+    "code e-mail incorrect": { // langue-ok
+      titre: t("Ce code e-mail n'est pas le bon", "This email code is incorrect"),
+      argent: rienNaBouge(),
+      suite: t("Tapez les six chiffres du dernier e-mail reçu.", "Enter the six digits from the latest email."),
+    },
+    "vérification du mot de passe indisponible": { // langue-ok
+      titre: t("Le mot de passe ne peut pas être vérifié", "Your password can't be checked right now"),
+      argent: rienNaBouge(),
+      suite: t("Écrivez au support : rien n'a été compté contre vous.", "Contact support: nothing has been counted against you."),
+      recommencer: false,
+    },
+    "opération inconnue": { // langue-ok
+      titre: t("Cette opération n'existe pas", "This operation doesn't exist"),
+      argent: rienNaBouge(),
+      suite: t("Rechargez l'application, puis recommencez.", "Reload the app, then try again."),
+      recommencer: false,
     },
     "ce dépôt ne peut plus être annulé": { // langue-ok
       titre: t("Ce dépôt est déjà réglé", "This deposit has already been settled"),
@@ -339,17 +507,6 @@ function dictionnaire(): Record<string, Entree> {
         "Your tier limit is counted in XAF: a first trade is needed to convert."),
       recommencer: false,
     },
-    "code secret déjà choisi": { // langue-ok
-      titre: t("Votre code secret est déjà choisi", "You've already set your PIN"),
-      argent: rienNaChange(),
-      suite: t("Il se change dans Compte → Code secret, avec l'ancien.", "You can change it in Account → PIN, using your current one."),
-      recommencer: false,
-    },
-    "code secret invalide": { // langue-ok
-      titre: t("Le code secret doit faire quatre chiffres", "Your PIN must be four digits"),
-      argent: rienNaChange(),
-      suite: t("Tapez quatre chiffres, sans lettres.", "Enter four digits, no letters."),
-    },
     "code sms incorrect": { // langue-ok
       titre: t("Ce code SMS n'est pas le bon", "This SMS code is incorrect"),
       argent: rienNaBouge(),
@@ -444,10 +601,15 @@ export function lisible(e: unknown): ErreurLisible {
   };
 }
 
+/** Ce qu'un refus compté rend en plus de sa phrase (un code faux, une vérification) : les essais qui restent, le verrou, le facteur en cause. */
+export type DonneesDuRefus = { essaisRestants?: number | null; verrouJusqua?: string | null; facteur?: string | null };
+
 export class ErreurMoteur extends Error {
   detail?: string;
-  constructor(message: string, detail?: string) {
+  donnees?: DonneesDuRefus;
+  constructor(message: string, detail?: string, donnees?: DonneesDuRefus) {
     super(message);
     this.detail = detail;
+    this.donnees = donnees;
   }
 }

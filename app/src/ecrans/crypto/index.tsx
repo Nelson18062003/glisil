@@ -28,8 +28,8 @@ import { arrondi2, FRAIS_CRYPTO, infoReseau, libelleReseau, nomsDesReseaux, rese
 import { adresseCourte, enTranches, quand, xaf } from "../../noyau/format";
 import { langue, t } from "../../noyau/langue";
 import { parcours, useParcours } from "../../navigation/parcours";
-import { Attente, Card, FeuilleErreur, Keypad, Line, List, Points, Row, Screen, Success } from "../../ui";
-import { useGesteUnique } from "../../ui/gestes";
+import { Attente, Card, Keypad, Line, List, Row, Screen, Success } from "../../ui";
+import { EtapeDeVerification } from "../../ui/verification";
 
 const actifDe = (a: string | undefined): Actif => (a === "XAFe" ? "XAFe" : "USDT");
 const fmt = (a: Actif, n: number) => (a === "USDT" ? enTranches(n, 2) : xaf(n));
@@ -292,7 +292,7 @@ export function CryptoRetirerVerifier() {
         {actif === "XAFe" ? t("Vos XAFe sont frappés sur la chaîne au départ, et détruits ici : la circulation ne change pas.", "Your XAFe are minted on-chain as they leave and burned here: the total supply stays the same.") : t("Les USDT partent de la réserve de la plateforme ; le hash de la transaction apparaîtra dans le détail.", "The USDT are sent from the platform's reserve; the transaction hash will appear in the details.")}
       </Typography>
       <Box sx={{ flex: 1 }} />
-      <Button variant="contained" startIcon={<LockRounded />} onClick={() => navigate(`/crypto/retirer/${actif}/code`)}>{t("Confirmer avec mon code", "Confirm with my PIN")}</Button>
+      <Button variant="contained" startIcon={<LockRounded />} onClick={() => navigate(`/crypto/retirer/${actif}/code`)}>{t("Continuer vers la vérification", "Continue to verification")}</Button>
     </Screen>
   );
 }
@@ -303,38 +303,25 @@ export function CryptoRetirerCode() {
   const guichet = useGuichet();
   const navigate = useNavigate();
   const [c] = useParcours("crypto");
-  const [code, setCode] = useState("");
-  const [faux, setFaux] = useState<string | null>(null);
-  const { lancer, enCours, erreur, effacerErreur } = useGesteUnique("cr", { actif, reseau: c.reseau, adresse: c.adresse.trim(), montant: c.montant });
   if (!c.montant || !c.adresse || !c.reseau) return <Navigate to={`/crypto/retirer/${actif}/adresse`} replace />;
+  const adresse = c.adresse.trim();
 
-  const envoyer = (k: string) =>
-    lancer(async (cle) => {
-      try {
-        const r = await guichet.demanderRetraitCrypto({ actif, reseau: c.reseau, adresse: c.adresse.trim(), montant: c.montant, cle, codeSecret: k });
-        /* le parcours s'efface à l'arrivée sur « Envoyé », jamais ici (l'écran repartirait au début) */
-        navigate(`/crypto/envoye/${r.reference}`, { replace: true });
-      } catch (e) {
-        const m = e instanceof Error ? e.message : String(e);
-        if (m.startsWith("code secret") || m.startsWith("compte verrouillé")) { setFaux(m.startsWith("compte") ? t("Trois codes faux : le compte est verrouillé 15 minutes.", "Three wrong PINs: your account is locked for 15 minutes.") : t("Code incorrect.", "Incorrect PIN.")); setCode(""); return; } // langue-ok (message du guichet comparé, pas affiché)
-        throw e;
-      }
-    });
-  const touche = (k: string) => {
-    setFaux(null);
-    const suite = k === "⌫" ? code.slice(0, -1) : (code + k).slice(0, 4);
-    setCode(suite);
-    if (suite.length === 4) void envoyer(suite);
-  };
   return (
-    <Screen title={t("Votre code secret", "Your PIN")} back={`/crypto/retirer/${actif}/verifier`} gap={1.5}>
-      <Typography variant="body2">{t(`Pour envoyer ${fmt(actif, c.montant)} ${actif} vers ${adresseCourte(c.adresse)}.`, `To send ${fmt(actif, c.montant)} ${actif} to ${adresseCourte(c.adresse)}.`)}</Typography>
-      <Points longueur={4} saisis={code.length} erreur={Boolean(faux)} />
-      {faux && <Typography variant="body2" color="error" textAlign="center">{faux}</Typography>}
-      {enCours && <Stack alignItems="center"><CircularProgress size={28} /></Stack>}
-      <Box sx={{ flex: 1 }} />
-      <Keypad onKey={touche} triple={null} />
-      <FeuilleErreur erreur={erreur} onFermer={() => { effacerErreur(); setCode(""); }} />
+    <Screen title={t("Vérification", "Verification")} back={`/crypto/retirer/${actif}/verifier`} gap={1.5}>
+      <EtapeDeVerification
+        op={{ operation: "retrait_crypto", actif, reseau: c.reseau, adresse, montant: c.montant }}
+        intention={{ actif, reseau: c.reseau, adresse, montant: c.montant }}
+        resume={<>
+          <Line label={t("Vous envoyez", "You send")} value={`${fmt(actif, c.montant)} ${actif}`} strong />
+          <Line label={t("Vers", "To")} value={adresseCourte(adresse)} mono />
+        </>}
+        libelle={t(`Envoyer ${fmt(actif, c.montant)} ${actif}`, `Send ${fmt(actif, c.montant)} ${actif}`)}
+        executer={async (preuve, cle) => {
+          const r = await guichet.demanderRetraitCrypto({ actif, reseau: c.reseau, adresse, montant: c.montant, cle, preuve });
+          /* le parcours s'efface à l'arrivée sur « Envoyé », jamais ici (l'écran repartirait au début) */
+          navigate(`/crypto/envoye/${r.reference}`, { replace: true });
+        }}
+      />
     </Screen>
   );
 }

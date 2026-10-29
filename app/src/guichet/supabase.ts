@@ -1,20 +1,25 @@
 /*
  * LE GUICHET SUPABASE : le vrai moteur. L'authentification est celle de
- * Supabase Auth : une adresse e-mail et un code à six chiffres reçu par
- * e-mail, sans mot de passe ; tout le reste passe par les RPC du moteur
- * (supabase/migrations). Les écritures ne touchent jamais une table : la
- * base décide, l'écran montre.
+ * Supabase Auth : une adresse e-mail et un mot de passe (ou Google), un code
+ * à six chiffres reçu par e-mail pour confirmer l'adresse, puis une
+ * application d'authentification (TOTP) à chaque connexion — la base
+ * n'ouvre rien à une session qui n'est pas à aal2 (0035). Tout le reste passe
+ * par les RPC du moteur (supabase/migrations). Les écritures ne touchent
+ * jamais une table : la base décide, l'écran montre.
  */
-import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
-import { ErreurMoteur } from "../noyau/erreurs";
-import { t } from "../noyau/langue";
+import { createClient, type AuthError, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
+import { ErreurMoteur, type DonneesDuRefus } from "../noyau/erreurs";
+import { t, langue } from "../noyau/langue";
 import { emailNormalise } from "../noyau/identite";
 import { numeroSaisi, transactionIdNormalise } from "../noyau/format";
-import type { Guichet } from "./guichet";
+import { ENTREE_VIDE, premierFacteurDe } from "../noyau/entree";
+import { coqueActuelle, lireRetourOAuth, voieGoogle } from "../noyau/google";
+import type { EvenementDEntree, Guichet } from "./guichet";
 import type { PreuveDeReserve } from "./types";
 import type {
   Actif, Carnet, Chandelle, Intervalle, PageDeBougies, Compte, Cote, Cotation, Declaration, Depot, TraceChaine, DevisRapide, Execution, IdOperateur, Notification, Numero, Operation, Ordre, ProfilInscription, SensRapide,
-  Reseau, ResultatCode, ResultatOrdre, RetraitCrypto, Soldes, Sortie, Transaction, TransfertCrypto, TypeOrdre,
+  Reseau, ResultatOrdre, RetraitCrypto, Soldes, Sortie, Transaction, TransfertCrypto, TypeOrdre,
+  EtatDEntree, EnrolementTotp, EtatCodesDeSecours, OperationAVerifier, Verification, EtatVerification, PreuveDeVerification,
 } from "./types";
 
 type J = Record<string, unknown>;
@@ -23,12 +28,50 @@ const nn = (v: unknown): number | null => (v === null || v === undefined ? null 
 const s = (v: unknown): string => (v === null || v === undefined ? "" : String(v));
 const sn = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
 
-/** Les refus de Supabase Auth, ramenés aux clés françaises que noyau/erreurs.ts sait dire (dans la langue de l'écran). */
-function messageAuth(m: string): string {
-  if (/rate limit|too many|seconds/i.test(m)) return "trop de codes demandés : attendez une minute"; // langue-ok
-  if (/invalid.*email|email.*invalid/i.test(m)) return "adresse e-mail invalide"; // langue-ok
-  if (/signups? not allowed|disabled/i.test(m)) return "les inscriptions sont fermées pour le moment"; // langue-ok
-  return m;
+/**
+ * Les refus de Supabase Auth, ramenés aux clés françaises que noyau/erreurs.ts
+ * sait dire (dans la langue de l'écran) — d'après leur CODE (AuthError.code),
+ * pas d'après une phrase anglaise qui peut changer d'une version à l'autre.
+ */
+function erreurAuth(e: AuthError | { message: string; code?: string }): ErreurMoteur {
+  const code = (e as { code?: string }).code ?? "";
+  const m = e.message ?? "";
+  switch (code) {
+    case "invalid_credentials": return new ErreurMoteur("adresse ou mot de passe incorrect"); // langue-ok
+    case "email_not_confirmed": return new ErreurMoteur("adresse e-mail non confirmée"); // langue-ok
+    case "weak_password": {
+      const raisons = (e as { reasons?: string[] }).reasons ?? [];
+      return new ErreurMoteur("mot de passe trop faible", raisons.includes("pwned") ? t("ce mot de passe a déjà fuité sur un autre site", "this password has already leaked on another site") : undefined); // langue-ok
+    }
+    case "user_already_exists": case "email_exists": return new ErreurMoteur("cette adresse a déjà un compte"); // langue-ok
+    case "over_email_send_rate_limit": case "over_request_rate_limit": return new ErreurMoteur("trop de demandes : attendez une minute"); // langue-ok
+    case "otp_expired": return new ErreurMoteur("code incorrect ou expiré", t("demandez-en un nouveau si besoin", "request a new one if needed")); // langue-ok
+    case "mfa_verification_failed": case "mfa_challenge_expired": return new ErreurMoteur("code de l'application incorrect"); // langue-ok
+    case "insufficient_aal": return new ErreurMoteur("double authentification requise"); // langue-ok
+    case "same_password": return new ErreurMoteur("choisissez un mot de passe différent"); // langue-ok
+    case "reauthentication_needed": case "reauthentication_not_valid": case "reauth_nonce_missing": return new ErreurMoteur("confirmation par e-mail nécessaire"); // langue-ok
+    case "email_address_invalid": case "validation_failed": return new ErreurMoteur(/email/i.test(m) ? "adresse e-mail invalide" : m); // langue-ok
+    case "signup_disabled": case "email_provider_disabled": return new ErreurMoteur("les inscriptions sont fermées pour le moment"); // langue-ok
+    default:
+      if (/rate limit|too many/i.test(m)) return new ErreurMoteur("trop de demandes : attendez une minute"); // langue-ok
+      if (/invalid.*email|email.*invalid/i.test(m)) return new ErreurMoteur("adresse e-mail invalide"); // langue-ok
+      if (/signups? not allowed/i.test(m)) return new ErreurMoteur("les inscriptions sont fermées pour le moment"); // langue-ok
+      return new ErreurMoteur(m);
+  }
+}
+
+/** Ce qu'un refus compté rend en plus de sa phrase : essais restants, verrou, facteur en cause. */
+function donneesDuRefus(j: J): DonneesDuRefus {
+  return { essaisRestants: nn(j.essais_restants), verrouJusqua: sn(j.verrou_jusqua), facteur: sn(j.facteur) };
+}
+/** Le détail qu'on lit sous le titre : les essais qui restent, ou l'heure où le verrou se lève. */
+function detailDuRefus(d: DonneesDuRefus): string | undefined {
+  if (d.verrouJusqua) {
+    const h = new Date(d.verrouJusqua).toLocaleTimeString(langue() === "en" ? "en-GB" : "fr-FR", { hour: "2-digit", minute: "2-digit" });
+    return t(`jusqu'à ${h}`, `until ${h}`);
+  }
+  if (d.essaisRestants != null) return t(`${d.essaisRestants} essai(s) restant(s)`, `${d.essaisRestants} attempt(s) left`);
+  return undefined;
 }
 
 /* ----------------------------------------------------- lectures du moteur */
@@ -100,7 +143,7 @@ function compte(j: J): Compte {
   return {
     id: s(j.id), telephone: s(j.telephone), nom: sn(j.nom), entreprise: sn(j.entreprise), palier: Number(j.palier ?? 0) as Compte["palier"],
     email: sn(j.email), prenom: sn(j.prenom), nomDeFamille: sn(j.nom_de_famille), dateNaissance: sn(j.date_naissance), ville: sn(j.ville), pays: sn(j.pays),
-    aCode: Boolean(j.a_code), verrouJusqua: sn(j.verrou_jusqua), verificationEnCours: (j.verification_en_cours as Compte["verificationEnCours"]) ?? null,
+    verificationEnCours: (j.verification_en_cours as Compte["verificationEnCours"]) ?? null,
     entreDuJour: n(j.entre_du_jour),
     /* une base d'avant 0012 ne dit rien des conditions : on ne bloque personne pour ça */
     conditionsAJour: j.conditions_a_jour === undefined ? true : Boolean(j.conditions_a_jour),
@@ -127,6 +170,17 @@ function operation(j: J): Operation | null {
   }
 }
 
+/** Les paramètres que la base LIE au code e-mail (0036, _parametres_de) : en snake_case, l'adresse sans espaces autour. */
+function parametresDeLOperation(op: OperationAVerifier): Record<string, unknown> {
+  switch (op.operation) {
+    case "sortie_momo": return { montant: op.montant, numero_id: op.numeroId, ...(op.nom ? { nom: op.nom } : {}) };
+    case "retrait_crypto": return { actif: op.actif, reseau: op.reseau, adresse: op.adresse.trim(), montant: op.montant };
+    case "retirer_numero": return { numero_id: op.numeroId };
+    case "fermer_compte": return {};
+  }
+}
+const argsDeLaPreuve = (p: PreuveDeVerification) => ({ p_verification: p.verification, p_mot_de_passe: p.motDePasse, p_code_email: p.codeEmail });
+
 /* ======================================================================= */
 
 export class GuichetSupabase implements Guichet {
@@ -134,12 +188,17 @@ export class GuichetSupabase implements Guichet {
   private sb: SupabaseClient;
   private canal: RealtimeChannel | null = null;
   private auditeurs = new Set<() => void>();
+  private entree = new Set<(e: EvenementDEntree) => void>();
+  private ecoute = false;
 
   constructor(url: string, cleAnon: string) {
-    this.sb = createClient(url, cleAnon, { auth: { persistSession: true, autoRefreshToken: true, storageKey: "xafe-client-auth" } });
+    this.sb = createClient(url, cleAnon, {
+      /* pkce : Google revient avec un code (?code=…) que le client échange lui-même — dans le navigateur
+         (detectSessionInUrl), ou dans la coque (terminerRetourOAuth), le vérificateur restant dans la page */
+      auth: { persistSession: true, autoRefreshToken: true, storageKey: "xafe-client-auth", flowType: "pkce", detectSessionInUrl: true },
+    });
     this.sb.auth.onAuthStateChange((evenement) => {
-      if (evenement === "SIGNED_IN") this.ecouter();
-      if (evenement === "SIGNED_OUT") this.taire();
+      if (evenement === "SIGNED_OUT") { this.taire(); for (const cb of this.entree) cb("deconnecte"); }
       for (const cb of this.auditeurs) cb();
     });
   }
@@ -147,19 +206,29 @@ export class GuichetSupabase implements Guichet {
   /** Un appel au moteur ; la phrase de l'exception PL/pgSQL devient le message. */
   private async rpc<T = unknown>(nom: string, args?: Record<string, unknown>): Promise<T> {
     const { data, error } = await this.sb.rpc(nom, args);
-    if (error) throw new ErreurMoteur(error.message, error.details || undefined);
-    /* un code secret faux ne LÈVE pas côté moteur (l'échec doit être compté) : il rend {"erreur": …} */
+    if (error) {
+      /* la session a perdu aal2 (un facteur retiré, un jeton relu) : la session se relit, l'écran mène où il faut */
+      if (/^double authentification requise/.test(error.message)) for (const cb of this.entree) cb("aal_perdu");
+      throw new ErreurMoteur(error.message, error.details || undefined);
+    }
+    /* un refus COMPTÉ (un mot de passe, un code faux) ne LÈVE pas côté moteur — l'échec doit rester écrit : il rend {"erreur": …} */
     if (data && typeof data === "object" && !Array.isArray(data) && typeof (data as J).erreur === "string") {
       const j = data as J;
-      throw new ErreurMoteur(String(j.erreur), j.essais_restants != null ? t(`${j.essais_restants} essai(s) restant(s)`, `${j.essais_restants} attempt(s) left`) : undefined);
+      const d = donneesDuRefus(j);
+      throw new ErreurMoteur(String(j.erreur), detailDuRefus(d), d);
     }
     return data as T;
   }
 
   /* -------------------------------------------------------- temps réel */
 
+  tempsReel(actif: boolean) {
+    this.ecoute = actif;
+    if (actif) void this.ecouter(); else this.taire();
+  }
+
   private async ecouter() {
-    if (this.canal) return;
+    if (this.canal || !this.ecoute) return;
     const { data } = await this.sb.auth.getUser();
     const id = data.user?.id;
     if (!id) return;
@@ -177,8 +246,18 @@ export class GuichetSupabase implements Guichet {
 
   surChangement(cb: () => void) {
     this.auditeurs.add(cb);
-    void this.ecouter();
     return () => { this.auditeurs.delete(cb); };
+  }
+
+  surEntree(cb: (e: EvenementDEntree) => void) {
+    this.entree.add(cb);
+    return () => { this.entree.delete(cb); };
+  }
+
+  /** Après un code de l'application : le jeton neuf (aal2) part aussi au temps réel, qui gardait l'ancien. */
+  private async jetonNeufAuTempsReel() {
+    try { await this.sb.realtime.setAuth(); } catch { /* le prochain rafraîchissement du jeton s'en chargera */ }
+    if (this.canal) { this.taire(); void this.ecouter(); }
   }
 
   /* ============================================================ session */
@@ -188,20 +267,191 @@ export class GuichetSupabase implements Guichet {
     return data.session ? { compteId: data.session.user.id } : null;
   }
 
-  async demanderCode(email: string) {
-    const { error } = await this.sb.auth.signInWithOtp({ email: emailNormalise(email), options: { shouldCreateUser: true } });
-    if (error) throw new ErreurMoteur(messageAuth(error.message));
+  async etatDEntree(): Promise<EtatDEntree> {
+    const { data } = await this.sb.auth.getSession();
+    if (!data.session) return { ...ENTREE_VIDE };
+    const [aal, facteurs, etat] = await Promise.all([
+      this.sb.auth.mfa.getAuthenticatorAssuranceLevel(),
+      this.sb.auth.mfa.listFactors(),
+      this.rpc<J>("mon_etat_d_entree"),
+    ]);
+    if (aal.error) throw erreurAuth(aal.error);
+    const niveau = (v: unknown) => (v === "aal1" || v === "aal2" ? v : null);
+    return {
+      session: true,
+      premierFacteur: premierFacteurDe(aal.data.currentAuthenticationMethods as ({ method?: string } | string)[]),
+      aalActuel: niveau(aal.data.currentLevel), aalSuivant: niveau(aal.data.nextLevel),
+      emailConfirme: Boolean(etat?.email_confirme), motDePasse: Boolean(etat?.mot_de_passe),
+      codesDeSecours: Boolean(etat?.codes_de_secours), compte: Boolean(etat?.compte),
+      facteurTotpId: facteurs.data?.totp?.[0]?.id ?? null,
+    };
   }
 
-  async verifierCode(email: string, code: string) {
-    const { data, error } = await this.sb.auth.verifyOtp({ email: emailNormalise(email), token: code, type: "email" });
-    if (error || !data.user) throw new ErreurMoteur("code incorrect ou expiré", t("demandez-en un nouveau si besoin", "request a new one if needed")); // langue-ok
-    return { nouveau: (await this.monCompte()) === null };
+  async inscrire({ email, motDePasse }: { email: string; motDePasse: string }) {
+    const { data, error } = await this.sb.auth.signUp({ email: emailNormalise(email), password: motDePasse, options: { data: { langue: langue() } } });
+    if (error) throw erreurAuth(error);
+    /* une adresse déjà inscrite et confirmée : Auth rend un utilisateur sans identité (pour ne rien dire à un curieux) */
+    return { dejaInscrit: (data.user?.identities?.length ?? 1) === 0, session: Boolean(data.session) };
   }
 
-  async seDeconnecter() {
+  async confirmerEmail({ email, code, motDePasse }: { email: string; code: string; motDePasse?: string }) {
+    const e = emailNormalise(email);
+    const { error } = await this.sb.auth.verifyOtp({ email: e, token: code, type: "signup" });
+    if (error) throw error.code === "over_request_rate_limit" ? erreurAuth(error) : new ErreurMoteur("code incorrect ou expiré", t("demandez-en un nouveau si besoin", "request a new one if needed")); // langue-ok
+    /* le code ouvre une session « otp », qui n'est jamais forte : on entre aussitôt par le mot de passe encore en mémoire */
+    if (motDePasse) {
+      const r = await this.sb.auth.signInWithPassword({ email: e, password: motDePasse });
+      if (!r.error) return { connecte: true };
+    }
+    await this.sb.auth.signOut({ scope: "local" });
+    return { connecte: false };
+  }
+
+  async renvoyerConfirmation(email: string) {
+    const { error } = await this.sb.auth.resend({ type: "signup", email: emailNormalise(email) });
+    if (error) throw erreurAuth(error);
+  }
+
+  async connecter({ email, motDePasse }: { email: string; motDePasse: string }) {
+    const e = emailNormalise(email);
+    const { error } = await this.sb.auth.signInWithPassword({ email: e, password: motDePasse });
+    if (!error) return;
+    if (error.code === "email_not_confirmed") {
+      await this.renvoyerConfirmation(e).catch(() => { /* un code est peut-être déjà parti : l'écran du code permet d'en redemander */ });
+    }
+    throw erreurAuth(error);
+  }
+
+  async connecterGoogle() {
+    const voie = voieGoogle({ demo: false, coque: coqueActuelle(), agent: typeof navigator !== "undefined" ? navigator.userAgent : "" });
+    if (voie.voie === "coque") {
+      /* Google refuse une WebView : la coque ouvre l'adresse dans un onglet du système et rend glisil://auth-retour?code=… */
+      const { data, error } = await this.sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: "glisil://auth-retour", skipBrowserRedirect: true, queryParams: { prompt: "select_account" } } });
+      if (error || !data.url) throw erreurAuth(error ?? { message: "connexion Google annulée" }); // langue-ok
+      (window as unknown as { ReactNativeWebView?: { postMessage: (m: string) => void } }).ReactNativeWebView?.postMessage(JSON.stringify({ type: "connexion-google", url: data.url }));
+      return;
+    }
+    if (voie.voie !== "web") throw new ErreurMoteur("connexion Google annulée"); // langue-ok
+    const { error } = await this.sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/bienvenue/retour`, queryParams: { prompt: "select_account" } } });
+    if (error) throw erreurAuth(error);
+  }
+
+  async terminerRetourOAuth(url: string) {
+    const { code, erreur } = lireRetourOAuth(url);
+    if (!code) throw new ErreurMoteur("connexion Google annulée", erreur ?? undefined); // langue-ok
+    const { error } = await this.sb.auth.exchangeCodeForSession(code);
+    if (error) throw new ErreurMoteur("connexion Google annulée", error.message); // langue-ok
+  }
+
+  async choisirMotDePasse(motDePasse: string) {
+    const { error } = await this.sb.auth.updateUser({ password: motDePasse });
+    if (error) throw erreurAuth(error);
+  }
+
+  private async enroler(): Promise<EnrolementTotp> {
+    const quand = new Date().toISOString().slice(0, 16).replace("T", " ");
+    const { data, error } = await this.sb.auth.mfa.enroll({ factorType: "totp", issuer: "Glisil", friendlyName: `Glisil ${quand}` });
+    if (error || !data) throw erreurAuth(error ?? { message: "aucune application d'authentification" }); // langue-ok
+    return { facteurId: data.id, qr: data.totp.qr_code, secret: data.totp.secret, uri: data.totp.uri };
+  }
+
+  /** Les essais abandonnés (facteurs jamais vérifiés) bloqueraient le nom du suivant : on les retire d'abord. */
+  private async retirerLesFacteursNonVerifies() {
+    const { data } = await this.sb.auth.mfa.listFactors();
+    for (const f of data?.all ?? []) {
+      if (f.factor_type === "totp" && f.status === "unverified") await this.sb.auth.mfa.unenroll({ factorId: f.id }).catch(() => undefined);
+    }
+  }
+
+  async enrolerDeuxFacteurs() {
+    await this.retirerLesFacteursNonVerifies();
+    return this.enroler();
+  }
+
+  async confirmerDeuxFacteurs({ facteurId, code }: { facteurId: string; code: string }) {
+    const { error } = await this.sb.auth.mfa.challengeAndVerify({ factorId: facteurId, code });
+    if (error) throw erreurAuth(error);
+    await this.jetonNeufAuTempsReel();
+  }
+
+  async verifierDeuxFacteurs(code: string) {
+    const { data } = await this.sb.auth.mfa.listFactors();
+    const f = data?.totp?.[0];
+    if (!f) throw new ErreurMoteur("aucune application d'authentification"); // langue-ok
+    const { error } = await this.sb.auth.mfa.challengeAndVerify({ factorId: f.id, code });
+    if (error) throw erreurAuth(error);
+    await this.jetonNeufAuTempsReel();
+  }
+
+  async genererCodesDeSecours() {
+    const r = await this.rpc<J>("generer_codes_de_secours");
+    return ((r?.codes as unknown[]) ?? []).map(String);
+  }
+  async confirmerCodesDeSecours() { await this.rpc("confirmer_codes_de_secours"); }
+  async codesDeSecours(): Promise<EtatCodesDeSecours> {
+    const r = (await this.rpc<J>("mes_codes_de_secours")) ?? {};
+    return { confirmes: Boolean(r.confirmes), restants: n(r.restants), creesLe: sn(r.cree_le) };
+  }
+
+  async utiliserCodeDeSecours(code: string) {
+    /* la base décide (code, essais, verrou) ; la fonction ne fait qu'exécuter ce qu'Auth seul peut faire : retirer le facteur */
+    const { data, error } = await this.sb.functions.invoke("deux-facteurs", { body: { action: "code_de_secours", code } });
+    let j = (data ?? null) as J | null;
+    if (error) {
+      const contexte = (error as { context?: Response }).context;
+      j = contexte && typeof contexte.json === "function" ? ((await contexte.json().catch(() => null)) as J | null) : null;
+      if (!j || typeof j.erreur !== "string") throw new ErreurMoteur(error.message);
+    }
+    if (j && typeof j.erreur === "string") { const d = donneesDuRefus(j); throw new ErreurMoteur(j.erreur, detailDuRefus(d), d); }
+    /* le facteur est parti : le jeton relu redescend à aal1, et l'entrée mène à l'enrôlement d'une nouvelle application */
+    await this.sb.auth.refreshSession();
+  }
+
+  async motDePasseOublie(email: string) {
+    const { error } = await this.sb.auth.resetPasswordForEmail(emailNormalise(email));
+    if (error) throw erreurAuth(error);
+  }
+
+  async verifierCodeDeReinitialisation({ email, code }: { email: string; code: string }) {
+    const { error } = await this.sb.auth.verifyOtp({ email: emailNormalise(email), token: code, type: "recovery" });
+    if (error) throw error.code === "over_request_rate_limit" ? erreurAuth(error) : new ErreurMoteur("code incorrect ou expiré", t("demandez-en un nouveau si besoin", "request a new one if needed")); // langue-ok
+  }
+
+  async nouveauMotDePasse(motDePasse: string) {
+    const { error } = await this.sb.auth.updateUser({ password: motDePasse });
+    if (error) throw erreurAuth(error);
+    /* toutes les sessions se ferment, celle-ci comprise : on entre de nouveau, avec le nouveau mot de passe */
+    await this.sb.auth.signOut({ scope: "global" });
+  }
+
+  async changerMotDePasse({ nouveau, nonce }: { nouveau: string; nonce?: string }) {
+    const { error } = await this.sb.auth.updateUser({ password: nouveau, ...(nonce ? { nonce } : {}) });
+    if (!error) return;
+    if (!nonce && (error.code === "reauthentication_needed" || error.code === "reauth_nonce_missing")) {
+      const r = await this.sb.auth.reauthenticate();
+      if (r.error) throw erreurAuth(r.error);
+    }
+    throw erreurAuth(error);
+  }
+
+  async commencerChangementDeTelephone() {
+    await this.retirerLesFacteursNonVerifies();
+    return this.enroler();
+  }
+
+  async terminerChangementDeTelephone({ facteurId, code }: { facteurId: string; code: string }) {
+    const { error } = await this.sb.auth.mfa.challengeAndVerify({ factorId: facteurId, code });
+    if (error) throw erreurAuth(error);
+    /* le nouveau facteur est prouvé (session aal2) : les anciens téléphones ne servent plus */
+    const { data } = await this.sb.auth.mfa.listFactors();
+    for (const f of data?.totp ?? []) if (f.id !== facteurId) await this.sb.auth.mfa.unenroll({ factorId: f.id });
+    await this.sb.auth.refreshSession();
+    await this.jetonNeufAuTempsReel();
+  }
+
+  async seDeconnecter(portee: "local" | "global" = "local") {
     this.taire();
-    await this.sb.auth.signOut();
+    await this.sb.auth.signOut({ scope: portee });
   }
 
   /* ============================================================= compte */
@@ -211,22 +461,30 @@ export class GuichetSupabase implements Guichet {
   async ouvrirCompte(p: ProfilInscription) {
     return compte(await this.rpc<J>("ouvrir_mon_compte", { p_prenom: p.prenom, p_nom: p.nom, p_naissance: p.naissance, p_telephone: p.telephone, p_ville: p.ville, p_pays: p.pays, p_conditions: p.conditions }));
   }
-  async completerProfil({ nom, codeSecret }: { nom: string; codeSecret: string }) { return compte(await this.rpc<J>("completer_profil", { p_nom: nom, p_code: codeSecret })); }
-  async verifierCodeSecret(code: string): Promise<ResultatCode> {
-    /* PAS this.rpc : un code faux revient en {"ok": false, "erreur": …} — c'est une RÉPONSE que l'écran
-       de déverrouillage doit lire (essais restants, verrou), pas une exception qui le laisserait muet,
-       le code faux toujours dans les cases, renvoyé à chaque touche jusqu'au verrou. */
-    const { data, error } = await this.sb.rpc("verifier_code_secret", { p_code: code });
-    if (error) throw new ErreurMoteur(error.message, error.details || undefined);
-    const r = (data ?? {}) as J;
-    return { ok: Boolean(r.ok), essaisRestants: nn(r.essais_restants) ?? undefined, verrouJusqua: sn(r.verrou_jusqua) };
+  async nomPropose() {
+    const { data } = await this.sb.auth.getUser();
+    const m = (data.user?.user_metadata ?? {}) as J;
+    const prenom = s(m.given_name).trim(), nom = s(m.family_name).trim();
+    if (prenom || nom) return { prenom, nom };
+    const complet = s(m.full_name || m.name).trim().split(/\s+/).filter(Boolean);
+    return complet.length ? { prenom: complet[0], nom: complet.slice(1).join(" ") } : null;
   }
   async accepterConditions(version: string) { return compte(await this.rpc<J>("accepter_conditions", { p_version: version })); }
-  async fermerCompte({ codeSecret, motif }: { codeSecret: string; motif: string }) {
-    const r = await this.rpc<J>("fermer_mon_compte", { p_code: codeSecret, p_motif: motif });
+  async fermerCompte({ motif, preuve }: { motif: string; preuve: PreuveDeVerification }) {
+    const r = await this.rpc<J>("fermer_mon_compte", { ...argsDeLaPreuve(preuve), p_motif: motif });
     return compte(r.compte as J);
   }
-  async changerCodeSecret({ ancien, nouveau }: { ancien: string; nouveau: string }) { await this.rpc("changer_code_secret", { p_ancien: ancien, p_nouveau: nouveau }); }
+
+  async preparerVerification(op: OperationAVerifier): Promise<Verification> {
+    const r = await this.rpc<J>("preparer_verification", { p_operation: op.operation, p_parametres: parametresDeLOperation(op) });
+    return { id: s(r.id), expireLe: s(r.expire_le), renvoiDes: s(r.renvoi_des), emailMasque: s(r.email_masque) };
+  }
+  async etatVerification(id: string): Promise<EtatVerification | null> {
+    const r = await this.rpc<J | null>("ma_verification", { p_id: id });
+    if (!r) return null;
+    const c = s(r.courriel);
+    return { courriel: (["en_attente", "en_cours", "envoye", "echoue", "abandonne"].includes(c) ? c : "en_attente") as EtatVerification["courriel"], essaisRestants: n(r.essais_restants) };
+  }
   async demanderVerification({ type, pieces }: { type: "identite" | "entreprise"; pieces: File[] }) {
     const { data } = await this.sb.auth.getUser();
     const id = data.user?.id;
@@ -290,9 +548,9 @@ export class GuichetSupabase implements Guichet {
     return { ...p, alertes: Number(p.alertes ?? 0), releve: p.releve ? { ...p.releve, floats_detail: p.releve.floats_detail ?? null } : null };
   }
   async renvoyerCodeNumero(id: string) { return numero(await this.rpc<J>("renvoyer_code_numero", { p_id: id })); }
-  async retirerNumero({ id, codeSecret }: { id: string; codeSecret: string }) { await this.rpc("retirer_numero", { p_id: id, p_code: codeSecret }); }
-  async demanderSortie({ montant, numeroId, cle, codeSecret, nom }: { montant: number; numeroId: string; cle: string; codeSecret: string; nom?: string }) {
-    return sortie(await this.rpc<J>("demander_sortie", { p_montant: montant, p_numero_id: numeroId, p_cle: cle, p_code: codeSecret, ...(nom ? { p_nom: nom } : {}) }));
+  async retirerNumero({ id, preuve }: { id: string; preuve: PreuveDeVerification }) { await this.rpc("retirer_numero", { p_id: id, ...argsDeLaPreuve(preuve) }); }
+  async demanderSortie({ montant, numeroId, cle, preuve, nom }: { montant: number; numeroId: string; cle: string; preuve: PreuveDeVerification; nom?: string }) {
+    return sortie(await this.rpc<J>("demander_sortie", { p_montant: montant, p_numero_id: numeroId, p_cle: cle, ...argsDeLaPreuve(preuve), ...(nom ? { p_nom: nom } : {}) }));
   }
   async sortie(reference: string) { return sortie(trouve(await this.rpc<J>("ma_sortie", { p_reference: reference }), "sortie inconnue")); }
 
@@ -349,8 +607,8 @@ export class GuichetSupabase implements Guichet {
   /* ============================================================= crypto */
 
   async adresseDepot(actif: Actif, reseau: Reseau) { return sn(await this.rpc("adresse_depot", { p_actif: actif, p_reseau: reseau })); }
-  async demanderRetraitCrypto({ actif, reseau, adresse, montant, cle, codeSecret }: { actif: Actif; reseau: Reseau; adresse: string; montant: number; cle: string; codeSecret: string }) {
-    return retrait(await this.rpc<J>("demander_retrait_crypto", { p_actif: actif, p_reseau: reseau, p_adresse: adresse, p_montant: montant, p_cle: cle, p_code: codeSecret }));
+  async demanderRetraitCrypto({ actif, reseau, adresse, montant, cle, preuve }: { actif: Actif; reseau: Reseau; adresse: string; montant: number; cle: string; preuve: PreuveDeVerification }) {
+    return retrait(await this.rpc<J>("demander_retrait_crypto", { p_actif: actif, p_reseau: reseau, p_adresse: adresse.trim(), p_montant: montant, p_cle: cle, ...argsDeLaPreuve(preuve) }));
   }
   async retraitCrypto(reference: string) { return retrait(trouve(await this.rpc<J>("mon_retrait_crypto", { p_reference: reference }), "retrait inconnu")); }
 

@@ -1,14 +1,19 @@
 /*
  * Les chemins de l'application, tels que design/NAVIGATION.md les écrit : un
- * écran qui n'est pas ici n'existe pas. Les gardes : sans session → Bienvenue ;
- * profil incomplet → nom + code ; compte verrouillé → le verrou par-dessus
- * l'écran demandé, et l'on revient exactement là après le code.
+ * écran qui n'est pas ici n'existe pas. Les gardes : chaque phase de l'entrée
+ * a son chemin (noyau/entree.ts) — sans session → Bienvenue ; puis le code
+ * e-mail, le mot de passe (Google), l'application d'authentification, les
+ * codes de secours, le profil. Une session complète saute l'entrée, et l'on
+ * revient exactement à l'écran demandé.
  */
 import { Box, CircularProgress } from "@mui/material";
 import { createBrowserRouter, Navigate, Outlet, useLocation } from "react-router-dom";
 import { Accueil, Notifications } from "../ecrans/accueil";
-import { Bienvenue, BienvenueCode, BienvenueProfil, Verrouillage } from "../ecrans/bienvenue";
+import { Bienvenue, BienvenueCode, RetourGoogle } from "../ecrans/bienvenue";
+import { CodesDeSecoursAEcrire } from "../ecrans/bienvenue/codes-de-secours";
+import { DeuxFacteurs, DeuxFacteursCode, Secours } from "../ecrans/bienvenue/deux-facteurs";
 import { Inscription } from "../ecrans/bienvenue/inscription";
+import { ChoisirMotDePasse, Oubli, OubliCode, OubliNouveau } from "../ecrans/bienvenue/mot-de-passe";
 import { Compte, CompteAide, CompteApi, CompteFermer, CompteInformations, CompteNumeros, CompteNumerosAjouter, ComptePaliers, ComptePaliersEntreprise, ComptePaliersIdentite, CompteSecurite } from "../ecrans/compte";
 import { Crypto, CryptoDeposer, CryptoEnvoye, CryptoRetirerAdresse, CryptoRetirerCode, CryptoRetirerMontant, CryptoRetirerVerifier } from "../ecrans/crypto";
 import { EntrerCredite, EntrerMontant, EntrerOperateur, EntrerPayer, EntrerTransaction } from "../ecrans/entrer";
@@ -20,6 +25,7 @@ import { Marche, MarcheCarnet, MarcheExecute, MarcheGraphique, MarcheOrdreDetail
 import { Rapide, RapideFait, RapidePrix } from "../ecrans/rapide";
 import { SortirCode, SortirDestination, SortirEnvoye, SortirMontant, SortirVerifier } from "../ecrans/sortir";
 import { useCompte } from "../guichet";
+import { cheminDeLaPhase, cheminPermis } from "../noyau/entree";
 import { CadreApplication } from "../ui";
 import { useSession } from "../session/session";
 
@@ -34,37 +40,32 @@ function Attente() {
 /**
  * Les écrans qui demandent une session complète. Par-dessus l'écran demandé,
  * dans cet ordre : le compte fermé ou suspendu (rien d'autre n'est possible),
- * le verrou du code secret, puis les conditions à réaccepter quand leur
- * version a changé. Le compte se relit en direct : accepter, ou être rouvert
- * par l'équipe, rend l'écran demandé sans recharger.
+ * puis les conditions à réaccepter quand leur version a changé. Le compte se
+ * relit en direct : accepter, ou être rouvert par l'équipe, rend l'écran
+ * demandé sans recharger.
  */
 function Garde() {
   const { etat } = useSession();
   const location = useLocation();
-  const { data } = useCompte();
+  const { data } = useCompte(etat.phase === "connecte");
   if (etat.phase === "chargement") return <Attente />;
-  if (etat.phase === "anonyme") return <Navigate to="/bienvenue" replace state={{ apres: location.pathname + location.search }} />;
-  if (etat.phase === "inscription") return <Navigate to="/bienvenue/inscription" replace />;
-  if (etat.phase === "profil") return <Navigate to="/bienvenue/profil" replace />;
+  if (etat.phase !== "connecte") return <Navigate to={cheminDeLaPhase(etat)} replace state={etat.phase === "anonyme" ? { apres: location.pathname + location.search } : undefined} />;
   const compte = data ?? etat.compte;
   if (compte.fermeLe || compte.desactive) return <CompteFerme />;
-  if (etat.verrouille) return <Verrouillage />;
   if (!compte.conditionsAJour) return <ConditionsAReaccepter />;
   return <CadreApplication><Outlet /></CadreApplication>;
 }
 
-/** Les écrans d'entrée : une session complète les saute. */
+/** Les écrans d'entrée : chaque phase ouvre son chemin (et quelques voisins) ; une session complète les saute. */
 function Porte() {
   const { etat } = useSession();
   const location = useLocation();
   if (etat.phase === "chargement") return <Attente />;
   if (etat.phase === "connecte") {
     const apres = (location.state as { apres?: string } | null)?.apres;
-    return <Navigate to={apres && apres !== "/bienvenue" ? apres : "/"} replace />;
+    return <Navigate to={apres && !apres.startsWith("/bienvenue") ? apres : "/"} replace />;
   }
-  if (etat.phase === "inscription" && location.pathname !== "/bienvenue/inscription") return <Navigate to="/bienvenue/inscription" replace />;
-  if (etat.phase === "profil" && location.pathname !== "/bienvenue/profil") return <Navigate to="/bienvenue/profil" replace />;
-  if (etat.phase === "anonyme" && (location.pathname === "/bienvenue/profil" || location.pathname === "/bienvenue/inscription")) return <Navigate to="/bienvenue" replace />;
+  if (!cheminPermis(etat, location.pathname)) return <Navigate to={cheminDeLaPhase(etat)} replace state={location.state} />;
   return <Outlet />;
 }
 
@@ -79,10 +80,20 @@ export const routeur = createBrowserRouter([
     children: [
       { path: "/bienvenue", element: <Bienvenue /> },
       { path: "/bienvenue/code", element: <BienvenueCode /> },
+      { path: "/bienvenue/retour", element: <RetourGoogle /> },
+      { path: "/bienvenue/mot-de-passe", element: <ChoisirMotDePasse /> },
+      { path: "/bienvenue/deux-facteurs", element: <DeuxFacteurs /> },
+      { path: "/bienvenue/deux-facteurs/code", element: <DeuxFacteursCode /> },
+      { path: "/bienvenue/secours", element: <Secours /> },
+      { path: "/bienvenue/codes-de-secours", element: <CodesDeSecoursAEcrire /> },
       { path: "/bienvenue/inscription", element: <Inscription /> },
-      { path: "/bienvenue/profil", element: <BienvenueProfil /> },
+      { path: "/bienvenue/oubli", element: <Oubli /> },
+      { path: "/bienvenue/oubli/code", element: <OubliCode /> },
+      { path: "/bienvenue/oubli/nouveau", element: <OubliNouveau /> },
     ],
   },
+  /* l'ancien écran du code secret : il n'existe plus, on rentre par l'entrée */
+  { path: "/bienvenue/profil", element: <Navigate to="/bienvenue" replace /> },
   {
     element: <Garde />,
     children: [

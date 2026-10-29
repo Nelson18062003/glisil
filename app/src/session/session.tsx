@@ -1,124 +1,155 @@
 /*
- * La session : qui est connecté, si l'écran est verrouillé, si les montants
- * sont masqués. Le verrou se pose à chaque ouverture de l'application quand
- * le compte a un code secret ; il se lève avec le code (ou l'empreinte, par
- * la coque native). Une session expirée repose le verrou par-dessus l'écran.
+ * La session : où en est l'entrée (noyau/entree.ts le décide, d'après Supabase
+ * Auth et la base), le compte quand tout est là, et l'œil qui masque les
+ * montants. Il n'y a plus de verrou ni de code secret : l'entrée demande le
+ * mot de passe (ou Google) puis le code de l'application d'authentification,
+ * et chaque sortie d'argent redemande ses trois preuves (ui/verification.tsx).
+ *
+ * L'état ne se devine pas : `avancer()` relit l'état d'entrée et en tire la
+ * phase. Les écrans d'entrée agissent par le guichet, puis appellent avancer().
+ * Une session ouverte par un simple code e-mail (hors « mot de passe oublié »)
+ * est fermée ici : elle n'ouvrirait rien en base.
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useGuichet } from "../guichet";
-import type { Compte, ResultatCode } from "../guichet/types";
+import type { Compte } from "../guichet/types";
+import { phaseDEntree, type PhaseDEntree } from "../noyau/entree";
 
-/*
- * anonyme     personne n'est connecté : l'adresse e-mail, puis le code
- * inscription l'adresse est prouvée, le compte n'est pas encore ouvert : le profil complet
- * profil      le compte est ouvert, il manque le code secret des gestes d'argent
- * connecte    tout est là ; l'écran peut être verrouillé
- */
-type Etat =
+export type Etat =
   | { phase: "chargement" }
-  | { phase: "anonyme" }
-  | { phase: "inscription" }
-  | { phase: "profil"; compte: Compte }
-  | { phase: "connecte"; compte: Compte; verrouille: boolean };
+  | Exclude<PhaseDEntree, { phase: "connecte" } | { phase: "email_a_confirmer" }>
+  | { phase: "email_a_confirmer"; email: string | null }
+  | { phase: "connecte"; compte: Compte };
+
+/** Ce que la Bienvenue doit dire en arrivant (« adresse confirmée, connectez-vous »…). */
+export type Annonce = "facteur_faible" | "adresse_confirmee" | "mot_de_passe_change" | null;
 
 type Session = {
   etat: Etat;
   compte: Compte | null;
   montantsMasques: boolean;
   basculerMasque: () => void;
-  /** l'adresse et son code ; rend l'étape où la personne doit aller */
-  connecter: (email: string, code: string) => Promise<{ suite: "inscription" | "profil" | "accueil" }>;
-  /** le compte vient de s'ouvrir : reste le code secret */
-  compteOuvert: (compte: Compte) => void;
-  profilComplete: (compte: Compte) => void;
-  deverrouiller: (code: string) => Promise<ResultatCode>;
-  verrouiller: () => void;
-  deconnecter: () => Promise<void>;
+  /** relit l'état d'entrée et mène à la phase qui suit */
+  avancer: () => Promise<void>;
+  deconnecter: (portee?: "local" | "global") => Promise<void>;
+  /** relit le compte (après une écriture qui le change) */
   rafraichirCompte: () => Promise<void>;
+  /** l'adresse et le mot de passe d'une inscription, gardés EN MÉMOIRE le temps du code (jamais écrits) */
+  retenirInscription: (email: string | null, motDePasse: string | null) => void;
+  inscription: { email: string | null; motDePasse: string | null };
+  annonce: Annonce;
+  poserAnnonce: (a: Annonce) => void;
+  /** « mot de passe oublié » : la session ouverte par son code e-mail n'ouvre que la suite de ce détour */
+  commencerRecuperation: () => void;
+  finirRecuperation: () => void;
 };
 
 const Contexte = createContext<Session | null>(null);
 const CLE_MASQUE = "xafe.montants-masques";
-const CLE_DEVERROUILLE = "xafe.deverrouille-a";
-/** au-delà, l'application rouverte redemande le code */
-const VERROU_APRES_MS = 2 * 60_000;
+const CLE_RECUPERATION = "glisil.recuperation";
 
 function lireMasque(): boolean {
   try { return localStorage.getItem(CLE_MASQUE) === "1"; } catch { return false; }
 }
-
-function deverrouilleRecemment(): boolean {
-  try {
-    const t = Number(sessionStorage.getItem(CLE_DEVERROUILLE) ?? 0);
-    return t > 0 && Date.now() - t < VERROU_APRES_MS;
-  } catch { return false; }
+/* le détour « mot de passe oublié » survit à un rechargement (sessionStorage) ; sans stockage, il vit le temps de la page */
+let recuperationEnMemoire = false;
+const recuperationEnCours = (): boolean => { try { return sessionStorage.getItem(CLE_RECUPERATION) === "1" || recuperationEnMemoire; } catch { return recuperationEnMemoire; } };
+function poserRecuperation(oui: boolean) {
+  recuperationEnMemoire = oui;
+  try { if (oui) sessionStorage.setItem(CLE_RECUPERATION, "1"); else sessionStorage.removeItem(CLE_RECUPERATION); } catch { /* la mémoire suffit */ }
 }
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const guichet = useGuichet();
   const [etat, setEtat] = useState<Etat>({ phase: "chargement" });
   const [montantsMasques, setMasque] = useState(lireMasque);
+  const [annonce, poserAnnonce] = useState<Annonce>(null);
+  const [inscription, setInscription] = useState<{ email: string | null; motDePasse: string | null }>({ email: null, motDePasse: null });
+  const inscriptionRef = useRef(inscription);
+  inscriptionRef.current = inscription;
+  /* deux relectures croisées : la dernière demandée gagne */
+  const tour = useRef(0);
 
-  const chargerCompte = useCallback(async () => {
-    const s = await guichet.session();
-    if (!s) { setEtat({ phase: "anonyme" }); return; }
-    const compte = await guichet.monCompte();
-    if (!compte) { setEtat({ phase: "inscription" }); return; }
-    if (!compte.aCode) { setEtat({ phase: "profil", compte }); return; }
-    setEtat((avant) => ({ phase: "connecte", compte, verrouille: avant.phase === "connecte" ? avant.verrouille : !deverrouilleRecemment() }));
+  const avancer = useCallback(async () => {
+    const ce = ++tour.current;
+    let e;
+    try { e = await guichet.etatDEntree(); } catch { if (ce === tour.current) setEtat({ phase: "anonyme" }); return; }
+    if (ce !== tour.current) return;
+    const p = phaseDEntree(e, recuperationEnCours());
+    if (p.phase === "anonyme" && p.raison === "facteur_faible") {
+      /* un code e-mail seul ne donne jamais une session forte : on la ferme, et l'on demande le mot de passe */
+      await guichet.seDeconnecter().catch(() => undefined);
+      poserAnnonce("facteur_faible");
+    }
+    if (ce !== tour.current) return;
+    if (p.phase === "connecte") {
+      let compte: Compte | null;
+      try { compte = await guichet.monCompte(); } catch {
+        /* le compte ne se lit pas (réseau) : on garde ce qu'on avait, sinon la Bienvenue — la session, elle, reste */
+        if (ce === tour.current) setEtat((avant) => (avant.phase === "connecte" ? avant : { phase: "anonyme" }));
+        return;
+      }
+      if (ce !== tour.current) return;
+      setEtat(compte ? { phase: "connecte", compte } : { phase: "inscription" });
+      return;
+    }
+    if (p.phase === "anonyme" && inscriptionRef.current.email) {
+      /* l'inscription attend son code : l'écran du code reste ouvert, même sans session */
+      setEtat({ phase: "email_a_confirmer", email: inscriptionRef.current.email });
+      return;
+    }
+    setEtat(p.phase === "email_a_confirmer" ? { phase: "email_a_confirmer", email: inscriptionRef.current.email } : p);
   }, [guichet]);
 
-  useEffect(() => { void chargerCompte().catch(() => setEtat({ phase: "anonyme" })); }, [chargerCompte]);
+  useEffect(() => { void avancer(); }, [avancer]);
 
-  /* l'application revient devant après un long moment : le verrou se repose */
+  /* la session fermée ailleurs (expirée, « déconnecter tous mes appareils »), ou devenue faible pour la base */
+  const derniereRelecture = useRef(0);
+  useEffect(() => guichet.surEntree((ev) => {
+    if (ev === "deconnecte") { tour.current++; setEtat((e) => (e.phase === "anonyme" || e.phase === "email_a_confirmer" ? e : { phase: "anonyme" })); return; }
+    /* un refus « double authentification requise » : une relecture, pas une rafale (dix requêtes refusées ensemble n'en font qu'une) */
+    if (Date.now() - derniereRelecture.current < 3_000) return;
+    derniereRelecture.current = Date.now();
+    void avancer();
+  }), [guichet, avancer]);
+
+  /* la coque rend le retour de Google (glisil://auth-retour?code=…) : le code s'échange ici, dans la page qui a le vérificateur */
   useEffect(() => {
-    let cacheeDepuis = 0;
-    const surVisibilite = () => {
-      if (document.visibilityState === "hidden") { cacheeDepuis = Date.now(); return; }
-      if (cacheeDepuis && Date.now() - cacheeDepuis > VERROU_APRES_MS) {
-        setEtat((e) => (e.phase === "connecte" ? { ...e, verrouille: true } : e));
-      }
-      cacheeDepuis = 0;
+    const surRetour = (ev: Event) => {
+      const url = (ev as CustomEvent<string>).detail;
+      if (typeof url !== "string") return;
+      void guichet.terminerRetourOAuth(url).then(() => avancer(), () => { poserAnnonce(null); void avancer(); });
     };
-    document.addEventListener("visibilitychange", surVisibilite);
-    return () => document.removeEventListener("visibilitychange", surVisibilite);
-  }, []);
+    window.addEventListener("glisil:retour-oauth", surRetour);
+    return () => window.removeEventListener("glisil:retour-oauth", surRetour);
+  }, [guichet, avancer]);
+
+  /* le temps réel ne s'ouvre qu'à une session complète : avant aal2, la base ne montre rien, et le canal garderait l'ancien jeton */
+  const connecte = etat.phase === "connecte";
+  useEffect(() => { guichet.tempsReel(connecte); }, [guichet, connecte]);
 
   const valeur = useMemo<Session>(() => ({
     etat,
-    compte: "compte" in etat ? etat.compte : null,
+    compte: etat.phase === "connecte" ? etat.compte : null,
     montantsMasques,
     basculerMasque: () => setMasque((m) => { try { localStorage.setItem(CLE_MASQUE, m ? "0" : "1"); } catch { /* sans stockage, l'œil vit le temps de la session */ } return !m; }),
-    connecter: async (email, code) => {
-      await guichet.verifierCode(email, code);
-      const compte = await guichet.monCompte();
-      if (!compte) { setEtat({ phase: "inscription" }); return { suite: "inscription" }; }
-      if (!compte.aCode) { setEtat({ phase: "profil", compte }); return { suite: "profil" }; }
-      try { sessionStorage.setItem(CLE_DEVERROUILLE, String(Date.now())); } catch { /* idem */ }
-      setEtat({ phase: "connecte", compte, verrouille: false });
-      return { suite: "accueil" };
-    },
-    compteOuvert: (compte) => setEtat({ phase: "profil", compte }),
-    profilComplete: (compte) => {
-      try { sessionStorage.setItem(CLE_DEVERROUILLE, String(Date.now())); } catch { /* idem */ }
-      setEtat({ phase: "connecte", compte, verrouille: false });
-    },
-    deverrouiller: async (code) => {
-      const r = await guichet.verifierCodeSecret(code);
-      if (r.ok) {
-        try { sessionStorage.setItem(CLE_DEVERROUILLE, String(Date.now())); } catch { /* idem */ }
-        setEtat((e) => (e.phase === "connecte" ? { ...e, verrouille: false } : e));
-      }
-      return r;
-    },
-    verrouiller: () => setEtat((e) => (e.phase === "connecte" ? { ...e, verrouille: true } : e)),
-    deconnecter: async () => {
-      await guichet.seDeconnecter();
-      try { sessionStorage.removeItem(CLE_DEVERROUILLE); } catch { /* idem */ }
+    avancer,
+    deconnecter: async (portee = "local") => {
+      tour.current++;
+      await guichet.seDeconnecter(portee);
+      poserRecuperation(false);
+      inscriptionRef.current = { email: null, motDePasse: null };
+      setInscription({ email: null, motDePasse: null });
       setEtat({ phase: "anonyme" });
     },
-    rafraichirCompte: chargerCompte,
-  }), [etat, montantsMasques, guichet, chargerCompte]);
+    rafraichirCompte: avancer,
+    retenirInscription: (email, motDePasse) => { inscriptionRef.current = { email, motDePasse }; setInscription({ email, motDePasse }); },
+    inscription,
+    annonce,
+    poserAnnonce,
+    commencerRecuperation: () => poserRecuperation(true),
+    finirRecuperation: () => poserRecuperation(false),
+  }), [etat, montantsMasques, guichet, avancer, inscription, annonce]);
 
   return <Contexte.Provider value={valeur}>{children}</Contexte.Provider>;
 }

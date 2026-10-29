@@ -15,7 +15,7 @@
 
 import { t } from "./langue";
 
-export const VERSION_CONDITIONS = "2026-10-16";
+export const VERSION_CONDITIONS = "2026-10-29";
 
 /** Qui édite Glisil. À compléter : raison sociale, immatriculation, adresse. */
 export const EDITEUR: { nom: string; forme: string; rccm: string; niu: string; adresse: string } = {
@@ -86,8 +86,8 @@ export const CONDITIONS: Document = {
         paragraphes: [
           t("Il faut avoir 18 ans révolus. Un compte appartient à une seule personne, qui le gère elle-même ; un numéro de téléphone ne sert qu'à un compte.",
             "You must be at least 18 years old. An account belongs to a single person, who manages it personally; a phone number may be used for only one account."),
-          t("Vous entrez avec votre adresse e-mail et un code reçu par e-mail. Vos gestes d'argent sont protégés par un code secret de quatre chiffres que vous seul connaissez. Glisil ne vous demandera jamais ce code, ni le code reçu par e-mail, par téléphone, par WhatsApp ou par e-mail.",
-            "You sign in with your email address and a code sent to you by email. Your money transactions are protected by a four-digit PIN that only you know. Glisil will never ask you for this PIN, or for the code sent to you by email, whether by phone, on WhatsApp or by email."),
+          t("Vous entrez avec votre adresse e-mail, votre mot de passe et le code de votre application d'authentification. Avant que de l'argent ne sorte, nous demandons en plus un code reçu par e-mail, qui dit le montant et la destination. Gardez vos codes de secours loin de votre téléphone. Glisil ne vous demandera jamais votre mot de passe ni aucun de ces codes, par téléphone, par WhatsApp ou par e-mail.",
+            "You sign in with your email address, your password and the code from your authenticator app. Before any money leaves, we also ask for a code sent by email, which states the amount and the destination. Keep your recovery codes away from your phone. Glisil will never ask you for your password or for any of these codes, whether by phone, on WhatsApp or by email."),
           t("Les informations que vous donnez doivent être exactes et les vôtres. Nous pouvons vous demander de les prouver (pièce d'identité, documents de votre entreprise) pour ouvrir des plafonds plus larges, ou lorsque la loi l'exige.",
             "The information you provide must be accurate and your own. We may ask you to prove it (ID document, your company's documents) to unlock higher limits, or where the law requires it."),
         ],
@@ -106,8 +106,8 @@ export const CONDITIONS: Document = {
         paragraphes: [
           t("Vous pouvez sortir vos XAFe en francs CFA vers un numéro Mobile Money vérifié à votre nom. Un numéro ajouté ne reçoit de sortie que 24 heures après sa vérification : c'est une protection si votre téléphone vous est pris.",
             "You can withdraw your XAFe in CFA francs to a verified Mobile Money number in your name. A newly added number can receive withdrawals only 24 hours after it is verified: this protects you if your phone is taken from you."),
-          t("Une sortie coûte les frais affichés avant que vous ne la confirmiez avec votre code secret. Si l'opérateur refuse le transfert après plusieurs essais, les XAFe correspondants reviennent sur votre compte.",
-            "A withdrawal costs the fees shown before you confirm it with your PIN. If the operator rejects the transfer after several attempts, the corresponding XAFe are returned to your account."),
+          t("Une sortie coûte les frais affichés avant que vous ne la confirmiez (application d'authentification, mot de passe et code reçu par e-mail). Si l'opérateur refuse le transfert après plusieurs essais, les XAFe correspondants reviennent sur votre compte.",
+            "A withdrawal costs the fees shown before you confirm it (authenticator app, password and emailed code). If the operator rejects the transfer after several attempts, the corresponding XAFe are returned to your account."),
         ],
       },
       {
@@ -138,8 +138,8 @@ export const CONDITIONS: Document = {
         paragraphes: [
           t("Si une opération vous semble fausse, écrivez au support avec sa référence (XAFe-…), visible dans l'Historique. Nous répondons et corrigeons ce qui doit l'être.",
             "If a transaction looks wrong to you, contact support with its reference (XAFe-…), shown in History. We will respond and correct whatever needs to be corrected."),
-          t("Glisil répond des erreurs de son service. Il ne répond pas des pannes des réseaux des opérateurs ou des blockchains, ni des conséquences d'un code secret que vous auriez communiqué à quelqu'un.",
-            "Glisil is liable for errors in its own service. It is not liable for outages of operator networks or blockchains, nor for the consequences of a PIN you have shared with anyone."),
+          t("Glisil répond des erreurs de son service. Il ne répond pas des pannes des réseaux des opérateurs ou des blockchains, ni des conséquences d'un mot de passe ou d'un code que vous auriez communiqué à quelqu'un.",
+            "Glisil is liable for errors in its own service. It is not liable for outages of operator networks or blockchains, nor for the consequences of a password or code you have shared with anyone."),
         ],
       },
       {
@@ -175,8 +175,8 @@ export const CONFIDENTIALITE: Document = {
             "For your transactions: your Mobile Money numbers, the transaction IDs you enter, the payment SMS messages received on OUR numbers (amount, paying number, operator reference), your orders, your crypto deposit addresses and the addresses you withdraw to."),
           t("Si vous demandez un palier plus élevé : les photos de votre pièce d'identité, un selfie, et pour une entreprise ses documents (RCCM, NIU, pièce du gérant).",
             "If you request a higher tier: photos of your ID document, a selfie and, for a company, its documents (RCCM, NIU, manager's ID document)."),
-          t("Pour la sécurité : vos dates de connexion. Votre code secret n'est jamais gardé en clair : seule une empreinte qui ne permet pas de le retrouver l'est.",
-            "For security: the dates you signed in. Your PIN is never stored in plain text: only a hash that cannot be used to recover it is stored."),
+          t("Pour la sécurité : vos dates de connexion. Votre mot de passe et vos codes de secours ne sont jamais gardés en clair : seule une empreinte qui ne permet pas de les retrouver l'est.",
+            "For security: the dates you signed in. Your password and recovery codes are never stored in plain text: only a hash that cannot be used to recover them is stored."),
         ],
       },
       {

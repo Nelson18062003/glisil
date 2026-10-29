@@ -17,6 +17,7 @@
 // contrôle qui est faux, et il s'arrête. Un contrôle qui ne peut pas échouer
 // ne contrôle rien.
 import { readFile, readdir, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const RACINE = new URL("..", import.meta.url).pathname;
@@ -24,8 +25,21 @@ const SRC = join(RACINE, "src");
 /* le plus long : Accueil → Crypto → adresse → montant → vérifier → code → envoyé.
    Un parcours d'argent ne doit pas s'allonger au-delà. */
 const PROFONDEUR_MAX = 6;
+
+/** Les chemins que rend cheminDeLaPhase, lus dans le source : une phase neuve y entre d'elle-même. */
+function cheminsDesPhases() {
+  const src = readFileSync(join(SRC, "noyau", "entree.ts"), "utf8");
+  const corps = src.slice(src.indexOf("export function cheminDeLaPhase"), src.indexOf("export function cheminPermis"));
+  const vus = [...corps.matchAll(/"(\/bienvenue[^"]*)"/g)].map((m) => m[1]);
+  if (vus.length < 5) throw new Error("cheminDeLaPhase introuvable ou trop maigre dans noyau/entree.ts : la carte ne saurait pas où mène l'entrée");
+  return [...new Set(vus)];
+}
 /* les portes d'entrée : on y arrive de l'extérieur (un lien, une notification, l'ouverture) */
-const ENTREES = ["/", "/bienvenue", "/conditions", "/confidentialite", "/preuve"];
+const ENTREES = ["/", "/bienvenue", "/conditions", "/confidentialite", "/preuve",
+  /* le retour de Google : l'adresse que le navigateur (ou la coque) rouvre après la connexion */
+  "/bienvenue/retour",
+  /* chaque étape de l'entrée : la session y mène d'après sa PHASE (noyau/entree.ts, cheminDeLaPhase), pas par un lien */
+  ...cheminsDesPhases()];
 /* les écrans qu'une notification ouvre : leur cible vient de la base (n.cible) */
 const PAR_NOTIFICATION = ["/historique/:ref", "/compte/paliers", "/marche/ordres/:id"];
 

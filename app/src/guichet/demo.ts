@@ -10,19 +10,32 @@
 import { achatMax, adresseValide, arrondi2, FRAIS_CRYPTO, bandeDePrix, coutAuCarnet, decouperSortie, devisSurLeCarnet, FRAIS, MARCHE, montantValide, operateur as opDe, PALIERS, prixValide, quantiteValide, RAPIDE, SORTIES, fraisSortieManuelle, infoReseau, NUMEROS, RESEAUX, RESEAUX_OUVERTS } from "../noyau/argent";
 import { ErreurMoteur } from "../noyau/erreurs";
 import { emailNormalise, emailValide } from "../noyau/identite";
+import { codeDeSecoursNormalise } from "../noyau/codesDeSecours";
+import { motDePasseValide } from "../noyau/motDePasse";
 import { numeroSaisi, operateurDuNumero, transactionIdNormalise, xaf as xafDe } from "../noyau/format";
 import { VERSION_CONDITIONS } from "../noyau/conditions";
-import type { Guichet } from "./guichet";
+import type { EvenementDEntree, Guichet } from "./guichet";
 import type {
   Actif, Bougie, Carnet, Chandelle, Intervalle, PageDeBougies, Compte, Cote, Cotation, Declaration, Depot, DevisRapide, Execution, IdOperateur, Niveau, Notification, Numero, Operation, Ordre, ProfilInscription, SensRapide,
-  Reseau, ResultatCode, ResultatOrdre, RetraitCrypto, Soldes, Sortie, Transaction, TransfertCrypto, TypeOrdre,
+  Reseau, ResultatOrdre, RetraitCrypto, Soldes, Sortie, Transaction, TransfertCrypto, TypeOrdre,
   LignePreuve, PreuveDeReserve,
+  EtatDEntree, EnrolementTotp, EtatCodesDeSecours, OperationAVerifier, Verification, EtatVerification, PreuveDeVerification,
 } from "./types";
 
-const CLE_STOCKAGE = "xafe.demo.v5";
-/** le code de démonstration : celui qui arrive « par SMS » pour un numéro, et « par e-mail » pour se connecter */
+const CLE_STOCKAGE = "xafe.demo.v6";
+/** le code de démonstration : celui qui arrive « par SMS » pour un numéro, « par e-mail » pour confirmer une adresse ou une sortie */
 export const CODE_SMS_DEMO = "123456";
 export const CODE_DEMO = CODE_SMS_DEMO;
+/** ce que « l'application d'authentification » affiche dans la démonstration */
+export const CODE_TOTP_DEMO = "123456";
+/** le mot de passe de la vitrine (dix caractères, lettres et chiffres, comme Auth l'exige) */
+export const MOT_DE_PASSE_DEMO = "Glisil-2026";
+/** la clé TOTP de démonstration : celle des exemples de la RFC, qui ne protège rien */
+const SECRET_TOTP_DEMO = "JBSWY3DPEHPK3PXP";
+/** les dix codes de secours de la démonstration, toujours les mêmes (l'aide de l'écran les donne) */
+export const CODES_DE_SECOURS_DEMO = ["7K3QD9WMXA", "B2N8HT4RZE", "Q9F1C6VJKS", "M4X7P2DGWN", "T8R3Z5HBQA", "C1W9N6KPXJ", "H5D2V8MRTE", "Z3K7Q1FXWB", "N6P4T9CJDG", "R2H8W5MZKQ"];
+/** la vérification avant sortie, comme la base la règle (0036) */
+const VERIF = { validiteMs: 10 * 60_000, essais: 5, echecsMax: 10, fenetreMs: 60 * 60_000, fraicheurTotpMs: 5 * 60_000, renvoiMs: 60_000, parQuartDHeure: 5 };
 const NUMERO_VITRINE = "677123456";
 /** l'adresse de la vitrine : elle arrive avec une vie déjà écrite */
 export const EMAIL_VITRINE = "demo@glisil.com";
@@ -34,7 +47,24 @@ type Tache =
   | { quand: number; type: "retrait"; reference: string }
   | { quand: number; type: "expiration"; reference: string };
 
-type CompteDemo = Omit<Compte, "entreDuJour" | "conditionsAJour"> & { codeSecret: string | null; echecs: number; conditionsVersion: string | null };
+type CompteDemo = Omit<Compte, "entreDuJour" | "conditionsAJour"> & { conditionsVersion: string | null };
+
+/** Ce que Supabase Auth tient pour une adresse : son mot de passe, son application, ses codes de secours. */
+type UtilisateurDemo = {
+  motDePasse: string | null;
+  emailConfirme: boolean;
+  totp: "aucun" | "en_attente" | "verifie";
+  codes: { code: string; utilise: boolean }[] | null;
+  codesConfirmes: boolean;
+  essaisCodes: number;
+  verrouCodes: number | null;
+};
+
+/** Une vérification avant sortie : liée à UNE opération (son empreinte), dix minutes, cinq essais, une fois. */
+type VerificationDemo = {
+  id: string; email: string; operation: OperationAVerifier["operation"]; empreinte: string;
+  creeLe: number; expireLe: number; essais: number; consommee: boolean; remplacee: boolean;
+};
 
 type Dossier = {
   compte: CompteDemo;
@@ -57,9 +87,14 @@ type Marche = { mid: number; transactions: Transaction[]; chandelles: Chandelle[
 
 type Etat = {
   /** la personne connectée, par son adresse ; ses dossiers sont rangés par adresse */
-  session: { email: string } | null;
+  session: { email: string; aal: "aal1" | "aal2"; facteur: "password" | "oauth" | "autre"; totpLe: number | null } | null;
   codeAttendu: string | null;
+  /** l'adresse dont « Mot de passe oublié » attend le code */
+  recuperation?: string | null;
+  utilisateurs: Record<string, UtilisateurDemo>;
   dossiers: Record<string, Dossier>;
+  verifications: VerificationDemo[];
+  echecs: { email: string; quand: number }[];
   marche: Marche;
 };
 
@@ -151,7 +186,7 @@ function dossierVide(email: string, p: ProfilInscription, numeroDejaVerifie = fa
   const local = numeroDejaVerifie && /^\+2376\d{8}$/.test(p.telephone) ? p.telephone.slice(4) : null;
   return {
     compte: {
-      id, telephone: p.telephone, nom: `${p.prenom} ${p.nom}`, entreprise: null, palier: 0, aCode: false, verrouJusqua: null, verificationEnCours: null, codeSecret: null, echecs: 0,
+      id, telephone: p.telephone, nom: `${p.prenom} ${p.nom}`, entreprise: null, palier: 0, verificationEnCours: null,
       conditionsVersion: p.conditions, fermeLe: null, desactive: false,
       email, prenom: p.prenom, nomDeFamille: p.nom, dateNaissance: p.naissance, ville: p.ville, pays: p.pays,
     },
@@ -171,7 +206,7 @@ function entreDuJour(d: Dossier): number {
 function dossierVitrine(): Dossier {
   const d = dossierVide(EMAIL_VITRINE, { prenom: "Nelson", nom: "Soh", naissance: "1988-06-21", telephone: `+237${NUMERO_VITRINE}`, ville: "Douala", pays: "CM", conditions: VERSION_CONDITIONS }, true);
   const hier = maintenant() - 20 * 3600_000;
-  d.compte = { ...d.compte, entreprise: "NORTON GAUSS BONZINI SARL", palier: 2, aCode: true, codeSecret: "1234" };
+  d.compte = { ...d.compte, entreprise: "NORTON GAUSS BONZINI SARL", palier: 2 };
   d.soldes = { XAFe: { disponible: 3_250_000, bloque: 0 }, USDT: { disponible: 2_608.05, bloque: 0 } };
   d.numeros.push({ id: uuid(), operateur: "om", numero: "699876543", verifieLe: iso(hier - 86400_000), actifDes: iso(hier), retireLe: null });
   d.depots.push({
@@ -196,9 +231,23 @@ function dossierVitrine(): Dossier {
 function charger(): Etat {
   try {
     const brut = typeof localStorage !== "undefined" ? localStorage.getItem(CLE_STOCKAGE) : null;
-    if (brut) return JSON.parse(brut) as Etat;
+    if (brut) { const e = JSON.parse(brut) as Partial<Etat>; return { ...e, verifications: e.verifications ?? [], echecs: e.echecs ?? [], utilisateurs: e.utilisateurs ?? {} } as Etat; }
   } catch { /* un stockage absent ou corrompu repart de zéro */ }
-  return { session: null, codeAttendu: null, dossiers: {}, marche: marcheInitial() };
+  return { session: null, codeAttendu: null, utilisateurs: {}, dossiers: {}, verifications: [], echecs: [], marche: marcheInitial() };
+}
+
+const utilisateurNeuf = (motDePasse: string | null): UtilisateurDemo => ({ motDePasse, emailConfirme: false, totp: "aucun", codes: null, codesConfirmes: false, essaisCodes: 0, verrouCodes: null });
+/** La vitrine : une adresse déjà confirmée, son application enrôlée, ses codes notés. */
+const utilisateurVitrine = (): UtilisateurDemo => ({ ...utilisateurNeuf(MOT_DE_PASSE_DEMO), emailConfirme: true, totp: "verifie", codes: CODES_DE_SECOURS_DEMO.map((code) => ({ code, utilise: false })), codesConfirmes: true });
+
+/** Ce que la vérification LIE : la même forme pour la demande du code et pour l'opération (comme _parametres_de). */
+function empreinteDe(op: OperationAVerifier): string {
+  switch (op.operation) {
+    case "sortie_momo": return JSON.stringify([op.operation, op.montant, op.numeroId, (op.nom ?? "").trim().replace(/\s+/g, " ") || null]);
+    case "retrait_crypto": return JSON.stringify([op.operation, op.actif, op.reseau, op.adresse.trim(), op.montant]);
+    case "retirer_numero": return JSON.stringify([op.operation, op.numeroId]);
+    case "fermer_compte": return JSON.stringify([op.operation]);
+  }
 }
 
 /* ======================================================================= */
@@ -207,6 +256,7 @@ export class GuichetDemo implements Guichet {
   readonly mode = "demo" as const;
   private etat: Etat;
   private auditeurs = new Set<() => void>();
+  private entree = new Set<(e: EvenementDEntree) => void>();
   private horloge: ReturnType<typeof setInterval> | null = null;
   private tic = 0;
 
@@ -236,7 +286,22 @@ export class GuichetDemo implements Guichet {
     }, 1000);
   }
 
+  /** Comme la base (0035) : rien ne s'ouvre sans une session forte — mot de passe (ou Google) ET application. */
+  private exigerSessionForte() {
+    const s = this.etat.session;
+    if (!s) throw new ErreurMoteur("non connecté");
+    if (s.aal !== "aal2" || (s.facteur !== "password" && s.facteur !== "oauth")) throw new ErreurMoteur("double authentification requise", "entrez le code de votre application d'authentification");
+  }
+
+  private utilisateur(): UtilisateurDemo {
+    const email = this.etat.session?.email;
+    const u = email ? this.etat.utilisateurs[email] : undefined;
+    if (!u) throw new ErreurMoteur("non connecté");
+    return u;
+  }
+
   private dossier(): Dossier {
+    this.exigerSessionForte();
     const email = this.etat.session?.email;
     const d = email ? this.etat.dossiers[email] : undefined;
     if (!d) throw new ErreurMoteur(email ? "compte pas encore ouvert" : "non connecté");
@@ -245,7 +310,7 @@ export class GuichetDemo implements Guichet {
 
   private compteParId(): Compte {
     const d = this.dossier();
-    const { codeSecret: _c, echecs: _e, conditionsVersion, ...compte } = d.compte;
+    const { conditionsVersion, ...compte } = d.compte;
     return { ...compte, entreDuJour: entreDuJour(d), conditionsAJour: conditionsVersion === VERSION_CONDITIONS, fermeLe: compte.fermeLe ?? null, desactive: Boolean(compte.desactive) };
   }
 
@@ -271,23 +336,92 @@ export class GuichetDemo implements Guichet {
     d.taches.push(t);
   }
 
-  private exigerCode(d: Dossier, code: string) {
-    const r = this.controlerCode(d, code);
-    if (!r.ok) throw new ErreurMoteur(r.verrouJusqua ? "compte verrouillé" : "code secret incorrect");
+  /* ------------------------------------------- la vérification avant sortie */
+
+  /** Comme _verrou_verification : dix échecs dans l'heure glissante bloquent toutes les sorties ; rend la fin du blocage. */
+  private verrouDeSortie(email: string): number | null {
+    const recents = this.etat.echecs.filter((e) => e.email === email && e.quand > maintenant() - VERIF.fenetreMs).sort((a, b) => b.quand - a.quand);
+    return recents.length >= VERIF.echecsMax ? recents[VERIF.echecsMax - 1].quand + VERIF.fenetreMs : null;
   }
 
-  private controlerCode(d: Dossier, code: string): ResultatCode {
-    const c = d.compte;
-    if (c.verrouJusqua && new Date(c.verrouJusqua).getTime() > maintenant()) return { ok: false, essaisRestants: 0, verrouJusqua: c.verrouJusqua };
-    if (c.verrouJusqua) { c.verrouJusqua = null; c.echecs = 0; }
-    if (!c.codeSecret || code !== c.codeSecret) {
-      c.echecs += 1;
-      if (c.echecs >= 3) { c.verrouJusqua = iso(maintenant() + 15 * 60_000); c.echecs = 0; this.emettre(); return { ok: false, essaisRestants: 0, verrouJusqua: c.verrouJusqua }; }
-      this.emettre();
-      return { ok: false, essaisRestants: 3 - c.echecs, verrouJusqua: null };
+  private echec(v: VerificationDemo, facteur: "mot_de_passe" | "code_email", message: string): never {
+    v.essais += 1;
+    this.etat.echecs.push({ email: v.email, quand: maintenant() });
+    this.emettre();
+    const restants = Math.max(0, VERIF.essais - v.essais);
+    throw new ErreurMoteur(message, `${restants} essai(s) restant(s)`, { essaisRestants: restants, facteur }); // langue-ok (le détail se relit dans noyau/erreurs)
+  }
+
+  /** Les trois preuves, dans l'ordre de la base : la vérification elle-même, le code de l'application (frais), le mot de passe, le code e-mail. */
+  /** comme la base : le code demandé pour refaire une opération déjà faite n'a rien prouvé, il se clôt */
+  private cloreRejouee(operation: OperationAVerifier["operation"], id: string) {
+    const v = this.etat.verifications.find((x) => x.id === id && x.email === this.etat.session?.email && x.operation === operation);
+    if (v && !v.consommee && !v.remplacee) { v.remplacee = true; this.emettre(); }
+  }
+
+  private consommer(op: OperationAVerifier, preuve: PreuveDeVerification) {
+    const s = this.etat.session!;
+    const v = this.etat.verifications.find((x) => x.id === preuve.verification);
+    if (!v || v.email !== s.email) throw new ErreurMoteur("vérification inconnue");
+    const verrou = this.verrouDeSortie(s.email);
+    if (verrou) throw new ErreurMoteur("vérifications verrouillées", undefined, { verrouJusqua: iso(verrou) });
+    if (v.consommee) throw new ErreurMoteur("vérification déjà utilisée");
+    if (v.remplacee) throw new ErreurMoteur("vérification remplacée par un code plus récent");
+    if (v.expireLe <= maintenant()) throw new ErreurMoteur("vérification expirée");
+    if (v.essais >= VERIF.essais) throw new ErreurMoteur("vérification épuisée");
+    if (v.operation !== op.operation || v.empreinte !== empreinteDe(op)) throw new ErreurMoteur("la vérification ne correspond pas à cette opération");
+    const totpFrais = s.aal === "aal2" && s.totpLe !== null && s.totpLe >= v.creeLe - 5_000 && maintenant() - s.totpLe <= VERIF.fraicheurTotpMs;
+    if (!totpFrais) throw new ErreurMoteur("code de l'application d'authentification à saisir", undefined, { facteur: "totp" });
+    const u = this.utilisateur();
+    if (!u.motDePasse) throw new ErreurMoteur("mot de passe à choisir", "il protège chaque sortie d'argent");
+    if (preuve.motDePasse !== u.motDePasse) this.echec(v, "mot_de_passe", "mot de passe incorrect");
+    if (preuve.codeEmail !== CODE_DEMO) this.echec(v, "code_email", "code e-mail incorrect");
+    v.consommee = true;
+  }
+
+  /** Les contrôles d'une sortie, communs à la demande du code et à l'opération (aucun code pour une sortie qui serait refusée). */
+  private controlerSortie(d: Dossier, montant: number, numeroId: string, nom?: string): Numero {
+    if (!montantValide(montant, 100)) throw new ErreurMoteur("montant invalide");
+    const n = d.numeros.find((x) => x.id === numeroId && !x.retireLe);
+    if (!n) throw new ErreurMoteur("numéro inconnu sur ce compte");
+    if (!n.verifieLe || new Date(n.actifDes).getTime() > maintenant()) throw new ErreurMoteur("numéro pas encore actif");
+    if (d.soldes.XAFe.disponible < montant) throw new ErreurMoteur("solde insuffisant");
+    const p = PALIERS[d.compte.palier];
+    if (p.sortieJour !== null) {
+      const debut = new Date().setHours(0, 0, 0, 0);
+      const jour = d.sorties.filter((x) => new Date(x.creeLe).getTime() >= debut && !["annulee", "echouee"].includes(x.etat)).reduce((s, x) => s + x.montant, 0);
+      if (jour + montant > p.sortieJour) throw new ErreurMoteur("plafond du palier atteint", `${p.sortieJour} XAF par jour`);
     }
-    c.echecs = 0;
-    return { ok: true };
+    if (SORTIES.mode === "manuel") {
+      const propre = (nom ?? "").trim().replace(/\s+/g, " ");
+      if (propre.length < 2 || propre.length > 80) throw new ErreurMoteur("nom du bénéficiaire invalide", "le nom exact du compte Mobile Money qui reçoit");
+    }
+    return n;
+  }
+
+  private controlerRetraitCrypto(d: Dossier, actif: Actif, reseau: Reseau, adresse: string, montant: number) {
+    if (!(montant > 0)) throw new ErreurMoteur("montant invalide");
+    if (!RESEAUX_OUVERTS.includes(reseau)) throw new ErreurMoteur(RESEAUX[reseau] ? "réseau pas encore ouvert" : "réseau inconnu");
+    if (!adresseValide(infoReseau(reseau).famille, adresse.trim())) throw new ErreurMoteur("adresse invalide");
+    if (d.soldes[actif].disponible < montant + FRAIS_CRYPTO[actif]) throw new ErreurMoteur("solde insuffisant");
+  }
+
+  private controlerFermeture(d: Dossier) {
+    if (d.compte.fermeLe) throw new ErreurMoteur("compte déjà fermé");
+    const reste = (["XAFe", "USDT"] as const).filter((a) => d.soldes[a].disponible + d.soldes[a].bloque > 0)
+      .map((a) => `${a === "XAFe" ? xafDe(d.soldes[a].disponible + d.soldes[a].bloque) : (d.soldes[a].disponible + d.soldes[a].bloque).toFixed(2)} ${a}`);
+    if (reste.length) throw new ErreurMoteur("il reste de l'argent sur le compte", `sortez d'abord : ${reste.join(", ")}`);
+    if (d.ordres.some((o) => o.etat === "ouvert" || o.etat === "partiel") || d.depots.some((x) => x.etat === "en_attente")
+        || d.sorties.some((s) => s.etat === "en_attente" || s.etat === "en_cours") || d.retraits.some((r) => r.etat === "en_attente")) {
+      throw new ErreurMoteur("une opération est en cours", "attendez qu'elle se termine, ou annulez-la");
+    }
+  }
+
+  private controlerRetraitDeNumero(d: Dossier, id: string): Numero {
+    const n = d.numeros.find((x) => x.id === id && !x.retireLe);
+    if (!n) throw new ErreurMoteur("numéro inconnu sur ce compte");
+    if (d.numeros.filter((x) => !x.retireLe).length <= 1) throw new ErreurMoteur("le dernier numéro ne se retire pas");
+    return n;
   }
 
   /* ------------------------------------------------------- les tâches */
@@ -485,25 +619,244 @@ export class GuichetDemo implements Guichet {
     return email ? { compteId: this.etat.dossiers[email]?.compte.id ?? email } : null;
   }
 
-  async demanderCode(email: string) {
-    if (!emailValide(email)) throw new ErreurMoteur("adresse e-mail invalide");
+  async etatDEntree(): Promise<EtatDEntree> {
+    const s = this.etat.session;
+    const u = s ? this.etat.utilisateurs[s.email] : undefined;
+    if (!s || !u) return { session: false, premierFacteur: null, aalActuel: null, aalSuivant: null, emailConfirme: false, motDePasse: false, codesDeSecours: false, compte: false, facteurTotpId: null };
+    return {
+      session: true, premierFacteur: s.facteur, aalActuel: s.aal, aalSuivant: u.totp === "verifie" ? "aal2" : "aal1",
+      emailConfirme: u.emailConfirme, motDePasse: Boolean(u.motDePasse), codesDeSecours: u.codesConfirmes,
+      compte: Boolean(this.etat.dossiers[s.email]), facteurTotpId: u.totp === "verifie" ? "demo-totp" : null,
+    };
+  }
+
+  async inscrire({ email, motDePasse }: { email: string; motDePasse: string }) {
+    const e = emailNormalise(email);
+    if (!emailValide(e)) throw new ErreurMoteur("adresse e-mail invalide");
+    if (!motDePasseValide(motDePasse)) throw new ErreurMoteur("mot de passe trop faible");
+    const u = this.etat.utilisateurs[e];
+    if (e === EMAIL_VITRINE || u?.emailConfirme) return { dejaInscrit: true, session: false };
+    this.etat.utilisateurs[e] = { ...(u ?? utilisateurNeuf(null)), motDePasse };
+    this.etat.codeAttendu = CODE_DEMO;
+    this.sauver();
+    return { dejaInscrit: false, session: false };
+  }
+
+  async confirmerEmail({ email, code, motDePasse }: { email: string; code: string; motDePasse?: string }) {
+    const e = emailNormalise(email);
+    const u = this.etat.utilisateurs[e];
+    if (!u || code !== this.etat.codeAttendu) throw new ErreurMoteur("code incorrect ou expiré", "demandez-en un nouveau si besoin");
+    u.emailConfirme = true;
+    this.etat.codeAttendu = null;
+    const connecte = Boolean(motDePasse) && motDePasse === u.motDePasse;
+    this.etat.session = connecte ? { email: e, aal: "aal1", facteur: "password", totpLe: null } : null;
+    this.emettre();
+    return { connecte };
+  }
+
+  async renvoyerConfirmation(email: string) {
+    if (!this.etat.utilisateurs[emailNormalise(email)]) return;
     this.etat.codeAttendu = CODE_DEMO;
     this.sauver();
   }
 
-  async verifierCode(email: string, code: string) {
+  async connecter({ email, motDePasse }: { email: string; motDePasse: string }) {
     const e = emailNormalise(email);
-    if (code !== this.etat.codeAttendu) throw new ErreurMoteur("code incorrect ou expiré", "demandez-en un nouveau si besoin");
+    if (e === EMAIL_VITRINE && !this.etat.utilisateurs[e]) this.etat.utilisateurs[e] = utilisateurVitrine();
     if (e === EMAIL_VITRINE && !this.etat.dossiers[e]) this.etat.dossiers[e] = dossierVitrine();
-    this.etat.session = { email: e };
-    this.etat.codeAttendu = null;
+    const u = this.etat.utilisateurs[e];
+    if (!u || !u.motDePasse || u.motDePasse !== motDePasse) throw new ErreurMoteur("adresse ou mot de passe incorrect");
+    if (!u.emailConfirme) { this.etat.codeAttendu = CODE_DEMO; this.sauver(); throw new ErreurMoteur("adresse e-mail non confirmée"); }
+    this.etat.session = { email: e, aal: "aal1", facteur: "password", totpLe: null };
     this.emettre();
-    return { nouveau: !this.etat.dossiers[e] };
   }
 
-  async seDeconnecter() {
+  async connecterGoogle() { throw new ErreurMoteur("connexion Google annulée", "pas de Google dans la démonstration"); }
+  async terminerRetourOAuth(_url: string) { throw new ErreurMoteur("connexion Google annulée"); }
+
+  async choisirMotDePasse(motDePasse: string) {
+    const u = this.utilisateur();
+    if (!motDePasseValide(motDePasse)) throw new ErreurMoteur("mot de passe trop faible");
+    u.motDePasse = motDePasse;
+    this.emettre();
+  }
+
+  private enrolementDemo(): EnrolementTotp {
+    const email = this.etat.session?.email ?? "";
+    const uri = `otpauth://totp/Glisil:${encodeURIComponent(email)}?secret=${SECRET_TOTP_DEMO}&issuer=Glisil&algorithm=SHA1&digits=6&period=30`;
+    return { facteurId: "demo-totp-neuf", qr: "", secret: SECRET_TOTP_DEMO, uri };
+  }
+
+  async enrolerDeuxFacteurs() {
+    const u = this.utilisateur();
+    if (u.totp === "verifie") throw new ErreurMoteur("double authentification requise");
+    u.totp = "en_attente";
+    this.sauver();
+    return this.enrolementDemo();
+  }
+
+  async confirmerDeuxFacteurs({ code }: { facteurId: string; code: string }) {
+    const u = this.utilisateur();
+    if (code !== CODE_TOTP_DEMO) throw new ErreurMoteur("code de l'application incorrect");
+    u.totp = "verifie";
+    this.etat.session = { ...this.etat.session!, aal: "aal2", totpLe: maintenant() };
+    this.emettre();
+  }
+
+  async verifierDeuxFacteurs(code: string) {
+    const u = this.utilisateur();
+    if (u.totp !== "verifie") throw new ErreurMoteur("aucune application d'authentification");
+    if (code !== CODE_TOTP_DEMO) throw new ErreurMoteur("code de l'application incorrect");
+    this.etat.session = { ...this.etat.session!, aal: "aal2", totpLe: maintenant() };
+    this.emettre();
+  }
+
+  async genererCodesDeSecours() {
+    const u = this.utilisateur();
+    const s = this.etat.session!;
+    if (s.aal !== "aal2") throw new ErreurMoteur("double authentification requise");
+    if (u.codesConfirmes && (s.totpLe === null || maintenant() - s.totpLe > VERIF.fraicheurTotpMs)) {
+      throw new ErreurMoteur("confirmez avec votre application d'authentification", "entrez un code tout neuf, puis recommencez");
+    }
+    u.codes = CODES_DE_SECOURS_DEMO.map((code) => ({ code, utilise: false }));
+    u.codesConfirmes = false;
+    u.essaisCodes = 0;
+    u.verrouCodes = null;
+    this.emettre();
+    return [...CODES_DE_SECOURS_DEMO];
+  }
+
+  async confirmerCodesDeSecours() {
+    const u = this.utilisateur();
+    if (!u.codes?.some((c) => !c.utilise)) throw new ErreurMoteur("aucun code de secours");
+    u.codesConfirmes = true;
+    this.emettre();
+  }
+
+  async codesDeSecours(): Promise<EtatCodesDeSecours> {
+    const u = this.utilisateur();
+    return { confirmes: u.codesConfirmes, restants: (u.codes ?? []).filter((c) => !c.utilise).length, creesLe: u.codes ? iso() : null };
+  }
+
+  async utiliserCodeDeSecours(code: string) {
+    const u = this.utilisateur();
+    if (!u.codes) throw new ErreurMoteur("aucun code de secours");
+    if (u.verrouCodes && u.verrouCodes > maintenant()) throw new ErreurMoteur("trop d'essais", undefined, { verrouJusqua: iso(u.verrouCodes) });
+    const c = codeDeSecoursNormalise(code);
+    const trouve = c ? u.codes.find((x) => !x.utilise && x.code === c) : undefined;
+    if (!trouve) {
+      u.essaisCodes += 1;
+      const restants = Math.max(0, 5 - u.essaisCodes);
+      if (restants === 0) { u.verrouCodes = maintenant() + 15 * 60_000; u.essaisCodes = 0; }
+      this.emettre();
+      throw new ErreurMoteur("code de secours incorrect", `${restants} essai(s) restant(s)`, { essaisRestants: restants }); // langue-ok
+    }
+    /* comme deux-facteurs : le code sert une fois, l'application est retirée, les codes avec elle */
+    trouve.utilise = true;
+    u.totp = "aucun";
+    u.codes = null;
+    u.codesConfirmes = false;
+    u.essaisCodes = 0;
+    this.etat.session = { ...this.etat.session!, aal: "aal1", totpLe: null };
+    this.emettre();
+  }
+
+  async motDePasseOublie(email: string) {
+    const e = emailNormalise(email);
+    if (!emailValide(e)) throw new ErreurMoteur("adresse e-mail invalide");
+    if (e === EMAIL_VITRINE && !this.etat.utilisateurs[e]) this.etat.utilisateurs[e] = utilisateurVitrine();
+    this.etat.recuperation = e;
+    this.etat.codeAttendu = CODE_DEMO;
+    this.sauver();
+  }
+
+  async verifierCodeDeReinitialisation({ email, code }: { email: string; code: string }) {
+    const e = emailNormalise(email);
+    if (this.etat.recuperation !== e || code !== this.etat.codeAttendu || !this.etat.utilisateurs[e]) throw new ErreurMoteur("code incorrect ou expiré", "demandez-en un nouveau si besoin");
+    this.etat.codeAttendu = null;
+    this.etat.recuperation = null;
+    this.etat.session = { email: e, aal: "aal1", facteur: "autre", totpLe: null };
+    this.emettre();
+  }
+
+  async nouveauMotDePasse(motDePasse: string) {
+    const u = this.utilisateur();
+    if (u.totp === "verifie" && this.etat.session?.aal !== "aal2") throw new ErreurMoteur("double authentification requise");
+    if (!motDePasseValide(motDePasse)) throw new ErreurMoteur("mot de passe trop faible");
+    if (u.motDePasse === motDePasse) throw new ErreurMoteur("choisissez un mot de passe différent");
+    u.motDePasse = motDePasse;
+    u.emailConfirme = true;
     this.etat.session = null;
     this.emettre();
+    for (const cb of this.entree) cb("deconnecte");
+  }
+
+  async changerMotDePasse({ nouveau }: { nouveau: string; nonce?: string }) {
+    this.exigerSessionForte();
+    const u = this.utilisateur();
+    if (!motDePasseValide(nouveau)) throw new ErreurMoteur("mot de passe trop faible");
+    if (u.motDePasse === nouveau) throw new ErreurMoteur("choisissez un mot de passe différent");
+    u.motDePasse = nouveau;
+    this.emettre();
+  }
+
+  async commencerChangementDeTelephone() {
+    this.exigerSessionForte();
+    return this.enrolementDemo();
+  }
+
+  async terminerChangementDeTelephone({ code }: { facteurId: string; code: string }) {
+    this.exigerSessionForte();
+    if (code !== CODE_TOTP_DEMO) throw new ErreurMoteur("code de l'application incorrect");
+    this.etat.session = { ...this.etat.session!, totpLe: maintenant() };
+    this.emettre();
+  }
+
+  async seDeconnecter(_portee?: "local" | "global") {
+    this.etat.session = null;
+    this.emettre();
+    for (const cb of this.entree) cb("deconnecte");
+  }
+
+  tempsReel(_actif: boolean) { /* la démonstration prévient à chaque changement, sans canal */ }
+
+  surEntree(cb: (e: EvenementDEntree) => void) {
+    this.entree.add(cb);
+    return () => { this.entree.delete(cb); };
+  }
+
+  /* ---------------------------------------- la vérification avant sortie */
+
+  async preparerVerification(op: OperationAVerifier): Promise<Verification> {
+    const d = this.dossier();
+    const email = this.etat.session!.email;
+    const verrou = this.verrouDeSortie(email);
+    if (verrou) throw new ErreurMoteur("vérifications verrouillées", undefined, { verrouJusqua: iso(verrou) });
+    const miennes = this.etat.verifications.filter((v) => v.email === email);
+    /* les contrôles de l'opération d'abord : aucun code n'est envoyé pour une opération qui serait refusée */
+    if (op.operation === "sortie_momo") this.controlerSortie(d, op.montant, op.numeroId, op.nom);
+    else if (op.operation === "retrait_crypto") this.controlerRetraitCrypto(d, op.actif, op.reseau, op.adresse, op.montant);
+    else if (op.operation === "fermer_compte") this.controlerFermeture(d);
+    else if (op.operation === "retirer_numero") this.controlerRetraitDeNumero(d, op.numeroId);
+    else throw new ErreurMoteur("opération inconnue");
+    const [local, domaine] = email.split("@");
+    const vue = (v: VerificationDemo): Verification => ({ id: v.id, expireLe: iso(v.expireLe), renvoiDes: iso(v.creeLe + VERIF.renvoiMs), emailMasque: `${local.slice(0, 1)}•••@${domaine ?? ""}` });
+    /* comme la base : le même écran rouvert dans la minute rend le code déjà parti */
+    const ouverte = miennes.find((v) => v.operation === op.operation && v.empreinte === empreinteDe(op) && !v.consommee && !v.remplacee && v.expireLe > maintenant() && v.creeLe > maintenant() - VERIF.renvoiMs);
+    if (ouverte) return vue(ouverte);
+    /* un code qui a servi ne retient pas le suivant */
+    if (miennes.some((v) => !v.consommee && !v.remplacee && v.creeLe > maintenant() - VERIF.renvoiMs)) throw new ErreurMoteur("trop de codes demandés : attendez une minute");
+    if (miennes.filter((v) => v.creeLe > maintenant() - 15 * 60_000).length >= VERIF.parQuartDHeure) throw new ErreurMoteur("trop de vérifications demandées", "attendez un quart d'heure");
+    for (const v of miennes) if (v.operation === op.operation && !v.consommee && !v.remplacee && v.expireLe > maintenant()) v.remplacee = true;
+    const v: VerificationDemo = { id: uuid(), email, operation: op.operation, empreinte: empreinteDe(op), creeLe: maintenant(), expireLe: maintenant() + VERIF.validiteMs, essais: 0, consommee: false, remplacee: false };
+    this.etat.verifications = [...this.etat.verifications.filter((x) => x.expireLe > maintenant() - 24 * 3600_000), v];
+    this.emettre();
+    return vue(v);
+  }
+
+  async etatVerification(id: string): Promise<EtatVerification | null> {
+    const v = this.etat.verifications.find((x) => x.id === id && x.email === this.etat.session?.email);
+    return v ? { courriel: "envoye", essaisRestants: Math.max(0, VERIF.essais - v.essais) } : null;
   }
 
   /* ============================================================= compte */
@@ -526,21 +879,7 @@ export class GuichetDemo implements Guichet {
     return copie(this.compteParId());
   }
 
-  async completerProfil({ nom, codeSecret }: { nom: string; codeSecret: string }) {
-    const d = this.dossier();
-    if (!nom.trim()) throw new ErreurMoteur("nom manquant");
-    if (!/^\d{4,6}$/.test(codeSecret)) throw new ErreurMoteur("code secret invalide");
-    d.compte.nom = nom.trim();
-    d.compte.codeSecret = codeSecret;
-    d.compte.aCode = true;
-    this.emettre();
-    return copie(this.compteParId());
-  }
-
-  async verifierCodeSecret(code: string) {
-    const d = this.dossier();
-    return this.controlerCode(d, code);
-  }
+  async nomPropose() { return null; }
 
   async accepterConditions(version: string) {
     const d = this.dossier();
@@ -550,31 +889,16 @@ export class GuichetDemo implements Guichet {
     return copie(this.compteParId());
   }
 
-  /** Comme la base : jamais avec de l'argent dessus ni une opération en cours ; le code d'abord compté. */
-  async fermerCompte({ codeSecret, motif }: { codeSecret: string; motif: string }) {
+  /** Comme la base : jamais avec de l'argent dessus ni une opération en cours ; la vérification d'abord. */
+  async fermerCompte({ motif, preuve }: { motif: string; preuve: PreuveDeVerification }) {
     const d = this.dossier();
-    if (d.compte.fermeLe) throw new ErreurMoteur("compte déjà fermé");
-    const reste = (["XAFe", "USDT"] as const).filter((a) => d.soldes[a].disponible + d.soldes[a].bloque > 0)
-      .map((a) => `${a === "XAFe" ? xafDe(d.soldes[a].disponible + d.soldes[a].bloque) : (d.soldes[a].disponible + d.soldes[a].bloque).toFixed(2)} ${a}`);
-    if (reste.length) throw new ErreurMoteur("il reste de l'argent sur le compte", `sortez d'abord : ${reste.join(", ")}`);
-    if (d.ordres.some((o) => o.etat === "ouvert" || o.etat === "partiel") || d.depots.some((x) => x.etat === "en_attente")
-        || d.sorties.some((s) => s.etat === "en_attente" || s.etat === "en_cours") || d.retraits.some((r) => r.etat === "en_attente")) {
-      throw new ErreurMoteur("une opération est en cours", "attendez qu'elle se termine, ou annulez-la");
-    }
-    this.exigerCode(d, codeSecret);
+    this.controlerFermeture(d);
+    this.consommer({ operation: "fermer_compte" }, preuve);
     d.compte.fermeLe = iso();
     d.compte.desactive = true;
     void motif;
     this.emettre();
     return copie(this.compteParId());
-  }
-
-  async changerCodeSecret({ ancien, nouveau }: { ancien: string; nouveau: string }) {
-    const d = this.dossier();
-    this.exigerCode(d, ancien);
-    if (!/^\d{4,6}$/.test(nouveau)) throw new ErreurMoteur("code secret invalide");
-    d.compte.codeSecret = nouveau;
-    this.emettre();
   }
 
   async demanderVerification({ type, pieces }: { type: "identite" | "entreprise"; pieces: File[] }) {
@@ -767,35 +1091,24 @@ export class GuichetDemo implements Guichet {
     return copie(n);
   }
 
-  async retirerNumero({ id, codeSecret }: { id: string; codeSecret: string }) {
+  async retirerNumero({ id, preuve }: { id: string; preuve: PreuveDeVerification }) {
     const d = this.dossier();
-    this.exigerCode(d, codeSecret);
-    const n = d.numeros.find((x) => x.id === id);
-    if (!n) throw new ErreurMoteur("numéro inconnu sur ce compte");
-    if (d.numeros.filter((x) => !x.retireLe).length <= 1) throw new ErreurMoteur("le dernier numéro ne se retire pas");
+    const n = this.controlerRetraitDeNumero(d, id);
+    this.consommer({ operation: "retirer_numero", numeroId: id }, preuve);
     n.retireLe = iso();
     this.emettre();
   }
 
-  async demanderSortie({ montant, numeroId, cle, codeSecret, nom }: { montant: number; numeroId: string; cle: string; codeSecret: string; nom?: string }) {
+  async demanderSortie({ montant, numeroId, cle, preuve, nom }: { montant: number; numeroId: string; cle: string; preuve: PreuveDeVerification; nom?: string }) {
     const d = this.dossier();
+    /* la clé d'abord : une réponse perdue puis rejouée rend la sortie déjà faite, même si sa vérification a servi */
     const deja = d.sorties.find((x) => (x as unknown as { cle?: string }).cle === cle);
-    if (deja) return copie(deja);
-    if (!montantValide(montant, 100)) throw new ErreurMoteur("montant invalide");
-    const n = d.numeros.find((x) => x.id === numeroId && !x.retireLe);
-    if (!n) throw new ErreurMoteur("numéro inconnu sur ce compte");
-    if (!n.verifieLe || new Date(n.actifDes).getTime() > maintenant()) throw new ErreurMoteur("numéro pas encore actif");
-    const p = PALIERS[d.compte.palier];
-    if (p.sortieJour !== null) {
-      const debut = new Date().setHours(0, 0, 0, 0);
-      const jour = d.sorties.filter((x) => new Date(x.creeLe).getTime() >= debut && !["annulee", "echouee"].includes(x.etat)).reduce((s, x) => s + x.montant, 0);
-      if (jour + montant > p.sortieJour) throw new ErreurMoteur("plafond du palier atteint", `${p.sortieJour} XAF par jour`);
-    }
-    this.exigerCode(d, codeSecret);
+    if (deja) { this.cloreRejouee("sortie_momo", preuve.verification); return copie(deja); }
+    const n = this.controlerSortie(d, montant, numeroId, nom);
+    this.consommer({ operation: "sortie_momo", montant, numeroId, nom: SORTIES.mode === "manuel" ? nom : undefined }, preuve);
     if (SORTIES.mode === "manuel") {
       /* comme la base : le nom du compte exigé, mis de côté tout de suite, aucun transfert pour un boîtier */
       const nomPropre = (nom ?? "").trim().replace(/\s+/g, " ");
-      if (nomPropre.length < 2 || nomPropre.length > 80) throw new ErreurMoteur("nom du bénéficiaire invalide", "le nom exact du compte Mobile Money qui reçoit");
       const { frais, envoi } = fraisSortieManuelle(montant);
       if (envoi <= 0) throw new ErreurMoteur("montant trop petit");
       this.mouvement(d, "XAFe", -montant, montant);
@@ -1088,14 +1401,13 @@ export class GuichetDemo implements Guichet {
     return infoReseau(reseau).famille === "tron" ? `T${hex(16).toUpperCase()}${hex(17)}` : `0x${hex(20)}${hex(20)}`;
   }
 
-  async demanderRetraitCrypto({ actif, reseau, adresse, montant, cle, codeSecret }: { actif: Actif; reseau: Reseau; adresse: string; montant: number; cle: string; codeSecret: string }) {
+  async demanderRetraitCrypto({ actif, reseau, adresse, montant, cle, preuve }: { actif: Actif; reseau: Reseau; adresse: string; montant: number; cle: string; preuve: PreuveDeVerification }) {
     const d = this.dossier();
     const deja = d.retraits.find((x) => (x as unknown as { cle?: string }).cle === cle);
-    if (deja) return copie(deja);
-    if (!(montant > 0)) throw new ErreurMoteur("montant invalide");
-    if (!RESEAUX_OUVERTS.includes(reseau)) throw new ErreurMoteur(RESEAUX[reseau] ? "réseau pas encore ouvert" : "réseau inconnu");
-    if (!adresseValide(infoReseau(reseau).famille, adresse)) throw new ErreurMoteur("adresse invalide");
-    this.exigerCode(d, codeSecret);
+    if (deja) { this.cloreRejouee("retrait_crypto", preuve.verification); return copie(deja); }
+    this.controlerRetraitCrypto(d, actif, reseau, adresse, montant);
+    this.consommer({ operation: "retrait_crypto", actif, reseau, adresse, montant }, preuve);
+    adresse = adresse.trim();
     const frais = FRAIS_CRYPTO[actif];
     this.mouvement(d, actif, -(montant + frais), montant + frais);
     const r: RetraitCrypto & { cle: string } = { reference: this.reference(d, "XAFe-CR-"), actif, reseau, adresse, montant, frais, etat: "en_attente", txHash: null, creeLe: iso(), cle };

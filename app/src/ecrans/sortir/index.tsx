@@ -18,12 +18,13 @@ import { Box, Button, CircularProgress, Divider, Stack, TextField, Typography } 
 import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { useCompte, useGuichet, useNumeros, useOuvertures, useRafraichir, useSoldes, useSortie } from "../../guichet";
+import { EtapeDeVerification } from "../../ui/verification";
 import { decouperSortie, delaiDuNumero, FRAIS, fraisSortieManuelle, montantValide, nomsDesReseaux, NUMEROS, operateur as opDe } from "../../noyau/argent";
 import { apresFrappe, duree, heure, jourRelatif, montantDepuisSaisie, numeroDeDemo, numeroEnTranches, numeroSaisi, numeroValide, operateurDuNumero, pourcent, quand, xaf } from "../../noyau/format";
 import { motifLisible } from "../../noyau/serveur";
 import { t } from "../../noyau/langue";
 import { parcours, useParcours } from "../../navigation/parcours";
-import { Amount, Attente, Card, Chips, Dot, EtatVide, FeuilleErreur, Keypad, Line, List, Points, Row, Screen, Squelette, Success } from "../../ui";
+import { Amount, Attente, Card, Chips, Dot, EtatVide, FeuilleErreur, Keypad, Line, List, Row, Screen, Squelette, Success } from "../../ui";
 import { tones } from "../../theme";
 import { useGesteUnique } from "../../ui/gestes";
 
@@ -219,7 +220,7 @@ export function SortirVerifier() {
           {t("Vos XAFe sont mis de côté dès votre confirmation. L'équipe Glisil vous paie, en général dans la journée, puis vous donne le transaction ID.", "Your XAFe are set aside as soon as you confirm. The Glisil team pays you, usually within the day, then gives you the transaction ID.")}
         </Typography>
         <Box sx={{ flex: 1 }} />
-        <Button variant="contained" startIcon={<LockRounded />} disabled={!nomOk} onClick={() => navigate("/sortir/code")}>{t("Confirmer avec mon code", "Confirm with my PIN")}</Button>
+        <Button variant="contained" startIcon={<LockRounded />} disabled={!nomOk} onClick={() => navigate("/sortir/code")}>{t("Continuer vers la vérification", "Continue to verification")}</Button>
       </Screen>
     );
   }
@@ -243,7 +244,7 @@ export function SortirVerifier() {
         {t("Les XAFe sont bloqués à la confirmation et détruits quand le transfert est parti. Un transfert qui échoue vous revient.", "Your XAFe are locked when you confirm and burned once the transfer has gone out. A failed transfer is returned to you.")}
       </Typography>
       <Box sx={{ flex: 1 }} />
-      <Button variant="contained" startIcon={<LockRounded />} onClick={() => navigate("/sortir/code")}>{t("Confirmer avec mon code", "Confirm with my PIN")}</Button>
+      <Button variant="contained" startIcon={<LockRounded />} onClick={() => navigate("/sortir/code")}>{t("Continuer vers la vérification", "Continue to verification")}</Button>
     </Screen>
   );
 }
@@ -254,42 +255,27 @@ export function SortirCode() {
   const guichet = useGuichet();
   const navigate = useNavigate();
   const [etat] = useParcours("sortir");
-  const { sortieManuelle } = useOuvertures();
-  const [code, setCode] = useState("");
-  const [faux, setFaux] = useState<string | null>(null);
-  const { lancer, enCours, erreur, effacerErreur } = useGesteUnique("wd", { montant: etat.montant, numeroId: etat.numeroId, nom: etat.nom });
+  const { sortieManuelle, pret } = useOuvertures();
 
   if (!etat.montant || !etat.numeroId) return <Navigate to="/sortir/montant" replace />;
-
-  const envoyer = (c: string) =>
-    lancer(async (cle) => {
-      try {
-        const s = await guichet.demanderSortie({ montant: etat.montant, numeroId: etat.numeroId!, cle, codeSecret: c, ...(sortieManuelle ? { nom: etat.nom.trim() } : {}) });
-        /* le parcours s'efface à l'arrivée sur « Envoyé », jamais ici : cet écran se redessinerait sans montant et repartirait au début */
-        navigate(`/sortir/envoye/${s.reference}`, { replace: true });
-      } catch (e) {
-        const m = e instanceof Error ? e.message : String(e);
-        if (m.startsWith("code secret") || m.startsWith("compte verrouillé")) { setFaux(m.startsWith("compte") ? t("Trois codes faux : le compte est verrouillé 15 minutes.", "Three wrong PINs: your account is locked for 15 minutes.") : t("Code incorrect. Trois erreurs verrouillent le compte 15 minutes.", "Incorrect PIN. Three wrong attempts lock your account for 15 minutes.")); setCode(""); return; } // langue-ok (message du guichet comparé, pas affiché)
-        throw e;
-      }
-    });
-
-  const touche = (k: string) => {
-    setFaux(null);
-    const suite = k === "⌫" ? code.slice(0, -1) : (code + k).slice(0, 4);
-    setCode(suite);
-    if (suite.length === 4) void envoyer(suite);
-  };
+  /* le mode (manuel ou non) décide si le nom fait partie de l'opération : on l'attend, sinon le
+     code demandé à l'ouverture ne correspondrait plus, et le second attendrait une minute */
+  if (!pret) return <Screen title={t("Vérification", "Verification")} back="/sortir/verifier"><Squelette hauteur={320} /></Screen>;
+  const nom = sortieManuelle ? etat.nom.trim() : undefined;
 
   return (
-    <Screen title={t("Votre code secret", "Your PIN")} back="/sortir/verifier" gap={1.5}>
-      <Typography variant="body2">{t(`Pour envoyer ${xaf(etat.montant)} XAFe.`, `To send ${xaf(etat.montant)} XAFe.`)}</Typography>
-      <Points longueur={4} saisis={code.length} erreur={Boolean(faux)} />
-      {faux && <Typography variant="body2" color="error" textAlign="center">{faux}</Typography>}
-      {enCours && <Stack alignItems="center"><CircularProgress size={28} /></Stack>}
-      <Box sx={{ flex: 1 }} />
-      <Keypad onKey={touche} triple={null} />
-      <FeuilleErreur erreur={erreur} onFermer={() => { effacerErreur(); setCode(""); }} />
+    <Screen title={t("Vérification", "Verification")} back="/sortir/verifier" gap={1.5}>
+      <EtapeDeVerification
+        op={{ operation: "sortie_momo", montant: etat.montant, numeroId: etat.numeroId, ...(nom ? { nom } : {}) }}
+        intention={{ montant: etat.montant, numeroId: etat.numeroId, nom: etat.nom }}
+        resume={<Line label={t("Vous envoyez", "You send")} value={`${xaf(etat.montant)} XAFe`} strong />}
+        libelle={t(`Envoyer ${xaf(etat.montant)} XAFe`, `Send ${xaf(etat.montant)} XAFe`)}
+        executer={async (preuve, cle) => {
+          const s = await guichet.demanderSortie({ montant: etat.montant, numeroId: etat.numeroId!, cle, preuve, ...(nom ? { nom } : {}) });
+          /* le parcours s'efface à l'arrivée sur « Envoyé », jamais ici : cet écran se redessinerait sans montant et repartirait au début */
+          navigate(`/sortir/envoye/${s.reference}`, { replace: true });
+        }}
+      />
     </Screen>
   );
 }

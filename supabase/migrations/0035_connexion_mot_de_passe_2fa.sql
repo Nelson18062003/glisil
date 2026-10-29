@@ -1209,7 +1209,7 @@ end $$;
 -- ──────────────────────────── 12 · les conditions ──────────────────────────
 -- Les textes parlent maintenant du mot de passe et de la double
 -- authentification, plus du code secret : chaque compte les réaccepte.
-update parametres set valeur = jsonb_build_object('version', '2026-11-01') where cle = 'conditions';
+update parametres set valeur = jsonb_build_object('version', '2026-10-29') where cle = 'conditions';
 
 -- ──────────────────────────────── 13 · les droits ──────────────────────────
 revoke all on function session_forte(), _exiger_aal2(), _moment_du_facteur(text), _mot_de_passe_pose(uuid),

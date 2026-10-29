@@ -339,15 +339,34 @@ begin
   if v_verrou is not null then
     raise exception 'vérifications verrouillées' using detail = v_verrou::text;
   end if;
-  if exists (select 1 from verifications where compte_id = v_compte
-              and cree_le > now() - make_interval(secs => (v_p ->> 'renvoi_secondes')::int)) then
+  v := _parametres_de(v_compte, p_operation, coalesce(p_parametres, '{}'::jsonb));
+  -- le même écran rouvert (retour arrière, rechargement) dans la minute : le code
+  -- déjà parti vaut encore — on le rend, sans nouvel e-mail
+  select * into v_v from verifications
+   where compte_id = v_compte and operation = p_operation and parametres_empreinte = _empreinte(p_operation, v -> 'parametres')
+     and session_id is not distinct from nullif(auth.jwt() ->> 'session_id', '')::uuid
+     and consommee_le is null and remplacee_le is null and expire_le > now()
+     and cree_le > now() - make_interval(secs => (v_p ->> 'renvoi_secondes')::int)
+     and not exists (select 1 from courriels_a_envoyer c where c.id = verifications.courriel_id and c.etat in ('echoue', 'abandonne'))
+   order by cree_le desc limit 1;
+  if found then
+    return jsonb_build_object('id', v_v.id, 'operation', p_operation, 'expire_le', v_v.expire_le,
+                              'renvoi_des', v_v.cree_le + make_interval(secs => (v_p ->> 'renvoi_secondes')::int),
+                              'email_masque', _email_masque((select email from auth.users where id = v_compte)),
+                              'affichage', v_v.affichage, 'meme_code', true);
+  end if;
+  -- une minute entre deux envois ; ne retient pas un autre code : celui qui a
+  -- servi (il a fallu les trois preuves), celui qui est clos, ni celui dont
+  -- l'e-mail n'a pas pu partir. Le plafond du quart d'heure, lui, compte tout.
+  if exists (select 1 from verifications where compte_id = v_compte and consommee_le is null and remplacee_le is null
+              and cree_le > now() - make_interval(secs => (v_p ->> 'renvoi_secondes')::int)
+              and not exists (select 1 from courriels_a_envoyer c where c.id = verifications.courriel_id and c.etat in ('echoue', 'abandonne'))) then
     raise exception 'trop de codes demandés : attendez une minute';
   end if;
   if (select count(*) from verifications where compte_id = v_compte and cree_le > now() - interval '15 minutes') >= (v_p ->> 'par_quart_heure')::int
      or (select count(*) from verifications where compte_id = v_compte and cree_le > now() - interval '24 hours') >= (v_p ->> 'par_jour')::int then
     raise exception 'trop de vérifications demandées' using detail = format('%s par quart d''heure, %s par jour', v_p ->> 'par_quart_heure', v_p ->> 'par_jour');
   end if;
-  v := _parametres_de(v_compte, p_operation, coalesce(p_parametres, '{}'::jsonb));
   -- le code d'avant, pour le même genre d'opération, ne vaut plus rien
   update verifications set remplacee_le = now()
    where compte_id = v_compte and operation = p_operation and consommee_le is null and remplacee_le is null and expire_le > now();
@@ -471,6 +490,16 @@ begin
   return demander_sortie(p_montant, p_numero_id, p_cle);
 end $$;
 
+-- Une réponse perdue, puis la même demande refaite : la sortie déjà faite est
+-- rendue (la clé, avant la vérification). Le code demandé pour ce second essai
+-- n'a rien prouvé et ne servira plus : il se clôt, sinon il retiendrait la
+-- prochaine demande une minute (« attendez une minute »).
+create or replace function _clore_verification_rejouee(p_compte uuid, p_operation text, p_id uuid) returns void
+language sql security definer set search_path = public as $$
+  update verifications set remplacee_le = now()
+   where id = p_id and compte_id = p_compte and operation = p_operation and consommee_le is null and remplacee_le is null;
+$$;
+
 create or replace function demander_sortie(p_montant numeric, p_numero_id uuid, p_cle text, p_verification uuid,
                                            p_mot_de_passe text, p_code_email text, p_nom text default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -480,7 +509,7 @@ begin
   -- AVANT la vérification : une réponse perdue puis rejouée rend la sortie faite, pas « vérification déjà utilisée »
   if p_cle is not null then
     select * into v_s from sorties where compte_id = v_compte and cle = p_cle;
-    if found then return _sortie_json(v_s) || '{"deja": true}'; end if;
+    if found then perform _clore_verification_rejouee(v_compte, 'sortie_momo', p_verification); return _sortie_json(v_s) || '{"deja": true}'; end if;
   end if;
   v := _parametres_de(v_compte, 'sortie_momo', jsonb_build_object('montant', p_montant, 'numero_id', p_numero_id, 'nom', p_nom));
   c := _consommer_verification(v_compte, 'sortie_momo', v -> 'parametres', p_verification, p_mot_de_passe, p_code_email);
@@ -549,7 +578,7 @@ begin
   perform _exiger_compte_actif(auth.uid());
   if p_cle is not null then
     select * into v_r from retraits_crypto where compte_id = v_compte and cle = p_cle;
-    if found then return _retrait_json(v_r) || '{"deja": true}'; end if;
+    if found then perform _clore_verification_rejouee(v_compte, 'retrait_crypto', p_verification); return _retrait_json(v_r) || '{"deja": true}'; end if;
   end if;
   v := _parametres_de(v_compte, 'retrait_crypto', jsonb_build_object('actif', p_actif, 'reseau', p_reseau, 'adresse', p_adresse, 'montant', p_montant));
   c := _consommer_verification(v_compte, 'retrait_crypto', v -> 'parametres', p_verification, p_mot_de_passe, p_code_email);
@@ -782,7 +811,7 @@ begin
 end $$;
 
 -- ─────────────────────────────── 10 · les droits ───────────────────────────
-revoke all on function _aal(), _totp_frais(timestamptz), _mot_de_passe_juste(uuid, text), _verrou_verification(uuid), _email_masque(text),
+revoke all on function _clore_verification_rejouee(uuid, text, uuid), _aal(), _totp_frais(timestamptz), _mot_de_passe_juste(uuid, text), _verrou_verification(uuid), _email_masque(text),
   _code_a_six_chiffres(), _envoyer_courriel(uuid, text, jsonb, text, timestamptz, text), _exiger_fermeture_possible(uuid),
   _parametres_de(uuid, text, jsonb), _empreinte(text, jsonb), preparer_verification(text, jsonb), ma_verification(uuid),
   _echec_verification(verifications, text), _consommer_verification(uuid, text, jsonb, uuid, text, text),

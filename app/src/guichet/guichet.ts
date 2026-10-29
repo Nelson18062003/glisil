@@ -20,14 +20,23 @@ import type {
   ProfilInscription,
   Ordre,
   Reseau,
-  ResultatCode,
   ResultatOrdre,
   RetraitCrypto,
   Soldes,
   Sortie,
   Transaction,
   TypeOrdre,
+  EtatDEntree,
+  EnrolementTotp,
+  EtatCodesDeSecours,
+  OperationAVerifier,
+  Verification,
+  EtatVerification,
+  PreuveDeVerification,
 } from "./types";
+
+/** Ce que la session doit savoir sans le demander : la session a été fermée, ou le moteur a refusé une session devenue faible. */
+export type EvenementDEntree = "deconnecte" | "aal_perdu";
 
 /**
  * LE GUICHET : tout ce que l'application demande au moteur, et rien d'autre.
@@ -38,13 +47,46 @@ import type {
 export interface Guichet {
   readonly mode: "supabase" | "demo";
 
-  /* ---- session : une adresse e-mail et un code reçu par e-mail, pas de mot de passe */
+  /* ---- l'entrée : mot de passe (ou Google), code e-mail à l'inscription, application d'authentification, codes de secours */
   session(): Promise<{ compteId: string } | null>;
-  /** Envoie un code à six chiffres à cette adresse ; une adresse inconnue crée l'utilisateur. */
-  demanderCode(email: string): Promise<void>;
-  /** Le code prouve l'adresse ; `nouveau` : la personne n'a pas encore ouvert son compte. */
-  verifierCode(email: string, code: string): Promise<{ nouveau: boolean }>;
-  seDeconnecter(): Promise<void>;
+  /** Où en est la session : ce que dit Supabase Auth, et ce que dit la base (mon_etat_d_entree). */
+  etatDEntree(): Promise<EtatDEntree>;
+  /** Crée l'utilisateur ; un code à six chiffres part à cette adresse. `dejaInscrit` : l'adresse a déjà un compte. */
+  inscrire(p: { email: string; motDePasse: string }): Promise<{ dejaInscrit: boolean; session: boolean }>;
+  /** Le code reçu prouve l'adresse ; avec le mot de passe encore en mémoire, la session s'ouvre aussitôt. */
+  confirmerEmail(p: { email: string; code: string; motDePasse?: string }): Promise<{ connecte: boolean }>;
+  renvoyerConfirmation(email: string): Promise<void>;
+  /** Adresse et mot de passe : la session s'ouvre à aal1, il reste le code de l'application. */
+  connecter(p: { email: string; motDePasse: string }): Promise<void>;
+  /** Google : une redirection dans le navigateur, un onglet du système dans la coque. */
+  connecterGoogle(): Promise<void>;
+  /** La coque rend l'adresse de retour (glisil://auth-retour?code=…) : le code s'échange contre la session. */
+  terminerRetourOAuth(url: string): Promise<void>;
+  /** Un compte Google n'a pas de mot de passe : il en choisit un, qui protège chaque sortie. */
+  choisirMotDePasse(motDePasse: string): Promise<void>;
+  enrolerDeuxFacteurs(): Promise<EnrolementTotp>;
+  confirmerDeuxFacteurs(p: { facteurId: string; code: string }): Promise<void>;
+  /** Un code de l'application, sur le facteur déjà enrôlé : la session passe (ou repasse, tout neuf) à aal2. */
+  verifierDeuxFacteurs(code: string): Promise<void>;
+  /** Dix codes, montrés cette fois seulement ; les anciens ne valent plus rien. */
+  genererCodesDeSecours(): Promise<string[]>;
+  confirmerCodesDeSecours(): Promise<void>;
+  codesDeSecours(): Promise<EtatCodesDeSecours>;
+  /** Téléphone perdu : un code de secours retire l'application ; on en enrôlera une nouvelle. */
+  utiliserCodeDeSecours(code: string): Promise<void>;
+  motDePasseOublie(email: string): Promise<void>;
+  verifierCodeDeReinitialisation(p: { email: string; code: string }): Promise<void>;
+  /** Le nouveau mot de passe, puis toutes les sessions fermées : on se reconnecte avec lui. */
+  nouveauMotDePasse(motDePasse: string): Promise<void>;
+  /** Depuis Compte → Sécurité, après un code tout neuf de l'application. `nonce` : le code e-mail, si Auth le demande. */
+  changerMotDePasse(p: { nouveau: string; nonce?: string }): Promise<void>;
+  /** Changer de téléphone : un nouveau facteur s'enrôle, se vérifie, puis l'ancien est retiré. */
+  commencerChangementDeTelephone(): Promise<EnrolementTotp>;
+  terminerChangementDeTelephone(p: { facteurId: string; code: string }): Promise<void>;
+  seDeconnecter(portee?: "local" | "global"): Promise<void>;
+  /** Le temps réel ne s'ouvre qu'à une session complète (aal2) : avant, la base ne montre rien. */
+  tempsReel(actif: boolean): void;
+  surEntree(cb: (e: EvenementDEntree) => void): () => void;
 
   /* ---- compte */
   compte(): Promise<Compte>;
@@ -52,14 +94,18 @@ export interface Guichet {
   monCompte(): Promise<Compte | null>;
   /** Ouvre le compte, une fois, avec le profil complet ; la base vérifie tout. */
   ouvrirCompte(p: ProfilInscription): Promise<Compte>;
-  /** Le code secret des gestes d'argent ; `nom` est celui que les reçus montrent. */
-  completerProfil(p: { nom: string; codeSecret: string }): Promise<Compte>;
-  verifierCodeSecret(code: string): Promise<ResultatCode>;
+  /** Le prénom et le nom que Google a donnés, pour préremplir le profil (rien d'autre n'en est lu). */
+  nomPropose(): Promise<{ prenom: string; nom: string } | null>;
   /** Accepte la version des conditions en vigueur (quand elle a changé depuis l'inscription). */
   accepterConditions(version: string): Promise<Compte>;
-  /** Ferme le compte : tout l'argent sorti, rien en cours, avec le code secret. */
-  fermerCompte(p: { codeSecret: string; motif: string }): Promise<Compte>;
-  changerCodeSecret(p: { ancien: string; nouveau: string }): Promise<void>;
+  /** Ferme le compte : tout l'argent sorti, rien en cours, avec la vérification avant sortie. */
+  fermerCompte(p: { motif: string; preuve: PreuveDeVerification }): Promise<Compte>;
+
+  /* ---- la vérification avant sortie : mot de passe + code e-mail lié à l'opération + code de l'application */
+  /** Les mêmes contrôles que l'opération, puis un code part par e-mail. Un nouvel appel remplace le précédent. */
+  preparerVerification(op: OperationAVerifier): Promise<Verification>;
+  /** L'e-mail est-il parti ? null : la vérification n'est pas sur ce compte. */
+  etatVerification(id: string): Promise<EtatVerification | null>;
   /** les pièces d'un passage de palier ; l'équipe vérifie, l'état se lit dans `compte.verificationEnCours` */
   demanderVerification(p: { type: "identite" | "entreprise"; pieces: File[] }): Promise<Compte>;
   notifications(): Promise<Notification[]>;
@@ -92,8 +138,8 @@ export interface Guichet {
   signalerUnProbleme(p: { texte: string; ecran?: string | null }): Promise<{ reference: string }>;
   /** La preuve de réserve : floats, registre, chaîne — publique, elle se lit SANS compte. */
   preuveDeReserve(): Promise<PreuveDeReserve>;
-  retirerNumero(p: { id: string; codeSecret: string }): Promise<void>;
-  demanderSortie(p: { montant: number; numeroId: string; cle: string; codeSecret: string; nom?: string }): Promise<Sortie>;
+  retirerNumero(p: { id: string; preuve: PreuveDeVerification }): Promise<void>;
+  demanderSortie(p: { montant: number; numeroId: string; cle: string; preuve: PreuveDeVerification; nom?: string }): Promise<Sortie>;
   sortie(reference: string): Promise<Sortie>;
 
   /* ---- marché */
@@ -113,7 +159,7 @@ export interface Guichet {
 
   /* ---- crypto */
   adresseDepot(actif: Actif, reseau: Reseau): Promise<string | null>;
-  demanderRetraitCrypto(p: { actif: Actif; reseau: Reseau; adresse: string; montant: number; cle: string; codeSecret: string }): Promise<RetraitCrypto>;
+  demanderRetraitCrypto(p: { actif: Actif; reseau: Reseau; adresse: string; montant: number; cle: string; preuve: PreuveDeVerification }): Promise<RetraitCrypto>;
   retraitCrypto(reference: string): Promise<RetraitCrypto>;
 
   /* ---- historique */

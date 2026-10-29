@@ -1547,34 +1547,34 @@ do $$
 declare r jsonb;
 begin
   perform set_config('xafe.compte', 'f1000000-0000-0000-0000-000000000002', true);
-  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'CM', '2026-10-29'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'adresse e-mail non vérifiée', sqlerrm; end;
 
   perform set_config('xafe.compte', 'f1000000-0000-0000-0000-000000000001', true);
-  begin perform ouvrir_mon_compte('Awa', 'Ngono', ((now() at time zone 'Africa/Douala')::date - interval '17 years')::date, '+237677123499', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', ((now() at time zone 'Africa/Douala')::date - interval '17 years')::date, '+237677123499', 'Douala', 'CM', '2026-10-29'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'il faut avoir 18 ans', sqlerrm; end;
-  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+23767712349', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+23767712349', 'Douala', 'CM', '2026-10-29'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'numéro de téléphone invalide', sqlerrm; end;
-  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237577123499', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237577123499', 'Douala', 'CM', '2026-10-29'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'numéro de téléphone invalide', sqlerrm; end;
-  begin perform ouvrir_mon_compte('A1', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('A1', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'CM', '2026-10-29'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'prénom invalide', sqlerrm; end;
-  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'Cameroun', '2026-11-01'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123499', 'Douala', 'Cameroun', '2026-10-29'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'pays invalide', sqlerrm; end;
   assert not exists (select 1 from comptes where id = 'f1000000-0000-0000-0000-000000000001'), 'un refus n''ouvre rien';
 
-  r := ouvrir_mon_compte('  awa ', 'NGONO-MBALLA', date '1990-05-14', '+237 6 77 12 34 99', 'douala', 'cm', '2026-11-01');
+  r := ouvrir_mon_compte('  awa ', 'NGONO-MBALLA', date '1990-05-14', '+237 6 77 12 34 99', 'douala', 'cm', '2026-10-29');
   assert r ->> 'prenom' = 'Awa' and r ->> 'nom_de_famille' = 'Ngono-Mballa' and r ->> 'nom' = 'Awa Ngono-Mballa', r;
   assert r ->> 'telephone' = '+237677123499' and r ->> 'email' = 'awa.ngono@example.com', r;
   assert r ->> 'ville' = 'Douala' and r ->> 'pays' = 'CM' and r ->> 'date_naissance' = '1990-05-14', r;
-  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123400', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Awa', 'Ngono', date '1990-05-14', '+237677123400', 'Douala', 'CM', '2026-10-29'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'compte déjà ouvert', sqlerrm; end;
   assert mon_compte() ->> 'email' = 'awa.ngono@example.com', mon_compte();
 
   perform set_config('xafe.compte', 'f1000000-0000-0000-0000-000000000003', true);
-  begin perform ouvrir_mon_compte('Jules', 'Martin', date '1985-01-02', '+237677123499', 'Paris', 'FR', '2026-11-01'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Jules', 'Martin', date '1985-01-02', '+237677123499', 'Paris', 'FR', '2026-10-29'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'ce numéro est déjà utilisé', sqlerrm; end;
-  r := ouvrir_mon_compte('jules', 'd''almeida', date '1985-01-02', '+33 6 12 34 56 78', 'saint-étienne', 'FR', '2026-11-01');
+  r := ouvrir_mon_compte('jules', 'd''almeida', date '1985-01-02', '+33 6 12 34 56 78', 'saint-étienne', 'FR', '2026-10-29');
   assert r ->> 'nom' = 'Jules D''Almeida' and r ->> 'ville' = 'Saint-Étienne' and r ->> 'telephone' = '+33612345678', r;
   raise notice '✓ 11.26 l''inscription par e-mail : une adresse non prouvée n''ouvre rien ; mineur, numéro, nom ou pays faux sont refusés par la base ; le profil est mis en forme ; un numéro ne sert qu''à un compte';
 end $$;
@@ -1633,7 +1633,7 @@ do $$
 declare s jsonb; l jsonb; f jsonb;
 begin
   perform set_config('xafe.compte', 'f3000000-0000-0000-0000-000000000001', true);
-  perform ouvrir_mon_compte('Mireille', 'Essomba', date '1992-03-08', '+237699001122', 'Yaoundé', 'CM', '2026-11-01');
+  perform ouvrir_mon_compte('Mireille', 'Essomba', date '1992-03-08', '+237699001122', 'Yaoundé', 'CM', '2026-10-29');
 
   perform set_config('xafe.compte', '22222222-2222-2222-2222-222222222222', true);
   begin perform admin_statistiques_clients(); raise exception 'aurait dû refuser';
@@ -1718,12 +1718,12 @@ begin
   exception when others then assert sqlerrm = 'conditions non acceptées', sqlerrm; end;
   begin perform ouvrir_mon_compte('Paul', 'Biya', date '1990-01-01', '+237677000111', 'Douala', 'CM', '2020-01-01'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'conditions non acceptées', sqlerrm; end;
-  r := ouvrir_mon_compte('Paul', 'Biya', date '1990-01-01', '+237677000111', 'Douala', 'CM', '2026-11-01');
-  assert r ->> 'conditions_version' = '2026-11-01' and (r ->> 'conditions_a_jour')::boolean and r ->> 'conditions_acceptees_le' is not null, r;
+  r := ouvrir_mon_compte('Paul', 'Biya', date '1990-01-01', '+237677000111', 'Douala', 'CM', '2026-10-29');
+  assert r ->> 'conditions_version' = '2026-10-29' and (r ->> 'conditions_a_jour')::boolean and r ->> 'conditions_acceptees_le' is not null, r;
   update parametres set valeur = '{"version": "2027-01-01"}' where cle = 'conditions';
   assert not (mon_compte() ->> 'conditions_a_jour')::boolean, 'une nouvelle version : à relire';
   assert parametres_publics() -> 'conditions' ->> 'version' = '2027-01-01';
-  begin perform accepter_conditions('2026-11-01'); raise exception 'aurait dû refuser';
+  begin perform accepter_conditions('2026-10-29'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'conditions non acceptées', sqlerrm; end;
   r := accepter_conditions('2027-01-01');
   assert (r ->> 'conditions_a_jour')::boolean, r;
@@ -1740,7 +1740,7 @@ do $$
 declare r jsonb;
 begin
   perform set_config('xafe.compte', 'f3000000-0000-0000-0000-000000000002', true);
-  perform ouvrir_mon_compte('Marie', 'Ekane', date '1991-02-02', '+237677000222', 'Douala', 'CM', '2026-11-01');
+  perform ouvrir_mon_compte('Marie', 'Ekane', date '1991-02-02', '+237677000222', 'Douala', 'CM', '2026-10-29');
   insert into soldes (compte_id, actif, disponible, bloque) values ('f3000000-0000-0000-0000-000000000002', 'XAFe', 1500, 0);
   begin perform _fermer_compte(auth.uid()); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'il reste de l''argent sur le compte', sqlerrm; end;
@@ -1790,7 +1790,7 @@ do $$
 declare r jsonb; ref text; c uuid := 'f4000000-0000-0000-0000-000000000001';
 begin
   perform set_config('xafe.compte', c::text, true);
-  perform ouvrir_mon_compte('Awa', 'Ngono', date '1994-03-12', '+237677555111', 'Douala', 'CM', '2026-11-01');
+  perform ouvrir_mon_compte('Awa', 'Ngono', date '1994-03-12', '+237677555111', 'Douala', 'CM', '2026-10-29');
   ref := ouvrir_depot('mtn') ->> 'reference';
   assert (mon_depot(ref) ? 'titulaire'), 'l''écran reçoit le titulaire du float';
 
@@ -2377,7 +2377,7 @@ delete from cours_externes;
 do $$
 declare c cours_externes; r jsonb;
 begin
-  c := _poser_le_cours('frankfurter', 1.1253, '2026-11-01');
+  c := _poser_le_cours('frankfurter', 1.1253, '2026-10-29');
   -- 655,957 / 1,1253 = 582,9174… ; au pas du marché
   assert c.pose and c.usd_xaf = 582.9174 and c.prix = round(582.9174 / (parametre('marche') ->> 'pas_prix')::numeric) * (parametre('marche') ->> 'pas_prix')::numeric, to_jsonb(c);
   assert (parametre('marche') ->> 'prix_reference')::numeric = c.prix, 'le cours posé devient la référence du marché';
@@ -3096,11 +3096,11 @@ begin
      and not exists (select 1 from lots_de_secours l, unnest(codes) x where position(replace(x, '-', '') in l::text) > 0),
          'aucune ligne ne garde un code en clair';
   assert not (mes_codes_de_secours() ->> 'confirmes')::boolean and (mes_codes_de_secours() ->> 'restants')::int = 10;
-  begin perform ouvrir_mon_compte('Awa', 'Secours', date '1990-05-14', '+237677550001', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Awa', 'Secours', date '1990-05-14', '+237677550001', 'Douala', 'CM', '2026-10-29'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'codes de secours à noter', sqlerrm; end;
   r := confirmer_codes_de_secours();
   assert (r ->> 'restants')::int = 10, r;
-  r := ouvrir_mon_compte('Awa', 'Secours', date '1990-05-14', '+237677550001', 'Douala', 'CM', '2026-11-01');
+  r := ouvrir_mon_compte('Awa', 'Secours', date '1990-05-14', '+237677550001', 'Douala', 'CM', '2026-10-29');
   assert (r ->> 'id')::uuid = u, r;
 
   -- un lot confirmé ne se remplace pas avec un TOTP vieux de dix minutes…
@@ -3196,34 +3196,34 @@ declare r jsonb; e jsonb;
 begin
   perform set_config('xafe.compte', 'f5600000-0000-0000-0000-000000000001', true);
   perform set_config('xafe.aal', 'aal1', true); perform set_config('xafe.amr', c_faible, true);
-  begin perform ouvrir_mon_compte('Pierre', 'Prod', date '1990-05-14', '+237677560001', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Pierre', 'Prod', date '1990-05-14', '+237677560001', 'Douala', 'CM', '2026-10-29'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'double authentification requise', sqlerrm; end;
   -- en session faible, l'écran d'entrée sait où en est la personne
   e := mon_etat_d_entree();
   assert (e ->> 'email_confirme')::boolean and (e ->> 'mot_de_passe')::boolean and not (e ->> 'session_forte')::boolean
          and (e ->> 'codes_de_secours')::boolean and not (e ->> 'compte')::boolean, e;
   perform set_config('xafe.aal', 'aal2', true); perform set_config('xafe.amr', c_otp, true);
-  begin perform ouvrir_mon_compte('Pierre', 'Prod', date '1990-05-14', '+237677560001', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Pierre', 'Prod', date '1990-05-14', '+237677560001', 'Douala', 'CM', '2026-10-29'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'double authentification requise', sqlerrm; end;
   perform set_config('xafe.amr', '', true);
 
   perform set_config('xafe.compte', 'f5600000-0000-0000-0000-000000000002', true);
   assert not (mon_etat_d_entree() ->> 'mot_de_passe')::boolean, 'un compte Google n''a pas de mot de passe';
-  begin perform ouvrir_mon_compte('Gaby', 'Google', date '1990-05-14', '+237677560002', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Gaby', 'Google', date '1990-05-14', '+237677560002', 'Douala', 'CM', '2026-10-29'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'mot de passe à choisir', sqlerrm; end;
 
   perform set_config('xafe.compte', 'f5600000-0000-0000-0000-000000000003', true);
-  begin perform ouvrir_mon_compte('Sans', 'Codes', date '1990-05-14', '+237677560003', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Sans', 'Codes', date '1990-05-14', '+237677560003', 'Douala', 'CM', '2026-10-29'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'codes de secours à noter', sqlerrm; end;
   assert not exists (select 1 from comptes where id::text like 'f5600000-%'), 'aucun refus n''a ouvert de compte';
 
   -- le chemin entier : la session forte, et tout est mis en forme comme avant
   perform set_config('xafe.compte', 'f5600000-0000-0000-0000-000000000001', true);
-  r := ouvrir_mon_compte('  pierre ', 'PROD', date '1990-05-14', '+237 6 77 56 00 01', 'douala', 'cm', '2026-11-01');
+  r := ouvrir_mon_compte('  pierre ', 'PROD', date '1990-05-14', '+237 6 77 56 00 01', 'douala', 'cm', '2026-10-29');
   assert r ->> 'nom' = 'Pierre Prod' and r ->> 'telephone' = '+237677560001' and r ->> 'ville' = 'Douala' and r ->> 'pays' = 'CM', r;
   -- le même numéro, écrit autrement
   perform set_config('xafe.compte', 'f5600000-0000-0000-0000-000000000004', true);
-  begin perform ouvrir_mon_compte('Marc', 'Meme', date '1990-05-14', '+237 6 77 56 00 01', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Marc', 'Meme', date '1990-05-14', '+237 6 77 56 00 01', 'Douala', 'CM', '2026-10-29'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'ce numéro est déjà utilisé', sqlerrm; end;
 
   -- deux inscriptions qui se croisent : l'autre compte naît APRÈS la vérification (un déclencheur l'y glisse) ;
@@ -3237,7 +3237,7 @@ begin
   end $f$;
   create trigger course_au_numero before insert on comptes for each row execute function _course_au_numero();
   perform set_config('xafe.compte', 'f5600000-0000-0000-0000-000000000005', true);
-  begin perform ouvrir_mon_compte('Carla', 'Course', date '1990-05-14', '+237677560005', 'Douala', 'CM', '2026-11-01'); raise exception 'aurait dû refuser';
+  begin perform ouvrir_mon_compte('Carla', 'Course', date '1990-05-14', '+237677560005', 'Douala', 'CM', '2026-10-29'); raise exception 'aurait dû refuser';
   exception when others then assert sqlerrm = 'ce numéro est déjà utilisé', 'la course rend : ' || sqlerrm; end;
   drop trigger course_au_numero on comptes; drop function _course_au_numero();
   assert not exists (select 1 from comptes where telephone = '+237677560005'), 'rien n''est resté de la course';
@@ -3245,7 +3245,7 @@ begin
   -- le numéro d'un compte fermé se réutilise (décision du propriétaire)
   update comptes set ferme_le = now(), desactive_le = now() where id = 'f5600000-0000-0000-0000-000000000001';
   perform set_config('xafe.compte', 'f5600000-0000-0000-0000-000000000006', true);
-  r := ouvrir_mon_compte('Rita', 'Reprise', date '1990-05-14', '+237677560001', 'Douala', 'CM', '2026-11-01');
+  r := ouvrir_mon_compte('Rita', 'Reprise', date '1990-05-14', '+237677560001', 'Douala', 'CM', '2026-10-29');
   assert r ->> 'telephone' = '+237677560001', r;
 
   -- créée dans le tableau de bord : en aal1, l'écran voit ce qui manque ; en aal2, les codes, puis le compte
@@ -3256,7 +3256,7 @@ begin
          and not (e ->> 'codes_de_secours')::boolean and not (e ->> 'compte')::boolean, e;
   perform set_config('xafe.aal', '', true); perform set_config('xafe.amr', '', true);
   perform generer_codes_de_secours(); perform confirmer_codes_de_secours();
-  r := ouvrir_mon_compte('Tania', 'Tableau', date '1990-05-14', '+237677560007', 'Yaoundé', 'CM', '2026-11-01');
+  r := ouvrir_mon_compte('Tania', 'Tableau', date '1990-05-14', '+237677560007', 'Yaoundé', 'CM', '2026-10-29');
   assert (mon_etat_d_entree() ->> 'compte')::boolean and (mon_etat_d_entree() ->> 'session_forte')::boolean, mon_etat_d_entree();
   raise notice '✓ 11.56 ouvrir son compte : session faible, code e-mail, Google sans mot de passe ou codes pas notés, chacun refusé ; un numéro, même écrit autrement ou en course, ne sert qu''à un compte ouvert, celui d''un compte fermé se réutilise ; une personne du tableau de bord suit le même chemin';
 end $$;
@@ -3461,6 +3461,58 @@ begin
   assert r ->> 'erreur' = 'vérification déjà utilisée', r;
   assert solde(c, 'XAFe', 'bloque') = 50000, 'une vérification ne sort qu''une fois';
   raise notice '✓ 11.60 la vérification avant sortie : le code part avec le montant et la destination ; autre montant, mot de passe ou code faux refusés ; la bonne combinaison sert une fois, puis s''efface ; la même clé rend la sortie faite';
+end $$;
+rollback;
+
+-- 11.60b · rouvrir l'écran ne coûte pas une minute. Le même écran rouvert
+-- (retour arrière, rechargement) rend le code déjà parti, sans nouvel e-mail ;
+-- une AUTRE opération dans la minute attend ; un code qui a servi, ou dont
+-- l'e-mail n'a pas pu partir, ne retient pas le suivant. Sans cela, revenir
+-- après une réponse perdue butait sur « attendez une minute ».
+begin;
+update parametres set valeur = valeur || '{"ouvertes": true, "mode": "manuel"}' where cle = 'sortie';
+do $$
+declare
+  c uuid := 'b1600000-0000-0000-0000-00000000000b'; nid uuid; v1 jsonb; v2 jsonb; v3 jsonb; v4 jsonb; code text; r jsonb; n int;
+begin
+  insert into comptes (id, telephone, nom, palier, argent_reel) values (c, '+237677160011', 'Rouvre Un', 0, true);
+  insert into auth.users (id, email, encrypted_password) values (c, 'rouvre.un@example.com', extensions.crypt('Glisil-2026-sur', extensions.gen_salt('bf', 10)));
+  insert into numeros (compte_id, operateur, numero, verifie_le, actif_des) values (c, 'mtn', '677160011', now() - interval '2 days', now() - interval '1 day')
+  returning id into nid;
+  perform _mouvement(c, 'XAFe', 100000, 0, 'test', 'test', 'T-11.60b');
+  perform set_config('xafe.compte', c::text, true);
+
+  v1 := preparer_verification('sortie_momo', jsonb_build_object('montant', 50000, 'numero_id', nid, 'nom', 'Rouvre Un'));
+  n := (select count(*) from courriels_a_envoyer where compte_id = c);
+  v2 := preparer_verification('sortie_momo', jsonb_build_object('montant', 50000, 'numero_id', nid, 'nom', 'Rouvre Un'));
+  assert v2 ->> 'id' = v1 ->> 'id' and (v2 ->> 'meme_code')::boolean, 'le même écran rouvert rend la même vérification';
+  assert (select count(*) from courriels_a_envoyer where compte_id = c) = n, 'sans nouvel e-mail';
+  assert v2 ->> 'renvoi_des' = v1 ->> 'renvoi_des', 'et sans repousser le renvoi';
+  -- une autre opération dans la minute : elle attend
+  begin
+    perform preparer_verification('sortie_momo', jsonb_build_object('montant', 40000, 'numero_id', nid, 'nom', 'Rouvre Un'));
+    raise exception 'aurait dû refuser';
+  exception when others then
+    assert sqlerrm = 'trop de codes demandés : attendez une minute', sqlerrm;
+  end;
+  -- le code sert : il ne retient plus le suivant
+  select k.donnees ->> 'code' into code from courriels_a_envoyer k join verifications w on w.courriel_id = k.id where w.id = (v1 ->> 'id')::uuid;
+  r := demander_sortie(50000, nid, 'k-1160b', (v1 ->> 'id')::uuid, 'Glisil-2026-sur', code, 'Rouvre Un');
+  assert r ->> 'reference' like 'XAFe-WD-%', r;
+  v3 := preparer_verification('sortie_momo', jsonb_build_object('montant', 40000, 'numero_id', nid, 'nom', 'Rouvre Un'));
+  assert v3 ->> 'id' <> v1 ->> 'id' and not coalesce((v3 ->> 'meme_code')::boolean, false), 'un code qui a servi ne retient pas le suivant';
+  -- un e-mail qui n'a pas pu partir : « renvoyer » envoie vraiment un nouveau code
+  update courriels_a_envoyer set etat = 'echoue' where id = (select courriel_id from verifications where id = (v3 ->> 'id')::uuid);
+  v4 := preparer_verification('sortie_momo', jsonb_build_object('montant', 40000, 'numero_id', nid, 'nom', 'Rouvre Un'));
+  assert v4 ->> 'id' <> v3 ->> 'id', 'un e-mail en panne ne se rend pas tel quel';
+  assert (select remplacee_le is not null from verifications where id = (v3 ->> 'id')::uuid), 'l''ancien code ne vaut plus rien';
+  -- une réponse perdue : la même demande refaite avec un NOUVEAU code rend la sortie faite,
+  -- et ce second code se clôt — sinon il retiendrait la prochaine demande une minute
+  r := demander_sortie(50000, nid, 'k-1160b', (v4 ->> 'id')::uuid, 'peu-importe', '000000', 'Rouvre Un');
+  assert (r ->> 'deja')::boolean, r;
+  assert (select remplacee_le is not null and consommee_le is null and essais = 0 from verifications where id = (v4 ->> 'id')::uuid), 'le code du second essai est clos, sans compter d''essai';
+  perform preparer_verification('sortie_momo', jsonb_build_object('montant', 30000, 'numero_id', nid, 'nom', 'Rouvre Un'));
+  raise notice '✓ 11.60b le même écran rouvert rend le code déjà parti (sans e-mail) ; une autre opération attend la minute ; un code consommé, clos par une demande rejouée, ou dont l''e-mail est en panne ne retient pas le suivant';
 end $$;
 rollback;
 

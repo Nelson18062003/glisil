@@ -2,7 +2,7 @@
 
 *Tirée du code par `app/scripts/carte.mjs` — ne pas modifier à la main. Relancer `node scripts/carte.mjs` après tout changement de navigation.*
 
-48 écrans · 134 passages (sans compter la barre d'onglets, présente sur les quatre écrans racines).
+57 écrans · 142 passages (sans compter la barre d'onglets, présente sur les quatre écrans racines).
 
 ## Les modules et leurs passages
 
@@ -14,8 +14,16 @@ flowchart LR
     preuve["/preuve"]
     bienvenue["/bienvenue"]
     bienvenue_code["/bienvenue/code"]
+    bienvenue_retour["/bienvenue/retour"]
+    bienvenue_motdepasse["/bienvenue/mot-de-passe"]
+    bienvenue_deuxfacteurs["/bienvenue/deux-facteurs"]
+    bienvenue_deuxfacteurs_code["/bienvenue/deux-facteurs/code"]
+    bienvenue_secours["/bienvenue/secours"]
+    bienvenue_codesdesecours["/bienvenue/codes-de-secours"]
     bienvenue_inscription["/bienvenue/inscription"]
-    bienvenue_profil["/bienvenue/profil"]
+    bienvenue_oubli["/bienvenue/oubli"]
+    bienvenue_oubli_code["/bienvenue/oubli/code"]
+    bienvenue_oubli_nouveau["/bienvenue/oubli/nouveau"]
   end
   subgraph m_Accueil["Accueil"]
     accueil["/"]
@@ -39,6 +47,7 @@ flowchart LR
     marche["/marche"]
     marche_graphique["/marche/graphique"]
     marche_carnet["/marche/carnet"]
+    marche_regles["/marche/regles"]
     marche_ordres["/marche/ordres"]
     marche_ordres__id["/marche/ordres/:id"]
     marche_execute__id["/marche/execute/:id"]
@@ -74,6 +83,7 @@ flowchart LR
     compte_informations["/compte/informations"]
     compte_fermer["/compte/fermer"]
   end
+  accueil --> compte_aide
   accueil --> compte
   accueil --> notifications
   accueil --> preuve
@@ -86,13 +96,16 @@ flowchart LR
   accueil --> compte_numeros_ajouter
   accueil --> compte_paliers_identite
   accueil --> historique
+  bienvenue_deuxfacteurs_code --> bienvenue_secours
+  bienvenue --> bienvenue_oubli
   bienvenue --> bienvenue_code
   bienvenue_code --> bienvenue
-  bienvenue_code --> bienvenue_inscription
-  bienvenue_code --> bienvenue_profil
-  bienvenue_code --> accueil
+  bienvenue_retour --> bienvenue
   bienvenue_inscription --> bienvenue
-  bienvenue_inscription --> bienvenue_profil
+  bienvenue_inscription --> accueil
+  bienvenue_oubli --> bienvenue_oubli_code
+  bienvenue_oubli_code --> bienvenue
+  bienvenue_oubli_nouveau --> bienvenue
   compte --> compte_informations
   compte --> compte_numeros
   compte --> compte_paliers
@@ -138,6 +151,7 @@ flowchart LR
   marche --> rapide
   marche --> marche_carnet
   marche --> marche_ordres
+  marche --> marche_regles
   marche --> marche_ordres__id
   marche_ordres --> marche_ordres__id
   marche --> marche_execute__id
@@ -182,11 +196,19 @@ Les flèches « retour » et les onglets ne sont pas dessinés : chaque écran e
 | `/conditions` | 0 | flèche, lien | `/` |
 | `/confidentialite` | 0 | flèche, lien | `/` |
 | `/preuve` | 0 | lien | `/` `/conditions` `/confidentialite` |
-| `/bienvenue` | 0 | lien | `/bienvenue/code` |
-| `/bienvenue/code` | 1 | flèche, lien | `/bienvenue` `/bienvenue/inscription` `/bienvenue/profil` `/` |
-| `/bienvenue/inscription` | 2 | flèche, lien | `/bienvenue` `/bienvenue/profil` |
-| `/bienvenue/profil` | 2 | flèche | — |
-| `/` | 0 | onglets, lien | `/compte` `/notifications` `/preuve` `/entrer/transaction/:ref` `/entrer/operateur` `/sortir/montant` `/crypto` `/marche` `/rapide` `/compte/numeros/ajouter` `/compte/paliers/identite` `/historique` |
+| `/bienvenue` | 0 | lien | `/bienvenue/oubli` `/bienvenue/code` |
+| `/bienvenue/code` | 0 | flèche, lien | `/bienvenue` |
+| `/bienvenue/retour` | 0 | flèche, lien | `/bienvenue` |
+| `/bienvenue/mot-de-passe` | 0 | flèche | — |
+| `/bienvenue/deux-facteurs` | 0 | flèche | — |
+| `/bienvenue/deux-facteurs/code` | 0 | flèche, lien | `/bienvenue/secours` |
+| `/bienvenue/secours` | 1 | flèche | — |
+| `/bienvenue/codes-de-secours` | 0 | flèche | — |
+| `/bienvenue/inscription` | 0 | flèche, lien | `/bienvenue` `/` |
+| `/bienvenue/oubli` | 1 | flèche, lien | `/bienvenue/oubli/code` |
+| `/bienvenue/oubli/code` | 2 | flèche, lien | `/bienvenue` |
+| `/bienvenue/oubli/nouveau` | 0 | flèche, lien | `/bienvenue` |
+| `/` | 0 | onglets, lien | `/compte/aide` `/compte` `/notifications` `/preuve` `/entrer/transaction/:ref` `/entrer/operateur` `/sortir/montant` `/crypto` `/marche` `/rapide` `/compte/numeros/ajouter` `/compte/paliers/identite` `/historique` |
 | `/notifications` | 1 | flèche | — |
 | `/entrer/operateur` | 1 | flèche, lien | `/entrer/montant` |
 | `/entrer/montant` | 2 | flèche, lien | `/entrer/operateur` `/entrer/payer/:ref` |
@@ -198,9 +220,10 @@ Les flèches « retour » et les onglets ne sont pas dessinés : chaque écran e
 | `/sortir/verifier` | 3 | flèche, lien | `/sortir/montant` `/sortir/code` |
 | `/sortir/code` | 4 | flèche, lien | `/sortir/montant` `/sortir/envoye/:ref` |
 | `/sortir/envoye/:ref` | 5 | lien, flèche | `/` `/historique/:ref` |
-| `/marche` | 1 | lien, onglets | `/marche/graphique` `/rapide` `/marche/carnet` `/marche/ordres` `/marche/ordres/:id` `/marche/execute/:id` |
+| `/marche` | 1 | lien, onglets | `/marche/graphique` `/rapide` `/marche/carnet` `/marche/ordres` `/marche/regles` `/marche/ordres/:id` `/marche/execute/:id` |
 | `/marche/graphique` | 2 | flèche, lien | `/marche` `/marche/carnet` |
 | `/marche/carnet` | 2 | flèche, lien | `/marche` |
+| `/marche/regles` | 2 | flèche | — |
 | `/marche/ordres` | 2 | lien, flèche | `/marche/ordres/:id` |
 | `/marche/ordres/:id` | 2 | flèche | — |
 | `/marche/execute/:id` | 2 | flèche, lien | `/marche` `/` |
@@ -224,7 +247,7 @@ Les flèches « retour » et les onglets ne sont pas dessinés : chaque écran e
 | `/compte/paliers/entreprise` | 3 | flèche, lien | `/compte/paliers` |
 | `/compte/securite` | 2 | flèche | — |
 | `/compte/api` | 2 | flèche | — |
-| `/compte/aide` | 3 | flèche | — |
+| `/compte/aide` | 1 | flèche | — |
 | `/compte/informations` | 2 | flèche, lien | `/compte/fermer` |
 | `/compte/fermer` | 3 | flèche, lien | `/marche/ordres` `/historique` |
 

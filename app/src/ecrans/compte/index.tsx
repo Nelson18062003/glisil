@@ -12,7 +12,6 @@ import PrivacyTipOutlined from "@mui/icons-material/PrivacyTipOutlined";
 import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
 import HelpOutlineRounded from "@mui/icons-material/HelpOutlineRounded";
 import KeyRounded from "@mui/icons-material/KeyRounded";
-import LockResetRounded from "@mui/icons-material/LockResetRounded";
 import LogoutRounded from "@mui/icons-material/LogoutRounded";
 import PhoneAndroidRounded from "@mui/icons-material/PhoneAndroidRounded";
 import SendRounded from "@mui/icons-material/SendRounded";
@@ -27,7 +26,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useCompte, useDepotsEnAttente, useGuichet, useMesOrdres, useNumeros, useRafraichir, useSoldes } from "../../guichet";
 import { CONDITIONS, CONFIDENTIALITE, lienWhatsapp, VERSION_CONDITIONS, type Document } from "../../noyau/conditions";
 import { Contact, FeuilleLegale } from "../legal";
-import type { IdOperateur } from "../../guichet/types";
+import type { IdOperateur, PreuveDeVerification } from "../../guichet/types";
 import { CODE_SMS_DEMO } from "../../guichet/demo";
 import { BETA, delaiDuNumero, FRAIS, NUMEROS, OPERATEURS, PALIERS, operateur as opDe } from "../../noyau/argent";
 import { initiales, jourRelatif, numeroEnTranches, numeroSaisi, numeroValide, operateurDuNumero, pourcent, xaf } from "../../noyau/format";
@@ -36,8 +35,9 @@ import { langue, t } from "../../noyau/langue";
 import { parcours } from "../../navigation/parcours";
 import { useSession } from "../../session/session";
 import { tones } from "../../theme";
-import { Card, Cases, ChoixDeLangue, Feuille, FeuilleErreur, Icon, Keypad, Line, List, Points, Row, Screen, Squelette } from "../../ui";
+import { Card, Cases, ChoixDeLangue, Feuille, FeuilleErreur, Icon, Keypad, Line, List, Row, Screen, Squelette } from "../../ui";
 import { useGesteUnique } from "../../ui/gestes";
+import { EtapeDeVerification } from "../../ui/verification";
 
 /* Le support vient de l'équipe (paramètre « support ») ou de la configuration :
    un numéro écrit en dur ici était un bouche-trou, et les messages des clients
@@ -76,7 +76,7 @@ export function Compte() {
         <Row icon={<BadgeOutlined />} tone="neutral" primary={t("Mes informations", "My details")} secondary={t("Identité, adresse e-mail, résidence", "Identity, email address, residence")} to="/compte/informations" />
         <Row icon={<PhoneAndroidRounded />} tone="green" primary={t("Mes numéros MoMo", "My MoMo numbers")} secondary={numeros ? resumeNumeros(numeros) : " "} to="/compte/numeros" />
         <Row icon={<VerifiedRounded />} tone="amber" primary={t("Paliers et limites", "Tiers and limits")} secondary={palier && compte ? t(`Palier ${compte.palier} · ${palier.entreeJour === null ? "sans plafond plateforme" : `${xaf(palier.entreeJour)} XAF par jour`}`, `Tier ${compte.palier} · ${palier.entreeJour === null ? "no platform limit" : `${xaf(palier.entreeJour)} XAF per day`}`) : " "} to="/compte/paliers" />
-        <Row icon={<ShieldOutlined />} tone="blue" primary={t("Sécurité", "Security")} secondary={t("Code secret, appareils", "PIN, devices")} to="/compte/securite" />
+        <Row icon={<ShieldOutlined />} tone="blue" primary={t("Sécurité", "Security")} secondary={t("Mot de passe, application d'authentification, appareils", "Password, authenticator app, devices")} to="/compte/securite" />
         <Row icon={<KeyRounded />} tone="neutral" primary={t("Accès API", "API access")} secondary={t("Pour les desks", "For trading desks")} to="/compte/api" />
         <Row icon={<HelpOutlineRounded />} tone="neutral" primary={t("Aide et support", "Help & support")} secondary={t("Questions fréquentes, nous écrire", "FAQ, contact us")} to="/compte/aide" />
       </List>
@@ -98,21 +98,6 @@ export function CompteNumeros() {
   const rafraichir = useRafraichir();
   const { data: numeros } = useNumeros();
   const [aRetirer, setARetirer] = useState<string | null>(null);
-  const [code, setCode] = useState("");
-  const { lancer, erreur, effacerErreur } = useGesteUnique();
-
-  const retirer = (c: string) =>
-    lancer(async () => {
-      if (!aRetirer) return;
-      await guichet.retirerNumero({ id: aRetirer, codeSecret: c });
-      setARetirer(null); setCode("");
-      await rafraichir();
-    });
-  const touche = (k: string) => {
-    const suite = k === "⌫" ? code.slice(0, -1) : (code + k).slice(0, 4);
-    setCode(suite);
-    if (suite.length === 4) void retirer(suite);
-  };
   const cible = numeros?.find((n) => n.id === aRetirer);
 
   return (
@@ -127,14 +112,23 @@ export function CompteNumeros() {
           <Row icon={<AddRounded />} tone="green" primary={t("Ajouter un numéro", "Add a number")} to="/compte/numeros/ajouter" />
         </List>
       )}
-      <Feuille ouverte={Boolean(aRetirer)} onFermer={() => { setARetirer(null); setCode(""); }} titre={cible ? t(`Retirer le ${numeroEnTranches(cible.numero)} ?`, `Remove ${numeroEnTranches(cible.numero)}?`) : ""}>
-        <Stack gap={1}>
-          <Typography variant="body2">{t("Votre code secret pour confirmer. Ce numéro ne pourra plus recevoir de sortie.", "Enter your PIN to confirm. This number will no longer be able to receive withdrawals.")}</Typography>
-          <Points longueur={4} saisis={code.length} />
-          <Keypad onKey={touche} triple={null} />
-        </Stack>
+      <Feuille ouverte={Boolean(aRetirer)} onFermer={() => setARetirer(null)} titre={cible ? t(`Retirer le ${numeroEnTranches(cible.numero)} ?`, `Remove ${numeroEnTranches(cible.numero)}?`) : ""}>
+        {aRetirer && (
+          <Stack gap={1}>
+            <Typography variant="body2">{t("Ce numéro ne pourra plus recevoir de sortie. Confirmez avec vos trois vérifications.", "This number will no longer be able to receive withdrawals. Confirm with your three checks.")}</Typography>
+            <EtapeDeVerification
+              op={{ operation: "retirer_numero", numeroId: aRetirer }}
+              intention={{ retirer: aRetirer }}
+              libelle={t("Retirer ce numéro", "Remove this number")}
+              executer={async (preuve) => {
+                await guichet.retirerNumero({ id: aRetirer, preuve });
+                setARetirer(null);
+                await rafraichir();
+              }}
+            />
+          </Stack>
+        )}
       </Feuille>
-      <FeuilleErreur erreur={erreur} onFermer={() => { effacerErreur(); setCode(""); }} />
     </Screen>
   );
 }
@@ -320,54 +314,7 @@ export function ComptePaliersEntreprise() {
 
 /* ----------------------------------------------------------- sécurité */
 
-export function CompteSecurite() {
-  const guichet = useGuichet();
-  const session = useSession();
-  const [changer, setChanger] = useState(false);
-  const [etape, setEtape] = useState<"ancien" | "nouveau" | "confirmer">("ancien");
-  const [ancien, setAncien] = useState("");
-  const [nouveau, setNouveau] = useState("");
-  const [conf, setConf] = useState("");
-  /* une clé, pas un texte : le texte se lit dans la langue de l'écran, et la couleur se décide sur la clé */
-  const [message, setMessage] = useState<"differents" | "change" | null>(null);
-  const { lancer, erreur, effacerErreur } = useGesteUnique();
-
-  const fermer = () => { setChanger(false); setEtape("ancien"); setAncien(""); setNouveau(""); setConf(""); setMessage(null); };
-  const touche = (k: string) => {
-    const maj = (v: string) => (k === "⌫" ? v.slice(0, -1) : (v + k).slice(0, 4));
-    if (etape === "ancien") { const v = maj(ancien); setAncien(v); if (v.length === 4) setEtape("nouveau"); }
-    else if (etape === "nouveau") { const v = maj(nouveau); setNouveau(v); if (v.length === 4) setEtape("confirmer"); }
-    else {
-      const v = maj(conf); setConf(v);
-      if (v.length === 4) {
-        if (v !== nouveau) { setMessage("differents"); setNouveau(""); setConf(""); setEtape("nouveau"); return; }
-        void lancer(async () => { await guichet.changerCodeSecret({ ancien, nouveau: v }); setMessage("change"); setTimeout(fermer, 1200); }).then(() => { setAncien(""); setConf(""); });
-      }
-    }
-  };
-  const saisis = etape === "ancien" ? ancien.length : etape === "nouveau" ? nouveau.length : conf.length;
-
-  return (
-    <Screen title={t("Sécurité", "Security")} back="/compte">
-      <List>
-        <Row icon={<LockResetRounded />} tone="blue" primary={t("Changer mon code secret", "Change my PIN")} secondary={t("Quatre chiffres, pour chaque sortie d'argent", "Four digits, for every withdrawal")} onClick={() => setChanger(true)} />
-        <Row icon={<ShieldOutlined />} tone="green" primary={t("Verrouiller maintenant", "Lock now")} secondary={t("Le code sera demandé à la prochaine ouverture", "Your PIN will be required next time you open the app")} onClick={session.verrouiller} />
-        <Row icon={<PhoneAndroidRounded />} tone="neutral" primary={t("Empreinte ou visage", "Fingerprint or face")} secondary={t("Dans l'application Android, à la place du code", "In the Android app, instead of the PIN")} chevron={false} />
-      </List>
-      <Typography variant="body2">{t("Trois codes faux verrouillent le compte 15 minutes. Un code secret ne se partage avec personne, pas même avec l'équipe Glisil : elle ne vous le demandera jamais.", "Three wrong PINs lock the account for 15 minutes. Never share your PIN with anyone, not even the Glisil team: they will never ask you for it.")}</Typography>
-      <Box sx={{ flex: 1 }} />
-      <Button variant="outlined" color="error" startIcon={<LogoutRounded />} onClick={() => void session.deconnecter()}>{t("Déconnecter cet appareil", "Sign out of this device")}</Button>
-      <Feuille ouverte={changer} onFermer={fermer} titre={etape === "ancien" ? t("Votre code actuel", "Your current PIN") : etape === "nouveau" ? t("Le nouveau code", "Your new PIN") : t("Confirmez le nouveau code", "Confirm your new PIN")}>
-        <Stack gap={1}>
-          <Points longueur={4} saisis={saisis} erreur={message === "differents"} />
-          {message && <Typography variant="body2" color={message === "change" ? "primary" : "error"} textAlign="center">{message === "change" ? t("Code changé.", "PIN changed.") : t("Les deux codes ne sont pas les mêmes.", "The two PINs do not match.")}</Typography>}
-          <Keypad onKey={touche} triple={null} />
-        </Stack>
-      </Feuille>
-      <FeuilleErreur erreur={erreur} onFermer={() => { effacerErreur(); fermer(); }} />
-    </Screen>
-  );
-}
+export { CompteSecurite } from "./securite";
 
 /* ---------------------------------------------------------- API, aide */
 
@@ -441,7 +388,7 @@ export function CompteAide() {
         ))}
       </Box>
       <Typography variant="subtitle1" sx={{ mt: 1 }}>{t("Signaler un problème", "Report a problem")}</Typography>
-      <Typography variant="body2">{t("Dites ce qui s'est passé ; gardez la référence de l'opération (XAFe-…) si vous l'avez. Personne chez Glisil ne vous demandera votre code secret.", "Tell us what happened; include the transaction reference (XAFe-…) if you have it. No one at Glisil will ever ask for your PIN.")}</Typography>
+      <Typography variant="body2">{t("Dites ce qui s'est passé ; gardez la référence de l'opération (XAFe-…) si vous l'avez. Personne chez Glisil ne vous demandera votre mot de passe ni vos codes.", "Tell us what happened; include the transaction reference (XAFe-…) if you have it. No one at Glisil will ever ask for your password or your codes.")}</Typography>
       <TextField label={t("Ce qui s'est passé", "What happened")} value={texte} onChange={(e) => { setTexte(e.target.value); setRecu(null); }} fullWidth multiline minRows={3} inputProps={{ maxLength: 2000 }} />
       {recu && (
         <Stack direction="row" gap={1} alignItems="center" role="status" data-signalement-recu
@@ -516,7 +463,8 @@ const motifs = (): { cle: string; label: string }[] => [
 /**
  * Fermer son compte, en trois temps : ce qu'il faut d'abord (argent sorti,
  * rien en cours — chaque point dit où aller le régler), ce que fermer veut
- * dire, puis le code secret. La base revérifie tout (fermer_mon_compte).
+ * dire, puis la vérification (application, mot de passe, code e-mail).
+ * La base revérifie tout (fermer_mon_compte).
  */
 export function CompteFermer() {
   const guichet = useGuichet();
@@ -526,8 +474,6 @@ export function CompteFermer() {
   const { data: depots } = useDepotsEnAttente();
   const [motif, setMotif] = useState<string | null>(null);
   const [demander, setDemander] = useState(false);
-  const [code, setCode] = useState("");
-  const { lancer, enCours, erreur, effacerErreur } = useGesteUnique();
 
   const charge = Boolean(soldes && ordres && depots);
   const argent = soldes ? soldes.XAFe.disponible + soldes.XAFe.bloque > 0 || soldes.USDT.disponible + soldes.USDT.bloque > 0 : true;
@@ -540,17 +486,9 @@ export function CompteFermer() {
   ];
   const pret = charge && points.every((p) => p.ok);
 
-  const fermer = (c: string) =>
-    lancer(async () => {
-      try {
-        await guichet.fermerCompte({ codeSecret: c, motif: motif ?? "" });
-        await rafraichir(); /* la garde voit le compte fermé et montre l'écran qui le dit */
-      } finally { setCode(""); }
-    });
-  const touche = (k: string) => {
-    const suite = k === "⌫" ? code.slice(0, -1) : (code + k).slice(0, 4);
-    setCode(suite);
-    if (suite.length === 4) void fermer(suite);
+  const fermer = async (preuve: PreuveDeVerification) => {
+    await guichet.fermerCompte({ motif: motif ?? "", preuve });
+    await rafraichir(); /* la garde voit le compte fermé et montre l'écran qui le dit */
   };
 
   return (
@@ -578,16 +516,16 @@ export function CompteFermer() {
         {motifs().map(({ cle, label }) => <Chip key={cle} label={label} onClick={() => setMotif(motif === cle ? null : cle)} color={motif === cle ? "primary" : "default"} variant={motif === cle ? "filled" : "outlined"} />)}
       </Stack>
       <Box sx={{ flex: 1 }} />
-      <Button variant="contained" color="error" disabled={!pret || enCours} onClick={() => setDemander(true)}>{t("Fermer mon compte", "Close my account")}</Button>
+      <Button variant="contained" color="error" disabled={!pret} onClick={() => setDemander(true)}>{t("Fermer mon compte", "Close my account")}</Button>
       {charge && !pret && <Typography variant="caption" textAlign="center">{t("Réglez d'abord les points ci-dessus.", "Resolve the points above first.")}</Typography>}
-      <Feuille ouverte={demander} onFermer={() => { setDemander(false); setCode(""); }} titre={t("Votre code secret pour confirmer", "Enter your PIN to confirm")}>
-        <Stack gap={1}>
-          <Typography variant="body2">{t("Le compte sera fermé tout de suite.", "The account will be closed immediately.")}</Typography>
-          <Points longueur={4} saisis={code.length} />
-          <Keypad onKey={touche} triple={null} />
-        </Stack>
+      <Feuille ouverte={demander} onFermer={() => setDemander(false)} titre={t("Confirmer la fermeture", "Confirm closing")}>
+        {demander && (
+          <EtapeDeVerification op={{ operation: "fermer_compte" }} intention={{ fermer: true }}
+            resume={<Typography variant="body2">{t("Le compte sera fermé tout de suite.", "The account will be closed immediately.")}</Typography>}
+            libelle={t("Fermer mon compte", "Close my account")}
+            executer={(preuve) => fermer(preuve)} />
+        )}
       </Feuille>
-      <FeuilleErreur erreur={erreur} onFermer={() => { effacerErreur(); setDemander(false); }} />
     </Screen>
   );
 }

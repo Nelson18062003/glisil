@@ -132,13 +132,13 @@ export function Inscription() {
   const ouvrir = () =>
     lancer(async () => {
       try {
-        const compte = await guichet.ouvrirCompte({
+        await guichet.ouvrirCompte({
           prenom: nomPropre(b.prenom).trim(), nom: nomPropre(b.nom).trim(), naissance: dateDepuis(b.jour, b.mois, b.annee)!,
           telephone: e164!, ville: nomPropre(b.ville).trim(), pays: b.pays, conditions: VERSION_CONDITIONS,
         });
         oublier();
-        session.compteOuvert(compte);
-        navigate("/bienvenue/profil", { replace: true });
+        await session.avancer();
+        navigate("/", { replace: true });
       } catch (e) {
         /* on ramène la personne à l'étape qui pèche — d'après le titre de noyau/erreurs, dans l'une ou l'autre langue */
         const titre = lisible(e).titre.toLowerCase();

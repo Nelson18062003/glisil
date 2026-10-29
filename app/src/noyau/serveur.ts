@@ -30,6 +30,7 @@ const TITRES: Record<string, string> = {
   "XAFe crédités": "XAFe credited",
   "USDT envoyés": "USDT sent",
   "XAFe envoyés": "XAFe sent",
+  "Double authentification retirée": "Two-factor authentication removed",
 };
 
 // Les motifs du moteur (0013, 0028, 0032…), sans leur point final.
@@ -61,6 +62,8 @@ const TEXTES: Forme[] = [
   [/^L'équipe vérifie votre dossier, en général sous 24 h ouvrées\.$/, "The team is reviewing your file, usually within 24 business hours."],
   [/^Votre compte est au palier 0\.$/, "Your account is at tier 0."],
   [/^Votre identité est vérifiée : palier 1\.$/, "Your identity is verified: tier 1."],
+  [/^Votre application d'authentification a été retirée de votre compte\. Si ce n'est pas vous, contactez l'équipe tout de suite\.$/,
+    "Your authenticator app has been removed from your account. If this wasn't you, contact the team right away."],
   [/^Votre entreprise est vérifiée : palier 2(.*)$/, (_, reste) => `Your business is verified: tier 2${reste.startsWith(",") ? ", no limit." : "."}`],
 ];
 

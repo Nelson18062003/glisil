@@ -72,11 +72,27 @@ export const APPAREILS = [
 
 /* ------------------------------------------------------------ les écrans */
 
-const CODE = "1234";
 // la langue de l'écran mesuré (LANGUE=en : l'application en anglais) — les libellés que le harnais cherche suivent
 const EN = process.env.LANGUE === "en";
 const L = (fr, en) => (EN ? en : fr);
 const pave = async (p, chiffres) => { for (const c of chiffres) await p.getByRole("button", { name: c, exact: true }).first().click(); };
+/* la démonstration : le code que « l'application » et « l'e-mail » affichent, le mot de passe de la vitrine */
+const CODE = "123456";
+const MDP_VITRINE = "Glisil-2026";
+const TOTP = () => L("Code de l'application d'authentification", "Authenticator app code");
+/* créer un compte : adresse et mot de passe, puis le code e-mail ; s'arrête sur la double authentification */
+const creer = async (p, email) => {
+  await p.getByRole("tab", { name: L("Créer un compte", "Create account") }).click();
+  await p.getByLabel(L("Adresse e-mail", "Email address")).fill(email);
+  await p.getByLabel(L("Choisissez un mot de passe", "Choose a password")).fill("Grille-2026-ok");
+  await p.getByRole("button", { name: L("Créer mon compte", "Create my account") }).click();
+  await p.waitForURL(/\/bienvenue\/code$/);
+};
+const jusquAuxCodes = async (p, email) => {
+  await creer(p, email);
+  await p.getByLabel(L("Code reçu par e-mail", "Code received by email")).fill(CODE); await p.waitForURL(/deux-facteurs$/);
+  await p.getByLabel(TOTP()).fill(CODE); await p.waitForURL(/codes-de-secours$/);
+};
 const ADRESSE_BEP20 = "0x7908cf9242fb2018f3487908cf9242fb2018f348";
 
 /** chaque écran : comment y aller (une adresse, ou des gestes depuis une adresse) */
@@ -89,6 +105,7 @@ const ECRANS = [
   { nom: "sortir-montant", aller: "/sortir/montant", puis: async (p) => pave(p, ["1", "0", "0", "000"]) },
   { nom: "sortir-destination", aller: "/sortir/montant", puis: async (p) => { await pave(p, ["1", "0", "000"]); await p.getByRole("button", { name: L("Continuer", "Continue") }).click(); await p.waitForURL(/destination$/); await p.getByText("6 77 12 34 56").click(); } },
   { nom: "sortir-verifier", aller: "/sortir/montant", puis: async (p) => { await pave(p, ["1", "0", "000"]); await p.getByRole("button", { name: L("Continuer", "Continue") }).click(); await p.getByText("6 77 12 34 56").click(); await p.getByRole("button", { name: L("Continuer", "Continue") }).click(); await p.waitForURL(/verifier$/); } },
+  { nom: "sortir-verification", aller: "/sortir/montant", puis: async (p) => { await pave(p, ["1", "0", "000"]); await p.getByRole("button", { name: L("Continuer", "Continue") }).click(); await p.getByText("6 77 12 34 56").click(); await p.getByRole("button", { name: L("Continuer", "Continue") }).click(); await p.getByRole("button", { name: L("Continuer vers la vérification", "Continue to verification") }).click(); await p.waitForURL(/sortir\/code$/); await p.getByText(L("Code envoyé à", "Code sent to"), { exact: false }).first().waitFor(); } },
   { nom: "marche", aller: "/marche" },
   { nom: "marche-graphique", aller: "/marche/graphique" },
   { nom: "marche-carnet", aller: "/marche/carnet" },
@@ -114,10 +131,24 @@ const ECRANS = [
 /* sans session : à jouer dans une fenêtre neuve */
 const ECRANS_ANONYMES = [
   { nom: "bienvenue", aller: "/bienvenue" },
-  { nom: "bienvenue-code", aller: "/bienvenue", puis: async (p) => { await p.getByLabel(L("Adresse e-mail", "Email address")).fill("awa@exemple.com"); await p.getByRole("button", { name: L("Recevoir mon code", "Get my code") }).click(); await p.waitForURL(/code$/); } },
+  { nom: "bienvenue-connexion", aller: "/bienvenue", puis: async (p) => { await p.getByRole("tab", { name: L("Se connecter", "Sign in") }).click(); } },
+  { nom: "bienvenue-code", aller: "/bienvenue", puis: async (p) => creer(p, "awa@exemple.com") },
+  { nom: "bienvenue-oubli", aller: "/bienvenue/oubli" },
+  { nom: "deux-facteurs", aller: "/bienvenue", puis: async (p) => {
+    await creer(p, "facteur@exemple.com");
+    await p.getByLabel(L("Code reçu par e-mail", "Code received by email")).fill(CODE); await p.waitForURL(/deux-facteurs$/); await p.locator("[data-cle-totp]").waitFor();
+  } },
+  { nom: "codes-de-secours", aller: "/bienvenue", puis: async (p) => { await jusquAuxCodes(p, "secours@exemple.com"); await p.locator("[data-codes-de-secours]").waitFor(); } },
+  { nom: "deux-facteurs-code", aller: "/bienvenue", puis: async (p) => {
+    await p.getByRole("tab", { name: L("Se connecter", "Sign in") }).click();
+    await p.getByLabel(L("Adresse e-mail", "Email address")).fill("demo@glisil.com");
+    await p.getByLabel(L("Mot de passe", "Password"), { exact: true }).fill(MDP_VITRINE);
+    await p.getByRole("button", { name: L("Se connecter", "Sign in"), exact: true }).click(); await p.waitForURL(/deux-facteurs\/code$/);
+  } },
   { nom: "inscription-verifier", aller: "/bienvenue", puis: async (p) => {
-    await p.getByLabel(L("Adresse e-mail", "Email address")).fill("grille@exemple.com"); await p.getByRole("button", { name: L("Recevoir mon code", "Get my code") }).click();
-    await p.getByLabel(L("Code reçu par e-mail", "Code received by email")).fill("123456"); await p.waitForURL(/inscription$/);
+    await jusquAuxCodes(p, "grille@exemple.com");
+    await p.getByText(L("J'ai noté ou enregistré mes codes", "I've written down or saved my codes")).click(); await p.getByRole("button", { name: L("Continuer", "Continue") }).click();
+    await p.waitForURL(/inscription$/);
     await p.getByLabel(L("Prénom", "First name")).fill("Awa"); await p.getByLabel(L("Nom de famille", "Last name")).fill("Ngono-Mballa"); await p.getByRole("button", { name: L("Continuer", "Continue") }).click();
     await p.getByLabel(L("Jour", "Day")).fill("12"); await p.getByLabel(L("Mois", "Month")).fill("03"); await p.getByLabel(L("Année", "Year")).fill("1994"); await p.getByRole("button", { name: L("Continuer", "Continue") }).click();
     await p.getByLabel(L("Numéro de téléphone", "Phone number"), { exact: true }).fill("677998811"); await p.getByRole("button", { name: L("Continuer", "Continue") }).click();
@@ -291,9 +322,6 @@ const pret = async (page) => {
   for (let i = 0; i < 40 && (await page.locator("[data-squelette]").count()) > 0; i++) await page.waitForTimeout(100);
   await page.waitForTimeout(350);
 };
-const deverrouiller = async (page) => {
-  if (await page.getByText(L("Votre code secret pour continuer", "Enter your PIN to continue")).count()) { await pave(page, CODE.split("")); await page.waitForTimeout(400); }
-};
 
 try {
   for (const a of appareils) {
@@ -317,13 +345,16 @@ try {
     /* puis la vitrine connectée */
     const page = await ctx.newPage();
     await page.goto(`${BASE}/bienvenue`);
+    await page.getByRole("tab", { name: L("Se connecter", "Sign in") }).click();
     await page.getByLabel(L("Adresse e-mail", "Email address")).fill("demo@glisil.com");
-    await page.getByRole("button", { name: L("Recevoir mon code", "Get my code") }).click();
-    await page.getByLabel(L("Code reçu par e-mail", "Code received by email")).fill("123456");
+    await page.getByLabel(L("Mot de passe", "Password"), { exact: true }).fill(MDP_VITRINE);
+    await page.getByRole("button", { name: L("Se connecter", "Sign in"), exact: true }).click();
+    await page.waitForURL(/deux-facteurs\/code$/);
+    await page.getByLabel(TOTP()).fill(CODE);
     await page.waitForURL(`${BASE}/`);
     for (const e of ECRANS) {
       try {
-        await page.goto(`${BASE}${e.aller}`); await pret(page); await deverrouiller(page); await pret(page);
+        await page.goto(`${BASE}${e.aller}`); await pret(page);
         if (e.puis) { await e.puis(page); await pret(page); }
         const r = await controler(page, a);
         if (r.fautes.length) { fautesAppareil.push(...r.fautes.map((f) => `${e.nom} · ${f}`)); await page.screenshot({ path: `${OUT}${a.nom}--${e.nom}.png`, fullPage: true }); }
@@ -333,7 +364,7 @@ try {
     }
     /* quelques écrans gardés en image pour l'œil, même quand tout va bien */
     for (const [nom, aller] of [["accueil", "/"], ["marche", "/marche"], ["sortir-montant", "/sortir/montant"]]) {
-      await page.goto(`${BASE}${aller}`); await pret(page); await deverrouiller(page); await pret(page);
+      await page.goto(`${BASE}${aller}`); await pret(page);
       await page.screenshot({ path: `${OUT}vue--${a.nom}--${nom}.png` });
     }
     await ctx.close();

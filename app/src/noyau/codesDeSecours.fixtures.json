@@ -1,0 +1,12 @@
+[
+  ["ABCDE-FGHJK", "ABCDEFGHJK"],
+  ["abcde fghjk", "ABCDEFGHJK"],
+  ["  abcde-fghjk  ", "ABCDEFGHJK"],
+  ["O0O0O-11111", "0000011111"],
+  ["iIlLx-yZ123", "1111XYZ123"],
+  ["0123456789", "0123456789"],
+  ["ABCDE-FGHJ", null],
+  ["ABCDE-FGHJKM", null],
+  ["ABCDE-FGHUK", null],
+  ["", null]
+]

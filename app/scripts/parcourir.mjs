@@ -3,10 +3,12 @@
 //   npm run build && node scripts/parcourir.mjs
 //
 // Lance le serveur de prévisualisation sur son propre port, ouvre l'application
-// en démonstration et FAIT ce que le client fait : se connecter, entrer des XAF
-// par transaction ID jusqu'au crédit, sortir des XAF jusqu'à « envoyés », passer
-// un ordre au marché, poser un ordre limite et l'annuler, relire l'historique,
-// retrouver le verrou dans un nouvel onglet. Il exige les soldes au franc près,
+// en démonstration et FAIT ce que le client fait : se connecter (mot de passe
+// puis code de l'application), entrer des XAF par transaction ID jusqu'au
+// crédit, sortir des XAF jusqu'à « envoyés » après la vérification (application,
+// mot de passe, code e-mail — un facteur faux refusé sur SON champ), passer un
+// ordre au marché, poser un ordre limite et l'annuler, relire l'historique,
+// retrouver la session dans un nouvel onglet. Il exige les soldes au franc près,
 // échoue à la première erreur de console, et laisse une capture de chaque écran
 // dans app/captures/. « Ça compile » ne dit rien d'un parcours.
 import { spawn } from "node:child_process";
@@ -66,6 +68,31 @@ const etape = (texte) => console.log(`· ${texte}`);
 const exiger = (condition, message) => { if (!condition) throw new Error(`✗ ${message}`); };
 const voir = (texte, delai = 15_000) => page.getByText(texte, { exact: false }).first().waitFor({ timeout: delai });
 const taper = async (touches) => { for (const t of touches) await page.getByRole("button", { name: t, exact: true }).click(); };
+/* la démonstration : le mot de passe de la vitrine, et le code que « l'application » et « l'e-mail » donnent */
+const MDP_VITRINE = "Glisil-2026";
+const CODE = "123456";
+/* se connecter : l'adresse et le mot de passe, puis le code de l'application */
+const entrer = async (p, email, mdp) => {
+  await p.getByRole("tab", { name: "Se connecter" }).click();
+  await p.getByLabel("Adresse e-mail").fill(email);
+  await p.getByLabel("Mot de passe", { exact: true }).fill(mdp);
+  await p.getByRole("button", { name: "Se connecter", exact: true }).click();
+  await p.waitForURL(/\/bienvenue\/deux-facteurs\/code$/);
+  await p.getByLabel("Code de l'application d'authentification").fill(CODE);
+};
+/* la vérification avant sortie : les trois preuves, puis le bouton de l'opération (le dernier : une feuille s'ouvre par-dessus son écran) */
+const prouver = async (p, bouton, { mdp = MDP_VITRINE, codeEmail = CODE } = {}) => {
+  await p.getByText("Code envoyé à", { exact: false }).first().waitFor({ timeout: 15_000 }).catch(async (e) => {
+    /* ce que la démonstration a sous les yeux : sans cela, « attendez une minute » ne dit pas QUEL code retient */
+    const codes = await p.evaluate(() => { try { return JSON.parse(localStorage.getItem("xafe.demo.v6")).verifications.map((v) => ({ op: v.operation, empreinte: v.empreinte, consommee: v.consommee, remplacee: v.remplacee, age: Math.round((Date.now() - v.creeLe) / 1000) })); } catch { return null; } });
+    console.error("codes de la démonstration :", JSON.stringify(codes, null, 1));
+    throw e;
+  });
+  await p.getByLabel("Code de l'application d'authentification").fill(CODE);
+  await p.getByLabel("Mot de passe", { exact: true }).fill(mdp);
+  await p.getByLabel("Code reçu par e-mail").fill(codeEmail);
+  await p.getByRole("button", { name: bouton }).last().click();
+};
 const chemin = () => new URL(page.url()).pathname;
 /* l'opérateur, puis le montant (une indication), puis le dossier */
 const ouvrirUnDepot = async () => {
@@ -78,15 +105,11 @@ const ouvrirUnDepot = async () => {
 
 try {
   /* ---------------------------------------------------------- entrer */
-  etape("Bienvenue → code par e-mail → Accueil");
+  etape("Bienvenue → mot de passe → code de l'application → Accueil");
   await page.goto(`${BASE}/`);
   await page.waitForURL(/\/bienvenue$/);
   await capturer("bienvenue");
-  await page.getByLabel("Adresse e-mail").fill("demo@glisil.com");
-  await page.getByRole("button", { name: "Recevoir mon code" }).click();
-  await page.waitForURL(/\/bienvenue\/code$/);
-  await capturer("bienvenue-code");
-  await page.getByLabel("Code reçu par e-mail").fill("123456");
+  await entrer(page, "demo@glisil.com", MDP_VITRINE);
   await page.waitForURL(`${BASE}/`);
   await voir("Bonjour Nelson");
   await voir("3 250 000");
@@ -141,7 +164,7 @@ try {
   await voir("3 500 000");
 
   /* ------------------------------------------------- sortir des XAF */
-  etape("Sortir des XAF : montant → destination → vérifier → code → envoyé");
+  etape("Sortir des XAF : montant → destination → vérifier → vérification (un code e-mail faux refusé sur son champ) → envoyé");
   await page.getByRole("link", { name: "Sortir des XAF" }).click();
   await page.waitForURL(/\/sortir\/montant$/);
   await taper(["1", "0", "0", "000"]);
@@ -155,10 +178,16 @@ try {
   await page.waitForURL(/\/sortir\/verifier$/);
   await voir("99 500 XAF");
   await capturer("sortir-verifier");
-  await page.getByRole("button", { name: "Confirmer avec mon code" }).click();
+  await page.getByRole("button", { name: "Continuer vers la vérification" }).click();
   await page.waitForURL(/\/sortir\/code$/);
-  await capturer("sortir-code");
-  await taper(["1", "2", "3", "4"]);
+  await capturer("sortir-verification");
+  await prouver(page, /^Envoyer 100 000 XAFe/, { codeEmail: "000000" });
+  await voir("Code e-mail incorrect");
+  exiger(chemin() === "/sortir/code", "un facteur faux ne sort rien : on reste sur la vérification");
+  exiger((await page.getByLabel("Mot de passe", { exact: true }).inputValue()) !== "", "le mot de passe juste n'est pas effacé pour un code e-mail faux");
+  await capturer("sortir-verification-code-faux");
+  await page.getByLabel("Code reçu par e-mail").fill(CODE);
+  await page.getByRole("button", { name: /^Envoyer 100 000 XAFe/ }).click();
   await page.waitForURL(/\/sortir\/envoye\/XAFe-WD-\d+$/);
   await voir("En cours");
   await capturer("sortir-en-cours");
@@ -292,7 +321,7 @@ try {
 
   etape("La preuve de réserve : publique, sans compte — floats, registre, blockchain, chaque transaction");
   {
-    const p3 = await navigateur.newPage({ viewport: { width: 390, height: 844 } });
+    const p3 = await navigateur.newPage({ viewport: { width: 390, height: 844 }, locale: "fr-FR" });
     p3.on("pageerror", (e) => erreurs.push(`preuve : ${e.message}`));
     await p3.goto(`${BASE}/preuve`);
     await p3.getByText("Preuve de réserve").first().waitFor();
@@ -397,15 +426,10 @@ try {
   await capturer("compte-aide");
 
   /* -------------------------------------------------------- verrou */
-  etape("Le verrou : un nouvel onglet redemande le code ; un code faux est refusé");
+  etape("Un nouvel onglet garde la session complète : plus de code secret à l'ouverture");
   const onglet = await contexte.newPage();
   onglet.on("pageerror", (e) => erreurs.push(`pageerror: ${e.message}`));
   await onglet.goto(`${BASE}/historique`);
-  await onglet.getByText("Votre code secret pour continuer").waitFor({ timeout: 15_000 });
-  await onglet.screenshot({ path: `${OUT}${String(++numero).padStart(2, "0")}-verrouillage.png`, fullPage: true });
-  for (const t of ["9", "9", "9", "9"]) await onglet.getByRole("button", { name: t, exact: true }).click();
-  await onglet.getByText("Code incorrect").waitFor();
-  for (const t of ["1", "2", "3", "4"]) await onglet.getByRole("button", { name: t, exact: true }).click();
   await onglet.waitForURL(/\/historique$/);
   await onglet.getByText("Entrée MTN MoMo").first().waitFor();
   await onglet.close();
@@ -446,19 +470,19 @@ try {
   await page.getByRole("button", { name: "Continuer" }).click();
   await page.getByText("6 77 12 34 56").click();
   await page.getByRole("button", { name: "Continuer" }).click();
-  await page.getByRole("button", { name: "Confirmer avec mon code" }).click();
+  await page.getByRole("button", { name: "Continuer vers la vérification" }).click();
   await page.waitForURL(/\/sortir\/code$/);
   await page.evaluate(() => { globalThis.__xafeEpreuve = { perdreLaProchaineReponse: true }; });
-  await taper(["1", "2", "3", "4"]);
+  await prouver(page, /^Envoyer 10 000 XAFe/);
   await voir("Pas de réseau");
   const avant = await page.evaluate(() => globalThis.__xafeEpreuve.sorties);
   await page.getByRole("button", { name: "Compris" }).click();
-  // la personne revient en arrière, puis reconfirme : l'écran du code est remonté à neuf
+  // la personne revient en arrière, puis reconfirme : la vérification est remontée à neuf (le premier code a servi)
   await page.goBack();
   await page.waitForURL(/\/sortir\/verifier$/);
-  await page.getByRole("button", { name: "Confirmer avec mon code" }).click();
+  await page.getByRole("button", { name: "Continuer vers la vérification" }).click();
   await page.waitForURL(/\/sortir\/code$/);
-  await taper(["1", "2", "3", "4"]);
+  await prouver(page, /^Envoyer 10 000 XAFe/);
   await page.waitForURL(/\/sortir\/envoye\/XAFe-WD-\d+$/);
   const apres = await page.evaluate(() => globalThis.__xafeEpreuve.sorties);
   exiger(apres === avant, `la sortie rejouée est la même : ${avant} sortie(s) avant le second essai, ${apres} après`);
@@ -537,16 +561,32 @@ try {
     p2.on("pageerror", (e) => erreurs.push(`pageerror: ${e.message}`));
     p2.on("console", (m) => { if (m.type() === "error" && !/favicon|fonts.googleapis|net::ERR/.test(m.text())) erreurs.push(`console: ${m.text()}`); });
     const shot = async (nom) => { numero += 1; await p2.waitForTimeout(400); await p2.screenshot({ path: `${OUT}${String(numero).padStart(2, "0")}-${nom}.png`, fullPage: true }); };
-    const pave = async (chiffres) => { for (const t of chiffres) await p2.getByRole("button", { name: t, exact: true }).click(); };
     /* les conditions se lisent sans compte */
     await p2.goto(`${BASE}/conditions`);
     await p2.getByRole("heading", { name: "1. Glisil et le XAFe" }).waitFor();
     await p2.goto(`${BASE}/confidentialite`);
     await p2.getByText("Ce que nous recueillons").waitFor();
     await p2.goto(`${BASE}/bienvenue`);
+    const MDP_AWA = "Awa-Ngono-1994";
+    await p2.getByRole("tab", { name: "Créer un compte" }).click();
     await p2.getByLabel("Adresse e-mail").fill("awa@exemple.com");
-    await p2.getByRole("button", { name: "Recevoir mon code" }).click();
-    await p2.getByLabel("Code reçu par e-mail").fill("123456");
+    await p2.getByLabel("Choisissez un mot de passe").fill("awa");
+    exiger(await p2.getByRole("button", { name: "Créer mon compte" }).isDisabled(), "un mot de passe trop court ne crée rien");
+    await p2.getByLabel("Choisissez un mot de passe").fill(MDP_AWA);
+    await p2.getByRole("button", { name: "Créer mon compte" }).click();
+    await p2.waitForURL(/\/bienvenue\/code$/);
+    await p2.getByLabel("Code reçu par e-mail").fill(CODE);
+    /* la double authentification n'est pas facultative : sans elle, rien ne s'ouvre */
+    await p2.waitForURL(/\/bienvenue\/deux-facteurs$/);
+    await p2.locator("[data-cle-totp]").waitFor();
+    await shot("inscription-deux-facteurs");
+    await p2.getByLabel("Code de l'application d'authentification").fill(CODE);
+    await p2.waitForURL(/\/bienvenue\/codes-de-secours$/);
+    await p2.locator("[data-codes-de-secours]").waitFor();
+    exiger(await p2.getByRole("button", { name: "Continuer" }).isDisabled(), "les codes de secours se notent avant de continuer");
+    await shot("inscription-codes-de-secours");
+    await p2.getByText("J'ai noté ou enregistré mes codes").click();
+    await p2.getByRole("button", { name: "Continuer" }).click();
     await p2.waitForURL(/\/bienvenue\/inscription$/);
     await p2.getByLabel("Prénom").fill("awa");
     await p2.getByLabel("Nom de famille").fill("ngono");
@@ -566,9 +606,6 @@ try {
     await p2.getByRole("checkbox", { name: /J'accepte les/ }).check();
     await shot("inscription-conditions");
     await ouvrir.click();
-    await p2.waitForURL(/\/bienvenue\/profil$/);
-    await pave(["2", "5", "8", "0"]); await p2.waitForTimeout(300); await pave(["2", "5", "8", "0"]);
-    await p2.getByRole("button", { name: "Découvrir mon compte" }).click();
     await p2.waitForURL(`${BASE}/`);
     await p2.getByText("POUR BIEN DÉMARRER").waitFor();
     await p2.getByText("Entrez vos premiers XAF").waitFor();
@@ -581,7 +618,6 @@ try {
     await p2.waitForURL(/\/entrer\/operateur$/);
     await p2.getByRole("link", { name: "Historique" }).count();
     await p2.goto(`${BASE}/historique`);
-    if (await p2.getByText("Votre code secret pour continuer").count()) await pave(["2", "5", "8", "0"]);
     await p2.getByText("Aucune opération pour l'instant").waitFor();
     await shot("historique-vide");
     await p2.getByRole("link", { name: "Compte" }).click();
@@ -593,11 +629,11 @@ try {
     await p2.getByText("Votre solde est à zéro").waitFor();
     await shot("compte-fermer");
     await p2.getByRole("button", { name: "Fermer mon compte" }).click();
-    await pave(["0", "0", "0", "0"]);
-    await p2.getByText("Ce code n'est pas le bon").or(p2.getByText("Code secret incorrect")).first().waitFor();
-    await p2.getByRole("button", { name: "Compris" }).click();
-    await p2.getByRole("button", { name: "Fermer mon compte" }).click();
-    await pave(["2", "5", "8", "0"]);
+    await prouver(p2, "Fermer mon compte", { mdp: "pas-le-bon-1" });
+    await p2.getByText("Mot de passe incorrect.", { exact: false }).waitFor();
+    await shot("compte-fermer-mot-de-passe-faux");
+    await p2.getByLabel("Mot de passe", { exact: true }).fill(MDP_AWA);
+    await p2.getByRole("button", { name: "Fermer mon compte" }).last().click();
     await p2.getByText("Votre compte est fermé").waitFor();
     await shot("compte-ferme");
     await ctx.close();
@@ -622,7 +658,6 @@ try {
   const ouvrirEnManuel = async (adresse) => {
     await page.goto(`${BASE}${adresse}`);
     await page.waitForTimeout(300);
-    if (await page.getByText("Votre code secret pour continuer").count()) await taper(["1", "2", "3", "4"]);
   };
   const demanderEnManuel = async (nom) => {
     await ouvrirEnManuel("/sortir/montant");
@@ -639,10 +674,10 @@ try {
   await demanderEnManuel(null);
   await capturer("sortir-manuel-verifier");
   await page.getByLabel(/Nom exact du compte/).fill(" ");
-  exiger(await page.getByRole("button", { name: "Confirmer avec mon code" }).isDisabled(), "sans nom, on ne confirme pas");
+  exiger(await page.getByRole("button", { name: "Continuer vers la vérification" }).isDisabled(), "sans nom, on ne confirme pas");
   await page.getByLabel(/Nom exact du compte/).fill("Nelson Soh");
-  await page.getByRole("button", { name: "Confirmer avec mon code" }).click();
-  await taper(["1", "2", "3", "4"]);
+  await page.getByRole("button", { name: "Continuer vers la vérification" }).click();
+  await prouver(page, /^Envoyer 50 000 XAFe/);
   await page.waitForURL(/\/sortir\/envoye\/XAFe-WD-\d+$/);
   await voir("Demande reçue");
   await voir("vos XAFe sont mis de côté");
@@ -651,8 +686,8 @@ try {
   await voir("Transaction ID", 5_000);
   await capturer("sortir-manuel-payee");
   await demanderEnManuel("Nelson refus");
-  await page.getByRole("button", { name: "Confirmer avec mon code" }).click();
-  await taper(["1", "2", "3", "4"]);
+  await page.getByRole("button", { name: "Continuer vers la vérification" }).click();
+  await prouver(page, /^Envoyer 50 000 XAFe/);
   await voir("Demande refusée", 25_000);
   await voir("ne correspond pas");
   await capturer("sortir-manuel-refusee");
@@ -668,7 +703,6 @@ try {
   const allerA = async (adresse) => {
     await page.goto(`${BASE}${adresse}`);
     await page.waitForTimeout(300);
-    if (await page.getByText("Votre code secret pour continuer").count()) await taper(["1", "2", "3", "4"]);
   };
   await allerA("/");
   await voir("Le marché ouvre bientôt");
