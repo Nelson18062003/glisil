@@ -78,12 +78,40 @@ end $$;
 create or replace function _decimales(p_actif text) returns int
 language sql stable set search_path = public as $$ select decimales from actifs where id = p_actif $$;
 
--- les frais d'un retrait : ceux du réseau s'il en a (Ethereum coûte plus cher), sinon ceux de l'actif
+-- les frais d'un retrait : ceux du réseau s'il en a (Ethereum coûte plus cher), sinon ceux de l'actif ;
+-- un USDC sans frais propres paie ceux de l'USDT — jamais zéro (la maison paierait le gaz de chaque envoi)
 create or replace function _frais_retrait(p_actif text, p_reseau text) returns numeric
 language sql stable set search_path = public as $$
   select coalesce((parametre('crypto') -> 'frais_reseaux' -> p_reseau ->> p_actif)::numeric,
-                  (parametre('crypto') -> 'frais' ->> p_actif)::numeric, 0)
+                  (parametre('crypto') -> 'frais' ->> p_actif)::numeric,
+                  case when p_actif = 'USDC' then (parametre('crypto') -> 'frais' ->> 'USDT')::numeric end, 0)
 $$;
+
+-- Ethereum ne s'ouvre qu'avec SES frais : le gaz d'un envoi y vaut souvent plusieurs dollars, et les frais de
+-- BNB Chain, appliqués là, feraient payer chaque retrait par la maison (un retrait de 0,01 répété à volonté).
+create or replace function _frais_propres_manquants(p_reseau text, p_crypto jsonb) returns text[]
+language sql stable set search_path = public as $$
+  select coalesce(array_agg(a order by a), '{}') from reseaux r, unnest(r.actifs) a
+   where r.id = p_reseau and p_reseau = 'erc20' and (p_crypto -> 'frais_reseaux' -> p_reseau ->> a) is null
+$$;
+revoke all on function _frais_propres_manquants(text, jsonb) from public, anon, authenticated;
+
+create or replace function _reseau_ouvert_avec_ses_frais() returns trigger
+language plpgsql set search_path = public as $$
+declare v_manque text[];
+begin
+  if new.actif and not coalesce(old.actif, false) then
+    v_manque := _frais_propres_manquants(new.id, parametre('crypto'));
+    if cardinality(v_manque) > 0 then
+      raise exception 'frais du réseau à fixer' using detail = format('%s ne s''ouvre qu''avec ses frais de retrait : crypto.frais_reseaux.%s (%s)',
+                                                                      new.nom, new.id, array_to_string(v_manque, ', '));
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists reseau_ouvert_avec_ses_frais on reseaux;
+create trigger reseau_ouvert_avec_ses_frais before insert or update of actif on reseaux
+  for each row execute function _reseau_ouvert_avec_ses_frais();
 
 -- ── 3. les paires ─────────────────────────────────────────────────────────
 create or replace function _paires() returns text[]
@@ -145,12 +173,15 @@ language sql stable set search_path = public as $$
               else p_prix >= p_ref * (1 - (_marche(p_paire) ->> 'bande_execution')::numeric) end
 $$;
 
--- le dernier prix d'un actif en XAFe (les plafonds des paliers se comptent en XAF) ; à défaut, la paire principale
+-- le cours d'un actif en XAFe (les plafonds des paliers se comptent en XAF) : le prix de référence de SA paire
+-- (borné autour du cours externe), à défaut celui de la paire principale — et jamais moins que le cours externe.
+-- Le dernier échange seul ne suffit pas : dans un carnet vide, deux comptes d'une même personne fixent ce prix,
+-- et un retrait d'USDC compterait pour presque rien au plafond du jour.
 create or replace function _cours_de(p_actif text) returns numeric
 language sql stable set search_path = public as $$
-  select case when p_actif = 'XAFe' then 1 else coalesce(
-    (select prix from executions where paire = p_actif || '/XAFe' order by cree_le desc, id desc limit 1),
-    (select prix from executions where paire = parametre('marche') ->> 'paire' order by cree_le desc, id desc limit 1)) end
+  select case when p_actif = 'XAFe' then 1 else greatest(
+    coalesce(case when (p_actif || '/XAFe') = any(_paires()) then _prix_reference(p_actif || '/XAFe') end, _prix_reference(null)),
+    (_marche(null) ->> 'prix_reference')::numeric) end
 $$;
 
 alter table devis_rapides add column if not exists paire text not null default 'USDT/XAFe';
@@ -1119,7 +1150,9 @@ begin
                        and _nombre_entre(v -> 'longueur_min', 4, 6, true) and _nombre_entre(v -> 'longueur_max', 4, 8, true)
                        and (v ->> 'longueur_min')::int <= (v ->> 'longueur_max')::int
     when 'crypto' then _nombre_entre(v -> 'frais' -> 'USDT', 0, 1000) and _nombre_entre(v -> 'frais' -> 'XAFe', 0, 1000000)
-                       and (not (v -> 'frais' ? 'USDC') or _nombre_entre(v -> 'frais' -> 'USDC', 0, 1000))
+                       and _nombre_entre(v -> 'frais' -> 'USDC', 0, 1000)
+                       -- Ethereum ouvert garde ses frais : on ne les retire pas sous lui
+                       and cardinality(_frais_propres_manquants(case when exists (select 1 from reseaux where id = 'erc20' and actif) then 'erc20' end, v)) = 0
                        and (not (v -> 'confirmations' ? 'erc20') or _nombre_entre(v -> 'confirmations' -> 'erc20', 1, 1000, true))
                        and (not (v ? 'frais_reseaux') or _frais_reseaux_valides(v -> 'frais_reseaux'))
                        and _nombre_entre(v -> 'confirmations' -> 'bep20', 1, 1000, true) and _nombre_entre(v -> 'confirmations' -> 'trc20', 1, 1000, true)

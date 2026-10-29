@@ -265,7 +265,9 @@ la base dans `/outils`, la graine et les nœuds dans `/supabase-fonctions`) :
 8b. [P] **Les frais de retrait par réseau** (admin → Paramètres, `crypto.frais_reseaux`) :
    sans réglage, un retrait d'USDC coûte le même frais que l'USDT, sur tous
    les réseaux. Sur Ethereum le gaz d'un envoi vaut souvent plusieurs dollars :
-   décidez le frais d'Ethereum (USDT, USDC, XAFe) avant d'ouvrir ce réseau.
+   décidez le frais d'Ethereum (USDT, USDC, XAFe) : la base refuse d'ouvrir
+   Ethereum tant que ces trois frais ne sont pas posés, et de les retirer
+   ensuite.
 9. [P] Jeter la clé de mise en service.
 
 Le plafond se change à tout moment par l'admin — sur BSC, une transaction du

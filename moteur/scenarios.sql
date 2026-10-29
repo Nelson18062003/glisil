@@ -4533,6 +4533,62 @@ begin
 end $$;
 rollback;
 
+-- 11.91 · la revue de 0045 : l'USDC ne sort jamais sans frais, un carnet vide ne
+-- fixe pas le cours qui compte au plafond du jour, et Ethereum ne s'ouvre qu'avec
+-- ses frais. Témoins : la règle d'avant acceptait un « crypto » sans frais USDC
+-- (puis des retraits à 0) ; l'ancien cours était le dernier échange, que deux
+-- comptes d'une même personne posent où ils veulent ; sans le déclencheur,
+-- Ethereum s'ouvrait aux frais de BNB Chain.
+begin;
+do $$
+declare a uuid := '11111111-1111-1111-1111-111111111111'; b uuid := '22222222-2222-2222-2222-222222222222';
+        v_c jsonb; v_avant numeric;
+begin
+  -- 1. les frais de l'USDC : obligatoires, et jamais zéro par défaut
+  v_c := parametre('crypto') #- '{frais,USDC}';
+  assert not (v_c -> 'frais' ? 'USDC'), 'le témoin : la règle d''avant laissait passer ce « crypto »';
+  begin perform _verifier_parametre('crypto', v_c); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
+  update parametres set valeur = v_c where cle = 'crypto';      -- posé à la main, sans passer par la règle
+  assert (parametre('crypto') -> 'frais' ->> 'USDT')::numeric > 0, 'l''essai suppose des frais d''USDT';
+  assert coalesce((parametre('crypto') -> 'frais_reseaux' -> 'bep20' ->> 'USDC')::numeric, (parametre('crypto') -> 'frais' ->> 'USDC')::numeric, 0) = 0,
+         'le témoin : l''ancien calcul rendait des frais nuls';
+  assert _frais_retrait('USDC', 'bep20') = (parametre('crypto') -> 'frais' ->> 'USDT')::numeric, _frais_retrait('USDC', 'bep20');
+  update parametres set valeur = jsonb_set(valeur, '{frais,USDC}', valeur -> 'frais' -> 'USDT') where cle = 'crypto';
+  -- 2. le cours au plafond : borné par le cours externe, pas le dernier échange d'un carnet vide
+  update parametres set valeur = valeur || '{"prix_reference": 600}' where cle = 'marche';
+  perform crediter_crypto(b, 'USDC', 'bep20', 100, '0xusdc-11.91-b', '0x00000000000000000000000000000000000000b1');
+  perform set_config('xafe.compte', b::text, true);
+  perform placer_ordre('vente', 'limite', 20, 575.00, 'k-11.91-v', 'USDC/XAFe');
+  perform set_config('xafe.compte', a::text, true);
+  perform placer_ordre('achat', 'limite', 20, 575.00, 'k-11.91-a', 'USDC/XAFe');
+  v_avant := (select prix from executions where paire = 'USDC/XAFe' order by cree_le desc, id desc limit 1);
+  assert v_avant = 575, format('le témoin : l''ancien cours était l''échange posé, %s', v_avant);
+  assert _cours_de('USDC') = 600, format('le cours qui compte au plafond ne descend pas sous le cours externe : %s', _cours_de('USDC'));
+  assert _cours_de('XAFe') = 1;
+  -- 3. Ethereum ne s'ouvre qu'avec ses frais
+  begin update reseaux set actif = true where id = 'erc20'; raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'frais du réseau à fixer', sqlerrm; end;
+  update parametres set valeur = valeur || '{"frais_reseaux": {"erc20": {"USDC": 4}}}' where cle = 'crypto';
+  begin update reseaux set actif = true where id = 'erc20'; raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'frais du réseau à fixer', sqlerrm; end;
+  begin   -- le témoin : sans le déclencheur, il s'ouvrait aux frais de BNB Chain
+    alter table reseaux disable trigger reseau_ouvert_avec_ses_frais;
+    update reseaux set actif = true where id = 'erc20';
+    assert _frais_retrait('USDT', 'erc20') = (parametre('crypto') -> 'frais' ->> 'USDT')::numeric;
+    raise exception 'témoin pris';
+  exception when others then assert sqlerrm = 'témoin pris', sqlerrm; end;
+  assert not (select actif from reseaux where id = 'erc20');
+  update parametres set valeur = jsonb_set(valeur, '{frais_reseaux,erc20}', '{"USDC": 4, "USDT": 4, "XAFe": 2500}') where cle = 'crypto';
+  update reseaux set actif = true where id = 'erc20';
+  assert _frais_retrait('USDT', 'erc20') = 4 and _frais_retrait('XAFe', 'erc20') = 2500;
+  begin perform _verifier_parametre('crypto', parametre('crypto') #- '{frais_reseaux,erc20,USDT}'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
+  perform _verifier_parametre('crypto', parametre('crypto'));
+  raise notice '✓ 11.91 l''USDC ne sort jamais sans frais, le cours du plafond ne descend pas sous le cours externe, Ethereum ne s''ouvre qu''avec ses frais';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';
