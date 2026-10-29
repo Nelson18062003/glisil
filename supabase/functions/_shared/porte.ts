@@ -105,7 +105,9 @@ export async function traiterSms(rpc: Rpc, terminal: string, charge: unknown): P
     const soldes = (charge as Ligne).soldes as Ligne[];
     if (soldes.length === 0 || soldes.length > 50) return { statut: 400, corps: { erreur: "un lot va de 1 à 50 soldes" } };
     const resultats: unknown[] = [];
-    for (const x of soldes) resultats.push(await noterSolde(rpc, terminal, x, x?.source === "sms" ? "sms" : "ussd"));
+    /* 0039 : un solde sans étiquette n'est plus présumé venir de l'USSD — un faux SMS « Votre solde est de … »
+       deviendrait un solde SÛR, et la garde de continuité s'appuierait sur lui. Seul le boîtier dit « ussd ». */
+    for (const x of soldes) resultats.push(await noterSolde(rpc, terminal, x, x?.source === "ussd" ? "ussd" : "sms"));
     return { statut: 200, corps: { soldes: resultats } };
   }
   const lignes: Ligne[] = Array.isArray(charge) ? (charge as Ligne[]) : charge && typeof charge === "object" && Array.isArray((charge as Ligne).lignes) ? ((charge as Ligne).lignes as Ligne[]) : [charge as Ligne];
@@ -130,8 +132,11 @@ export async function traiterSms(rpc: Rpc, terminal: string, charge: unknown): P
           p_reference: texte(l.reference),
           p_texte: texte(l.texte),
           p_emis_le: texte(l.emis_le),
+          p_solde_apres: nombre(l.solde_apres),
+          p_frais: nombre(l.frais),
+          p_commission: nombre(l.commission),
         });
-        resultats.push({ source_id, ...(r as Record<string, unknown>), ...(await soldeDeLaLigne(rpc, terminal, l, source_id)) });
+        resultats.push({ source_id, ...(r as Record<string, unknown>) });
         continue;
       }
       const r = await rpc("totem_sms_recu", {
@@ -144,8 +149,13 @@ export async function traiterSms(rpc: Rpc, terminal: string, charge: unknown): P
         p_reference: texte(l.reference),
         p_texte: texte(l.texte),
         p_emis_le: texte(l.emis_le),
+        /* 0039 : le « nouveau solde » du SMS DÉCIDE de l'argent (la garde de continuité) : il va à la même
+           transaction, avant le crédit — il ne se note plus après lui, par un second appel */
+        p_solde_apres: nombre(l.solde_apres),
+        p_frais: nombre(l.frais),
+        p_commission: nombre(l.commission),
       });
-      resultats.push({ source_id, ...(r as Record<string, unknown>), ...(await soldeDeLaLigne(rpc, terminal, l, source_id)) });
+      resultats.push({ source_id, ...(r as Record<string, unknown>) });
     } catch (e) {
       resultats.push({ source_id, resultat: "erreur", motif: e instanceof Error ? e.message : String(e) });
     }
@@ -154,30 +164,24 @@ export async function traiterSms(rpc: Rpc, terminal: string, charge: unknown): P
 }
 
 /**
- * La colonne « floats » de la parité (0016) : le solde que l'OPÉRATEUR
- * annonce, jamais un calcul. Il vient avec la ligne (« nouveau solde » du SMS
- * d'un encaissement ou d'un paiement), ou seul (une consultation USSD). Un
- * solde qui ne se note pas ne fait jamais tomber la ligne qui le portait :
- * l'argent d'abord, le relevé ensuite.
+ * Un solde SEUL (une consultation USSD, un SMS de relevé) : le solde que
+ * l'OPÉRATEUR annonce, jamais un calcul. Celui d'une ligne d'argent ne passe
+ * plus par ici : depuis 0039, il ne se note plus après l'argent, il en
+ * décide — il part avec la ligne, dans la transaction qui crédite ou retient.
  */
-async function noterSolde(rpc: Rpc, terminal: string, x: Ligne | null | undefined, source: "sms" | "ussd", source_id: number | null = null) {
+async function noterSolde(rpc: Rpc, terminal: string, x: Ligne | null | undefined, source: "sms" | "ussd") {
   if (!x || typeof x !== "object") return { solde: "refuse", motif: "solde vide" };
   const solde = nombre(x.solde ?? x.solde_apres);
   if (solde === null || solde < 0) return { solde: "refuse", motif: "solde illisible" };
   try {
     const r = await rpc("totem_solde_float", {
       p_terminal: terminal, p_operateur: texte(x.operateur), p_float_numero: texte(x.float_numero), p_solde: solde,
-      p_annonce_le: texte(x.annonce_le ?? x.emis_le ?? x.recu_le), p_source: source, p_source_id: source_id ?? nombre(x.source_id),
+      p_annonce_le: texte(x.annonce_le ?? x.emis_le ?? x.recu_le), p_source: source, p_source_id: nombre(x.source_id),
     }) as Record<string, unknown>;
     return { solde: r?.resultat ?? "note", ...(r?.motif ? { motif_solde: r.motif } : {}) };
   } catch (e) {
     return { solde: "erreur", motif_solde: e instanceof Error ? e.message : String(e) };
   }
-}
-
-async function soldeDeLaLigne(rpc: Rpc, terminal: string, l: Ligne, source_id: number) {
-  if (l.solde_apres === undefined || l.solde_apres === null) return {};
-  return noterSolde(rpc, terminal, l, "sms", source_id);
 }
 
 /* ----------------------------------------------------------- commandes */

@@ -98,7 +98,7 @@ const ok = (texte: string) => { n++; console.log(`✓ ${texte}`); };
   const r = await traiterSms(rpc, "akwa-1", ligne);
   assert.equal(r.statut, 200);
   assert.deepEqual(r.corps, { source_id: 48213, resultat: "credite", reference: "XAFe-DP-000418" });
-  assert.deepEqual(appels[0], { nom: "totem_sms_recu", args: { p_terminal: "akwa-1", p_source_id: 48213, p_operateur: "mtn", p_float_numero: "677000000", p_numero_payeur: "677123456", p_montant: 1000000, p_reference: "20394817101", p_texte: "Vous avez recu…", p_emis_le: "2026-10-12T13:02:11Z" } });
+  assert.deepEqual(appels[0], { nom: "totem_sms_recu", args: { p_terminal: "akwa-1", p_source_id: 48213, p_operateur: "mtn", p_float_numero: "677000000", p_numero_payeur: "677123456", p_montant: 1000000, p_reference: "20394817101", p_texte: "Vous avez recu…", p_emis_le: "2026-10-12T13:02:11Z", p_solde_apres: null, p_frais: null, p_commission: null } });
   ok("un SMS arrive au moteur avec exactement ses champs, et la réponse du moteur revient au boîtier");
 
   const lot = await traiterSms(rpc, "akwa-1", { lignes: [ligne, { ...ligne, source_id: 2, reference: "X" }, { ...ligne, source_id: 3, sens: "sortie", numero: "677999888", texte: "Transfert de 49 500 FCFA vers…" }, { ...ligne, source_id: 13 }, { ...ligne, source_id: 4, terminal: "bonaberi-2" }, { source_id: "" }, { ...ligne, source_id: 5, sens: "solde" }] });
@@ -114,7 +114,7 @@ const ok = (texte: string) => { n++; console.log(`✓ ${texte}`); };
   assert.equal(res[6].resultat, "ignore");
   assert.equal(appels.length, 5, "cinq lignes ont atteint le moteur : les deux entrées, la sortie, celle qui échoue ; celle de l'autre terminal et le solde n'y vont pas");
   const sortie = appels.find((a) => a.nom === "totem_sms_sortant");
-  assert.deepEqual(sortie?.args, { p_terminal: "akwa-1", p_source_id: 3, p_operateur: "mtn", p_float_numero: "677000000", p_numero: "677999888", p_montant: 1000000, p_reference: "20394817101", p_texte: "Transfert de 49 500 FCFA vers…", p_emis_le: "2026-10-12T13:02:11Z" });
+  assert.deepEqual(sortie?.args, { p_terminal: "akwa-1", p_source_id: 3, p_operateur: "mtn", p_float_numero: "677000000", p_numero: "677999888", p_montant: 1000000, p_reference: "20394817101", p_texte: "Transfert de 49 500 FCFA vers…", p_emis_le: "2026-10-12T13:02:11Z", p_solde_apres: null, p_frais: null, p_commission: null });
   assert.equal(appels.filter((a) => a.nom === "totem_sms_recu" && a.args.p_source_id === 3).length, 0, "une sortie n'est jamais lue comme une entrée");
   ok("un lot se traite ligne par ligne : une ligne cassée, une ligne d'un autre boîtier ne font pas tomber les autres ; une sortie du float va au rapprochement, jamais au crédit ; un solde est ignoré");
 
@@ -122,41 +122,54 @@ const ok = (texte: string) => { n++; console.log(`✓ ${texte}`); };
   ok("un lot vide est refusé");
 }
 
-/* ---------------------------------------- les soldes des floats (0016) */
+/* ------------------------- les soldes des floats (0016), qui décident depuis 0039 */
 {
   const appels: { nom: string; args: Record<string, unknown> }[] = [];
   const rpc = async (nom: string, args: Record<string, unknown>) => {
     appels.push({ nom, args });
     if (nom === "totem_solde_float") {
-      if (args.p_float_numero === "699999999") throw new Error("panne");
       return { resultat: args.p_float_numero === "677000000" ? "note" : "refuse", ...(args.p_float_numero === "677000000" ? {} : { motif: "ce float n'est pas sur ce terminal" }) };
     }
-    return { resultat: "credite", reference: "XAFe-DP-000418" };
+    if (nom === "totem_sms_sortant") return { resultat: "constatee", continuite: "verifiee" };
+    return { resultat: "credite", reference: "XAFe-DP-000418", continuite: "verifiee" };
   };
-  const ligne = { source_id: 7, operateur: "mtn", float_numero: "677000000", sens: "entree", montant: 5000, numero: "677123456", reference: "R1", texte: "…Nouveau solde: 1 250 000 FCFA", emis_le: "2026-10-17T08:00:00Z", solde_apres: 1250000 };
+  const ligne = { source_id: 7, operateur: "mtn", float_numero: "677000000", sens: "entree", montant: 5000, numero: "677123456", reference: "R1", texte: "…Nouveau solde: 1 250 000 FCFA", emis_le: "2026-10-17T08:00:00Z", solde_apres: 1250000, frais: 0, commission: 66 };
   const r = await traiterSms(rpc, "akwa-1", ligne);
-  assert.deepEqual(r.corps, { source_id: 7, resultat: "credite", reference: "XAFe-DP-000418", solde: "note" });
-  assert.deepEqual(appels[1], { nom: "totem_solde_float", args: { p_terminal: "akwa-1", p_operateur: "mtn", p_float_numero: "677000000", p_solde: 1250000, p_annonce_le: "2026-10-17T08:00:00Z", p_source: "sms", p_source_id: 7 } });
-  ok("le « nouveau solde » d'un SMS d'argent part avec sa ligne, daté de l'heure de l'opérateur");
+  // LE TÉMOIN : l'ancienne porte faisait DEUX appels — le crédit d'abord, sans solde, puis le solde à part
+  assert.equal(appels.length, 1, "UN appel : le solde va avec l'argent, dans la même transaction");
+  assert.deepEqual(appels[0], { nom: "totem_sms_recu", args: { p_terminal: "akwa-1", p_source_id: 7, p_operateur: "mtn", p_float_numero: "677000000", p_numero_payeur: "677123456",
+    p_montant: 5000, p_reference: "R1", p_texte: "…Nouveau solde: 1 250 000 FCFA", p_emis_le: "2026-10-17T08:00:00Z", p_solde_apres: 1250000, p_frais: 0, p_commission: 66 } });
+  assert.deepEqual(r.corps, { source_id: 7, resultat: "credite", reference: "XAFe-DP-000418", continuite: "verifiee" }, "la réponse du moteur, continuité comprise, revient au boîtier");
+  ok("le « nouveau solde » d'un SMS d'argent, ses frais et sa commission vont au moteur AVEC la ligne : ils décident du crédit, ils ne se notent plus après lui");
 
-  const panne = await traiterSms(rpc, "akwa-1", { ...ligne, float_numero: "699999999" });
-  assert.equal((panne.corps as Record<string, unknown>).resultat, "credite", "un solde qui ne se note pas ne fait pas tomber l'argent");
-  assert.equal((panne.corps as Record<string, unknown>).solde, "erreur");
-  const sans = await traiterSms(rpc, "akwa-1", { ...ligne, solde_apres: undefined });
-  assert.equal((sans.corps as Record<string, unknown>).solde, undefined, "pas de solde annoncé : rien n'est inventé");
-  ok("un solde en panne ne fait pas tomber le crédit ; un SMS sans solde n'en invente pas");
+  appels.length = 0;
+  await traiterSms(rpc, "akwa-1", { ...ligne, source_id: 8, sens: "sortie", numero: "677999888", frais: 500, commission: undefined });
+  assert.equal(appels.length, 1);
+  assert.equal(appels[0].nom, "totem_sms_sortant");
+  assert.deepEqual([appels[0].args.p_solde_apres, appels[0].args.p_frais, appels[0].args.p_commission], [1250000, 500, null]);
+  appels.length = 0;
+  await traiterSms(rpc, "akwa-1", { ...ligne, solde_apres: undefined, frais: undefined, commission: undefined });
+  assert.deepEqual([appels[0].args.p_solde_apres, appels[0].args.p_frais, appels[0].args.p_commission], [null, null, null], "pas de solde annoncé : rien n'est inventé");
+  ok("une sortie emporte aussi son solde et ses frais ; un SMS sans solde n'en invente pas (le moteur le retient)");
 
   appels.length = 0;
   const seuls = await traiterSms(rpc, "akwa-1", { soldes: [
-    { operateur: "mtn", float_numero: "677000000", solde: 980000, annonce_le: "2026-10-17T09:00:00Z" },
-    { operateur: "om", float_numero: "699000111", solde: 10 },
+    { operateur: "mtn", float_numero: "677000000", solde: 980000, annonce_le: "2026-10-17T09:00:00Z", source: "ussd" },
+    { operateur: "mtn", float_numero: "677000000", solde: 990000, annonce_le: "2026-10-17T09:05:00Z" },
+    { operateur: "om", float_numero: "699000111", solde: 10, source: "ussd" },
     { operateur: "mtn", float_numero: "677000000", solde: -5 },
   ] });
-  assert.deepEqual(seuls.corps, { soldes: [{ solde: "note" }, { solde: "refuse", motif_solde: "ce float n'est pas sur ce terminal" }, { solde: "refuse", motif: "solde illisible" }] });
-  assert.equal(appels.length, 2, "un solde négatif n'atteint pas le moteur");
-  assert.equal(appels[0].args.p_source, "ussd");
+  assert.deepEqual(seuls.corps, { soldes: [{ solde: "note" }, { solde: "note" }, { solde: "refuse", motif_solde: "ce float n'est pas sur ce terminal" }, { solde: "refuse", motif: "solde illisible" }] });
+  assert.equal(appels.length, 3, "un solde négatif n'atteint pas le moteur");
+  // LE TÉMOIN : l'ancienne porte rendait « ussd » pour un solde sans étiquette — un faux SMS de solde devenait un appui
+  assert.deepEqual(appels.map((a) => a.args.p_source), ["ussd", "sms", "ussd"], "seul le boîtier dit « ussd » ; sans étiquette, c'est un SMS");
   assert.equal((await traiterSms(rpc, "akwa-1", { soldes: [] })).statut, 400);
-  ok("des soldes seuls (une consultation USSD) : un par un, un float d'un autre boîtier refusé, un chiffre négatif jamais transmis");
+  ok("des soldes seuls : « ussd » seulement si le boîtier le dit ; un float d'un autre boîtier refusé, un chiffre négatif jamais transmis");
+
+  const panne = async (nom: string) => { if (nom === "totem_sms_recu") throw new Error("panne"); return {}; };
+  const p = await traiterSms(panne, "akwa-1", { lignes: [ligne, { ...ligne, source_id: 9, sens: "sortie" }] });
+  assert.deepEqual((p.corps as Record<string, unknown>[]).map((x) => x.resultat), ["erreur", undefined]);
+  ok("une RPC qui lève fait « erreur » sur sa ligne seule");
 }
 
 /* ----------------------------------------------------- les commandes */

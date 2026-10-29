@@ -120,6 +120,10 @@ $COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = '{\\\"0\\\"
 # 0038 met les sorties en manuel : les scénarios d'avant éprouvent la composition par TOTEM. La règle
 # d'aujourd'hui (le remboursement manuel prouvé par la puce) est éprouvée par 11.36 et 11.80+, dans leur transaction.
 $COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = valeur || '{\\\"mode\\\": \\\"totem\\\"}' where cle = 'sortie'\"" >/dev/null
+# 0039 retient tout SMS d'argent dont le solde ne suit pas : les scénarios d'avant n'annoncent aucun solde.
+# Ils jouent la garde en « surveiller » (crédité, signalé) ; la garde elle-même (« exiger ») est éprouvée
+# par le scénario 11.81, dans sa transaction, et par l'attaque #F1 de rouge-puis-vert.
+$COMME "PATH=$PATH $PSQL -d xafe -c \"update parametres set valeur = valeur || '{\\\"mode\\\": \\\"surveiller\\\"}' where cle = 'continuite'\"" >/dev/null
 
 # ATTAQUES=1 : les migrations, puis les attaques de la revue seules (moteur/rouge-puis-vert).
 if [ "${ATTAQUES:-0}" = "1" ]; then

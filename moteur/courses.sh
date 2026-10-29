@@ -68,9 +68,9 @@ SQL
   ensemble c1-a.sql c1-b.sql
   echo "$(valeur "select count(*) from depot_paiements where terminal = 'akwa-1' and source_id = $1") $(valeur "select count(*) from entrees_retenues where terminal = 'akwa-1' and source_id = $1")"
 }
-sans 'totem_sms_recu(text,bigint,text,text,text,numeric,text,text,timestamp with time zone)' "perform pg_advisory_xact_lock(hashtext('sms:' || p_terminal || ':' || p_source_id::text));"
+sans 'totem_sms_recu(text,bigint,text,text,text,numeric,text,text,timestamp with time zone,numeric,numeric,numeric)' "perform pg_advisory_xact_lock(hashtext('sms:' || p_terminal || ':' || p_source_id::text));"
 r=$(course_sms 9101 20394991101)
-rendre 'totem_sms_recu(text,bigint,text,text,text,numeric,text,text,timestamp with time zone)'
+rendre 'totem_sms_recu(text,bigint,text,text,text,numeric,text,text,timestamp with time zone,numeric,numeric,numeric)'
 [ "$r" = "1 1" ] || { echo "✗ témoin : sans son verrou, le même SMS devait finir crédité ET retenu (vu : $r)"; exit 1; }
 # le témoin a fabriqué exprès un SMS crédité ET retenu : on retire sa retenue, pour que la suite (le hasard) parte d'une base saine
 echo "delete from entrees_retenues where terminal = 'akwa-1' and source_id = 9101;" >"$GRAPPE/c1-nettoyer.sql"
@@ -173,9 +173,9 @@ SQL
   ensemble c4-a.sql c4-b.sql
   valeur "select etat from sorties where cle = '$1'"
 }
-sans 'totem_sms_sortant(text,bigint,text,text,text,numeric,text,text,timestamp with time zone)' "  if v_id is not null then perform pg_advisory_xact_lock(hashtext('sortie_tx:' || p_operateur || ':' || v_id)); end if;"
+sans 'totem_sms_sortant(text,bigint,text,text,text,numeric,text,text,timestamp with time zone,numeric,numeric,numeric)' "  if v_id is not null then perform pg_advisory_xact_lock(hashtext('sortie_tx:' || p_operateur || ':' || v_id)); end if;"
 r=$(course_preuve k-c4t 91240 MP261029C124T)
-rendre 'totem_sms_sortant(text,bigint,text,text,text,numeric,text,text,timestamp with time zone)'
+rendre 'totem_sms_sortant(text,bigint,text,text,text,numeric,text,text,timestamp with time zone,numeric,numeric,numeric)'
 [ "$r" = "en_preuve" ] || { echo "✗ témoin : sans le verrou du SMS, l'ID et le SMS devaient se rater (vu : $r)"; exit 1; }
 # le témoin a laissé une sortie en preuve : on la défait, pour que la suite parte d'une base juste
 cat >"$GRAPPE/c4-nettoyer.sql" <<SQL

@@ -2022,7 +2022,9 @@ begin
   perform totem_solde_float('akwa-1', 'mtn', '677000000', 1e9, now(), 'sms', 900001);
   assert (totem_solde_float('akwa-1', 'mtn', '677000000', 1e9, now(), 'sms', 900001) ->> 'resultat') = 'deja', 'un SMS relu ne compte qu''une fois';
   assert (totem_solde_float('secours-3', 'mtn', '677000000', 5, now(), 'ussd') ->> 'resultat') = 'refuse', 'un float d''un autre terminal est refusé';
-  insert into soldes_floats (float_id, solde, annonce_le, source) select id, 1e9, now(), 'releve' from floats where actif and id not in (select float_id from soldes_floats);
+  -- 0039 : un solde lu dans un SMS SEUL n'est jamais sûr (un faux SMS l'écrirait) : il ne fait pas la colonne « floats »
+  assert (_solde_float((select id from floats where numero = '677000000'))).id is null, 'un solde de SMS seul ne compte pas';
+  insert into soldes_floats (float_id, solde, annonce_le, source) select id, 1e9, now(), 'releve' from floats where actif and (_solde_float(id)).id is null;
   r := rapprocher();
   assert (r ->> 'ecart')::numeric = 0 and (r ->> 'anomalies')::int = 0, format('la chaîne montre ce que le registre attend : %s', r);
   assert (r ->> 'statut') in ('juste', 'en_cours'), r;
@@ -4007,6 +4009,184 @@ begin
   assert not exists (select 1 from jsonb_array_elements(admin_sorties_non_expliquees()) k where k ->> 'transaction_id' = 'MP2610290900A54004'), 'le second paiement de C est expliqué';
   assert total('XAFe') = circulation(), format('XAFe : %s en soldes, %s en circulation', total('XAFe'), circulation());
   raise notice '✓ 11.80 le remboursement manuel prouvé : un ID tapé ne détruit rien ; le SMS de la puce (même ID, montant, numéro, après la demande, d''un float du même monde) clôt, une fois ; payé en plusieurs transferts ; corrigé ; au-delà du seuil, deux personnes ; forcé seulement par le super admin, tard, journalisé ; un e-mail au client';
+end $$;
+rollback;
+
+-- 11.81 · la continuité des soldes (0039) : un SMS d'encaissement n'est crédité
+-- que si le nouveau solde qu'il annonce suit le dernier solde SÛR du float
+-- (consultation USSD, relevé, SMS déjà vérifié). Un faux SMS — un faussaire
+-- ne connaît pas le solde — est retenu, bloqué, ni rapproché ni remboursé.
+-- Témoin : avant 0039, B créditait Alice de 25 000 XAFe sur un solde faux.
+begin;
+update parametres set valeur = valeur || '{"mode": "exiger", "demo": "eteinte"}' where cle = 'continuite';
+update terminaux set vu_le = now() where id = 'akwa-1';
+insert into floats (operateur, numero, terminal) values ('mtn', '677000081', 'akwa-1'), ('mtn', '670540054', 'akwa-1');
+insert into terminaux (id, nom, cle, demo) values ('demo-81', 'Démo 81', 'cle-demo-81-assez-longue', true);
+insert into floats (operateur, numero, terminal) values ('mtn', '600000081', 'demo-81');
+create or replace function pg_temp.declarer(p_id text) returns text language plpgsql as $f$
+declare ref text;
+begin
+  perform set_config('xafe.compte', '11111111-1111-1111-1111-111111111111', true);
+  ref := ouvrir_depot('mtn') ->> 'reference';
+  perform declarer_transaction(ref, p_id);
+  return ref;
+end $f$;
+create or replace function pg_temp.recu(p_source bigint, p_montant numeric, p_id text, p_quand timestamptz, p_solde numeric,
+                                        p_float text default '677000081', p_texte text default null, p_terminal text default 'akwa-1') returns jsonb language sql as $f$
+  select totem_sms_recu(p_terminal, p_source, 'mtn', p_float, '677123456', p_montant, p_id,
+                        coalesce(p_texte, format('Vous avez recu %s FCFA de ALICE NGONO (677123456). Ref: %s.', p_montant, p_id)
+                                          || coalesce(format(' Nouveau solde: %s FCFA.', p_solde), '')),
+                        p_quand, p_solde_apres => p_solde)
+$f$;
+do $$
+declare
+  a uuid := '11111111-1111-1111-1111-111111111111';
+  nelson text := 'dddddddd-0000-0000-0000-000000000001'; support text := 'dddddddd-0000-0000-0000-000000000003';
+  t0 timestamptz := now() - interval '3 hours';
+  f int := (select id from floats where numero = '677000081');
+  f2 int := (select id from floats where numero = '670540054');
+  r jsonb; x0 numeric; idb bigint; idf bigint; idh bigint; idi bigint; idk bigint; ref text; p jsonb; n int;
+begin
+  x0 := coalesce(solde(a, 'XAFe', 'dispo'), 0);
+
+  -- A · le solde d'appui : une consultation USSD, étiquetée par le boîtier
+  r := totem_solde_float('akwa-1', 'mtn', '677000081', 500000, t0, 'ussd');
+  assert r ->> 'resultat' = 'note' and (_solde_float(f)).solde = 500000, 'A · ' || r::text;
+
+  -- B · LE TÉMOIN : un faux SMS, au solde inventé, suivi de la même déclaration
+  ref := pg_temp.declarer('20395400001');
+  r := pg_temp.recu(95401, 25000, '20395400001', t0 + interval '5 min', 1525000);
+  assert r ->> 'resultat' = 'retenue' and r ->> 'continuite' = 'incoherente' and r ->> 'motif' = 'solde incohérent : à vérifier', 'B · retenu ' || r::text;
+  idb := (r ->> 'id')::bigint;
+  assert coalesce(solde(a, 'XAFe', 'dispo'), 0) = x0, 'B · rien de crédité';
+  assert (select etat from depot_declarations where transaction_id = '20395400001') = 'attendu', 'B · la déclaration attend encore';
+  assert (select bloquee and solde_attendu = 525000 from entrees_retenues where id = idb), 'B · bloquée, 525 000 attendu';
+  assert (select not fiable from soldes_floats where retenue_id = idb) and (_solde_float(f)).solde = 500000, 'B · un faux solde n''est pas un appui';
+  assert exists (select 1 from notifications where compte_id = a and titre = 'Paiement en vérification' and cible = '/historique/' || ref), 'B · Alice sait que son paiement est vérifié';
+  perform set_config('xafe.compte', nelson, true);
+  begin perform admin_rembourser_retenue(idb, 'rendre'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'solde à vérifier : libérez ou rejetez d''abord ce SMS', sqlerrm; end;
+  begin perform admin_rapprocher_retenue(idb, ref); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'solde à vérifier : libérez ou rejetez d''abord ce SMS', sqlerrm; end;
+
+  -- C · un vrai paiement : le solde suit, crédité, et il devient l'appui
+  perform pg_temp.declarer('20395400002');
+  r := pg_temp.recu(95402, 25000, '20395400002', t0 + interval '10 min', 525000);
+  assert r ->> 'resultat' = 'credite' and r ->> 'continuite' = 'verifiee', 'C · ' || r::text;
+  assert solde(a, 'XAFe', 'dispo') = x0 + 25000 and (_solde_float(f)).solde = 525000, 'C · crédité, nouvel appui';
+
+  -- D · le désordre : le SMS de 04 arrive avant celui de 03 ; 03 le répare tout seul
+  perform pg_temp.declarer('20395400003'); perform pg_temp.declarer('20395400004');
+  r := pg_temp.recu(95404, 20000, '20395400004', t0 + interval '30 min', 555000);
+  assert r ->> 'resultat' = 'retenue' and r ->> 'continuite' = 'incoherente', 'D · 04 trop tôt ' || r::text;
+  assert (select solde_attendu from entrees_retenues where id = (r ->> 'id')::bigint) = 545000, 'D · 545 000 attendu';
+  r := pg_temp.recu(95403, 10000, '20395400003', t0 + interval '20 min', 535000);
+  assert r ->> 'resultat' = 'credite', 'D · 03 ' || r::text;
+  assert (select etat = 'rapprochee' and continuite = 'verifiee' from entrees_retenues where transaction_id = '20395400004'), 'D · 04 repris par le réexamen';
+  assert solde(a, 'XAFe', 'dispo') = x0 + 55000, 'D · les deux crédités';
+
+  -- E · une sortie entre deux prolonge la chaîne ; avec ses frais aussi
+  r := totem_sms_sortant('akwa-1', 95405, 'mtn', '677000081', '677999999', 100000, '30395400005', 'Transfert de 100000 FCFA reussi. ID: 30395400005', t0 + interval '40 min', p_solde_apres => 455000);
+  assert r ->> 'continuite' = 'verifiee', 'E · ' || r::text;
+  perform pg_temp.declarer('20395400005');
+  r := pg_temp.recu(95406, 15000, '20395400005', t0 + interval '50 min', 470000);
+  assert r ->> 'resultat' = 'credite', 'E · après la sortie ' || r::text;
+  r := totem_sms_sortant('akwa-1', 95407, 'mtn', '677000081', '677999998', 50000, '30395400007', 'Transfert de 50000 FCFA reussi. Frais 500. ID: 30395400007', t0 + interval '52 min', p_solde_apres => 419500, p_frais => 500);
+  assert r ->> 'continuite' = 'verifiee', 'E · avec frais ' || r::text;
+
+  -- F · omettre le solde ne contourne pas la garde ; l'équipe libère, avec une note
+  perform pg_temp.declarer('20395400006');
+  r := pg_temp.recu(95408, 9000, '20395400006', t0 + interval '54 min', null);
+  assert r ->> 'resultat' = 'retenue' and r ->> 'continuite' = 'absente' and r ->> 'motif' = 'solde non annoncé : à vérifier', 'F · ' || r::text;
+  idf := (r ->> 'id')::bigint;
+  perform set_config('xafe.compte', nelson, true);
+  begin perform admin_liberer_retenue(idf, false, 'court'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'dites comment le paiement a été vérifié', sqlerrm; end;
+  begin perform admin_liberer_retenue(idf, true, 'vu dans l''historique MoMo *126#'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'ce SMS n''annonce pas de solde', sqlerrm; end;
+  r := admin_liberer_retenue(idf, false, 'vu dans l''historique MoMo *126#');
+  assert (r ->> 'credite')::boolean and solde(a, 'XAFe', 'dispo') = x0 + 79000, 'F · libéré, crédité ' || r::text;
+  assert exists (select 1 from journal_admin where action = 'liberer_retenue' and cible = idf::text and detail::text not like '%677123456%'), 'F · au journal, sans le numéro';
+
+  -- G · le rejet : un faux reste faux, même si un appui l'« expliquerait » ensuite
+  r := admin_rejeter_retenue(idb, 'absent de l''historique MoMo');
+  assert (select etat = 'rejetee' and continuite = 'rejetee' from entrees_retenues where id = idb), 'G · rejeté';
+  begin perform admin_liberer_retenue(idb, false, 'je change d''avis, finalement'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'ce SMS n''attend pas de vérification de solde', sqlerrm; end;
+  perform totem_solde_float('akwa-1', 'mtn', '677000081', 1500000, t0 + interval '4 min', 'ussd');
+  assert (select etat from entrees_retenues where id = idb) = 'rejetee' and coalesce(solde(a, 'XAFe', 'dispo'), 0) = x0 + 79000, 'G · jamais repris';
+
+  -- H · l'empoisonnement : un solde lu dans un SMS seul ne sert jamais d'appui
+  perform totem_solde_float('akwa-1', 'mtn', '677000081', 2000000, t0 + interval '55 min', 'sms');
+  perform pg_temp.declarer('20395400008');
+  r := pg_temp.recu(95409, 5000, '20395400008', t0 + interval '60 min', 2005000);
+  assert r ->> 'resultat' = 'retenue' and r ->> 'continuite' = 'incoherente', 'H · ' || r::text;
+  idh := (r ->> 'id')::bigint;
+  assert (select solde_attendu from entrees_retenues where id = (r ->> 'id')::bigint) = 424500, 'H · attendu depuis le dernier appui SÛR';
+
+  -- I · le premier solde d'un float : sans appui, retenu ; libéré et ancré, il devient l'appui
+  assert _continuite((select x from floats x where id = f2), 1, 20000, 100000, null, null, t0 + interval '61 min') ->> 'etat' = 'sans_ancre', 'I · sans appui';
+  perform pg_temp.declarer('20395400009');
+  r := pg_temp.recu(95410, 20000, '20395400009', t0 + interval '61 min', 100000, '670540054');
+  assert r ->> 'continuite' = 'sans_ancre' and r ->> 'motif' = 'premier solde du float inconnu : à vérifier', 'I · ' || r::text;
+  idi := (r ->> 'id')::bigint;
+  perform pg_temp.declarer('20395400010');
+  r := pg_temp.recu(95411, 5000, '20395400010', t0 + interval '62 min', 105000, '670540054');
+  assert r ->> 'resultat' = 'retenue', 'I · le suivant attend aussi ' || r::text;
+  perform set_config('xafe.compte', nelson, true);
+  r := admin_liberer_retenue(idi, true, 'solde vu sur la puce, *126# : 100 000');
+  assert (r ->> 'credite')::boolean and (r ->> 'reexaminees')::int = 1, 'I · ancré, et le suivant se vérifie de lui-même ' || r::text;
+  assert solde(a, 'XAFe', 'dispo') = x0 + 104000, 'I · les deux crédités';
+
+  -- J · les modes : la démo est exemptée ; « surveiller » crédite et signale ; un réglage faux est refusé
+  assert _continuite((select x from floats x where numero = '600000081'), 1, 5000, null, null, null, now()) ->> 'etat' = 'ignoree', 'J · démo';
+  r := totem_sms_recu('demo-81', 95412, 'mtn', '600000081', '600000999', 5000, '20395400099', 'BANQUE DEMO', now());
+  assert r ->> 'resultat' = 'retenue' and r ->> 'continuite' = 'ignoree' and not (select bloquee from entrees_retenues where id = (r ->> 'id')::bigint), 'J · démo, chemin d''avant ' || r::text;
+  update parametres set valeur = valeur || '{"mode": "surveiller"}' where cle = 'continuite';
+  perform pg_temp.declarer('20395400011');
+  r := pg_temp.recu(95413, 5000, '20395400011', t0 + interval '70 min', 999);
+  assert r ->> 'resultat' = 'credite' and r ->> 'continuite' = 'incoherente', 'J · surveiller ' || r::text;
+  assert (select not fiable from soldes_floats where terminal = 'akwa-1' and source_id = 95413), 'J · signalé, pas un appui';
+  update parametres set valeur = valeur || '{"mode": "exiger"}' where cle = 'continuite';
+  begin perform _verifier_parametre('continuite', '{"mode": "oui", "demo": "eteinte"}'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'paramètre invalide', sqlerrm; end;
+
+  -- K · le message complet referme sa moitié tronquée
+  perform pg_temp.declarer('20395400012');
+  r := pg_temp.recu(95414, 7000, '20395400012', t0 + interval '75 min', null, '677000081', 'Vous avez recu 7000 FCFA de ALICE NGONO (677123456). Ref: 20395400012.');
+  assert r ->> 'continuite' = 'absente', 'K · la moitié ' || r::text;
+  idk := (r ->> 'id')::bigint;
+  r := pg_temp.recu(95414, 7000, '20395400012', t0 + interval '75 min', 426500, '677000081', 'Vous avez recu 7000 FCFA de ALICE NGONO (677123456). Ref: 20395400012. Nouveau solde: 426500 FCFA.');
+  assert r ->> 'resultat' = 'credite' and solde(a, 'XAFe', 'dispo') = x0 + 116000, 'K · le complet crédite ' || r::text;
+  assert (select etat = 'rejetee' and motif = 'remplacé par le message complet' from entrees_retenues where id = idk), 'K · la moitié se referme';
+
+  -- L · la page publique arrondit au million ; l'équipe garde l'exact
+  perform set_config('xafe.compte', nelson, true);
+  for n in select id from floats where actif loop
+    perform admin_saisir_releve(n, 1234567.6, now(), 'releve/essai.pdf');
+  end loop;
+  perform rapprocher();
+  p := preuve_de_reserve();
+  assert (p -> 'releve' ->> 'floats')::numeric % 1000000 = 0 and (p -> 'releve' ->> 'couverture')::numeric % 1000000 = 0
+     and (p -> 'releve' ->> 'floats_arrondi')::numeric = 1000000, 'L · arrondi ' || (p -> 'releve')::text;
+  assert not exists (select 1 from jsonb_array_elements(p -> 'releve' -> 'floats_detail') d where (d ->> 'solde')::numeric % 1000000 <> 0), 'L · chaque opérateur arrondi';
+  assert p::text not like '%1234567%', 'L · rien d''exact ne fuit';
+  assert (admin_parite() -> 'releve' ->> 'floats')::numeric % 1000000 <> 0, 'L · l''équipe garde l''exact';
+
+  -- M · les droits
+  assert not has_function_privilege('authenticated', 'totem_sms_recu(text,bigint,text,text,text,numeric,text,text,timestamptz,numeric,numeric,numeric)', 'execute')
+     and not has_function_privilege('anon', 'totem_sms_recu(text,bigint,text,text,text,numeric,text,text,timestamptz,numeric,numeric,numeric)', 'execute')
+     and not has_function_privilege('authenticated', 'totem_sms_sortant(text,bigint,text,text,text,numeric,text,text,timestamptz,numeric,numeric,numeric)', 'execute')
+     and not has_function_privilege('authenticated', '_continuite(floats,int,numeric,numeric,numeric,numeric,timestamptz,bigint)', 'execute')
+     and not has_function_privilege('authenticated', '_reexaminer_continuite(int,timestamptz)', 'execute')
+     and not has_function_privilege('authenticated', '_reprendre_retenue(bigint,text)', 'execute'), 'M · les fonctions de service restent fermées';
+  perform set_config('xafe.compte', support, true);
+  begin perform admin_liberer_retenue(idh, false, 'le support essaie de libérer'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'accès non autorisé', sqlerrm; end;
+  begin perform admin_rejeter_retenue(idk, 'le support essaie'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'accès non autorisé', sqlerrm; end;
+  assert total('XAFe') = circulation(), format('XAFe : %s en soldes, %s en circulation', total('XAFe'), circulation());
+  raise notice '✓ 11.81 la continuité des soldes : un SMS dont le solde ne suit pas le dernier solde sûr est retenu, bloqué, ni rapproché ni remboursé ; le désordre se répare seul ; les sorties prolongent la chaîne ; omettre le solde ne passe pas ; un solde lu dans un SMS seul n''est jamais un appui ; l''équipe libère avec une note ou rejette ; la page publique arrondit';
 end $$;
 rollback;
 

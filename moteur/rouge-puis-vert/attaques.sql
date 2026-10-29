@@ -237,6 +237,7 @@ do $$
 declare v text;
 begin
   select string_agg(f, ', ') into v from unnest(array['totem_sms_recu(text,bigint,text,text,text,numeric,text,text,timestamp with time zone)',
+    'totem_sms_recu(text,bigint,text,text,text,numeric,text,text,timestamp with time zone,numeric,numeric,numeric)',
     'crediter_crypto(uuid,text,text,numeric,text,text)', '_mouvement(uuid,text,numeric,numeric,text,text,text)',
     'totem_resultat_commande(bigint,text,boolean,text,text)', 'chaine_resultat_retrait(text,boolean,text,text)']) f
    where to_regprocedure(f) is not null and has_function_privilege('authenticated', to_regprocedure(f), 'execute');
@@ -262,6 +263,22 @@ begin
   insert into auth.users (id, phone) values ('a0000000-0000-0000-0000-0000000000f8', '+237677100078');
   d := exists (select 1 from numeros where numero = '677100078' and verifie_le is not null);
   insert into _attaques values ('#78', 'un numéro naît « vérifié » sur une simple demande de code', d, null);
+end $$;
+
+-- #F1 · un faux SMS « Vous avez reçu 7 500 000 XAF », écrit à la puce par n'importe qui, sans le solde
+-- du float (le faussaire ne le connaît pas), suivi de la même déclaration : crédité comme un vrai paiement.
+-- La garde (0039) est rallumée ici seulement ; sur le code d'avant, la ligne ne touche rien.
+do $$
+declare r jsonb;
+begin
+  update parametres set valeur = valeur || '{"mode": "exiger"}' where cle = 'continuite';
+  perform _qui('a0000000-0000-0000-0000-000000000004');
+  perform declarer_transaction(ouvrir_depot('mtn') ->> 'reference', '20390000901');
+  r := totem_sms_recu('akwa-1', 901, 'mtn', '677000000', '677100004', 7500000, '20390000901',
+                      'Vous avez recu 7 500 000 XAF de CHANTAL (677100004). Transaction ID: 20390000901.', now());
+  insert into _attaques values ('#F1', 'un faux SMS d''encaissement, sans le solde du float, est crédité',
+    coalesce((select disponible from soldes where compte_id = 'a0000000-0000-0000-0000-000000000004' and actif = 'XAFe'), 0) >= 7500000, r::text);
+  update parametres set valeur = valeur || '{"mode": "surveiller"}' where cle = 'continuite';
 end $$;
 
 \pset format unaligned
