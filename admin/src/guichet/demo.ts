@@ -8,7 +8,7 @@ import { DROITS } from "../noyau/droits";
 import { ErreurMoteur } from "./supabase";
 import type { Enrolement, GuichetAdmin } from "./guichet";
 import { AUTH_VIDE, motDePasseValide, type EtatAuth } from "../noyau/entree";
-import type { Beta, LigneParite, Parite, ReseauRegistre, ReleveCours, Signalement } from "./types";
+import type { Beta, LigneParite, Parite, ReseauRegistre, ReleveCours, SecuriteUtilisateur, Signalement } from "./types";
 import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Transfert, Wallets } from "./types";
 import { verifierPreuve } from "./preuve";
 
@@ -290,6 +290,42 @@ export class GuichetDemo implements GuichetAdmin {
     return copie(c.profil);
   }
   async deconnecter() { this.e.profil = null; this.auth.session = null; this.emettre(); }
+
+  /* --------------------------------------- la sécurité d'une personne (0035) */
+  private securites(): Record<string, SecuriteUtilisateur> { return ((this.e as Etat & { securites?: Record<string, SecuriteUtilisateur> }).securites ??= {}); }
+  async securite(utilisateur: string): Promise<SecuriteUtilisateur> {
+    this.exiger("clients");
+    const s = this.securites()[utilisateur] ?? {
+      deux_facteurs: true, codes_restants: 9, codes_confirmes_le: iso(maintenant() - 20 * 24 * H),
+      evenements: [
+        { evenement: "code_de_secours_utilise", par_admin: null, detail: { restants: 9 }, cree_le: iso(maintenant() - 3 * 24 * H) },
+        { evenement: "codes_confirmes", par_admin: null, detail: null, cree_le: iso(maintenant() - 20 * 24 * H) },
+      ],
+      reinitialisations: [],
+    };
+    const copieDeS = copie(s);
+    if (!this.e.profil?.droits.includes("administrateurs" as never)) for (const r of copieDeS.reinitialisations) delete r.motif;
+    return copieDeS;
+  }
+  async reinitialiserDeuxFacteurs(utilisateur: string, motif: string) {
+    this.exiger("administrateurs");
+    const m = motif.trim();
+    if (utilisateur === this.e.profil?.id) throw new ErreurMoteur("vous ne réinitialisez pas votre propre double authentification", "servez-vous d'un de vos codes de secours");
+    if (m.length < 10) throw new ErreurMoteur("motif trop court", "dites comment vous avez vérifié l'identité");
+    const s = await this.securite(utilisateur);
+    const jour = s.reinitialisations.filter((r) => Date.parse(r.demandee_le) > maintenant() - 24 * H).length;
+    if (jour >= 3) throw new ErreurMoteur("trop de réinitialisations", "trois par personne et par jour au plus");
+    const quand = iso(maintenant());
+    s.reinitialisations.unshift({ id: `ri-${s.reinitialisations.length + 1}`, admin_id: this.e.profil!.id, demandee_le: quand, faite_le: quand, facteurs: s.deux_facteurs ? 1 : 0, echec: null, motif: m });
+    s.evenements.unshift({ evenement: "deux_facteurs_retires", par_admin: this.e.profil!.id, detail: { cause: "administration", facteurs: s.deux_facteurs ? 1 : 0 }, cree_le: quand },
+                         { evenement: "reinitialisation_demandee", par_admin: this.e.profil!.id, detail: null, cree_le: quand });
+    const facteurs = s.deux_facteurs ? 1 : 0;
+    s.deux_facteurs = false; s.codes_restants = 0; s.codes_confirmes_le = null;
+    this.securites()[utilisateur] = s;
+    this.noter("deux_facteurs_reinitialisation", utilisateur, { motif: m });
+    this.emettre();
+    return { facteurs };
+  }
 
   async tableau(): Promise<Tableau> {
     this.exiger("voir");

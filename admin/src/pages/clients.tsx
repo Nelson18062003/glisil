@@ -7,8 +7,9 @@
 import { Box, Button, Chip, MenuItem, Paper, Stack, TextField, Tooltip, Typography } from "@mui/material";
 import { useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { useClient, useClients, useGuichet, useRafraichir, useStatistiquesClients } from "../guichet";
+import { useClient, useClients, useGuichet, useRafraichir, useSecurite, useStatistiquesClients } from "../guichet";
 import { enTranches, heure, jourRelatif, numeroEnTranches, prix, quand, xaf } from "../noyau/format";
+import { EVENEMENTS } from "../noyau/securite";
 import { useSession } from "../session/session";
 import { Coquille, Dialogue, Erreur, Etat, Section, Tableau, Tuile } from "../ui";
 
@@ -151,7 +152,8 @@ export function ClientDetail() {
   const rafraichir = useRafraichir();
   const { peut } = useSession();
   const { data } = useClient(id);
-  const [dialogue, setDialogue] = useState<"palier" | "verification" | "desactiver" | "doter" | null>(null);
+  const { data: securite } = useSecurite(id);
+  const [dialogue, setDialogue] = useState<"palier" | "verification" | "desactiver" | "doter" | "deux_facteurs" | null>(null);
   const [dotation, setDotation] = useState({ xafe: "1000000", usdt: "0" });
   const [palier, setPalier] = useState(0);
   const [note, setNote] = useState("");
@@ -172,6 +174,7 @@ export function ClientDetail() {
         {peut("paliers") && <Button variant="outlined" onClick={() => { setPalier(c.palier); setDialogue("palier"); }}>Changer le palier</Button>}
         {/* la bêta : de l'argent de test, refusé par le moteur hors bêta */}
         {peut("parametres") && <Button variant="outlined" onClick={() => setDialogue("doter")}>Donner de l'argent de test</Button>}
+        {peut("administrateurs") && <Button variant="text" color="error" onClick={() => { setNote(""); setDialogue("deux_facteurs"); }}>Réinitialiser la double authentification</Button>}
         {peut("clients") && <Button variant="text" color="error" onClick={() => setDialogue("desactiver")}>{c.ferme_le ? "Rouvrir" : c.desactive_le ? "Réactiver" : "Désactiver"}</Button>}
       </Stack>
     }>
@@ -181,7 +184,7 @@ export function ClientDetail() {
         <Tuile label="USDT" valeur={enTranches(data.soldes.USDT?.disponible ?? 0, 2)} tone="blue" aide={`${enTranches(data.soldes.USDT?.bloque ?? 0, 2)} bloqués`} />
         <Tuile label="Palier" valeur={String(c.palier)} tone="amber" aide={PALIERS[c.palier]} />
         <Tuile label="Compte" valeur={c.ferme_le ? "fermé" : c.desactive_le ? "désactivé" : "actif"} tone={c.desactive_le ? "red" : "neutral"}
-          aide={c.ferme_le ? `fermé par le client ${jourRelatif(c.ferme_le).toLowerCase()}` : `depuis ${jourRelatif(c.cree_le)} · ${c.entreprise ?? "particulier"}${c.a_code ? "" : " · sans code secret"}`} />
+          aide={c.ferme_le ? `fermé par le client ${jourRelatif(c.ferme_le).toLowerCase()}` : `depuis ${jourRelatif(c.cree_le)} · ${c.entreprise ?? "particulier"}${securite && !securite.deux_facteurs ? " · sans double authentification" : ""}`} />
       </Stack>
       <Section titre="Identité et connexions">
         <Paper sx={{ p: 2.5, borderRadius: 5 }}>
@@ -189,16 +192,33 @@ export function ClientDetail() {
             ["Prénom", c.prenom ?? "—"],
             ["Nom de famille", c.nom_de_famille ?? "—"],
             ["E-mail", c.email ?? "—"],
-            ["Téléphone", telephoneAffiche(c.telephone)],
+            ["Téléphone", `${telephoneAffiche(c.telephone)} · non vérifié`],
             ["Date de naissance", c.date_naissance ? `${new Date(c.date_naissance).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} · ${age(c.date_naissance)} ans` : "—"],
             ["Résidence", c.ville ? `${c.ville}, ${nomDuPays(c.pays)}` : "—"],
             ["Inscrit", `${quand(c.cree_le)}`],
             ["Dernière connexion", c.derniere_connexion ? quand(c.derniere_connexion) : "—"],
             ["Dernière opération", c.derniere_operation ? quand(c.derniere_operation) : "jamais"],
-            ["Code secret", c.a_code ? "choisi" : "pas encore choisi"],
             ["Conditions", c.conditions_version ? `version du ${c.conditions_version}, acceptée ${c.conditions_acceptees_le ? quand(c.conditions_acceptees_le) : ""}${c.conditions_a_jour === false ? " · à réaccepter" : ""}` : "jamais acceptées (compte d'avant les conditions)"],
             ...(c.ferme_le ? [["Fermé", quand(c.ferme_le)] as [string, string]] : []),
           ]} />
+        </Paper>
+      </Section>
+      <Section titre="Sécurité">
+        <Paper sx={{ p: 2.5, borderRadius: 5 }}>
+          {!securite ? <Typography variant="body2">Chargement…</Typography> : (
+            <Stack gap={2}>
+              <Fiche items={[
+                ["Double authentification", securite.deux_facteurs ? "active" : "absente — le client l'ajoutera à sa prochaine connexion"],
+                ["Codes de secours", securite.codes_confirmes_le ? `${securite.codes_restants} restant(s) · notés ${quand(securite.codes_confirmes_le)}` : "pas encore notés"],
+              ]} />
+              {securite.evenements.length > 0 && (
+                <Tableau colonnes={["Quand", "Ce qui s'est passé"]} lignes={securite.evenements.slice(0, 8).map((e) => [quand(e.cree_le), EVENEMENTS[e.evenement] ?? e.evenement])} />
+              )}
+              {securite.reinitialisations.length > 0 && (
+                <Tableau colonnes={["Réinitialisation", "Faite", "Motif"]} lignes={securite.reinitialisations.map((r) => [quand(r.demandee_le), r.faite_le ? quand(r.faite_le) : r.echec ? `échec : ${r.echec}` : "non", r.motif ?? "—"])} />
+              )}
+            </Stack>
+          )}
         </Paper>
       </Section>
       {data.totaux && (
@@ -271,6 +291,13 @@ export function ClientDetail() {
         <Typography variant="body2">Pièces : {(c.verification_pieces ?? []).join(" · ") || "—"}. Ouvrez-les dans le stockage « verifications ».</Typography>
         <TextField label="Note" value={note} onChange={(e) => setNote(e.target.value)} fullWidth />
         <Button variant="outlined" color="error" onClick={() => void agir(() => guichet.validerVerification(c.id, false, note || "Pièces illisibles ou incomplètes."))}>Refuser les pièces</Button>
+        <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
+      </Dialogue>
+      <Dialogue ouvert={dialogue === "deux_facteurs"} titre="Réinitialiser la double authentification" onFermer={() => setDialogue(null)}
+        onValider={() => void agir(() => guichet.reinitialiserDeuxFacteurs(c.id, note))} libelle="Retirer son application" couleur="error" enCours={enCours} desactive={note.trim().length < 10}>
+        <Typography variant="body2">Seulement si le client a perdu son téléphone ET ses codes de secours, et après avoir vérifié que c'est bien lui. Son application d'authentification et ses codes sont retirés ; à sa prochaine connexion, il en ajoute une nouvelle. Il est prévenu par e-mail et dans l'application.</Typography>
+        <TextField label="Comment l'identité a été vérifiée" value={note} onChange={(e) => setNote(e.target.value)} fullWidth autoFocus multiline minRows={2}
+          helperText="Obligatoire, 10 caractères au moins : appel vidéo, pièce d'identité comparée, question sur ses dernières opérations…" />
         <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
       </Dialogue>
       <Dialogue ouvert={dialogue === "desactiver"} titre={c.ferme_le ? "Rouvrir ce compte fermé par le client" : c.desactive_le ? "Réactiver ce compte" : "Désactiver ce compte"} onFermer={() => setDialogue(null)} onValider={() => void agir(() => guichet.desactiverCompte(c.id, Boolean(c.desactive_le), note))} libelle={c.desactive_le ? "Réactiver" : "Désactiver"} couleur={c.desactive_le ? "primary" : "error"} enCours={enCours} desactive={!c.desactive_le && note.trim().length < 3}>

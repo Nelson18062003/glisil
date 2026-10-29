@@ -1,5 +1,6 @@
 import type { Parite } from "./types";
 import type { EtatAuth } from "../noyau/entree";
+import type { SecuriteUtilisateur } from "./types";
 
 /** Ce que l'application d'authentification doit recevoir : la clé, en lien (otpauth://), en texte et en image. */
 export type Enrolement = { facteurId: string; secret: string; uri: string; qr: string };
@@ -73,6 +74,10 @@ export interface GuichetAdmin {
   /** filtre : null (tous) · actifs · inactifs · nouveaux · verifications · desactives — cherchés dans TOUS les comptes. */
   clients(recherche?: string, filtre?: string | null): Promise<Client[]>;
   client(id: string): Promise<ClientDetail>;
+  /** La double authentification d'une personne : active, codes restants, ce qui s'est passé. */
+  securite(utilisateur: string): Promise<SecuriteUtilisateur>;
+  /** Super admin : après avoir vérifié l'identité, retirer l'application d'une personne (le motif dit comment). */
+  reinitialiserDeuxFacteurs(utilisateur: string, motif: string): Promise<{ facteurs: number }>;
   changerPalier(id: string, palier: number, note?: string): Promise<void>;
   /** La bêta : donner de l'argent de test à un compte (droit « parametres ») ; refusé hors bêta. */
   doter(id: string, xafe: number, usdt: number, motif?: string): Promise<{ reference: string }>;

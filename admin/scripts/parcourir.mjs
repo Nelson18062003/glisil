@@ -185,6 +185,22 @@ try {
   await page.getByText("Palier 1 · identité vérifiée").waitFor();
   exiger((await page.getByRole("button", { name: "Examiner les pièces" }).count()) === 0, "plus rien à examiner");
 
+  etape("Sécurité d'un client : sa double authentification, ses codes ; le super admin la réinitialise, motif obligatoire");
+  await voir("Double authentification");
+  await voir("active");
+  await voir("non vérifié");
+  exiger(await page.getByText("Code secret").count() === 0, "plus de code secret sur la fiche");
+  await page.getByRole("button", { name: "Réinitialiser la double authentification" }).click();
+  await page.getByLabel("Comment l'identité a été vérifiée").fill("appel");
+  exiger(await page.getByRole("button", { name: "Retirer son application" }).isDisabled(), "sans un vrai motif, rien ne se retire");
+  await page.getByLabel("Comment l'identité a été vérifiée").fill("Appel vidéo, CNI comparée au selfie du dossier");
+  await capturer("client-reinitialiser-2fa");
+  await page.getByRole("button", { name: "Retirer son application" }).click();
+  await voir("absente — le client l'ajoutera à sa prochaine connexion");
+  await voir("Réinitialisation autorisée par l'équipe");
+  await voir("Appel vidéo, CNI comparée au selfie du dossier");
+  await capturer("client-securite");
+
   etape("Marché : fermer puis rouvrir");
   await page.goto(`${BASE}/marche`);
   await voir("Dernières transactions");
@@ -354,6 +370,10 @@ try {
   await voir("Ce que les testeurs signalent");
   exiger((await page.getByLabel("robots en marche").count()) === 0, "le support n'arrête pas les robots");
   exiger((await page.getByRole("button", { name: "Poser un cours" }).count()) === 0, "le support ne pose pas de cours");
+  await page.goto(`${BASE}/clients/c5`);
+  await voir("Double authentification");
+  exiger((await page.getByRole("button", { name: "Réinitialiser la double authentification" }).count()) === 0, "le support ne réinitialise pas la double authentification");
+  exiger(await page.getByText("Appel vidéo, CNI comparée au selfie du dossier").count() === 0, "le motif d'une réinitialisation est réservé au super admin");
 
   etape("Première connexion d'une adresse qui n'est pas invitée : mot de passe, code e-mail, application, codes de secours — puis refusée");
   await page.getByRole("button", { name: "Se déconnecter" }).click();

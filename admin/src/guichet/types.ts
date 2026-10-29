@@ -209,3 +209,12 @@ export type Beta = {
   signalements: { nouveaux: number; vus: number; regles: number };
   derniers_signalements: Signalement[];
 };
+
+/** La fiche « Sécurité » d'une personne (admin_securite_utilisateur, 0035) : jamais une empreinte. */
+export type SecuriteUtilisateur = {
+  deux_facteurs: boolean;
+  codes_restants: number;
+  codes_confirmes_le: string | null;
+  evenements: { evenement: string; par_admin: string | null; detail: Record<string, unknown> | null; cree_le: string }[];
+  reinitialisations: { id: string; admin_id: string; demandee_le: string; faite_le: string | null; facteurs: number | null; echec: string | null; motif?: string }[];
+};

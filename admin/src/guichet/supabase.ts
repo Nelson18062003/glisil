@@ -7,7 +7,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Enrolement, GuichetAdmin } from "./guichet";
 import { AUTH_VIDE, premierFacteurDe, type EtatAuth } from "../noyau/entree";
 import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets, ReseauRegistre, Beta, Signalement } from "./types";
-import type { Parite } from "./types";
+import type { Parite, SecuriteUtilisateur } from "./types";
 import { verifierPreuve } from "./preuve";
 
 export class ErreurMoteur extends Error {
@@ -202,6 +202,21 @@ export class GuichetSupabase implements GuichetAdmin {
   statistiquesClients() { return this.rpc<StatsClients>("admin_statistiques_clients"); }
   clients(recherche?: string, filtre?: string | null) { return this.rpc<Client[]>("admin_clients", { p_recherche: recherche ?? null, p_n: 200, p_filtre: filtre ?? null }); }
   client(id: string) { return this.rpc<ClientDetail>("admin_client", { p_id: id }); }
+  securite(utilisateur: string) { return this.rpc<SecuriteUtilisateur>("admin_securite_utilisateur", { p_utilisateur: utilisateur }); }
+  async reinitialiserDeuxFacteurs(utilisateur: string, motif: string) {
+    /* 1 · l'autorisation, avec SA session : la base vérifie le droit, le motif, la limite du jour, et la journalise */
+    const a = await this.rpc<{ id: string }>("admin_autoriser_reinitialisation_2fa", { p_utilisateur: utilisateur, p_motif: motif });
+    /* 2 · l'exécution de CETTE autorisation, par la fonction (seule Auth retire un facteur) */
+    const { data, error } = await this.sb.functions.invoke("deux-facteurs", { body: { action: "reinitialisation", id: a.id } });
+    let j = (data ?? null) as Record<string, unknown> | null;
+    if (error) {
+      const contexte = (error as { context?: Response }).context;
+      j = contexte && typeof contexte.json === "function" ? ((await contexte.json().catch(() => null)) as Record<string, unknown> | null) : null;
+      if (!j || typeof j.erreur !== "string") throw new ErreurMoteur("la double authentification n'a pas pu être retirée", error.message);
+    }
+    if (j && typeof j.erreur === "string") throw new ErreurMoteur(j.erreur, typeof j.detail === "string" ? j.detail : undefined);
+    return { facteurs: Number(j?.facteurs ?? 0) };
+  }
   async doter(id: string, xafe: number, usdt: number, motif?: string) { return this.rpc<{ reference: string }>("admin_doter", { p_compte: id, p_xafe: xafe, p_usdt: usdt, p_motif: motif ?? null }); }
   async changerPalier(id: string, palier: number, note?: string) { await this.rpc("admin_changer_palier", { p_id: id, p_palier: palier, p_note: note ?? null }); }
   validerVerification(id: string, ok: boolean, note?: string) { return this.rpc<{ palier: number }>("admin_valider_verification", { p_id: id, p_ok: ok, p_note: note ?? null }); }
