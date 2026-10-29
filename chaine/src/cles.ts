@@ -41,14 +41,18 @@ export type FicheReseau = {
   blocsParTour: number;
   /** les décimales de l'USDT de ce réseau (le BSC-USD en a 18, les autres 6) */
   decimalesUsdt: readonly number[];
+  /** les décimales de l'USDC de ce réseau (celui de BNB Chain en a 18, celui d'Ethereum 6) ; vide : pas d'USDC ici */
+  decimalesUsdc: readonly number[];
+  /** les chaînes EVM que le nœud a le droit d'annoncer : la principale, celle d'essai, et le nœud local du harnais (31337) */
+  chainIds: readonly number[];
 };
 
 export const RESEAUX = {
-  bep20:   { famille: "evm",  compte: 0, nom: "BNB Smart Chain", natif: "BNB", decimalesNatif: 18, natifMinimum: 0.01,  natifEssai: "0.05", confirmations: 15, blocsParTour: 100_000, decimalesUsdt: [6, 18] },
-  trc20:   { famille: "tron", compte: 0, nom: "Tron",            natif: "TRX", decimalesNatif: 6,  natifMinimum: 50,    natifEssai: "200",  confirmations: 20, blocsParTour: 40_000,  decimalesUsdt: [6] },
-  erc20:   { famille: "evm",  compte: 1, nom: "Ethereum",        natif: "ETH", decimalesNatif: 18, natifMinimum: 0.005, natifEssai: "0.02", confirmations: 12, blocsParTour: 20_000,  decimalesUsdt: [6] },
-  base:    { famille: "evm",  compte: 2, nom: "Base",            natif: "ETH", decimalesNatif: 18, natifMinimum: 0.001, natifEssai: "0.005", confirmations: 30, blocsParTour: 100_000, decimalesUsdt: [6] },
-  polygon: { famille: "evm",  compte: 3, nom: "Polygon",         natif: "POL", decimalesNatif: 18, natifMinimum: 1,     natifEssai: "5",    confirmations: 64, blocsParTour: 100_000, decimalesUsdt: [6] },
+  bep20:   { famille: "evm",  compte: 0, nom: "BNB Smart Chain", natif: "BNB", decimalesNatif: 18, natifMinimum: 0.01,  natifEssai: "0.05", confirmations: 15, blocsParTour: 100_000, decimalesUsdt: [6, 18], decimalesUsdc: [6, 18], chainIds: [56, 97, 31337] },
+  trc20:   { famille: "tron", compte: 0, nom: "Tron",            natif: "TRX", decimalesNatif: 6,  natifMinimum: 50,    natifEssai: "200",  confirmations: 20, blocsParTour: 40_000,  decimalesUsdt: [6],     decimalesUsdc: [],      chainIds: [] },
+  erc20:   { famille: "evm",  compte: 1, nom: "Ethereum",        natif: "ETH", decimalesNatif: 18, natifMinimum: 0.005, natifEssai: "0.02", confirmations: 12, blocsParTour: 20_000,  decimalesUsdt: [6],     decimalesUsdc: [6],     chainIds: [1, 11155111, 31337] },
+  base:    { famille: "evm",  compte: 2, nom: "Base",            natif: "ETH", decimalesNatif: 18, natifMinimum: 0.001, natifEssai: "0.005", confirmations: 30, blocsParTour: 100_000, decimalesUsdt: [6],     decimalesUsdc: [6],     chainIds: [8453, 84532, 31337] },
+  polygon: { famille: "evm",  compte: 3, nom: "Polygon",         natif: "POL", decimalesNatif: 18, natifMinimum: 1,     natifEssai: "5",    confirmations: 64, blocsParTour: 100_000, decimalesUsdt: [6],     decimalesUsdc: [6],     chainIds: [137, 80002, 31337] },
 } as const satisfies Record<string, FicheReseau>;
 
 export type Reseau = keyof typeof RESEAUX;

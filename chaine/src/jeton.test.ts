@@ -58,7 +58,7 @@ function banc({ tete = 100, curseur = null as number | null, offre = 3_000_000_0
   const lectures: [number, number][] = [];
   const appels: [string, any][] = [];
   const chaine = {
-    reseau: "bep20", confirmations: 5, decimales: { USDT: 18, XAFe: 6 }, chaud: "0xCHAUD", reserve: "0xRESERVE",
+    reseau: "bep20", confirmations: 5, actifs: ["USDT", "XAFe"], decimales: { USDT: 18, XAFe: 6 }, chaud: "0xCHAUD", reserve: "0xRESERVE",
     tete: async () => tete,
     offreXafe: async () => offre,
     // la réserve se lit au CONTRAT ; le chaud ne doit rien tenir

@@ -17,6 +17,8 @@ export type Env = Record<string, string | undefined>;
 export type ConfigReseau = {
   // pas de clé d'API ici : les paramètres se lisent par les comptes connectés. TRC20_CLE_API est un secret de la fonction.
   noeud: string; usdt: string; xafe: string; confirmations?: number;
+  /** le contrat USDC du réseau (0045 : BNB Chain et Ethereum seulement) */
+  usdc?: string;
   froid?: string; plafond_chaud_usdt?: number; garder_chaud_usdt?: number; natif_minimum?: number;
   /** le bloc du déploiement du contrat XAFe : la lecture du jeton part de là */
   depart?: number;
@@ -47,6 +49,7 @@ export function envDepuisConfiguration(c: ConfigurationMoteur, env: Env): Env {
     // reste de la configuration vient quand même de la base.
     if (r.noeud) e[variableDuNoeud(id)] = r.noeud;
     if (r.usdt) e[`${p}_USDT`] = r.usdt;
+    if (r.usdc) e[`${p}_USDC`] = r.usdc;
     if (r.xafe) e[`${p}_XAFE`] = r.xafe;
     if (r.confirmations != null) e[`${p}_CONFIRMATIONS`] = String(r.confirmations);
     if (r.froid) e[`${p}_FROID`] = r.froid;
@@ -160,8 +163,11 @@ export async function veilleursDepuis(env: Env, seulement?: Reseau[], journal?: 
     verifierLeRegistre(id, env);
     const p = prefixe(id), f = fiche(id);
     const confirmations = Number(env[`${p}_CONFIRMATIONS`] ?? f.confirmations);
+    // l'USDC d'un réseau qui ne le porte pas (Tron) : refusé net, plutôt que lu sur un autre contrat
+    if (env[`${p}_USDC`] && !f.decimalesUsdc.length) throw new Error(`${id} : ${p}_USDC est posé, mais l'USDC ne passe pas par ${f.nom}`);
     const ch = f.famille === "evm"
       ? new ChaineEvm({ reseau: id, rpcUrl: noeud, usdt: env[`${p}_USDT`] ?? "", xafe: env[`${p}_XAFE`] ?? "", graine, confirmations,
+                        usdc: env[`${p}_USDC`] || undefined, chainIds: f.chainIds,
                         blocsParRequete: env[`${p}_BLOCS_PAR_REQUETE`] ? Number(env[`${p}_BLOCS_PAR_REQUETE`]) : undefined })
       : new ChaineTron({ reseau: id, noeud, usdt: env[`${p}_USDT`] ?? "", xafe: env[`${p}_XAFE`] ?? "", graine, confirmations, cleApi: env.TRC20_CLE_API });
     await ch.demarrer();

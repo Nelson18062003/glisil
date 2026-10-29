@@ -11,7 +11,8 @@
  *       Les wallets chauds d'une graine existante (indice 0), un par réseau.
  *
  *   npm run mise-en-service -- deployer --reseau bep20|trc20|… --chaud <adresse> [--admin <a>] [--pauseur <a>] [--geleur <a>]
- *                                       [--plafond <XAF>] [--usdt <contrat> | --usdt-essai] [--natif 0.05] [--production]
+ *                                       [--plafond <XAF>] [--usdt <contrat> | --usdt-essai] [--usdc <contrat> | --usdc-essai]
+ *                                       [--natif 0.05] [--production]
  *       Déploie le contrat XAFe : le constructeur pose TOUS les rôles d'un coup
  *       — admin, frappeur et destructeur (le chaud), pauseur, geleur, et
  *       l'inscripteur (la clé qui déploie, qui inscrira le stock d'adresses puis
@@ -20,11 +21,12 @@
  *       demandé, des frais pour le chaud.
  *       --production : la clé CLE_DE_MISE_EN_SERVICE (jetable, jamais admin),
  *       --admin, --pauseur et --geleur exigés (le wallet matériel du
- *       propriétaire), l'USDT officiel du réseau, jamais d'USDT d'essai.
+ *       propriétaire), l'USDT officiel du réseau (et l'USDC officiel sur BNB
+ *       Chain et Ethereum), jamais de jeton d'essai.
  *       Un réseau PRINCIPAL (lu au nœud : BSC 56, Ethereum, Base, Polygon, le
  *       nœud Tron de production) ne se déploie qu'en --production
  *       (options-de-deploiement.ts, éprouvé seul).
- *       Écrit le bloc du paramètre « chaine » (noeud, xafe, usdt, depart).
+ *       Écrit le bloc du paramètre « chaine » (noeud, xafe, usdt, usdc, depart).
  *
  *   npm run mise-en-service -- preinscrire --reseau … --xafe <contrat> --de 1 --a 2000 [--lot N] [--renoncer]
  *       (XAFE_GRAINE, et la clé qui tient INSCRIPTEUR) Inscrit d'avance au
@@ -68,7 +70,7 @@ import { CHAUD, deriver, estReseau, fiche, graineValide, prefixe, RESEAUX, varia
 import { ChaineEvm } from "./evm.ts";
 import { moteur } from "./moteur.ts";
 import { aLeRole, donnerLesRoles, INSCRIPTEUR, inscrire, preinscrire, renoncer, ROLES, ROLES_DE_GARDE, signataireEvm, signataireTron, type Artefact, type Signataire } from "./signataire.ts";
-import { estReseauPrincipal, USDT_OFFICIEL, verifierLesOptions } from "./options-de-deploiement.ts";
+import { estReseauPrincipal, USDC_OFFICIEL, USDT_OFFICIEL, verifierLesOptions } from "./options-de-deploiement.ts";
 import { noeudsDesCles } from "./service.ts";
 import { ChaineTron, vingtOctets } from "./tron.ts";
 
@@ -158,6 +160,7 @@ async function deployer(o: Record<string, string | true>) {
     reseau: r, principal: estReseauPrincipal(r, noeud, chainId), production,
     admin: texte("admin") || undefined, pauseur: texte("pauseur") || undefined, geleur: texte("geleur") || undefined,
     usdt: texte("usdt") || undefined, usdtEssai: Boolean(o["usdt-essai"]), plafond: texte("plafond") || undefined,
+    usdc: texte("usdc") || undefined, usdcEssai: Boolean(o["usdc-essai"]),
   });
   if (refus) arreter(refus);
   const s = signataire(r, production);
@@ -188,12 +191,18 @@ async function deployer(o: Record<string, string | true>) {
     usdt = await s.deployer(artefact("essai/UsdtEssai.sol/UsdtEssai.json"), ["uint8"], [Math.max(...fiche(r).decimalesUsdt)]);
     console.log(`✓ USDT d'essai déployé : ${usdt} (${Math.max(...fiche(r).decimalesUsdt)} décimales ; « frapper(adresse, montant) » en donne à qui veut)`);
   }
+  let usdc = texte("usdc");
+  if (o["usdc-essai"]) {
+    // le même jeton d'essai que l'USDT (frapper à volonté), aux décimales de l'USDC du réseau
+    usdc = await s.deployer(artefact("essai/UsdtEssai.sol/UsdtEssai.json"), ["uint8"], [Math.max(...fiche(r).decimalesUsdc)]);
+    console.log(`✓ USDC d'essai déployé : ${usdc} (${Math.max(...fiche(r).decimalesUsdc)} décimales)`);
+  }
   if (natif > 0n) {
     await s.envoyerNatif(chaud, natif);
     console.log(`✓ ${formatUnits(natif, n.decimales)} ${n.nom} envoyés au chaud pour les frais`);
   }
   if (fiche(r).famille === "evm") console.log(`\nVérifier sur l'explorateur (0.8.28, optimiseur 200, EVM paris) : npx hardhat verify --network <réseau> ${xafe} ${args.map(String).join(" ")}`);
-  console.log(`\nLe paramètre « chaine » de la base reçoit :\n  "${r}": ${JSON.stringify({ noeud: env[variableDuNoeud(r)], xafe, usdt: usdt || "<le contrat USDT du réseau>", depart, confirmations: fiche(r).confirmations })}`);
+  console.log(`\nLe paramètre « chaine » de la base reçoit :\n  "${r}": ${JSON.stringify({ noeud: env[variableDuNoeud(r)], xafe, usdt: usdt || "<le contrat USDT du réseau>", ...(fiche(r).decimalesUsdc.length ? { usdc: usdc || "<le contrat USDC du réseau>" } : {}), depart, confirmations: fiche(r).confirmations })}`);
   console.log(`\nEnsuite : npm run mise-en-service -- preinscrire --reseau ${r} --xafe ${xafe} --de 1 --a ${r === "trc20" ? 600 : 2000} --renoncer`);
   console.log(`Le réseau reste FERMÉ aux clients jusqu'à ce que l'équipe l'ouvre (admin_activer_reseau('${r}', true)).`);
 }
@@ -290,8 +299,8 @@ async function verifier(o: Record<string, string | true> = {}) {
     if (!noeud) continue;
     const c = { reseau: r, usdt: env[`${P}_USDT`] ?? "", xafe: env[`${P}_XAFE`] ?? "", graine: g, confirmations: Number(env[`${P}_CONFIRMATIONS`] ?? f.confirmations) };
     reseaux.push(f.famille === "evm"
-      // une clé jetable : on ne fait que LIRE (rôles), rien n'est signé
-      ? { r, ch: () => new ChaineEvm({ ...c, rpcUrl: noeud }), s: () => signataireEvm(noeud, "0x" + "11".repeat(32), r) }
+      // une clé jetable : on ne fait que LIRE (rôles), rien n'est signé ; le nœud doit être sur la bonne chaîne
+      ? { r, ch: () => new ChaineEvm({ ...c, rpcUrl: noeud, usdc: env[`${P}_USDC`] || undefined, chainIds: f.chainIds }), s: () => signataireEvm(noeud, "0x" + "11".repeat(32), r) }
       : { r, ch: () => new ChaineTron({ ...c, noeud, cleApi: env.TRC20_CLE_API }), s: () => signataireTron(noeud, "11".repeat(32), env.TRC20_CLE_API) });
   }
   v(reseaux.length > 0, `au moins un réseau configuré (${TOUS.map(variableDuNoeud).join(", ")})`);
@@ -311,6 +320,15 @@ async function verifier(o: Record<string, string | true> = {}) {
     if (dem !== true) continue;
     v(chaine.decimales.XAFe === 6, "XAFe a 6 décimales");
     v(fiche(r).decimalesUsdt.includes(chaine.decimales.USDT), `l'USDT a les décimales du réseau (${fiche(r).decimalesUsdt.join(" ou ")})`);
+    // l'USDC (livraison 2) : sur BNB Chain et Ethereum ; sans son contrat, les retraits d'USDC ATTENDENT au veilleur
+    if (fiche(r).decimalesUsdc.length) {
+      const usdc = env[`${P}_USDC`] ?? "";
+      v(valable(r, usdc), `${P}_USDC est une adresse ${P}`, usdc ? usdc : "absent : les dépôts d'USDC ne seront pas vus, les retraits attendront");
+      if (valable(r, usdc)) {
+        v(chaine.actifs.includes("USDC") && fiche(r).decimalesUsdc.includes(chaine.decimales.USDC), `l'USDC a les décimales du réseau (${fiche(r).decimalesUsdc.join(" ou ")}) : ${chaine.decimales.USDC}`);
+        if (production) v(memeAdresse(usdc, USDC_OFFICIEL[r] ?? ""), `${P}_USDC est l'USDC officiel (${USDC_OFFICIEL[r] ?? "?"})`);
+      }
+    } else v(!env[`${P}_USDC`], `pas de ${P}_USDC : l'USDC ne passe pas par ${fiche(r).nom}`);
     const lecteur = s();
     // le contrat d'après le correctif : la réserve vit DANS le contrat
     const etatJ = await chaine.etatDuJeton().then((x) => x, () => null);
@@ -353,8 +371,9 @@ async function verifier(o: Record<string, string | true> = {}) {
       const plafond = Number(env[`${P}_PLAFOND_CHAUD_USDT`] ?? 20000), garder = Number(env[`${P}_GARDER_CHAUD_USDT`] ?? 10000);
       v(garder > 0 && garder < plafond, `au-delà de ${plafond} USDT au chaud, le surplus part au froid en gardant ${garder}`);
     } else console.log(`· ${P}_FROID non donné : rien ne part au froid automatiquement`);
-    const usdt = await chaine.solde("USDT" as Actif, chaine.chaud);
-    console.log(`· le chaud tient ${formatUnits(usdt, chaine.decimales.USDT)} USDT ; ${formatUnits(await chaine.offreXafe(), 6)} XAFe circulent sur ${P}`);
+    const tient: string[] = [];
+    for (const d of chaine.actifs.filter((a) => a !== "XAFe")) tient.push(`${formatUnits(await chaine.solde(d as Actif, chaine.chaud), chaine.decimales[d])} ${d}`);
+    console.log(`· le chaud tient ${tient.join(", ")} ; ${formatUnits(await chaine.offreXafe(), 6)} XAFe circulent sur ${P}`);
   }
   console.log(echecs ? `✗ ${echecs} point(s) à reprendre avant d'ouvrir les retraits` : "✓ tout est en place : le veilleur peut tourner");
   process.exit(echecs ? 1 : 0);

@@ -11,7 +11,7 @@ type Ligne = { reference: string; actif: "USDT" | "XAFe"; montant: number; tx_ha
 function banc(liste: Ligne[], { plafond = XAF(1000), reste = XAF(1000), enPause = false } = {}) {
   const signes: Appel[] = [];
   const chaine = {
-    reseau: "bep20", confirmations: 3, decimales: { USDT: 6, XAFe: 6 }, chaud: "0xCHAUD", reserve: "0xRESERVE",
+    reseau: "bep20", confirmations: 3, actifs: ["USDT", "XAFe"], decimales: { USDT: 6, XAFe: 6 }, chaud: "0xCHAUD", reserve: "0xRESERVE",
     tete: async () => 100,
     solde: async () => 10n ** 18n,
     etatDuJeton: async () => ({ enPause, plafondJour: plafond, resteDuJour: reste, reserve: 0n }),

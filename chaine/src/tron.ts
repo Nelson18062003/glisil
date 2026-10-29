@@ -223,7 +223,9 @@ export class ChaineTron implements Chaine {
   readonly chaud: string;
   readonly reserve: string;
   readonly noeud: NoeudTron;
-  decimales: Record<Actif, number> = { USDT: 6, XAFe: 6 };
+  decimales: Record<Actif, number> = { USDT: 6, USDC: 6, XAFe: 6 };
+  /** Tron porte l'USDT et XAFe ; l'USDC, Circle l'y a abandonné en 2024 (migration 0045 : la base le refuse aussi) */
+  readonly actifs: readonly Actif[] = ["USDT", "XAFe"];
   private graine: string;
   private c: ConfigTron;
 
@@ -239,12 +241,17 @@ export class ChaineTron implements Chaine {
     this.reserve = vingt ? adresseTron(vingt) : c.xafe;
   }
 
-  private contrat(actif: Actif) { return actif === "USDT" ? this.c.usdt : this.c.xafe; }
+  // un actif que Tron ne porte pas ne doit JAMAIS retomber sur le contrat XAFe (lire, balayer ou envoyer le mauvais jeton)
+  private contrat(actif: Actif) {
+    if (actif === "USDT") return this.c.usdt;
+    if (actif === "XAFe") return this.c.xafe;
+    throw new Error(`${actif} ne passe pas par Tron`);
+  }
   private lire(contrat: string, signature: string, types: string[], valeurs: unknown[]) { return this.noeud.lire(this.chaud, contrat, signature, types, valeurs); }
 
   /* --------------------------------------------------------------- lire */
   async demarrer() {
-    for (const a of ["USDT", "XAFe"] as Actif[]) this.decimales[a] = Number(BigInt(await this.lire(this.contrat(a), "decimals()", [], [])));
+    for (const a of this.actifs) this.decimales[a] = Number(BigInt(await this.lire(this.contrat(a), "decimals()", [], [])));
   }
 
   async tete() { return (await this.noeud.tete()).numero; }

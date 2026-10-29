@@ -7,7 +7,11 @@
 import { formatUnits, id } from "ethers";
 import type { Reseau } from "./cles.ts";
 
-export type Actif = "USDT" | "XAFe";
+export type Actif = "USDT" | "USDC" | "XAFe";
+/** les deux dollars : ils se déposent, se balaient vers le chaud, se mettent au froid et se retirent par transfert */
+export type Dollar = "USDT" | "USDC";
+export const DOLLARS: readonly Dollar[] = ["USDT", "USDC"];
+export const estDollar = (a: string): a is Dollar => (DOLLARS as readonly string[]).includes(a);
 
 /** Ce qu'on demande à la chaîne de faire, depuis une adresse dérivée de la graine. */
 export type Appel =
@@ -75,6 +79,11 @@ export function mouvementsDepuisJournaux(journaux: JournalBrut[], adresse: (ving
 export interface Chaine {
   readonly reseau: Reseau;
   readonly confirmations: number;
+  /**
+   * ce que CE veilleur sait lire et envoyer sur ce réseau : XAFe, et chaque dollar dont le contrat est configuré
+   * (l'USDC sur BNB Chain et Ethereum, jamais sur Tron). Dans l'ordre où les adresses se préparent.
+   */
+  readonly actifs: readonly Actif[];
   decimales: Record<Actif, number>;
   /** l'adresse du wallet chaud (indice 0), au format du réseau */
   readonly chaud: string;

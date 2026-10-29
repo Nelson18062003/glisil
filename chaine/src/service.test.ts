@@ -34,7 +34,7 @@ test("un secret de la fonction passe avant la base ; une variable vide ne l'effa
 
 test("en production, sans nœud dans la base : contrats et départ viennent quand même de la base, le nœud du secret", () => {
   // Témoin : l'ancien code (« if (!r || !r.noeud) return ») jetait tout le réseau — ni BEP20_XAFE ni BEP20_DEPART.
-  const prod: ConfigurationMoteur = { essai: false, reseaux: { bep20: { xafe: "0xX", usdt: "0x55d398326f99059fF775485246999027B3197955", depart: 1 } } } as ConfigurationMoteur;
+  const prod: ConfigurationMoteur = { essai: false, reseaux: { bep20: { xafe: "0xX", usdt: "0x55d398326f99059fF775485246999027B3197955", depart: 1 } } } as unknown as ConfigurationMoteur;
   const e = envDepuisConfiguration(prod, { BEP20_RPC: "https://n" });
   assert.equal(e.BEP20_XAFE, "0xX");
   assert.equal(e.BEP20_USDT, "0x55d398326f99059fF775485246999027B3197955");
@@ -43,7 +43,7 @@ test("en production, sans nœud dans la base : contrats et départ viennent quan
 });
 
 test("les clés du propriétaire (EVM_RPC_KEY, TRONGRID_KEY) donnent les nœuds des réseaux principaux — jamais en essai", () => {
-  const prod: ConfigurationMoteur = { essai: false, reseaux: { bep20: { xafe: "0xX", usdt: "0xU", depart: 1 } } } as ConfigurationMoteur;
+  const prod: ConfigurationMoteur = { essai: false, reseaux: { bep20: { xafe: "0xX", usdt: "0xU", depart: 1 } } } as unknown as ConfigurationMoteur;
   const e = envDepuisConfiguration(prod, { EVM_RPC_KEY: "k", TRONGRID_KEY: "t" });
   assert.equal(e.BEP20_RPC, "https://bnb-mainnet.g.alchemy.com/v2/k");
   assert.equal(e.ERC20_RPC, "https://eth-mainnet.g.alchemy.com/v2/k");

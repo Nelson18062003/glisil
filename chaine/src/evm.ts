@@ -25,6 +25,13 @@ const IFACE = new Interface(ABI_JETON);
 const TRANSFER = IFACE.getEvent("Transfer")!.topicHash;
 
 export type ConfigEvm = { rpcUrl: string; usdt: string; xafe: string; confirmations: number; graine: string;
+  /** le contrat USDC du réseau (BNB Chain, Ethereum) ; absent, ce veilleur ne lit ni n'envoie d'USDC */
+  usdc?: string;
+  /**
+   * les identifiants de chaîne que le nœud a le droit de rendre : une clé d'API rangée sous le mauvais nom
+   * (le nœud d'Ethereum à la place de celui de BNB Chain) signerait pour une autre chaîne. Absent : pas de contrôle.
+   */
+  chainIds?: readonly number[];
   /** le réseau EVM : BSC par défaut, Ethereum, Base, Polygon… — il décide du compte de dérivation */
   reseau?: Reseau;
   /** au plus combien de blocs par lecture de journaux (eth_getLogs) : l'offre gratuite d'Alchemy n'en accepte que 10 */
@@ -38,8 +45,10 @@ export class ChaineEvm implements Chaine {
   readonly fournisseur: JsonRpcProvider;
   readonly chaud: string;
   readonly reserve: string;
-  readonly jetons: Record<Actif, Contract>;
-  decimales: Record<Actif, number> = { USDT: 18, XAFe: 6 };
+  private readonly contrats: Partial<Record<Actif, Contract>>;
+  readonly actifs: readonly Actif[];
+  private readonly chainIds?: readonly number[];
+  decimales: Record<Actif, number> = { USDT: 18, USDC: 18, XAFe: 6 };
   private graine: string;
 
   constructor(c: ConfigEvm) {
@@ -54,11 +63,25 @@ export class ChaineEvm implements Chaine {
     this.fournisseur = new JsonRpcProvider(c.rpcUrl, undefined, { staticNetwork: true, pollingInterval: 500, cacheTimeout: -1 });
     this.chaud = deriver(c.graine, this.reseau, CHAUD).adresse;
     this.reserve = getAddress(c.xafe);
-    this.jetons = { USDT: new Contract(c.usdt, ABI_JETON, this.fournisseur), XAFe: new Contract(c.xafe, ABI_JETON, this.fournisseur) };
+    this.contrats = { USDT: new Contract(c.usdt, ABI_JETON, this.fournisseur), XAFe: new Contract(c.xafe, ABI_JETON, this.fournisseur) };
+    if (c.usdc) this.contrats.USDC = new Contract(c.usdc, ABI_JETON, this.fournisseur);
+    this.actifs = c.usdc ? ["USDT", "USDC", "XAFe"] : ["USDT", "XAFe"];
+    this.chainIds = c.chainIds;
+  }
+
+  /** le contrat d'un actif ; un actif que ce veilleur ne porte pas ne retombe jamais sur un autre */
+  jeton(actif: Actif): Contract {
+    const j = this.contrats[actif];
+    if (!j) throw new Error(`${actif} n'est pas configuré sur ${this.reseau} (${this.reseau.toUpperCase()}_${actif.toUpperCase()})`);
+    return j;
   }
 
   async demarrer() {
-    this.decimales = { USDT: Number(await this.jetons.USDT.decimals()), XAFe: Number(await this.jetons.XAFe.decimals()) };
+    if (this.chainIds?.length) {
+      const id = Number((await this.fournisseur.getNetwork()).chainId);
+      if (!this.chainIds.includes(id)) throw new Error(`${this.reseau} : le nœud est sur la chaîne ${id}, attendu ${this.chainIds.join(" ou ")} — une clé rangée sous le mauvais nom ?`);
+    }
+    for (const a of this.actifs) this.decimales[a] = Number(await this.jeton(a).decimals());
   }
 
   tete() { return this.fournisseur.getBlockNumber(); }
@@ -66,7 +89,7 @@ export class ChaineEvm implements Chaine {
   async transferts(actif: Actif, vers: string[], de: number, a: number): Promise<Transfert[]> {
     const vus: Transfert[] = [];
     const valables = vers.filter((x) => /^0x[0-9a-fA-F]{40}$/.test(x)).map((x) => zeroPadValue(x.toLowerCase(), 32));
-    const contrat = await this.jetons[actif].getAddress();
+    const contrat = await this.jeton(actif).getAddress();
     for (let i = 0; i < valables.length; i += 50) {
       for (let b = de; b <= a; b += this.pasDepots) {
         const journaux = await this.fournisseur.getLogs({ address: contrat, topics: [TRANSFER, null, valables.slice(i, i + 50)], fromBlock: b, toBlock: Math.min(a, b + this.pasDepots - 1) });
@@ -80,19 +103,19 @@ export class ChaineEvm implements Chaine {
   }
 
   async solde(quoi: Actif | "natif", adresse: string) {
-    return quoi === "natif" ? this.fournisseur.getBalance(adresse) : BigInt(await this.jetons[quoi].balanceOf(adresse));
+    return quoi === "natif" ? this.fournisseur.getBalance(adresse) : BigInt(await this.jeton(quoi).balanceOf(adresse));
   }
-  async estAdresseDeDepot(adresse: string) { return Boolean(await this.jetons.XAFe.estAdresseDeDepot(adresse)); }
-  async dejaDetruit(empreinte: string) { return Boolean(await this.jetons.XAFe.destructionReferencee(empreinte)); }
-  async offreXafe() { return BigInt(await this.jetons.XAFe.totalSupply()); }
+  async estAdresseDeDepot(adresse: string) { return Boolean(await this.jeton("XAFe").estAdresseDeDepot(adresse)); }
+  async dejaDetruit(empreinte: string) { return Boolean(await this.jeton("XAFe").destructionReferencee(empreinte)); }
+  async offreXafe() { return BigInt(await this.jeton("XAFe").totalSupply()); }
   async etatDuJeton(): Promise<EtatDuJeton> {
-    const j = this.jetons.XAFe;
+    const j = this.jeton("XAFe");
     const [enPause, plafondJour, resteDuJour, reserve] = await Promise.all([j.paused(), j.plafondJour(), j.resteDuJour(), j.reserve()]);
     return { enPause: Boolean(enPause), plafondJour: BigInt(plafondJour), resteDuJour: BigInt(resteDuJour), reserve: BigInt(reserve) };
   }
 
   async mouvementsXafe(de: number, a: number): Promise<MouvementJeton[]> {
-    const contrat = await this.jetons.XAFe.getAddress();
+    const contrat = await this.jeton("XAFe").getAddress();
     const journaux = [];
     for (let b = de; b <= a; b += this.pasJeton) {
       for (const j of await this.fournisseur.getLogs({ address: contrat, topics: [Object.values(SUJETS)], fromBlock: b, toBlock: Math.min(a, b + this.pasJeton - 1) })) {
@@ -104,8 +127,10 @@ export class ChaineEvm implements Chaine {
 
   async fraisJeton(actif: Actif, depuisIndice: number, vers: string, montant: bigint) {
     const depuis = deriver(this.graine, this.reseau, depuisIndice).adresse;
-    const gaz = (await this.fournisseur.estimateGas({ from: depuis, to: await this.jetons[actif].getAddress(), data: IFACE.encodeFunctionData("transfer", [vers, montant]) })) * 12n / 10n;
-    return gaz * ((await this.fournisseur.getFeeData()).gasPrice ?? 1_000_000_000n);
+    const gaz = (await this.fournisseur.estimateGas({ from: depuis, to: await this.jeton(actif).getAddress(), data: IFACE.encodeFunctionData("transfer", [vers, montant]) })) * 12n / 10n;
+    // EIP-1559 (Ethereum) : le nœud exige gaz × maxFeePerGas sur l'adresse, pas gaz × le prix du moment
+    const f = await this.fournisseur.getFeeData();
+    return gaz * (f.maxFeePerGas ?? f.gasPrice ?? 1_000_000_000n);
   }
 
   adresseValable(adresse: string): string | null {
@@ -117,11 +142,11 @@ export class ChaineEvm implements Chaine {
     const p = deriver(this.graine, this.reseau, indice).portefeuille.connect(this.fournisseur);
     let tx: TransactionRequest;
     if (appel.type === "natif") tx = { to: appel.vers, value: appel.montant };
-    else if (appel.type === "jeton") tx = { to: await this.jetons[appel.actif].getAddress(), data: IFACE.encodeFunctionData("transfer", [appel.vers, appel.montant]) };
-    else if (appel.type === "frapper") tx = { to: await this.jetons.XAFe.getAddress(), data: IFACE.encodeFunctionData("frapper", [appel.vers, appel.montant, appel.empreinte]) };
-    else if (appel.type === "frapperReserve") tx = { to: await this.jetons.XAFe.getAddress(), data: IFACE.encodeFunctionData("frapperReserve", [appel.montant, appel.empreinte]) };
-    else if (appel.type === "detruireReserve") tx = { to: await this.jetons.XAFe.getAddress(), data: IFACE.encodeFunctionData("detruireReserve", [appel.montant, appel.empreinte]) };
-    else tx = { to: await this.jetons.XAFe.getAddress(), data: IFACE.encodeFunctionData("detruireDepot", [appel.adresse, appel.montant, appel.empreinte]) };
+    else if (appel.type === "jeton") tx = { to: await this.jeton(appel.actif).getAddress(), data: IFACE.encodeFunctionData("transfer", [appel.vers, appel.montant]) };
+    else if (appel.type === "frapper") tx = { to: await this.jeton("XAFe").getAddress(), data: IFACE.encodeFunctionData("frapper", [appel.vers, appel.montant, appel.empreinte]) };
+    else if (appel.type === "frapperReserve") tx = { to: await this.jeton("XAFe").getAddress(), data: IFACE.encodeFunctionData("frapperReserve", [appel.montant, appel.empreinte]) };
+    else if (appel.type === "detruireReserve") tx = { to: await this.jeton("XAFe").getAddress(), data: IFACE.encodeFunctionData("detruireReserve", [appel.montant, appel.empreinte]) };
+    else tx = { to: await this.jeton("XAFe").getAddress(), data: IFACE.encodeFunctionData("detruireDepot", [appel.adresse, appel.montant, appel.empreinte]) };
     const pret = await p.populateTransaction({ ...tx, nonce: await this.fournisseur.getTransactionCount(p.address, "pending") });
     const brut = await p.signTransaction(pret);
     return { hash: Transaction.from(brut).hash!, brut };

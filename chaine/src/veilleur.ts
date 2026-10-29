@@ -19,8 +19,8 @@
  * BEP20_*, TRC20_*, FROID_*). `npm run veilleur`.
  */
 import { formatUnits, keccak256, parseUnits, toUtf8Bytes } from "ethers";
-import type { Actif, Appel, Chaine, EtatDuJeton, MouvementJeton } from "./chaine.ts";
-import { versMoteur } from "./chaine.ts";
+import type { Actif, Appel, Chaine, Dollar, EtatDuJeton, MouvementJeton } from "./chaine.ts";
+import { estDollar, versMoteur } from "./chaine.ts";
 import { CHAUD, deriver, fiche } from "./cles.ts";
 import type { Rpc } from "./moteur.ts";
 
@@ -28,9 +28,9 @@ export type ConfigVeilleur = {
   graine: string;
   /** combien d'adresses libres garder prêtes, par actif */
   reserve?: number;
-  /** au-delà de ce solde (en USDT), une adresse de dépôt est balayée vers le chaud */
+  /** au-delà de ce solde (en dollars : USDT comme USDC), une adresse de dépôt est balayée vers le chaud */
   seuilBalayage?: number;
-  /** le wallet froid : au-delà de `plafondChaud` USDT sur le chaud, on y envoie de quoi redescendre à `garderChaud` */
+  /** le wallet froid : au-delà de `plafondChaud` dollars sur le chaud (par dollar), on y envoie de quoi redescendre à `garderChaud` */
   froid?: { adresse: string; plafondChaud: number; garderChaud: number };
   /** en dessous, le veilleur réclame de la monnaie native pour les frais (BNB, TRX), en unités entières */
   natifMinimum?: number;
@@ -100,7 +100,9 @@ export class Veilleur {
     let indice = Number(etat.indice_max ?? 0);
     let ajoutees = 0;
     let aInscrire: { adresse: string; indice: number }[] = [];
-    for (const actif of ["USDT", "XAFe"] as Actif[]) {
+    for (const actif of this.chaine.actifs) {
+      // un actif que la base ne porte pas sur ce réseau (une base d'avant 0045) : rien à préparer
+      if (etat.libres && !(actif in etat.libres)) continue;
       const manque = Math.min(reserve - Number(etat.libres?.[actif] ?? 0), this.c.parTour ?? 20);
       if (manque <= 0) continue;
       const lot: { adresse: string; indice: number }[] = [];
@@ -143,7 +145,7 @@ export class Veilleur {
     // la réserve aussi se surveille : un dépôt sur une adresse jamais montrée ne crédite personne, mais il se voit
     const surveillees: Attribuee[] = [...attribuees, ...(reserve ?? [])];
     let credites = 0;
-    for (const actif of ["USDT", "XAFe"] as Actif[]) {
+    for (const actif of this.chaine.actifs) {
       const vers = surveillees.filter((a) => a.actif === actif).map((a) => a.adresse);
       if (!vers.length) continue;
       for (const d of await this.chaine.transferts(actif, vers, depuis, jusqua)) {
@@ -228,8 +230,14 @@ export class Veilleur {
       this.journal(`retrait ${r.reference} refusé : adresse ${r.adresse} invalide, les fonds reviennent au client`);
       return;
     }
-    if (r.actif === "USDT" && (await ch.solde("USDT", ch.chaud)) < parseUnits(String(r.montant), ch.decimales.USDT)) {
-      this.alerte(`le wallet chaud n'a pas assez d'USDT pour ${r.reference} (${r.montant}) : balayage ou réapprovisionnement depuis le froid`);
+    // un actif que ce veilleur ne sait pas envoyer (l'USDC sans son contrat configuré) : le retrait ATTEND, il ne part
+    // jamais sur un autre jeton — ni ne se rembourse tout seul : l'équipe configure le contrat ou le rembourse
+    if (!ch.actifs.includes(r.actif)) {
+      this.alerte(`retrait ${r.reference} (${r.montant} ${r.actif}) attend : ${r.actif} n'est pas configuré sur ce veilleur`);
+      return;
+    }
+    if (estDollar(r.actif) && (await ch.solde(r.actif, ch.chaud)) < parseUnits(String(r.montant), ch.decimales[r.actif])) {
+      this.alerte(`le wallet chaud n'a pas assez d'${r.actif} pour ${r.reference} (${r.montant}) : balayage ou réapprovisionnement depuis le froid`);
       return;
     }
     if (r.actif === "XAFe" && garde) {
@@ -261,9 +269,11 @@ export class Veilleur {
     const ch = this.chaine;
     const vers = ch.adresseValable(r.adresse)!;
     const montant = parseUnits(String(r.montant), ch.decimales[r.actif]);
-    const appel: Appel = r.actif === "USDT"
-      ? { type: "jeton", actif: "USDT", vers, montant }
-      : { type: "frapper", vers, montant, empreinte: keccak256(toUtf8Bytes(r.reference)) };
+    // un dollar se TRANSFÈRE depuis le chaud ; seul un retrait de XAFe se frappe — jamais « tout ce qui n'est pas l'USDT »
+    let appel: Appel;
+    if (estDollar(r.actif)) appel = { type: "jeton", actif: r.actif, vers, montant };
+    else if (r.actif === "XAFe") appel = { type: "frapper", vers, montant, empreinte: keccak256(toUtf8Bytes(r.reference)) };
+    else throw new Error(`actif inconnu : ${String(r.actif)}`);
     const { hash, brut } = await ch.signer(CHAUD, appel);
     // NOTÉ avant d'être diffusé : après une coupure, c'est cette transaction-là qui repart
     await rpc("chaine_marquer_envoi", { p_reference: r.reference, p_tx_hash: hash, p_brut: brut, p_remplace: remplace });
@@ -381,21 +391,26 @@ export class Veilleur {
 
   /* ------------------------------------------------------------ le balayage */
 
-  /** Les USDT des adresses de dépôt rejoignent le wallet chaud (qui avance les frais). */
+  /** les dollars que ce veilleur porte (USDT, et l'USDC là où il est configuré) */
+  private dollars(): Dollar[] { return this.chaine.actifs.filter(estDollar); }
+
+  /** Les dollars des adresses de dépôt rejoignent le wallet chaud (qui avance les frais). */
   async balayer(rpc: Rpc): Promise<number> {
     const ch = this.chaine;
     const { attribuees } = await rpc("chaine_adresses", { p_reseau: ch.reseau });
-    const seuil = parseUnits(String(this.c.seuilBalayage ?? 50), ch.decimales.USDT);
     let balayees = 0;
-    for (const a of (attribuees as Attribuee[]).filter((x) => x.actif === "USDT" && x.indice != null)) {
-      const solde = await ch.solde("USDT", a.adresse);
-      if (solde < seuil) continue;
-      const besoin = await ch.fraisJeton("USDT", a.indice!, ch.chaud, solde);
-      const natif = await ch.solde("natif", a.adresse);
-      if (natif < besoin) await this.envoyerEtAttendre(CHAUD, { type: "natif", vers: a.adresse, montant: besoin - natif });
-      if (!(await this.envoyerEtAttendre(a.indice!, { type: "jeton", actif: "USDT", vers: ch.chaud, montant: solde }))) throw new Error(`le balayage de ${a.adresse} a été refusé`);
-      balayees += 1;
-      this.journal(`balayé : ${formatUnits(solde, ch.decimales.USDT)} USDT de ${a.adresse} vers le wallet chaud`);
+    for (const d of this.dollars()) {
+      const seuil = parseUnits(String(this.c.seuilBalayage ?? 50), ch.decimales[d]);
+      for (const a of (attribuees as Attribuee[]).filter((x) => x.actif === d && x.indice != null)) {
+        const solde = await ch.solde(d, a.adresse);
+        if (solde < seuil) continue;
+        const besoin = await ch.fraisJeton(d, a.indice!, ch.chaud, solde);
+        const natif = await ch.solde("natif", a.adresse);
+        if (natif < besoin) await this.envoyerEtAttendre(CHAUD, { type: "natif", vers: a.adresse, montant: besoin - natif });
+        if (!(await this.envoyerEtAttendre(a.indice!, { type: "jeton", actif: d, vers: ch.chaud, montant: solde }))) throw new Error(`le balayage de ${a.adresse} a été refusé`);
+        balayees += 1;
+        this.journal(`balayé : ${formatUnits(solde, ch.decimales[d])} ${d} de ${a.adresse} vers le wallet chaud`);
+      }
     }
     return balayees;
   }
@@ -405,39 +420,59 @@ export class Veilleur {
   /** Au-delà du plafond, le surplus du chaud part au froid. En dessous de ce que les retraits demandent, l'alerte. */
   async mettreAuFroid(rpc: Rpc): Promise<number> {
     const ch = this.chaine;
-    const usdt = await ch.solde("USDT", ch.chaud);
     const natif = await ch.solde("natif", ch.chaud);
-    const dec = ch.decimales.USDT;
     const { natif: nomNatif, decimalesNatif } = fiche(ch.reseau);
     if (this.c.natifMinimum != null && natif < parseUnits(String(this.c.natifMinimum), decimalesNatif)) {
       this.alerte(`le wallet chaud ${ch.chaud} manque de ${nomNatif} pour les frais : il en reste ${formatUnits(natif, decimalesNatif)}`);
     }
     const attente: Retrait[] = await rpc("chaine_retraits_en_attente", { p_reseau: ch.reseau }).catch(() => []);
-    const du = attente.filter((r) => r.actif === "USDT").reduce((s, r) => s + parseUnits(String(r.montant), dec), 0n);
-    if (du > usdt) this.alerte(`réapprovisionner le wallet chaud depuis le froid : ${formatUnits(du - usdt, dec)} USDT manquent pour les retraits en attente`);
     const f = this.c.froid;
-    if (!f || !ch.adresseValable(f.adresse)) return 0;
-    const plafond = parseUnits(String(f.plafondChaud), dec);
-    const garder = parseUnits(String(f.garderChaud), dec);
-    if (usdt <= plafond || usdt - garder <= du) return 0;
-    const montant = usdt - garder - du;  // ce qui est promis aux retraits en attente reste au chaud
-    if (!(await this.envoyerEtAttendre(CHAUD, { type: "jeton", actif: "USDT", vers: ch.adresseValable(f.adresse)!, montant }))) throw new Error("l'envoi au froid a été refusé");
-    this.journal(`mis au froid : ${formatUnits(montant, dec)} USDT vers ${f.adresse}`);
-    return Number(formatUnits(montant, dec));
+    let total = 0;
+    // chaque dollar a son plafond au chaud, compté dans SES unités (l'USDC de BNB Chain a 18 décimales, celui d'Ethereum 6)
+    for (const d of this.dollars()) {
+      const dec = ch.decimales[d];
+      const chaud = await ch.solde(d, ch.chaud);
+      const du = attente.filter((r) => r.actif === d).reduce((s, r) => s + parseUnits(String(r.montant), dec), 0n);
+      if (du > chaud) this.alerte(`réapprovisionner le wallet chaud depuis le froid : ${formatUnits(du - chaud, dec)} ${d} manquent pour les retraits en attente`);
+      if (!f || !ch.adresseValable(f.adresse)) continue;
+      const plafond = parseUnits(String(f.plafondChaud), dec);
+      const garder = parseUnits(String(f.garderChaud), dec);
+      if (chaud <= plafond || chaud - garder <= du) continue;
+      const montant = chaud - garder - du;  // ce qui est promis aux retraits en attente reste au chaud
+      if (!(await this.envoyerEtAttendre(CHAUD, { type: "jeton", actif: d, vers: ch.adresseValable(f.adresse)!, montant }))) throw new Error(`l'envoi d'${d} au froid a été refusé`);
+      this.journal(`mis au froid : ${formatUnits(montant, dec)} ${d} vers ${f.adresse}`);
+      total += Number(formatUnits(montant, dec));
+    }
+    return total;
   }
 
   /* --------------------------------------------------------------- l'état */
 
   /** Ce que la plateforme tient sur la chaîne : le chaud, le froid et les adresses attribuées, et les XAFe hors de la réserve. */
-  async avoirs(rpc: Rpc): Promise<{ usdt: bigint; xafeEnCirculation: bigint }> {
+  async avoirs(rpc: Rpc): Promise<{ usdt: bigint; dollars: Partial<Record<Dollar, bigint>>; xafeEnCirculation: bigint }> {
     const ch = this.chaine;
     const { attribuees } = await rpc("chaine_adresses", { p_reseau: ch.reseau });
-    let usdt = await ch.solde("USDT", ch.chaud);
     const froid = this.c.froid && ch.adresseValable(this.c.froid.adresse);
-    if (froid) usdt += await ch.solde("USDT", froid);
-    for (const a of (attribuees as Attribuee[]).filter((x) => x.actif === "USDT" && x.indice != null)) usdt += await ch.solde("USDT", a.adresse);
+    const dollars: Partial<Record<Dollar, bigint>> = {};
+    for (const d of this.dollars()) {
+      let n = await ch.solde(d, ch.chaud);
+      if (froid) n += await ch.solde(d, froid);
+      for (const a of (attribuees as Attribuee[]).filter((x) => x.actif === d && x.indice != null)) n += await ch.solde(d, a.adresse);
+      dollars[d] = n;
+    }
     // en circulation chez les clients : l'offre, moins la réserve que le contrat tient pour les comptes Glisil
-    return { usdt, xafeEnCirculation: (await ch.offreXafe()) - (await ch.etatDuJeton()).reserve };
+    return { usdt: dollars.USDT ?? 0n, dollars, xafeEnCirculation: (await ch.offreXafe()) - (await ch.etatDuJeton()).reserve };
+  }
+
+  private async dollarsPublies() {
+    const ch = this.chaine;
+    const froid = this.c.froid && ch.adresseValable(this.c.froid.adresse);
+    const sortie: Record<string, { chaud: number; froid: number | null }> = {};
+    for (const d of this.dollars()) {
+      sortie[d] = { chaud: Number(formatUnits(await ch.solde(d, ch.chaud), ch.decimales[d])),
+                    froid: froid ? Number(formatUnits(await ch.solde(d, froid), ch.decimales[d])) : null };
+    }
+    return sortie;
   }
 
   /** Un tour complet ; une étape qui casse ne retient pas les autres, elle devient une alerte — et l'état est publié quand même. */
@@ -465,6 +500,8 @@ export class Veilleur {
       p_etat: {
         chaud: ch.chaud,
         usdt_chaud: Number(formatUnits(await ch.solde("USDT", ch.chaud), ch.decimales.USDT)),
+        // chaque dollar porté, au chaud et au froid (l'USDT reste aussi à son ancienne place : l'écran d'hier le lit)
+        dollars: await this.dollarsPublies(),
         natif_chaud: Number(formatUnits(await ch.solde("natif", ch.chaud), fiche(ch.reseau).decimalesNatif)),
         froid: this.c.froid?.adresse ?? null,
         usdt_froid: this.c.froid && ch.adresseValable(this.c.froid.adresse) ? Number(formatUnits(await ch.solde("USDT", ch.adresseValable(this.c.froid.adresse)!), ch.decimales.USDT)) : null,

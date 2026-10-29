@@ -9,7 +9,7 @@ function banc(liste: any[], { reserve = 10n ** 12n, chaudXafe = 0n, enPause = fa
   const signes: Appel[] = [];
   const appels: [string, any][] = [];
   const chaine = {
-    reseau: "bep20", confirmations: 3, decimales: { USDT: 18, XAFe: 6 }, chaud: "0xCHAUD", reserve: "0xRESERVE",
+    reseau: "bep20", confirmations: 3, actifs: ["USDT", "XAFe"], decimales: { USDT: 18, XAFe: 6 }, chaud: "0xCHAUD", reserve: "0xRESERVE",
     tete: async () => 100,
     // le chaud ne tient rien ; la réserve se lit AU CONTRAT
     solde: async (_q: string, a: string) => (a === "0xRESERVE" ? reserve : chaudXafe),
