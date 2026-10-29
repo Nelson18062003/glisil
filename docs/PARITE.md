@@ -63,6 +63,45 @@ redevient vrai se ferme tout seul.
 | TOTEM `totem/xafe.py` — `publier_solde`, `solde_apres` | le « nouveau solde » de chaque SMS d'argent et les consultations USSD |
 | `moteur/scenarios.sql` 11.38 | chaque façon de mentir déclenche son alarme |
 
+## La garde des faux SMS : la continuité des soldes (0039)
+
+N'importe qui peut écrire à une puce. Un faux « Vous avez reçu 7 500 000 XAF
+… », suivi de la même déclaration, était crédité. Le SMS de l'opérateur porte
+pourtant de quoi le démasquer : le **nouveau solde** du float. Glisil ne
+crédite un encaissement que si
+
+    dernier solde SÛR du float + montant (+ commission, − frais) = nouveau solde annoncé
+
+au franc près. Sinon le SMS est **retenu, bloqué** : ni crédité, ni rapproché,
+ni remboursé. Le client voit « Paiement en vérification ».
+
+- **Un solde sûr** : une consultation USSD faite par le boîtier, un relevé
+  déposé par l'équipe (page Parité), ou un SMS déjà vérifié. Un solde lu dans
+  un SMS seul n'en est jamais un.
+- **Le désordre se répare seul** : à chaque nouveau solde sûr, les SMS qui
+  suivent sont réexaminés. Les sorties (les paiements faits depuis la puce)
+  prolongent la chaîne.
+- **L'équipe tranche** (Entrées → SMS retenus, « Solde à vérifier ») : vérifier
+  le transaction ID dans l'historique de l'opérateur (*126#, #150#), puis
+  **Libérer** avec une note (cocher « point de départ » si le solde annoncé est
+  bien celui de l'opérateur : les SMS suivants se vérifient d'eux-mêmes), ou
+  **Rejeter : faux SMS**.
+- **Le réglage** `continuite` : `exiger` (défaut), `surveiller` (crédité mais
+  signalé), `eteinte` ; la démo est exemptée (`demo: eteinte`).
+- **La page publique arrondit** les floats et la couverture au million
+  inférieur : la garde ne vaut que tant que le solde exact reste secret. Pour
+  la même raison, les puces des floats n'ont ni vendeur ni groupe Telegram.
+
+### Avant d'ouvrir les dépôts réels : une consultation de solde par float
+
+Sans solde sûr, le **premier** SMS de chaque float est retenu (« premier solde
+du float inconnu »). C'est voulu : sinon un faussaire choisirait le point de
+départ. À la mise en service, pour chaque puce float, faire une consultation
+de solde depuis TOTEM (bouton Solde) — avec le robot à jour, qui l'étiquette
+« ussd » — ou déposer un relevé de l'opérateur (page Parité). Si un mouvement
+échappe au robot (un virement de commissions, un achat de crédit), la chaîne
+se rompt : refaire une consultation de solde suffit à la réparer.
+
 ## Avant le vrai réseau (mainnet) — à faire, pas encore fait
 
 Aujourd'hui tout tourne sur les **réseaux d'essai** (BSC testnet, Tron Nile) :

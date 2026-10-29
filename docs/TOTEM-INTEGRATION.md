@@ -228,7 +228,10 @@ paiement, et lève une alerte de parité.
    en preuve (`TestLaPreuveDuRemboursement`, chez TOTEM).
 3. **`sorties = oui`** dans la section `[xafe]` de `totem.conf` (c'est le
    défaut).
-4. **Un essai de 100 XAF** : un compte de l'équipe demande un retrait de
+4. **Une consultation de solde sur chaque puce float** (bouton Solde de
+   TOTEM, robot à jour) avant d'ouvrir les dépôts : c'est le premier appui de
+   la garde des faux SMS (`docs/PARITE.md`, 0039).
+5. **Un essai de 100 XAF** : un compte de l'équipe demande un retrait de
    100 XAF, on le paie depuis la puce, on tape l'ID. Attendu dans la minute :
    la demande quitte « en preuve », le client reçoit la notification et
    l'e-mail « retrait payé ». Si elle reste en preuve, la carte dit pourquoi.
