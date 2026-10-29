@@ -100,6 +100,8 @@ TEMOINS = {
     "0042_cent_declarations_par_jour.sql": ("false", "rejouable telle quelle"),
     # 0043 : ne fait rien si pg_net est déjà hors de « public ».
     "0043_pg_net_hors_de_public.sql": ("false", "rejouable telle quelle"),
+    # 0044 : politiques retirées « if exists » puis reposées.
+    "0044_politiques_une_lecture.sql": ("false", "rejouable telle quelle"),
 }
 
 
