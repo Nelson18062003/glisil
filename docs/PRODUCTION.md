@@ -1,127 +1,298 @@
 # Passer en production
 
 La bêta tourne sur des réseaux d'essai, avec de l'argent de test
-([BETA.md](BETA.md)). La production est **un autre environnement**, monté à
-neuf. Ce document est la liste de ce qu'il faut faire, dans l'ordre, et de
-qui le fait. Rien ici n'est encore fait.
+([BETA.md](BETA.md)). La production est **un autre projet**, monté à neuf :
+`glisil-prod` (`dfixghiwqlwulmzixlpf`). Ce document est la liste de ce qu'il
+faut faire, **dans l'ordre**, et de qui le fait : **[P]** le propriétaire,
+**[C]** Claude. Rien de secret ne passe jamais par le chat.
 
 > Règle d'or : **rien de la bêta ne passe en production**. Pas de copie de
-> base, pas de comptes, pas de soldes. On rejoue les migrations sur un projet
-> vide, et la bêta s'éteint de son côté.
+> base, pas de comptes, pas de soldes. Le schéma se monte sur un projet vide,
+> en UNE transaction, et l'argent de test n'y peut pas exister (0041).
 
-## 0. Avant tout : le droit
+## Ce que la production est, d'emblée
 
-Émettre une monnaie adossée au franc CFA et tenir un marché USDT/XAF touche
-à la réglementation de la **BEAC** et de la **COBAC** (monnaie électronique,
-services de paiement, change), et à la lutte contre le blanchiment (ANIF au
-Cameroun). **Un avocat spécialisé valide le modèle avant le lancement** :
-statut à obtenir (établissement de paiement, partenariat avec une banque ou
-un EME agréé), plafonds, obligations KYC, déclaration de soupçon. C'est la
-seule étape qui peut changer le produit ; elle passe en premier.
-
-## 1. Un environnement neuf
-
-| Quoi | Bêta (aujourd'hui) | Production |
+| | Bêta | Production |
 |---|---|---|
-| Base | projet Supabase `erngzpklfslbfznioxxr` | **un nouveau projet**, région la plus proche (Europe) |
-| Migrations | 0001 → 0024 | les mêmes, rejouées sur la base vide (`migrations/…_consolidated.sql`) |
-| Paramètres | `beta.actif = true` | **`beta.actif = false`** dès la première minute, `robots.actif = false` |
-| Robots | 15 comptes | **supprimés** : les 15 comptes et leurs lignes `robots` effacés avant l'ouverture, tâche `glisil-robots` retirée |
-| Chaîne | BSC Testnet, Tron Nile | BSC et Tron **mainnet** (`chaine.essai = false`) |
-| Application, admin | Vercel (préversion) | domaine définitif, variables d'environnement de la production |
+| Projet Supabase | `erngzpklfslbfznioxxr` | `dfixghiwqlwulmzixlpf` |
+| Profil | aucun (`profil_de_la_base` vide) | `production`, immuable (0041) |
+| Argent de test | dotation à l'inscription, robots | **impossible** : dotation, bêta, robots, réseau d'essai et démo refusés même en SQL |
+| Chaîne | BSC Testnet, Tron Nile | BSC et Tron principaux (`chaine.essai = false`) |
+| Réseaux ouverts | BSC, Tron | BSC seul ; Tron s'ouvre après l'essai de bout en bout |
+| Crypto | ouverte | dépôts et retraits **fermés** jusqu'à l'essai de bout en bout |
+| Sorties MoMo/OM | — | **manuelles**, prouvées par le SMS de la puce (0038) ; pas de forçage ; le propriétaire paie seul |
+| Garde des faux SMS | — | `continuite.mode = exiger` (0039) |
+| Connexion | mot de passe + application d'authentification | la même, + inscriptions **fermées** jusqu'à l'ouverture |
+| Plafonds | — | aucun (paliers et opérateurs à `null`) ; le contrat borne la frappe à 1 000 000 000 XAF par jour et par chaîne |
+| Frais | ceux de la bêta | **les mêmes** (placeur 0,05 %, preneur 0,10 %, sortie 0,5 %, crypto 1 USDT / 500 XAFe, rapide 1 %) — à confirmer par [P] avant l'ouverture, 0041 n'y touche pas |
 
-Avec `beta.actif = false` : plus de dotation, les dépôts réels s'ouvrent, et
-les robots retirent tout au tour suivant. On rouvre ensuite les sorties et les
-retraits crypto par leurs interrupteurs (Paramètres → « sortie », « crypto »).
+Le constat du profil se lit à tout moment : admin → Paramètres → « Profil de
+production » (pastille rouge **PRODUCTION · argent réel** en tête de chaque
+page), ou `select verifier_le_profil_production(false);`.
 
-## 2. Les clés — personne ne les tape dans un chat
+## A [C] Le code et ses preuves
 
-1. **La graine de production** : générée **hors ligne**, par le propriétaire,
-   sur une machine qui n'a jamais été en ligne (ou un wallet matériel). Écrite
-   sur papier (deux copies, deux lieux). Elle devient un **secret** de la
-   fonction `veilleur` (tableau de bord Supabase → Edge Functions → Secrets),
-   **jamais** dans la base, jamais dans le dépôt, jamais dans une conversation.
-   En bêta, la graine d'essai vit dans le Vault de la base : c'est acceptable
-   pour de l'argent de test, pas pour de l'argent réel.
-2. **L'admin du contrat XAFe** (`DEFAULT_ADMIN_ROLE`) : un **Safe 2-sur-3**
-   sur wallets matériels (BSC) ; sur Tron, une permission multi-signature.
-3. **Le wallet froid** : où dort la réserve d'USDT au-delà du besoin du jour ;
-   un wallet matériel, dont la clé n'est jamais sur un serveur.
-4. **Le wallet chaud** (celui du veilleur) : frappe, détruit, paie les
-   retraits. Son **plafond de frappe par jour** se règle au volume réel
-   attendu, pas plus.
+- Tous les chantiers de la livraison 1 sur `main`, et le consolidé refait :
+  `python3 supabase/consolider.py`.
+- Lancés et verts : `sh moteur/verifier-le-moteur.sh`,
+  `sh moteur/rouge-puis-vert/rouge-puis-vert.sh`,
+  `sh supabase/production/eprouver-le-profil.sh` (exige `postgresql-16-cron`),
+  `node --experimental-strip-types supabase/functions/verifier-*.ts`,
+  `cd chaine && npm test`, `cd contracts && npx hardhat test`, app et admin
+  (`npx tsc --noEmit -p tsconfig.json`, `npm test`, `npm run build`,
+  `node scripts/parcourir.mjs`, `node --experimental-strip-types
+  scripts/verifier-le-build-de-production.mjs`), `node app/scripts/langue.mjs`.
 
-Voir aussi [PARITE.md](PARITE.md), « Avant le vrai réseau ».
+## B [P] Les comptes
 
-## 3. Le contrat XAFe sur le vrai réseau
+- Double authentification **par application** (pas par e-mail) sur Supabase,
+  Vercel, GitHub, Infisical, Resend, Google Cloud, le registraire du domaine,
+  TronGrid, le fournisseur RPC BSC, BscScan.
+- Organisation Supabase : retirer tout membre inutile. `glisil-prod` est sur
+  l'organisation Pro (sauvegardes quotidiennes).
 
-1. **Audit** par une société indépendante (les tests, Slither et Echidna
-   existent ; ce n'est pas un audit).
-2. Déploiement : `npm run mise-en-service -- deployer` avec les variables du
-   mainnet ; les rôles donnés au Safe et au wallet chaud ; un peu de BNB et de
-   TRX pour les frais.
-3. Paramètre `chaine` : adresses du contrat et de l'USDT **officiel** de
-   chaque réseau, nœud RPC payant (pas un nœud public), bloc de départ.
-4. Vérifier : `npm run mise-en-service -- verifier`, un dépôt et un retrait
-   de bout en bout avec de petits montants, la parité à zéro.
+## C [P] Le tableau de bord de `glisil-prod`, AVANT l'installation
 
-## 4. L'authentification (les jetons JWT)
+- **Database → Extensions** : activer `http` (schéma `extensions`) — sans lui,
+  pas de cours de référence. `pg_cron` et `pg_net`, les migrations les créent.
+- **Authentication → Sign In / Providers** : « Allow new users to sign up »
+  **désactivé**. Ce sont les portes fermées (Google compris).
+- **Settings → API Keys** : garder les clés héritées (anon, service_role)
+  actives ; noter la clé anon.
+- **Database → Connect → Session pooler** (IPv4, port 5432) : cette adresse va
+  dans Infisical, `prod /outils PROD_DB_URL`.
 
-Chaque connexion Supabase donne un **jeton signé (JWT)** que l'application
-présente à chaque appel ; la base vérifie la signature, puis chaque fonction
-vérifie le compte et ses droits. À régler sur le projet de production :
+## D [P] Infisical, projet « glisil », environnement `prod`
 
-- **Durée des jetons** : 1 heure (défaut) ; la session se renouvelle seule.
-  Désactiver un administrateur coupe ses droits **tout de suite** (les droits
-  sont relus à chaque appel, pas lus dans le jeton).
-- **Clés** : seule la clé publique (`anon` / publishable) va dans
-  l'application et l'admin. La clé `service_role` ne sort **jamais** du
-  serveur : ni dans Vercel, ni dans le navigateur.
-- **E-mails de connexion** : un SMTP à nous (Resend, domaine vérifié SPF/DKIM)
-  au lieu de celui de Supabase, limité en débit. La clé Resend se saisit
-  directement dans le tableau de bord, pas dans une conversation.
-- **Limites** : codes par adresse et par heure (Auth → Rate limits),
-  protection contre les mots de passe fuités inutile (pas de mot de passe),
-  CAPTCHA à l'inscription si les inscriptions automatiques apparaissent.
-- **Fonctions Edge** : `verify_jwt` reste activé partout sauf le veilleur
-  (appelé par pg_cron avec son propre jeton secret) et la porte TOTEM (clé
-  par boîtier).
-- **Conseiller de sécurité** Supabase (Advisors) à zéro avant l'ouverture.
+| Dossier | Synchronisé vers | Contenu |
+|---|---|---|
+| `/supabase-fonctions` | secrets des fonctions de `dfixghiwqlwulmzixlpf` (Auto-Sync, **Disable Secret Deletion**) | `XAFE_GRAINE`, `BEP20_RPC`, `BEP20_BLOCS_JETON_PAR_TOUR`, `TRC20_NOEUD`, `TRC20_CLE_API`, `RESEND_API_KEY`, `COURRIEL_JETON` |
+| `/vercel-app` | Vercel `glisil-app`, Production | `VITE_SUPABASE_URL=https://dfixghiwqlwulmzixlpf.supabase.co`, `VITE_SUPABASE_ANON_KEY`, `VITE_PROFIL=production`, `VITE_SUPPORT_WHATSAPP` |
+| `/vercel-admin` | Vercel `glisil-admin`, Production | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_PROFIL=production` |
+| `/outils` | rien (`infisical run` seulement) | `PROD_DB_URL`, `MOTEUR_URL=https://dfixghiwqlwulmzixlpf.supabase.co/rest/v1`, `MOTEUR_CLE` (service), `SUPABASE_ACCESS_TOKEN`, `CLE_BSCSCAN`, `CLE_DE_MISE_EN_SERVICE` |
+| `/auth`, `/totem` | rien (archive) | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, la clé SMTP Resend ; `XAFE_TERMINAL_CLE` |
 
-## 5. Les vraies personnes : le KYC
+**Jamais** dans Infisical : les phrases de récupération MetaMask / TronLink,
+les futurs signataires du Safe, quoi que ce soit de la bêta. **Jamais**
+synchronisé : `VEILLEUR_JETON` (le coffre de la base en est la seule source).
 
-La bêta ne demande qu'un nom et un numéro. En production :
+## E [P] La graine, sur votre ordinateur
 
-- **Paliers** (déjà dans le moteur) : palier 0 sans pièce avec de petits
-  plafonds ; palier 1 pièce d'identité + selfie ; palier 2 entreprise (RCCM).
-- Un **prestataire de vérification** (lecture de la pièce, comparaison du
-  visage, listes de sanctions) branché sur `demander_verification`.
-- **Les plafonds des paliers** reviennent (Paramètres → « paliers » : en bêta ils sont vides, sans plafond — 0027) : ce sont eux qui disent ce qu'un compte non vérifié peut faire entrer et sortir par jour.
-- **Le code SMS et le délai sur un numéro neuf** reviennent (Paramètres →
-  « numeros » : `verification_sms: true`, `delai_heures: 24`) : en bêta ils
-  sont coupés, en production ils protègent un compte dont le téléphone a été
-  volé.
-- Conservation des pièces : stockage privé, durée légale, accès journalisé.
+1. En ligne : `cd chaine && npm ci`.
+2. **Wi-Fi coupé** : `npm run mise-en-service -- graine` ; recopier les 24 mots
+   sur papier, deux fois, rangés en deux lieux.
+3. Wi-Fi rétabli : taper les mots dans Infisical `/supabase-fonctions
+   XAFE_GRAINE`.
+4. `infisical run --env=prod --path=/supabase-fonctions -- npm run
+   mise-en-service -- adresses` : donner à Claude les deux wallets chauds
+   (adresses publiques).
+5. `clear`, et vider l'historique du terminal.
 
-## 6. L'argent réel
+## F [P] L'installation : UNE commande
 
-- **Floats dédiés** à Glisil (MTN MoMo, Orange Money), au nom de la société,
-  séparés de Bonzini.
-- **Boîtiers TOTEM** de production, chacun sa clé.
-- **Frais** : décider les vrais frais (aujourd'hui tout est à zéro, « Offerts ») :
-  Paramètres → « frais », « crypto », « rapide ».
-- **Rapprochement mensuel** signé par un comptable, publié avec la page de
-  preuve de réserve.
+```sh
+infisical run --env=prod --path=/outils -- sh -c 'psql "$PROD_DB_URL" -X -v ON_ERROR_STOP=1 --single-transaction \
+  -f supabase/production/annoncer-la-production.sql \
+  -f migrations/<AAAAMMJJ>_consolidated.sql \
+  -f supabase/production/verifier-la-production.sql'
+```
 
-## 7. Le jour de l'ouverture
+Elle se termine par un JSON `"ok": true`. Les seuls avertissements attendus :
+le coffre (`veilleur_url`, `veilleur_jeton`, posés en G). **Sur une erreur,
+rien n'est écrit** : envoyer le texte de l'erreur à Claude.
 
-1. Base neuve, migrations, `beta.actif = false`, robots supprimés.
-2. Contrat mainnet vérifié, parité à zéro sur une base vide.
-3. Un dépôt réel de 1 000 XAF par l'équipe, puis une sortie, puis un retrait
-   crypto : chacun vu sur la page de preuve.
-4. Les conditions d'utilisation mises à jour (réseaux, frais, KYC), nouvelle
-   version : chacun les accepte.
-5. Ouverture par vagues : d'abord les testeurs de la bêta qui le veulent
-   (qui recréent leur compte), puis le public.
-6. La bêta reste ouverte à part quelques semaines, puis s'éteint
-   (`beta.actif = false`, robots arrêtés, projet mis en pause).
+Jamais l'éditeur SQL, `apply_migration` ou `supabase db push` pour
+l'installation : hors d'une transaction unique, la tâche des robots et la bêta
+seraient validées avant 0041, un tour de pg_cron doterait les robots, et la
+base refuserait ensuite de devenir la production — il faudrait un projet neuf.
+`eprouver-le-profil.sh` rejoue cette fenêtre pour témoin.
+
+**Les migrations suivantes, sur la production** : le SEUL fichier neuf, puis
+le constat, sans l'annonce :
+
+```sh
+infisical run --env=prod --path=/outils -- sh -c 'psql "$PROD_DB_URL" -X -v ON_ERROR_STOP=1 --single-transaction \
+  -f supabase/migrations/00NN_….sql -f supabase/production/verifier-la-production.sql'
+```
+
+(Le consolidé entier se rejoue aussi — `eprouver-le-profil.sh` le vérifie sur
+une production vide — mais une vieille migration rejouée sur une base pleine
+peut reposer une contrainte plus étroite que les lignes d'aujourd'hui.)
+
+[C] ensuite, en lecture : `select jobname from cron.job` (`xafe-expirer-depots`,
+`glisil-rapprocher`, `glisil-cours`, `glisil-menage-cron` ; jamais
+`glisil-robots`), `select verifier_le_profil_production(false)`, les
+conseillers Supabase (sécurité, performance).
+
+## G [C] Le coffre (Vault)
+
+```sql
+select vault.create_secret('https://dfixghiwqlwulmzixlpf.supabase.co/functions/v1/veilleur', 'veilleur_url', 'adresse du veilleur');
+select vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'), 'veilleur_jeton', 'réveil du veilleur');
+select vault.create_secret('https://dfixghiwqlwulmzixlpf.supabase.co/functions/v1/courriel', 'courriel_url', 'adresse des courriels');
+-- courriel_jeton : la MÊME valeur que COURRIEL_JETON (Infisical) — [P] la colle dans Database → Vault
+```
+
+Jamais `essai_graine` ni `essai_admin_cle` : le constat les refuse.
+
+## H [P] Les fournisseurs
+
+- Une clé TronGrid, un nœud BSC payant (NodeReal, QuickNode, Alchemy) →
+  Infisical `/supabase-fonctions` : `BEP20_RPC`, `BEP20_BLOCS_JETON_PAR_TOUR`
+  (la portée `eth_getLogs` du fournisseur, par exemple 5000), `TRC20_NOEUD=https://api.trongrid.io`,
+  `TRC20_CLE_API`. Le nœud ne va **jamais** dans les paramètres : ils sont
+  lisibles par tout client connecté.
+- Resend (domaine `glisil.com` vérifié) : deux clés « Sending », l'une pour les
+  fonctions (`RESEND_API_KEY`), l'autre pour le SMTP d'Auth (`/auth`). Passer
+  à l'offre Pro avant l'ouverture (l'offre gratuite : 100 e-mails par jour).
+- Attendre la synchronisation.
+
+## I [C] Les fonctions
+
+```sh
+infisical run --env=prod --path=/outils -- npx supabase functions deploy \
+  totem-sms totem-commandes veilleur courriel deux-facteurs --project-ref dfixghiwqlwulmzixlpf
+```
+
+**Toujours `--project-ref`** : `supabase/config.toml` porte l'identifiant de la
+bêta. Puis, en SQL : `select reveiller_veilleur('bep20');` et
+`net._http_response` (202, ou « réseau pas encore configuré » avant K) ; un
+appel à `totem-sms` sans signature reçoit 401.
+
+## J [P] L'authentification
+
+Les réglages exacts sont dans [CONNEXION.md](CONNEXION.md) : SMTP Resend
+(`smtp.resend.com:465`, expéditeur `code@glisil.com`), les modèles d'e-mail,
+« Confirm email » activé, la double authentification TOTP, la protection des
+mots de passe divulgués, au moins 100 e-mails par heure. URL : Site URL
+`https://app.glisil.com` ; Redirect URLs `https://app.glisil.com/**`,
+`https://admin.glisil.com/**` — **aucun domaine de la bêta**. Google Cloud :
+écran de consentement « Glisil », client Web (origines app et admin ; retour
+`https://dfixghiwqlwulmzixlpf.supabase.co/auth/v1/callback`), l'ID et le
+secret dans Supabase → Providers → Google, et dans `/auth`.
+
+## K [P + C] Les contrats, BSC puis Tron
+
+Le contrat corrigé tient lui-même la réserve, intransférable ; le constructeur
+pose tous les rôles et le plafond du jour (1 000 000 000 XAF). Voir
+[chaine/README.md](../chaine/README.md).
+
+1. [P] Un compte MetaMask « Glisil admin » (BSC) et un compte TronLink
+   (Tron) : l'admin, le pauseur et le geleur, en attendant le Safe. Donner à
+   Claude leurs adresses publiques.
+2. [P] Une clé de mise en service NEUVE (`CLE_DE_MISE_EN_SERVICE`, `/outils`),
+   financée : ≈ 0,01 BNB ; ≈ 300 TRX. Le wallet chaud : 0,06 BNB ; 900 TRX.
+Chaque commande de mise en service lit deux dossiers d'Infisical (la clé et
+la base dans `/outils`, la graine et les nœuds dans `/supabase-fonctions`) :
+`PROD="infisical run --env=prod --path=/supabase-fonctions -- infisical run --env=prod --path=/outils --"`.
+
+3. [P] `$PROD npm --prefix chaine run mise-en-service -- deployer --production --reseau bep20 --chaud <chaud BEP20> --admin <MetaMask> --pauseur <MetaMask> --geleur <MetaMask> --usdt 0x55d398326f99059fF775485246999027B3197955`
+   — un réseau principal sans `--production` est refusé. Noter l'adresse et le
+   bloc.
+4. [P] `$PROD npm --prefix chaine run mise-en-service -- preinscrire --reseau bep20 --xafe <contrat> --de 1 --a 2000 --renoncer` (avec `XAFE_GRAINE`).
+5. [C] `cd contracts && npx hardhat verify --network bsc <contrat> <les sept arguments imprimés>`.
+6. Tron : les mêmes pas, `--reseau trc20`, l'admin TronLink,
+   `--usdt TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t`, `--a 600` ; vérifier sur
+   Tronscan (solc 0.8.28, optimiseur 200).
+7. [C] Le paramètre `chaine` (sans nœud) :
+   ```sql
+   update parametres set valeur = jsonb_build_object('essai', false, 'reserve', 'bep20',
+     'bep20', jsonb_build_object('xafe', '<0x…>', 'usdt', '0x55d398326f99059fF775485246999027B3197955', 'depart', <bloc>, 'confirmations', 15),
+     'trc20', jsonb_build_object('xafe', '<T…>', 'usdt', 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t', 'depart', <bloc>, 'confirmations', 20))
+    where cle = 'chaine';
+   ```
+   Les tâches `xafe-veilleur-bep20` et `xafe-veilleur-trc20` se posent seules.
+8. [C] `$PROD npm --prefix chaine run mise-en-service -- verifier` : tout vert (la clé de mise en service n'a plus aucun rôle), puis `select chaine_etat('bep20')`.
+9. [P] Jeter la clé de mise en service.
+
+Le plafond se change à tout moment depuis le wallet de l'admin
+(`fixerPlafondJour(n × 1 000 000)` ; `mise-en-service plafond --xaf N`
+imprime le nombre exact), sans borne haute, effet immédiat, chaîne par chaîne.
+
+## L [P] Vercel
+
+- Si les projets de la bêta tiennent `app.glisil.com` ou `admin.glisil.com`,
+  les déplacer d'abord (`beta.glisil.com`, `admin-beta.glisil.com`) et mettre
+  à jour les URL de la bêta dans Supabase.
+- Nouveaux projets `glisil-app` (dossier `app/`) et `glisil-admin`
+  (`admin/`), branche de production `main` ; l'environnement Production vient
+  d'Infisical, Preview = la bêta.
+- Domaines `app.glisil.com`, `admin.glisil.com` (CNAME `cname.vercel-dns.com`).
+- Déployer. **Le build se ferme** s'il manque une variable, ou si
+  `VITE_PROFIL=production` vise un autre projet que la production.
+
+## M [P] Le premier super admin, et vos comptes clients
+
+1. Supabase → Authentication → Users → **Add user** : l'adresse
+   d'administration, un mot de passe du gestionnaire, **Auto Confirm**.
+2. SQL : `insert into administrateurs_invites (email, nom, role) values ('<adresse>', '<Nom>', 'super_admin');`
+3. `admin.glisil.com` : mot de passe → application d'authentification → dix
+   codes de secours notés → l'invitation devient l'administrateur.
+4. [C] vérifie `journal_admin` (`invitation_acceptee`).
+5. Le même « Add user » pour vos deux adresses clientes (une adresse par
+   compte), puis l'inscription dans l'application.
+
+## N [P + C] TOTEM
+
+1. admin → Terminaux : créer `douala-1` (jamais `totem-demo` : refusé). La clé
+   s'affiche une fois → Infisical `/totem`.
+2. Un float par puce **dédiée** (opérateur, numéro, terminal, code marchand,
+   titulaire exactement comme l'opérateur l'affiche). Une puce partagée avec
+   Bonzini enverrait ses paiements comme preuves de sortie.
+3. Le Pi : `/etc/totem.conf` (mode 600, au robot), `TOTEM_CONF=/etc/totem.conf`
+   dans l'unité systemd ; effacer `/boot/firmware/totem.conf` et
+   `./totem.conf`. Section `[xafe]` : `url = https://dfixghiwqlwulmzixlpf.supabase.co`,
+   `cle = <clé>`, `terminal = douala-1`, `anon` vide, `transferts = non`,
+   `sorties = oui`. `git pull` de `main` sur le boîtier.
+4. Déclarer le numéro de chaque carte dans les réglages de TOTEM, relancer le
+   robot. [C] vérifie que `terminaux.vu_le` a moins d'une minute.
+5. **Une consultation de solde par puce** depuis TOTEM : sans ce premier solde
+   sûr, le premier dépôt réel serait retenu (garde des faux SMS, 0039).
+
+La démonstration de TOTEM reste sur le projet de la bêta.
+
+## O [P] L'essai de bout en bout, en petits montants ([C] vérifie en SQL)
+
+1. Dépôt MoMo de 1 000 XAF → déclaré → 1 000 XAFe crédités, frappés dans la
+   réserve (BscScan), `rapprocher()` juste.
+2. La même chose avec Orange Money.
+3. `crypto.depots_ouverts = true` (les portes restent fermées au public) :
+   5 USDT BEP20 et 5 USDT TRC20 vers vos adresses → crédités après 15 / 20
+   confirmations.
+4. Un échange entre vos deux comptes.
+5. Un retrait de 1 000 XAFe vers MoMo : mot de passe + code e-mail +
+   application → vous payez depuis la puce → l'ID tapé → le SMS de la puce le
+   prouve → détruit → e-mail reçu.
+6. `crypto.retraits_ouverts = true` : 2 USDT et 1 000 XAFe vers un wallet
+   externe, sur les deux réseaux.
+7. 500 XAFe renvoyés à une adresse de dépôt inscrite → détruits, crédités.
+8. `select rapprocher()` : écart nul ; `select verifier_le_profil_production(false)` : aucun refus.
+
+## P [P] Ouvrir les portes
+
+- Les conditions de production (`conditions.version`), le support (e-mail,
+  WhatsApp).
+- Tron ouvert (admin → Wallets → Réseaux), crypto ouverte.
+- Supabase : « Allow new users to sign up » **activé** ; Google activé.
+- Annoncer.
+
+## Q Plus tard
+
+- L'admin des contrats en Safe 2 sur 3 (BSC : `beginDefaultAdminTransfer`,
+  deux jours, `acceptDefaultAdminTransfer`) ; une permission multisignature sur
+  Tron.
+- Un pauseur et un geleur distincts de l'admin.
+- Livraison 2 : Ethereum, USDC.
+
+## Ce qui reste à surveiller
+
+- Une clé chaude volée ne peut plus vider la réserve (le contrat la tient) ;
+  elle peut frapper vers un wallet jusqu'au plafond du jour — visible à la
+  parité, ligne « inconnue » ; geler, puis l'admin détruit les fonds gelés.
+- Tant que le Safe n'existe pas, un seul compte MetaMask / TronLink est admin :
+  un profil de navigateur dédié, la phrase de récupération sur papier seulement.
+- `XAFE_GRAINE` vit dans Infisical et dans les secrets des fonctions :
+  quiconque est propriétaire de l'un ou de l'autre peut déplacer les wallets
+  chauds et de dépôt. Double authentification partout, membres au minimum.
+- La clé du boîtier TOTEM fabrique des SMS d'opérateur : `/etc/totem.conf`
+  seulement, jamais sur la carte SD en clair.

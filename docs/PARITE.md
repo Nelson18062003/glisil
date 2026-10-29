@@ -127,27 +127,21 @@ Un réseau qui change de contrat (la bêta seulement) porte
 sont plus attendus sur le nouveau ; la réserve, rejouée, l'est. En production,
 le réglage n'existe pas et rien n'est filtré.
 
-## Avant le vrai réseau (mainnet) — à faire, pas encore fait
+## Le vrai réseau (livraison 1)
 
-Aujourd'hui tout tourne sur les **réseaux d'essai** (BSC testnet, Tron Nile) :
-les jetons n'y ont pas de valeur. Avant d'émettre de vrais XAFe :
+Le passage aux réseaux principaux suit [PRODUCTION.md](PRODUCTION.md), étape K :
 
-1. **Audit du contrat** par une société indépendante (le contrat a déjà ses
-   épreuves : 11 tests, Slither sans constat, Echidna 100 000 appels — ce
-   n'est pas un audit).
-2. **Clés à plusieurs signatures** :
-   - `DEFAULT_ADMIN_ROLE` → un **Safe** (BSC) 2-sur-3 sur wallets matériels ;
-     sur Tron, une permission multi-signature du compte admin. La
-     transmission de l'admin a déjà un délai de deux jours.
-   - `PAUSEUR_ROLE` et `GELEUR_ROLE` → personnes distinctes du signataire chaud.
-   - Le signataire chaud (`FRAPPEUR`/`DESTRUCTEUR`) est borné par le **plafond
-     de frappe par jour** (1 000 000 000 XAF au départ, décision du
-     propriétaire) ; l'admin le change à tout moment.
-3. **La graine de production** n'est jamais dans la base : un secret de la
-   fonction `veilleur`, saisi par le propriétaire (`chaine/README.md`).
-4. **Les floats dédiés** : tant qu'un float sert aussi à Bonzini, la colonne 1
-   mélange deux activités ; la couverture reste vraie, mais moins lisible.
-5. **Un rapprochement mensuel signé par un comptable** (relevés opérateurs +
-   page de preuve + export de `parite_releves`), publié.
-6. Déployer le contrat sur mainnet, poser `chaine.essai = false`, les
-   adresses et le bloc de départ (`depart`) de chaque réseau.
+1. **Le contrat corrigé** : la réserve tenue par le contrat (0040), le plafond
+   de frappe d'un milliard de XAF par jour et par chaîne, que l'admin change à
+   tout moment, les rôles posés au déploiement, la clé de mise en service qui
+   renonce à tout et se jette.
+2. **L'admin** : un compte MetaMask (BSC) et un compte TronLink (Tron) du
+   propriétaire, en attendant un **Safe 2 sur 3** et une permission
+   multisignature sur Tron (la transmission de l'admin a déjà un délai de deux
+   jours). Pauseur et geleur distincts plus tard.
+3. **La graine de production** n'est jamais dans la base : un secret des
+   fonctions (Infisical), et deux copies papier.
+4. **Les floats dédiés** à Glisil, et une consultation de solde par puce avant
+   le premier dépôt réel (la garde des faux SMS, plus haut).
+5. **Le profil de production** (0041) : aucun argent de test ne peut exister
+   sur la base de production.

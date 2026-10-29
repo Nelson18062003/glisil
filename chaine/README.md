@@ -186,6 +186,22 @@ jour, la reprise et les rôles s'y signent (BscScan / TronScan, « Write
 contract » ; `mise-en-service plafond --xaf N` imprime le nombre exact à
 coller). `ADMIN_CLE` n'est faite que pour les réseaux d'essai.
 
+### En production
+
+Les secrets ne se tapent nulle part : ils vivent dans Infisical et se
+synchronisent vers les secrets des fonctions Supabase (`XAFE_GRAINE`,
+`BEP20_RPC`, `BEP20_BLOCS_JETON_PAR_TOUR`, `TRC20_NOEUD`, `TRC20_CLE_API`).
+Le **nœud** (avec sa clé d'API) ne va jamais dans le paramètre `chaine` : les
+paramètres sont lisibles par tout client connecté ; le veilleur prend alors le
+nœud du secret et le reste (contrat, USDT, bloc de départ) de la base.
+
+Le déploiement sur un réseau principal exige `--production` (le nœud est lu
+avant toute signature : BSC 56, Ethereum, Base, Polygon, le nœud Tron de
+production), avec `--admin`, `--pauseur`, `--geleur` et l'USDT officiel ; la
+clé est `CLE_DE_MISE_EN_SERVICE`, qui préinscrit le stock d'adresses, renonce,
+et se jette. L'ordre complet : [docs/PRODUCTION.md](../docs/PRODUCTION.md),
+étape K.
+
 ### La bêta change de contrat
 
 Le veilleur d'aujourd'hui ne parle plus aux contrats d'avant le correctif de la

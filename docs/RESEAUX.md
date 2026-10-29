@@ -52,6 +52,11 @@ La conséquence, vérifiée toutes les cinq minutes par la parité (0016) :
 
 Ce n'est pas un réseau qui doit égaler le registre, c'est **leur somme**.
 
+**Livraison 1** : BSC (BEP20, le réseau maison, où vit la réserve) puis Tron
+(TRC20, ouvert après l'essai de bout en bout). Ethereum reste fermé jusqu'à
+la livraison 2, avec l'USDC (natif sur Ethereum, « Binance-Peg » sur BSC ;
+pas de Tron, que Circle a quitté).
+
 ## 3. Le registre (table `reseaux`, migration 0018)
 
 | Réseau | Famille | Compte HD | Frais en | État au départ |

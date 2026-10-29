@@ -119,9 +119,10 @@ les deux au même instant (un verrou par transaction ID, éprouvé par
 `moteur/courses.sh`). Le même SMS poussé deux fois en même temps (le robot
 n'a pas eu l'accusé) est crédité une fois et n'est pas retenu en plus : un
 verrou par `(terminal, source_id)`. Un transaction ID ne crédite qu'une fois.
-Le client ne tape jamais de montant : c'est le SMS qui le dit. Si le montant
-dépasse le palier du client, la déclaration est **refusée**, l'argent reste
-retenu et l'équipe rembourse.
+Le client ne tape jamais de montant : c'est le SMS qui le dit (et la
+déclaration complète le recoupe : numéro, montant, nom). En service, les
+paliers n'ont pas de plafond ; un SMS dont le solde ne suit pas est retenu
+(0039, section 4).
 
 **`emis_le` compte** : c'est l'heure du SMS donnée par l'opérateur (celle du
 PDU), pas l'heure de la lecture. Sans elle, la règle « tapé avant le
@@ -250,3 +251,19 @@ paiement, et lève une alerte de parité.
 
 Rien ne change dans ce que TOTEM fait pour Bonzini : ce sont des destinations
 en plus, pas des comportements en moins.
+
+## En production
+
+- `[xafe]` dans `/etc/totem.conf` (mode 600, au robot) et `TOTEM_CONF=/etc/totem.conf`
+  dans l'unité systemd ; aucune autre copie (`/boot/firmware/totem.conf` est
+  lisible par quiconque tient la carte SD) : `url = https://dfixghiwqlwulmzixlpf.supabase.co`,
+  `cle` (montrée une fois à la création du terminal), `terminal = douala-1`,
+  `anon` vide, `transferts = non`, `sorties = oui`.
+- Un terminal de production ne s'appelle jamais `totem-demo` : la base le refuse (0041).
+- Des puces **dédiées** à Glisil : une puce partagée enverrait les paiements
+  d'une autre activité comme preuves de sortie.
+- Une consultation de solde par puce avant le premier dépôt réel : c'est le
+  premier solde sûr de la garde des faux SMS (0039).
+- La démonstration de TOTEM (`XAFE_DEMO_*`) reste sur le projet de la bêta.
+
+L'ordre complet : [PRODUCTION.md](PRODUCTION.md), étape N.

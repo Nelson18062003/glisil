@@ -62,6 +62,17 @@ values ('votre@adresse.com', 'Votre nom', 'super_admin');
 
 Les suivants s'invitent par `admin_inviter_administrateur(email, nom, rôle)`.
 
+## Les portes fermées (production, avant l'ouverture)
+
+Sur la production, « Allow new users to sign up » reste **désactivé** jusqu'à
+l'ouverture (Google compris) : l'application dit alors « Les inscriptions
+ouvrent très bientôt. ». Le propriétaire crée ses propres comptes dans le
+tableau de bord (Authentication → Users → **Add user**, « Auto Confirm ») : la
+personne se connecte avec ce mot de passe, puis ajoute son application
+d'authentification et fait son inscription comme tout le monde. Le premier
+super admin : le même « Add user », puis l'invitation SQL ci-dessus.
+[PRODUCTION.md](PRODUCTION.md), étapes C, M et P.
+
 ## Les réglages du projet Supabase (une fois, dans le tableau de bord)
 
 **Authentication → Sign In / Providers → Email**

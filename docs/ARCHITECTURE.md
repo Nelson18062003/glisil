@@ -75,15 +75,16 @@ l'application. C'est la leçon de Bonzini et de TOTEM, reprise telle quelle.
 | Un client ne voit que ses lignes | politiques RLS, lecture seule ; toute écriture passe par une RPC |
 | Un client n'exécute que ce qui lit sa session ; anon rien | `0004_droits.sql` : tout fermé, la liste ouverte |
 | Un compte désactivé ne fait plus aucun geste d'argent | `_exiger_compte_actif` |
-| Le plafond du palier compte les sorties MoMo ET la chaîne, sous verrou du compte | `_sorties_du_jour`, `demander_sortie`, `demander_retrait_crypto` |
+| Le plafond du palier compte les sorties MoMo ET la chaîne, sous verrou du compte (le mécanisme existe ; en service, les paliers sont vides : aucun plafond) | `_sorties_du_jour`, `demander_sortie`, `demander_retrait_crypto` |
 | Un résultat de TOTEM vaut pour la commande réclamée et SA tentative | `totem_resultat_commande` |
-| Les empreintes des codes ne sont dans aucune table lisible | `codes_secrets`, `numeros_codes` |
+| Les empreintes des codes ne sont dans aucune table lisible | `codes_de_secours`, `verifications` (le code PIN à 4 chiffres est retiré, 0036) |
 
 ## Les surfaces
 
 - **`app/`** : l'application des clients. React, MUI (Material Design 3),
   react-router pour la navigation décrite dans `design/NAVIGATION.md`,
-  TanStack Query pour les données, Supabase pour l'auth (OTP par SMS) et les
+  TanStack Query pour les données, Supabase pour l'auth (mot de passe et
+  application d'authentification, [CONNEXION.md](CONNEXION.md)) et les
   RPC. Mobile d'abord, emballée pour Android dans une coque Expo (WebView,
   comme BONZINI HQ) ; les briques natives (notifications, empreinte,
   caméra) passent par le pont de la coque.

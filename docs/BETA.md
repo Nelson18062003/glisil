@@ -106,5 +106,9 @@ bêta ne la suit — ni les comptes, ni les soldes, ni les robots, ni l'argent
 de test. Un testeur qui veut continuer crée son compte en production.
 
 C'est voulu : l'argent de test ne doit jamais pouvoir devenir de l'argent
-réel, même par erreur, même par une migration oubliée. Voir
-[PRODUCTION.md](PRODUCTION.md).
+réel, même par erreur, même par une migration oubliée. La migration 0041 le
+garantit sur la production (profil immuable, gardes, constat) et reste
+**inerte ici** : la bêta garde ses robots, sa dotation et la démo de TOTEM.
+La bêta continue de tourner à part, pour la démonstration de TOTEM ;
+l'environnement « Preview » de Vercel pointe sur elle ; le boîtier TOTEM, lui,
+passe à la production. Voir [PRODUCTION.md](PRODUCTION.md).

@@ -2,8 +2,9 @@
 
 Glisil émet le XAFe, son stablecoin, et opère le marché où il s'échange. Le
 nom vient de *glissile*, le mot des physiciens pour ce qui glisse sans
-résistance. Voir `docs/MARQUE.md`. On entre sans mot de passe, avec un code
-reçu par e-mail : voir `docs/CONNEXION.md`.
+résistance. Voir `docs/MARQUE.md`. On entre avec un mot de passe et une
+application d'authentification : voir `docs/CONNEXION.md`. Mettre en
+production : `docs/PRODUCTION.md`, dans l'ordre.
 
 Le franc CFA sur la blockchain, et un vrai marché spot USDT/XAFe. 1 XAFe = 1 XAF,
 couvert un pour un par les floats MoMo et les comptes en banque de la plateforme.
@@ -11,7 +12,7 @@ couvert un pour un par les floats MoMo et les comptes en banque de la plateforme
 - Un client **entre des XAF** en payant notre float (MTN MoMo ou Orange Money),
   puis tape le **transaction ID** de son SMS ; TOTEM, le boîtier qui porte nos
   cartes, lit le même ID sur le float et les XAFe sont crédités, tout de suite.
-- Il **sort des XAF** vers un numéro vérifié ; TOTEM compose le transfert.
+- Il **sort des XAF** vers son numéro MoMo ou Orange Money : l'équipe paie à la main, et le SMS de la puce le prouve.
 - Il **achète et vend des USDT** sur un carnet d'ordres, limite ou marché — ou en un geste (achat rapide, prix ferme, marge de la plateforme).
 - Il **dépose et retire des USDT** : son adresse de dépôt vient de nos propres wallets (`chaine/`).
 - Il **sort ses XAFe sur la chaîne** (BEP20 ou TRC20) vers son propre wallet.
@@ -25,7 +26,8 @@ couvert un pour un par les floats MoMo et les comptes en banque de la plateforme
 | `contracts/` | le jeton XAFe (ERC-20) | `cd contracts && npm test` |
 | `chaine/` | nos wallets, BEP20 et TRC20 : adresses de dépôt dérivées d'une graine, dépôts crédités, balayage, retraits signés par le wallet chaud, surplus au froid ; l'outil de mise en service | `cd chaine && npm test`, puis `sh supabase/epreuve/eprouver.sh` |
 | `design/` | les maquettes et la carte de navigation | `cd design/maquettes && npm run build` |
-| `docs/` | l'architecture, le contrat TOTEM | — |
+| `supabase/production/` | l'installation de la production en une transaction (0041) et son épreuve | `sh supabase/production/eprouver-le-profil.sh` |
+| `docs/` | l'architecture, le contrat TOTEM, la mise en production | — |
 
 Lire d'abord `docs/ARCHITECTURE.md`, puis `design/NAVIGATION.md` (et sa carte tirée du code, `design/CARTE.md`), et
 `docs/TOTEM-INTEGRATION.md`. Chaque harnais a été écrit pour prendre en défaut,
