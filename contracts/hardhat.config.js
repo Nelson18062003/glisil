@@ -6,7 +6,9 @@ const { CLE_PRIVEE, RPC_BSC_TESTNET, RPC_BSC, CLE_BSCSCAN } = process.env;
 module.exports = {
   solidity: {
     version: "0.8.28",
-    settings: { optimizer: { enabled: true, runs: 200 } },
+    // « paris » épinglé : le même code va sur Tron (TVM), qui ne connaît pas PUSH0 ni MCOPY (cancun) ;
+    // un défaut de Hardhat qui changerait ne doit pas changer le code déployé sans le dire.
+    settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "paris" },
   },
   networks: {
     bsctestnet: {

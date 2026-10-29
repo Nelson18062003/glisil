@@ -20,4 +20,19 @@ if [ "${TEMOIN:-0}" = "1" ]; then
   done
   echo "✓ témoin : sans plafond et sans registre des adresses de dépôt, Echidna prend le jeton en défaut, deux fois"
   rm -rf "$T"
+  # le correctif de la réserve : deux mutants, chacun pris par SA promesse
+  for m in reserve plafond; do
+    T=$(mktemp -d); mkdir -p "$T/contracts" "$T/echidna"
+    if [ "$m" = "reserve" ]; then
+      sed '/if (vers == address(this) \&\& depuis != address(0)) revert VersLaReserve();/d' contracts/XAFe.sol >"$T/contracts/XAFe.sol"; p=rien_n_entre_dans_la_reserve
+    else
+      sed 's/_mint(address(this), montant);/_mint(address(this), montant); frappeLeJour[block.timestamp \/ 1 days] += montant;/' contracts/XAFe.sol >"$T/contracts/XAFe.sol"; p=le_plafond_ne_compte_que_l_exterieur
+    fi
+    cmp -s contracts/XAFe.sol "$T/contracts/XAFe.sol" && { echo "✗ témoin $m : la mutation n'a rien changé"; exit 1; }
+    cp echidna/EpreuveXAFe.sol echidna/echidna.yaml "$T/echidna/"; ln -s "$PWD/node_modules" "$T/node_modules"
+    (cd "$T" && $ECHIDNA echidna/EpreuveXAFe.sol --contract EpreuveXAFe --config echidna/echidna.yaml --format text >"$T/temoin.log" 2>&1) || true
+    grep -q "$p.*fail" "$T/temoin.log" || { echo "✗ témoin $m : la promesse « $p » n'est pas prise"; exit 1; }
+    echo "✓ témoin $m : sans sa garde, Echidna prend « $p »"
+    rm -rf "$T"
+  done
 fi

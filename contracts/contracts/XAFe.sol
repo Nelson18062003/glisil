@@ -12,25 +12,36 @@ pragma solidity ^0.8.28;
  * est donc toujours une part des XAFe de la plateforme, eux-mêmes couverts
  * un pour un par les floats MoMo et les comptes en banque.
  *
+ *  - LA RÉSERVE VIT DANS LE CONTRAT (address(this)). Chaque XAFe crédité dans
+ *    un compte Glisil y est frappé (frapperReserve) ; chaque XAFe qui en sort
+ *    y est détruit (detruireReserve). Elle ne se transfère pas : un XAFe de la
+ *    réserve ne quitte le contrat qu'en étant brûlé, et rien n'y entre par
+ *    transfert. Une clé chaude volée ne peut donc pas l'emporter — avant, la
+ *    réserve dormait sur le wallet chaud, et un seul transfert la vidait.
  *  - ERC-20, six décimales (1 XAF = 1 000 000 unités), comme l'USDT.
- *  - Rôles : ADMIN, FRAPPEUR (le signataire de la plateforme), DESTRUCTEUR,
- *    GELEUR (conformité), PAUSEUR. L'ADMIN (un wallet matériel) ne reçoit
- *    QUE le rôle d'administrer : il donne les autres, il ne frappe pas lui-même.
- *    Il se transmet en deux temps, avec un délai (AccessControlDefaultAdminRules) :
- *    un clic de travers ou une clé volée ne le cède pas d'un coup, et il ne
- *    s'abandonne pas sans préavis.
+ *  - Rôles : ADMIN, FRAPPEUR et DESTRUCTEUR (le signataire de la plateforme),
+ *    GELEUR (conformité), PAUSEUR, INSCRIPTEUR. Le constructeur les pose tous
+ *    d'un coup ; l'ADMIN (un wallet matériel) ne reçoit QUE le rôle
+ *    d'administrer. Il se transmet en deux temps, avec un délai
+ *    (AccessControlDefaultAdminRules) : un clic de travers ou une clé volée ne
+ *    le cède pas d'un coup, et il ne s'abandonne pas sans préavis.
  *  - Les XAFe qui reviennent arrivent sur l'adresse de dépôt PROPRE à chaque
- *    client. L'ADMIN inscrit ces adresses ; le DESTRUCTEUR brûle ce qui y
- *    arrive (detruireDepot), et nulle part ailleurs : jamais le wallet d'un
- *    client.
- *  - Pause : plus rien ne bouge, le temps de comprendre.
+ *    client. L'ADMIN inscrit ces adresses (ou l'INSCRIPTEUR, d'avance : des
+ *    adresses NEUVES seulement, sans jamais en retirer — une clé de mise en
+ *    service qui y renonce ensuite) ; le DESTRUCTEUR brûle ce qui y arrive
+ *    (detruireDepot), et nulle part ailleurs : jamais le wallet d'un client.
+ *  - Pause : plus rien ne bouge, le temps de comprendre. Un PAUSEUR arrête ;
+ *    seul l'ADMIN reprend — un rôle qui ne sait qu'arrêter se confie sans
+ *    crainte.
  *  - Gel d'une adresse : elle ne peut plus ni envoyer ni recevoir — ce que
- *    la conformité (COBAC, COSUMAF) peut exiger d'un émetteur.
+ *    la conformité (COBAC, COSUMAF) peut exiger d'un émetteur. La réserve ne
+ *    se gèle pas (ce serait une pause hors du PAUSEUR, et sa destruction).
  *  - Chaque frappe et chaque destruction porte sa référence : la chaîne et
  *    le grand livre de la plateforme se rapprochent ligne à ligne.
- *  - Un plafond de frappe par jour : la clé du FRAPPEUR vit sur un serveur,
- *    et une clé volée ne doit pas pouvoir frapper sans limite. Au-delà, il
- *    faut l'ADMIN (une autre clé, hors ligne) pour relever le plafond.
+ *  - Un plafond de frappe par jour VERS L'EXTÉRIEUR : la clé du FRAPPEUR vit
+ *    sur un serveur, et une clé volée ne doit pas pouvoir frapper sans limite
+ *    vers un wallet. Au-delà, il faut l'ADMIN pour relever le plafond. La
+ *    réserve n'y compte pas : ce qui y est frappé ne peut pas en sortir.
  *  - Ce qu'une clé volée a frappé se reprend : l'ADMIN gèle les adresses qui
  *    l'ont reçu, puis détruit leurs fonds gelés.
  *
@@ -50,16 +61,18 @@ contract XAFe is ERC20, AccessControlDefaultAdminRules, Pausable {
     bytes32 public constant DESTRUCTEUR_ROLE = keccak256("DESTRUCTEUR_ROLE");
     bytes32 public constant GELEUR_ROLE = keccak256("GELEUR_ROLE");
     bytes32 public constant PAUSEUR_ROLE = keccak256("PAUSEUR_ROLE");
+    /// Inscrire d'avance des adresses de dépôt NEUVES, sans jamais en retirer.
+    bytes32 public constant INSCRIPTEUR_ROLE = keccak256("INSCRIPTEUR_ROLE");
 
-    /// Une référence de retrait ne frappe qu'une fois.
+    /// Une référence de frappe ne frappe qu'une fois — en réserve comme chez un client.
     mapping(bytes32 => bool) public referenceUtilisee;
     /// Les adresses gelées : ni envoi, ni réception.
     mapping(address => bool) public gele;
-    /// Ce qui peut se frapper en un jour (en unités), toutes frappes confondues.
+    /// Ce qui peut se frapper en un jour (en unités) VERS L'EXTÉRIEUR — la réserve n'y compte pas.
     uint256 public plafondJour;
-    /// Ce qui a été frappé, par jour (block.timestamp / 1 jour).
+    /// Ce qui a été frappé vers l'extérieur, par jour (block.timestamp / 1 jour).
     mapping(uint256 => uint256) public frappeLeJour;
-    /// Les adresses de dépôt de la plateforme (une par client), inscrites par l'ADMIN.
+    /// Les adresses de dépôt de la plateforme (une par client).
     mapping(address => bool) public estAdresseDeDepot;
     /** une destruction se rapproche du grand livre par SA référence : une seule fois, comme une frappe */
     mapping(bytes32 => bool) public destructionReferencee;
@@ -82,13 +95,32 @@ contract XAFe is ERC20, AccessControlDefaultAdminRules, Pausable {
     error PlafondJourAtteint(uint256 dejaFrappe, uint256 montant, uint256 plafond);
     error PasUneAdresseDeDepot(address adresse);
     error AdresseNulle();
+    /// Rien n'entre dans la réserve par transfert : elle ne se remplit que par frapperReserve.
+    error VersLaReserve();
+    /// Rien ne sort de la réserve autrement qu'en étant brûlé.
+    error ReserveIntransferable();
+    /// La réserve n'est ni un wallet de client, ni une adresse de dépôt, ni gelable.
+    error AdresseDeLaReserve();
+    /// L'INSCRIPTEUR n'inscrit que des adresses neuves : une adresse qui porte déjà des XAFe n'en est pas une.
+    error AdresseDejaPortee(address adresse);
 
-    constructor(address admin, uint256 plafond) ERC20("XAFe", "XAFe") AccessControlDefaultAdminRules(DELAI_ADMIN, admin) {
+    /**
+     * Tous les rôles d'un coup : il n'y a pas de fenêtre où l'ADMIN serait une
+     * clé de déploiement. Une adresse nulle ne reçoit rien.
+     */
+    constructor(address admin, uint256 plafond, address frappeur, address destructeur, address pauseur, address geleur, address inscripteur)
+        ERC20("XAFe", "XAFe") AccessControlDefaultAdminRules(DELAI_ADMIN, admin)
+    {
         plafondJour = plafond;
         emit PlafondJour(plafond);
+        if (frappeur != address(0)) _grantRole(FRAPPEUR_ROLE, frappeur);
+        if (destructeur != address(0)) _grantRole(DESTRUCTEUR_ROLE, destructeur);
+        if (pauseur != address(0)) _grantRole(PAUSEUR_ROLE, pauseur);
+        if (geleur != address(0)) _grantRole(GELEUR_ROLE, geleur);
+        if (inscripteur != address(0)) _grantRole(INSCRIPTEUR_ROLE, inscripteur);
     }
 
-    /// Relever (ou baisser) le plafond de frappe : l'ADMIN seul, jamais le FRAPPEUR.
+    /// Relever (ou baisser) le plafond de frappe : l'ADMIN seul, jamais le FRAPPEUR. Effet immédiat.
     function fixerPlafondJour(uint256 plafond) external onlyRole(DEFAULT_ADMIN_ROLE) {
         plafondJour = plafond;
         emit PlafondJour(plafond);
@@ -108,6 +140,7 @@ contract XAFe is ERC20, AccessControlDefaultAdminRules, Pausable {
     function frapper(address vers, uint256 montant, bytes32 empreinte) external onlyRole(FRAPPEUR_ROLE) whenNotPaused {
         if (empreinte == bytes32(0)) revert ReferenceVide();
         if (montant == 0) revert MontantNul();
+        if (vers == address(this)) revert AdresseDeLaReserve();
         if (referenceUtilisee[empreinte]) revert ReferenceDejaUtilisee(empreinte);
         uint256 jour = block.timestamp / 1 days;
         uint256 deja = frappeLeJour[jour];
@@ -119,16 +152,41 @@ contract XAFe is ERC20, AccessControlDefaultAdminRules, Pausable {
     }
 
     /**
-     * La plateforme détruit des XAFe revenus sur l'une de ses adresses
-     * (le client les a envoyés à son adresse de dépôt ; son compte est
-     * recrédité). Seules les adresses de la plateforme ont des XAFe à y
-     * détruire : la fonction n'agit que sur le solde de l'appelant.
+     * La réserve reçoit les XAFe crédités dans les comptes Glisil (un dépôt
+     * MoMo, un retour de la chaîne). Sans plafond : ce qui est frappé ici ne
+     * peut pas sortir du contrat, et une frappe que le grand livre n'explique
+     * pas lève l'alarme de la parité.
      */
-    function detruire(uint256 montant, bytes32 empreinte) external onlyRole(DESTRUCTEUR_ROLE) whenNotPaused {
+    function frapperReserve(uint256 montant, bytes32 empreinte) external onlyRole(FRAPPEUR_ROLE) whenNotPaused {
+        if (empreinte == bytes32(0)) revert ReferenceVide();
+        if (montant == 0) revert MontantNul();
+        if (referenceUtilisee[empreinte]) revert ReferenceDejaUtilisee(empreinte);
+        referenceUtilisee[empreinte] = true;
+        _mint(address(this), montant);
+        emit Frappe(address(this), montant, empreinte);
+    }
+
+    /**
+     * Des XAFe quittent les comptes Glisil (un remboursement MoMo, une sortie
+     * vers un wallet frappée ailleurs) : la réserve les brûle. Jamais plus
+     * qu'elle ne tient.
+     */
+    function detruireReserve(uint256 montant, bytes32 empreinte) external onlyRole(DESTRUCTEUR_ROLE) whenNotPaused {
         if (montant == 0) revert MontantNul();
         _referencer(empreinte);
-        _burn(_msgSender(), montant);
-        emit Detruit(_msgSender(), montant, empreinte);
+        _burn(address(this), montant);
+        emit Detruit(address(this), montant, empreinte);
+    }
+
+    /// Ce que la réserve tient.
+    function reserve() external view returns (uint256) {
+        return balanceOf(address(this));
+    }
+
+    /// Ce qui peut encore se frapper vers l'extérieur aujourd'hui : un retrait qui n'y tient pas attend.
+    function resteDuJour() external view returns (uint256) {
+        uint256 d = frappeLeJour[block.timestamp / 1 days];
+        return d >= plafondJour ? 0 : plafondJour - d;
     }
 
     /** Une destruction sans référence, ou deux sous la même, ne se rapprocheraient de rien. */
@@ -141,8 +199,30 @@ contract XAFe is ERC20, AccessControlDefaultAdminRules, Pausable {
     /** L'ADMIN inscrit (ou retire) les adresses de dépôt que le moteur a préparées. */
     function inscrireAdressesDeDepot(address[] calldata adresses, bool inscrites) external onlyRole(DEFAULT_ADMIN_ROLE) {
         for (uint256 i = 0; i < adresses.length; i++) {
-            estAdresseDeDepot[adresses[i]] = inscrites;
-            emit AdresseDeDepot(adresses[i], inscrites);
+            address a = adresses[i];
+            if (a == address(0)) revert AdresseNulle();
+            if (a == address(this)) revert AdresseDeLaReserve();
+            estAdresseDeDepot[a] = inscrites;
+            emit AdresseDeDepot(a, inscrites);
+        }
+    }
+
+    /**
+     * L'INSCRIPTEUR inscrit d'avance un stock d'adresses de dépôt NEUVES (dérivées,
+     * jamais servies). Il ne retire rien, et refuse une adresse qui porte déjà
+     * des XAFe : une clé volée ne transforme pas le wallet d'un client en
+     * adresse de dépôt (dont le DESTRUCTEUR brûlerait le contenu).
+     */
+    function inscrireAdressesNeuves(address[] calldata adresses) external onlyRole(INSCRIPTEUR_ROLE) {
+        for (uint256 i = 0; i < adresses.length; i++) {
+            address a = adresses[i];
+            if (a == address(0)) revert AdresseNulle();
+            if (a == address(this)) revert AdresseDeLaReserve();
+            if (balanceOf(a) != 0) revert AdresseDejaPortee(a);
+            if (!estAdresseDeDepot[a]) {
+                estAdresseDeDepot[a] = true;
+                emit AdresseDeDepot(a, true);
+            }
         }
     }
 
@@ -165,6 +245,8 @@ contract XAFe is ERC20, AccessControlDefaultAdminRules, Pausable {
     function geler(address adresse, string calldata motif) external onlyRole(GELEUR_ROLE) {
         // geler l'adresse zéro arrêtait toute frappe et toute destruction : une pause, hors du rôle PAUSEUR
         if (adresse == address(0)) revert AdresseNulle();
+        // geler la réserve aussi — et detruireFondsGeles l'aurait effacée
+        if (adresse == address(this)) revert AdresseDeLaReserve();
         gele[adresse] = true;
         emit Gele(adresse, motif);
     }
@@ -195,13 +277,15 @@ contract XAFe is ERC20, AccessControlDefaultAdminRules, Pausable {
         _pause();
     }
 
-    function reprendre() external onlyRole(PAUSEUR_ROLE) {
+    /// Seul l'ADMIN reprend : un PAUSEUR (même volé) ne fait qu'arrêter.
+    function reprendre() external onlyRole(DEFAULT_ADMIN_ROLE) {
         _unpause();
     }
 
     /**
      * Tout mouvement passe ici (OpenZeppelin 5) : frappe, transfert,
-     * destruction. En pause, rien ne bouge ; une adresse gelée ne bouge pas.
+     * destruction. En pause, rien ne bouge ; une adresse gelée ne bouge pas ;
+     * la réserve ne se remplit et ne se vide que par frappe et destruction.
      */
     function _update(address depuis, address vers, uint256 montant) internal override whenNotPaused {
         if (!_reprise) {
@@ -210,6 +294,8 @@ contract XAFe is ERC20, AccessControlDefaultAdminRules, Pausable {
             // une adresse gelée ne dépense pas non plus les autorisations qu'on lui a données
             if (gele[_msgSender()]) revert AdresseGelee(_msgSender());
         }
+        if (vers == address(this) && depuis != address(0)) revert VersLaReserve();
+        if (depuis == address(this) && vers != address(0)) revert ReserveIntransferable();
         super._update(depuis, vers, montant);
     }
 }

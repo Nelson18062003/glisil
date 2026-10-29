@@ -4,8 +4,11 @@ Le franc CFA sur BNB Smart Chain (BEP20), puis Tron (TRC20). 1 XAFe = 1 XAF.
 
 **Chaque XAFe dû par Glisil existe sur la chaîne** (migration 0015). Un
 dépôt MoMo ou Orange crédité est **frappé** au même moment dans la RÉSERVE de
-Glisil (le wallet chaud), sous la référence du dossier (`XAFe-DP-000003`) ; un
-retrait payé en XAF y est **détruit**. Quand un client sort ses XAFe vers son
+Glisil, sous la référence du dossier (`XAFe-DP-000003`) ; un retrait payé en
+XAF y est **détruit**. **La réserve est tenue par le contrat lui-même**
+(`address(this)`, `frapperReserve` / `detruireReserve`) : elle ne se transfère
+pas — rien n'y entre par transfert, rien n'en sort sinon brûlé. Avant, elle
+dormait sur le wallet chaud, et une clé chaude volée la vidait d'un transfert. Quand un client sort ses XAFe vers son
 propre wallet, la plateforme les frappe chez lui (référence du retrait,
 `XAFe-CR-000012`) et les détruit dans la réserve ; quand ils reviennent, elle
 les détruit chez lui et les refrappe dans la réserve. L'offre totale du jeton
@@ -15,24 +18,36 @@ vaut donc toujours ce que Glisil doit — et cela se prouve, à trois colonnes
 
 ```sh
 npm install
-npm test                 # onze épreuves : référence unique, plafond du jour, rôles, pause, gel, reprise
+npm test                 # 27 épreuves : la réserve dans le contrat, référence unique, plafond du jour, rôles, pause, gel, reprise, inscripteur
 slither . --filter-paths node_modules   # l'analyse statique (0 constat)
-sh echidna/eprouver.sh   # 100 000 appels au hasard, six promesses (TEMOIN=1 : un jeton sans plafond doit y tomber)
+sh echidna/eprouver.sh   # 100 000 appels au hasard, douze promesses (TEMOIN=1 : quatre jetons mutés doivent y tomber)
 cp .env.example .env     # CLE_PRIVEE, RPC, CLE_BSCSCAN
-PLAFOND_JOUR_XAF=50000000 npm run deployer:testnet   # le plafond de frappe par jour, en XAF
+ADMIN=0x… CHAUD=0x… PLAFOND_JOUR_XAF=1000000000 npm run deployer:testnet
 ```
+
+Le constructeur pose **tous les rôles d'un coup** :
+`XAFe(admin, plafond, frappeur, destructeur, pauseur, geleur, inscripteur)` —
+une adresse nulle ne reçoit rien. Il n'y a pas de fenêtre où l'admin serait une
+clé de déploiement. Le plafond par défaut est **1 000 000 000 XAF par jour et
+par chaîne** (`1e15` unités) ; l'ADMIN le change à tout moment, à la hausse
+comme à la baisse, effet immédiat (`fixerPlafondJour`). Vérifier sur BscScan
+avec les sept arguments (compilateur 0.8.28, optimiseur 200, EVM « paris ») :
+`npx hardhat verify --network bsc <adresse> <admin> <plafond> <frappeur> <destructeur> <pauseur> <geleur> <inscripteur>`.
 
 | Rôle | Qui | Pouvoir |
 |---|---|---|
-| `DEFAULT_ADMIN_ROLE` | un wallet matériel du propriétaire — et lui seul | donner et retirer les rôles, `fixerPlafondJour`, `inscrireAdressesDeDepot`, `detruireFondsGeles`. Il ne reçoit AUCUN autre rôle à la naissance, et se transmet en deux temps (`beginDefaultAdminTransfer`, deux jours, `acceptDefaultAdminTransfer`) |
-| `FRAPPEUR_ROLE` | le signataire de la plateforme (veilleur de chaîne) | `frapper(vers, montant, empreinte)`, jamais au-delà du plafond du jour |
-| `DESTRUCTEUR_ROLE` | idem | `detruireDepot(adresse, montant, empreinte)` sur une adresse de dépôt inscrite ; `detruire` sur son propre solde. Chaque destruction porte une empreinte non vide, utilisée une seule fois (`destructionReferencee`) |
-| `GELEUR_ROLE` | conformité | `geler(adresse, motif)`, `degeler`. Une adresse gelée n'envoie, ne reçoit, ni ne dépense les autorisations qu'on lui a données ; l'adresse zéro ne se gèle pas |
-| `PAUSEUR_ROLE` | astreinte | `pauser()`, `reprendre()` |
+| `DEFAULT_ADMIN_ROLE` | un wallet matériel du propriétaire — et lui seul (plus tard un Safe 2 sur 3) | donner et retirer les rôles, `fixerPlafondJour`, `inscrireAdressesDeDepot` (inscrire ou retirer), `detruireFondsGeles`, **`reprendre()`**. Il ne reçoit AUCUN autre rôle à la naissance, et se transmet en deux temps (`beginDefaultAdminTransfer`, deux jours, `acceptDefaultAdminTransfer`) |
+| `FRAPPEUR_ROLE` | le wallet chaud (indice 0 de la graine) | `frapper(vers, montant, empreinte)` vers un wallet, jamais au-delà du plafond du jour ; `frapperReserve(montant, empreinte)`, sans plafond (rien n'en sort) |
+| `DESTRUCTEUR_ROLE` | idem | `detruireReserve(montant, empreinte)` ; `detruireDepot(adresse, montant, empreinte)` sur une adresse de dépôt inscrite. Chaque destruction porte une empreinte non vide, utilisée une seule fois (`destructionReferencee`). Plus de `detruire` : rien ne doit jamais dormir sur le wallet chaud |
+| `GELEUR_ROLE` | conformité | `geler(adresse, motif)`, `degeler`. Une adresse gelée n'envoie, ne reçoit, ni ne dépense les autorisations qu'on lui a données ; ni l'adresse zéro ni la réserve ne se gèlent |
+| `PAUSEUR_ROLE` | astreinte | `pauser()` seulement : un PAUSEUR arrête, il ne reprend pas — un rôle qui se confie sans crainte |
+| `INSCRIPTEUR_ROLE` | la clé de mise en service, un temps | `inscrireAdressesNeuves(adresses)` : des adresses de dépôt NEUVES (zéro XAFe), jamais en retirer. Elle inscrit le stock d'avance, puis y renonce (`renounceRole`) |
 
-Le déploiement exige `ADMIN` hors réseau local : la clé chaude qui déploie
-n'administre jamais. Chaque rôle opérationnel se donne ensuite DEPUIS le
-wallet admin.
+Le déploiement exige `ADMIN` et `CHAUD` hors réseau local, et refuse un admin
+qui serait le wallet chaud. Ce qu'une clé chaude volée peut encore faire :
+frapper vers un wallet jusqu'au plafond du jour (visible à la parité, ligne
+« inconnue » ; gel puis `detruireFondsGeles`), ou brûler la réserve (grief
+seulement, l'alarme sonne). Elle ne peut plus en déplacer une unité.
 
 **Le lien avec le moteur** (ce que le veilleur de chaîne doit faire, au
 centime) :
@@ -49,8 +64,9 @@ centime) :
   même empreinte se rapproche ligne à ligne.
 
 **Une clé de frappe vit sur un serveur : elle peut être volée.** Un
-FRAPPEUR compromis ne frappe donc pas plus que `plafondJour` par jour (toutes
-frappes confondues), et seul l'ADMIN — une autre clé, hors ligne — relève le
+FRAPPEUR compromis ne frappe donc pas plus que `plafondJour` par jour vers
+l'extérieur (la réserve n'y compte pas : ce qui y est frappé n'en sort pas),
+et seul l'ADMIN — une autre clé, hors ligne — relève le
 plafond. Ce qui a été frappé à tort se reprend : `geler` l'adresse (un geste
 qui se voit), puis `detruireFondsGeles(adresse, empreinte)`.
 

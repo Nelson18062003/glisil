@@ -16,7 +16,11 @@ pragma solidity ^0.8.28;
  *   · en pause, rien ne bouge ;
  *   · l'intrus ne réussit rien : ni frapper, ni relever le plafond, ni geler,
  *     ni reprendre des fonds, ni inscrire une adresse, ni prendre l'admin ;
- *   · on ne détruit jamais hors d'une adresse de dépôt inscrite.
+ *   · on ne détruit jamais hors d'une adresse de dépôt inscrite ;
+ *   · la réserve (le contrat lui-même) vaut exactement ce qui y a été frappé
+ *     moins ce qui y a été détruit : rien n'y entre par transfert ;
+ *   · le plafond du jour ne compte que les frappes vers l'extérieur ;
+ *   · la réserve ne se gèle pas ; l'inscripteur n'inscrit que du neuf.
  */
 import "../contracts/XAFe.sol";
 
@@ -43,14 +47,16 @@ contract EpreuveXAFe {
     bool internal pauseABouge;
     bool internal intrusAReussi;
     bool internal detruitHorsDepot;
+    uint256 internal reserveFrappee;
+    uint256 internal reserveDetruite;
+    mapping(uint256 => uint256) internal frappeExterneDuJour;
+    bool internal reserveAtteinte;
+    bool internal reserveGelee;
+    bool internal inscritDuPorte;
 
     constructor() {
-        jeton = new XAFe(address(this), PLAFOND);
-        // l'admin ne naît qu'avec le rôle d'administrer : il se donne ici les rôles qu'il exerce dans l'épreuve
-        jeton.grantRole(jeton.FRAPPEUR_ROLE(), address(this));
-        jeton.grantRole(jeton.DESTRUCTEUR_ROLE(), address(this));
-        jeton.grantRole(jeton.GELEUR_ROLE(), address(this));
-        jeton.grantRole(jeton.PAUSEUR_ROLE(), address(this));
+        // l'épreuve tient tous les rôles à la fois (le constructeur les pose d'un coup)
+        jeton = new XAFe(address(this), PLAFOND, address(this), address(this), address(this), address(this), address(this));
         intrus = new Porteur();
         for (uint256 i = 0; i < 3; i++) porteurs[i] = new Porteur();
     }
@@ -66,6 +72,7 @@ contract EpreuveXAFe {
             if (referenceVue[empreinte]) referenceRejouee = true;
             referenceVue[empreinte] = true;
             frappeDuJour[jour] += montant;
+            frappeExterneDuJour[jour] += montant;
             frappe += montant;
             if (frappeDuJour[jour] > PLAFOND) plafondFranchi = true;
             if (jeton.paused() || jeton.gele(_p(vers))) pauseABouge = pauseABouge || jeton.paused();
@@ -83,6 +90,41 @@ contract EpreuveXAFe {
             if (jeton.paused()) pauseABouge = true;
             if (jeton.balanceOf(a) != avantA - montant) geleABouge = true;
         }
+    }
+
+    function frapperReserve(uint256 montant, bytes32 empreinte) public {
+        montant = montant % (10 * PLAFOND);
+        try jeton.frapperReserve(montant, empreinte) {
+            if (referenceVue[empreinte]) referenceRejouee = true;
+            referenceVue[empreinte] = true;
+            reserveFrappee += montant;
+            frappe += montant;
+            if (jeton.paused()) pauseABouge = true;
+        } catch {}
+    }
+
+    function detruireReserve(uint256 montant, bytes32 empreinte) public {
+        try jeton.detruireReserve(montant, empreinte) {
+            reserveDetruite += montant;
+            detruit += montant;
+            if (jeton.paused()) pauseABouge = true;
+        } catch {}
+    }
+
+    function transfererALaReserve(uint8 de, uint256 montant) public {
+        bool ok = porteurs[de % 3].essayer(address(jeton), abi.encodeCall(IERC20.transfer, (address(jeton), montant)));
+        if (ok && montant > 0) reserveAtteinte = true;
+    }
+
+    function gelerLaReserve() public {
+        try jeton.geler(address(jeton), "epreuve") { reserveGelee = true; } catch {}
+    }
+
+    function inscrireNeuves(uint8 qui) public {
+        address[] memory a = new address[](1);
+        a[0] = _p(qui);
+        bool portee = jeton.balanceOf(a[0]) > 0;
+        try jeton.inscrireAdressesNeuves(a) { if (portee) inscritDuPorte = true; } catch {}
     }
 
     function geler(uint8 qui) public { jeton.geler(_p(qui), "epreuve"); }
@@ -119,7 +161,7 @@ contract EpreuveXAFe {
 
     function intrusEssaie(uint8 quoi, uint256 montant, bytes32 empreinte) public {
         bytes memory d;
-        uint8 q = quoi % 9;
+        uint8 q = quoi % 13;
         address[] memory a = new address[](1);
         a[0] = address(intrus);
         if (q == 0) d = abi.encodeCall(XAFe.frapper, (address(intrus), montant, empreinte));
@@ -130,6 +172,10 @@ contract EpreuveXAFe {
         else if (q == 5) d = abi.encodeCall(AccessControl.grantRole, (jeton.FRAPPEUR_ROLE(), address(intrus)));
         else if (q == 6) d = abi.encodeCall(XAFe.inscrireAdressesDeDepot, (a, true));
         else if (q == 7) d = abi.encodeCall(XAFe.detruireDepot, (_p(1), montant, empreinte));
+        else if (q == 8) d = abi.encodeCall(XAFe.frapperReserve, (montant, empreinte));
+        else if (q == 9) d = abi.encodeCall(XAFe.detruireReserve, (montant, empreinte));
+        else if (q == 10) d = abi.encodeCall(XAFe.inscrireAdressesNeuves, (a));
+        else if (q == 11) d = abi.encodeCall(XAFe.reprendre, ());
         else d = abi.encodeWithSignature("beginDefaultAdminTransfer(address)", address(intrus));
         if (intrus.essayer(address(jeton), d)) intrusAReussi = true;
     }
@@ -143,4 +189,12 @@ contract EpreuveXAFe {
     function echidna_en_pause_rien_ne_bouge() public view returns (bool) { return !pauseABouge; }
     function echidna_l_intrus_ne_reussit_rien() public view returns (bool) { return !intrusAReussi; }
     function echidna_jamais_detruit_hors_d_une_adresse_de_depot() public view returns (bool) { return !detruitHorsDepot; }
+    function echidna_la_reserve_vaut_frappee_moins_detruite() public view returns (bool) { return jeton.balanceOf(address(jeton)) == reserveFrappee - reserveDetruite; }
+    function echidna_rien_n_entre_dans_la_reserve_par_transfert() public view returns (bool) { return !reserveAtteinte; }
+    function echidna_le_plafond_ne_compte_que_l_exterieur() public view returns (bool) {
+        uint256 jour = block.timestamp / 1 days;
+        return jeton.frappeLeJour(jour) == frappeExterneDuJour[jour];
+    }
+    function echidna_la_reserve_ne_se_gele_pas() public view returns (bool) { return !reserveGelee; }
+    function echidna_l_inscripteur_n_inscrit_que_du_neuf() public view returns (bool) { return !inscritDuPorte; }
 }
