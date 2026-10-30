@@ -333,6 +333,15 @@ pose tous les rôles et le plafond du jour (1 000 000 000 XAF). Voir
    `0xabdFD708075ab24F292d37DdF04fe1C7C3d7d408`,
    `0x5C98d25B652938b52Ad14062a0f010e158FA109d` — ce dernier est le
    **wallet d'urgence** (pauseur et geleur, BSC et Ethereum).
+   **Le Safe « Glisil Admin » (30/10)** : `0xdAd2F1e33f75bF99Bc5dbbBEfF4F7846DAaf9165`,
+   la MÊME adresse sur BNB Chain et Ethereum (création multi-réseaux de Safe).
+   **Activé sur BNB Chain** (payé par `0x06f8…8972`) et relu sur la chaîne,
+   sans passer par le site de Safe : les trois signataires ci-dessus, seuil
+   **2 sur 3**, aucun module, aucun guard, SafeL2 1.5.0 au singleton
+   `0xEdd160fEBBD92E350D4D398fb636302fccd67C7e` — l'adresse « canonical » du
+   registre officiel (safe-global/safe-deployments). Sur Ethereum : pas encore
+   activé — à faire avant le contrat Ethereum (un peu d'ETH sur un signataire).
+   C'est l'**admin** des contrats BSC et Ethereum.
 2. [P] Une clé de mise en service NEUVE (`CLE_DE_MISE_EN_SERVICE`, `/outils`),
    financée : ≈ 0,01 BNB ; ≈ 300 TRX ; de l'ETH pour Ethereum (le prix du gaz
    y change d'heure en heure : Claude calcule le montant le jour même). Le
