@@ -47,7 +47,7 @@ const Contexte = createContext<Guichet | null>(null);
 export function ouvrirLeGuichet(): Guichet {
   const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
   const cle = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-  if (url && cle) return new GuichetSupabase(url, cle);
+  if (url && cle) return new GuichetSupabase(url, cle, (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) || undefined);
   // second verrou (le premier est vite.config.ts) : un build de production ne se rabat jamais sur la démonstration
   if (import.meta.env.PROD && import.meta.env.VITE_PROFIL === "production") throw new Error("guichet de production sans configuration"); // langue-ok
   return new GuichetDemo();

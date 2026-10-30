@@ -14,7 +14,7 @@
 //     le navigateur intégré.
 //   · Un plantage de la WebView → rechargement, pas un écran blanc.
 //   · « Continuer avec Google » : dans un onglet du système (Google refuse
-//     une WebView), le code rendu à la page par glisil://auth-retour.
+//     une WebView), la réponse rendue à la page par glisil://auth-retour.
 // ============================================================
 import NetInfo from '@react-native-community/netinfo';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -26,10 +26,10 @@ import { AppState, BackHandler, Linking, Platform, Pressable, StyleSheet, Text, 
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { WebView, type WebViewNavigation } from 'react-native-webview';
 import type { ShouldStartLoadRequest, WebViewMessageEvent, WebViewOpenWindowEvent } from 'react-native-webview/lib/WebViewTypes';
-import { REVERROUILLER_APRES_MS, START_URL, USER_AGENT_SUFFIX, estUrlDeLApp } from './config';
+import { BASE_URL, REVERROUILLER_APRES_MS, START_URL, USER_AGENT_SUFFIX, estUrlDeLApp } from './config';
 import { traiterMessage } from './fichiers';
 import { appliquerMiseAJour, chercherMiseAJour } from './miseAJour';
-import { RETOUR_GOOGLE, SCRIPT_INJECTE, estAdresseGoogleDeSupabase, lireMessage, scriptDeRetourGoogle } from './pont';
+import { RETOUR_GOOGLE, SCRIPT_INJECTE, estAdresseGoogleDeSupabase, estAdresseGoogleDirecte, lireMessage, scriptDeRetourGoogle } from './pont';
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -140,9 +140,9 @@ export function App() {
     void traiterMessage(msg, (url) => void ouvrirDehors(url));
   }, []);
 
-  /* ---- « Continuer avec Google » : un onglet du système, puis le code rendu à la page */
+  /* ---- « Continuer avec Google » : un onglet du système, puis la réponse rendue à la page */
   const connexionGoogle = useCallback(async (url: string) => {
-    if (!estAdresseGoogleDeSupabase(url)) return;
+    if (!estAdresseGoogleDeSupabase(url) && !estAdresseGoogleDirecte(url, BASE_URL)) return;
     let retour = `${RETOUR_GOOGLE}?error=access_denied`;
     try {
       const r = await WebBrowser.openAuthSessionAsync(url, RETOUR_GOOGLE);

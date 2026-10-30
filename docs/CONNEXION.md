@@ -13,8 +13,17 @@ reçu par e-mail qui dit le montant et la destination (0036).
 ## Le parcours du client (`app/`)
 
 1. **Créer un compte** (`/bienvenue`) : l'adresse et un mot de passe (dix
-   caractères au moins, des lettres et des chiffres) — ou Google, qui demande
-   ensuite de choisir un mot de passe.
+   caractères au moins, minuscule, majuscule, chiffre et symbole) — ou Google,
+   qui demande ensuite de choisir un mot de passe. Google se fait **en direct**
+   (`app/src/noyau/google.ts`) : l'application va chez Google avec SON adresse
+   de retour (`/bienvenue/retour`), l'écran de Google dit donc « glisil.com »,
+   et le jeton d'identité rendu passe à Supabase (`signInWithIdToken`), qui en
+   vérifie la signature, le destinataire et le nonce ; l'« état » refuse un
+   retour qu'on n'a pas demandé. Dans la coque Android (pont v3), Google
+   s'ouvre dans un onglet du système, dont la page de retour rend la réponse à
+   l'application (`glisil://auth-retour`) ; un bouton « Revenir dans Glisil »
+   le fait si Chrome retient l'ouverture. Sans `VITE_GOOGLE_CLIENT_ID`, ou
+   dans une coque v2, l'ancien chemin par Supabase reste.
 2. **Le code reçu par e-mail** (`/bienvenue/code`) confirme l'adresse.
 3. **L'application d'authentification** (`/bienvenue/deux-facteurs`) :
    l'ajouter, puis taper les six chiffres qu'elle affiche.

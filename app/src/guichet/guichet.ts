@@ -59,9 +59,9 @@ export interface Guichet {
   renvoyerConfirmation(email: string): Promise<void>;
   /** Adresse et mot de passe : la session s'ouvre à aal1, il reste le code de l'application. */
   connecter(p: { email: string; motDePasse: string }): Promise<void>;
-  /** Google : une redirection dans le navigateur, un onglet du système dans la coque. */
+  /** Google : une redirection dans le navigateur, un onglet du système dans la coque — en direct (l'écran dit « glisil.com ») ou par Supabase. */
   connecterGoogle(): Promise<void>;
-  /** La coque rend l'adresse de retour (glisil://auth-retour?code=…) : le code s'échange contre la session. */
+  /** Le retour de Google (la page /bienvenue/retour, ou glisil://auth-retour dans la coque) : jeton d'identité ou code, contre la session. */
   terminerRetourOAuth(url: string): Promise<void>;
   /** Un compte Google n'a pas de mot de passe : il en choisit un, qui protège chaque sortie. */
   choisirMotDePasse(motDePasse: string): Promise<void>;

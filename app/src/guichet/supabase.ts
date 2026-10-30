@@ -13,7 +13,7 @@ import { t, langue } from "../noyau/langue";
 import { emailNormalise } from "../noyau/identite";
 import { numeroSaisi, transactionIdNormalise } from "../noyau/format";
 import { ENTREE_VIDE, premierFacteurDe } from "../noyau/entree";
-import { coqueActuelle, lireRetourOAuth, voieGoogle } from "../noyau/google";
+import { adresseGoogleDirecte, type AttenteGoogle, coqueActuelle, empreinteHex, hasard, lireRetourOAuth, nouvelEtat, verifierLeRetour, voieGoogle } from "../noyau/google";
 import type { EvenementDEntree, Guichet } from "./guichet";
 import type { PreuveDeReserve, Paire } from "./types";
 import { baseDe, estPaire, PAIRE_PRINCIPALE } from "./types";
@@ -189,6 +189,9 @@ const argsDeLaPreuve = (p: PreuveDeVerification) => ({ p_verification: p.verific
 
 /* ======================================================================= */
 
+/** Le départ chez Google (état, nonce), gardé dans l'onglet le temps de l'aller-retour. */
+const CLE_ATTENTE_GOOGLE = "glisil-google-attente";
+
 export class GuichetSupabase implements Guichet {
   readonly mode = "supabase" as const;
   private sb: SupabaseClient;
@@ -197,7 +200,8 @@ export class GuichetSupabase implements Guichet {
   private entree = new Set<(e: EvenementDEntree) => void>();
   private ecoute = false;
 
-  constructor(url: string, cleAnon: string) {
+  /** `googleClientId` (VITE_GOOGLE_CLIENT_ID) : Google en direct, son écran dit « glisil.com ». Sans lui, Google passe par Supabase. */
+  constructor(url: string, cleAnon: string, private readonly googleClientId?: string) {
     this.sb = createClient(url, cleAnon, {
       /* pkce : Google revient avec un code (?code=…) que le client échange lui-même — dans le navigateur
          (detectSessionInUrl), ou dans la coque (terminerRetourOAuth), le vérificateur restant dans la page */
@@ -329,21 +333,45 @@ export class GuichetSupabase implements Guichet {
   }
 
   async connecterGoogle() {
-    const voie = voieGoogle({ demo: false, coque: coqueActuelle(), agent: typeof navigator !== "undefined" ? navigator.userAgent : "" });
+    const voie = voieGoogle({ demo: false, coque: coqueActuelle(), agent: typeof navigator !== "undefined" ? navigator.userAgent : "", clientId: this.googleClientId });
+    if (voie.voie === "aucune") throw new ErreurMoteur("connexion Google annulée"); // langue-ok
+    const confierALaCoque = (url: string) =>
+      (window as unknown as { ReactNativeWebView?: { postMessage: (m: string) => void } }).ReactNativeWebView?.postMessage(JSON.stringify({ type: "connexion-google", url }));
+    if (voie.direct && this.googleClientId) {
+      /* le nonce reste dans CET onglet (la WebView, dans la coque) ; Google n'en reçoit que l'empreinte */
+      const attente: AttenteGoogle = { etat: nouvelEtat(voie.voie === "coque", hasard(16)), nonce: hasard(), quand: Date.now() };
+      sessionStorage.setItem(CLE_ATTENTE_GOOGLE, JSON.stringify(attente));
+      const url = adresseGoogleDirecte({ clientId: this.googleClientId, origine: window.location.origin, nonceHache: await empreinteHex(attente.nonce), etat: attente.etat });
+      if (voie.voie === "coque") confierALaCoque(url); else window.location.assign(url);
+      return;
+    }
     if (voie.voie === "coque") {
       /* Google refuse une WebView : la coque ouvre l'adresse dans un onglet du système et rend glisil://auth-retour?code=… */
       const { data, error } = await this.sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: "glisil://auth-retour", skipBrowserRedirect: true, queryParams: { prompt: "select_account" } } });
       if (error || !data.url) throw erreurAuth(error ?? { message: "connexion Google annulée" }); // langue-ok
-      (window as unknown as { ReactNativeWebView?: { postMessage: (m: string) => void } }).ReactNativeWebView?.postMessage(JSON.stringify({ type: "connexion-google", url: data.url }));
+      confierALaCoque(data.url);
       return;
     }
-    if (voie.voie !== "web") throw new ErreurMoteur("connexion Google annulée"); // langue-ok
     const { error } = await this.sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${window.location.origin}/bienvenue/retour`, queryParams: { prompt: "select_account" } } });
     if (error) throw erreurAuth(error);
   }
 
   async terminerRetourOAuth(url: string) {
-    const { code, erreur } = lireRetourOAuth(url);
+    const retour = lireRetourOAuth(url);
+    /* le chemin direct : un jeton d'identité, ou un refus, sous l'état qu'on a tiré au départ */
+    const brut = sessionStorage.getItem(CLE_ATTENTE_GOOGLE);
+    if (retour.jeton || (brut && !retour.code)) {
+      sessionStorage.removeItem(CLE_ATTENTE_GOOGLE); // un retour, un seul usage
+      let attente: AttenteGoogle | null = null;
+      try { attente = brut ? (JSON.parse(brut) as AttenteGoogle) : null; } catch { /* abîmé : comme absent */ }
+      const v = verifierLeRetour(attente, retour, Date.now());
+      if ("refus" in v) throw new ErreurMoteur("connexion Google annulée", v.refus); // langue-ok
+      /* Supabase vérifie la signature de Google, le destinataire (notre Client ID) et le nonce */
+      const { error } = await this.sb.auth.signInWithIdToken({ provider: "google", token: v.jeton, nonce: v.nonce });
+      if (error) throw new ErreurMoteur("connexion Google annulée", error.message); // langue-ok
+      return;
+    }
+    const { code, erreur } = retour;
     if (!code) throw new ErreurMoteur("connexion Google annulée", erreur ?? undefined); // langue-ok
     const { error } = await this.sb.auth.exchangeCodeForSession(code);
     if (error) throw new ErreurMoteur("connexion Google annulée", error.message); // langue-ok

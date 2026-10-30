@@ -19,7 +19,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useGuichet } from "../../guichet";
 import { CODE_DEMO, EMAIL_VITRINE, MOT_DE_PASSE_DEMO } from "../../guichet/demo";
 import { lisible } from "../../noyau/erreurs";
-import { coqueActuelle, lireRetourOAuth, voieGoogle } from "../../noyau/google";
+import { CHEMIN_DE_RETOUR, coqueActuelle, lireRetourOAuth, retourVersLaCoque, voieGoogle } from "../../noyau/google";
 import { emailNormalise, emailValide } from "../../noyau/identite";
 import { t } from "../../noyau/langue";
 import { motDePasseValide } from "../../noyau/motDePasse";
@@ -321,19 +321,53 @@ export function BienvenueCode() {
   );
 }
 
-/** Le retour de Google : la session s'échange toute seule (detectSessionInUrl) ; un refus se dit. */
+/**
+ * Le retour de Google, trois cas :
+ *   · ouvert dans l'onglet du système pour la coque (état « c. ») : la page rend la réponse à
+ *     l'application (glisil://auth-retour#…) — elle n'a ni le nonce ni la session ;
+ *   · le chemin direct (un état « w. ») : le jeton d'identité s'échange ici, puis disparaît de l'adresse ;
+ *   · par Supabase (?code=…) : la session s'échange toute seule (detectSessionInUrl).
+ * Un refus se dit.
+ */
 export function RetourGoogle() {
+  const guichet = useGuichet();
   const { avancer } = useSession();
   const navigate = useNavigate();
-  const { erreur } = useMemo(() => lireRetourOAuth(window.location.href), []);
+  const [adresse] = useState(() => window.location.href);
+  const versLaCoque = useMemo(() => retourVersLaCoque(adresse), [adresse]);
+  const retour = useMemo(() => lireRetourOAuth(adresse), [adresse]);
+  const direct = !versLaCoque && Boolean(retour.etat);
+  const [erreur, setErreur] = useState<string | null>(direct ? null : retour.erreur);
   const [tropLong, setTropLong] = useState(false);
+  const fait = useRef(false);
   useEffect(() => {
+    if (versLaCoque) { window.location.replace(versLaCoque); return; }
     if (erreur) return;
-    void avancer();
+    if (direct && !fait.current) {
+      fait.current = true; // un jeton ne s'échange qu'une fois (React rejoue les effets en développement)
+      /* le jeton quitte l'adresse avant tout : ni l'historique ni une capture d'écran ne le gardent */
+      window.history.replaceState(window.history.state, "", CHEMIN_DE_RETOUR);
+      void guichet.terminerRetourOAuth(adresse).then(() => avancer(), (e: unknown) => {
+        const d = e && typeof e === "object" && "detail" in e ? (e as { detail?: string }).detail : undefined;
+        setErreur(d ?? t("la connexion n'a pas abouti", "the sign-in didn't complete"));
+      });
+    } else if (!direct) void avancer();
     const m = setTimeout(() => setTropLong(true), 15_000);
     return () => clearTimeout(m);
-  }, [erreur, avancer]);
+  }, [versLaCoque, direct, erreur, adresse, guichet, avancer]);
 
+  if (versLaCoque) {
+    /* Chrome peut retenir une ouverture d'application qu'aucun doigt n'a demandée : le bouton la fait à coup sûr */
+    return (
+      <Screen gap={2}>
+        <Stack sx={{ flex: 1 }} alignItems="center" justifyContent="center" gap={2} textAlign="center">
+          <Typography variant="h5">{t("Google a répondu", "Google has answered")}</Typography>
+          <Typography variant="body2">{t("Revenez dans l'application Glisil pour finir la connexion.", "Go back to the Glisil app to finish signing in.")}</Typography>
+          <Button variant="contained" size="large" href={versLaCoque}>{t("Revenir dans Glisil", "Back to Glisil")}</Button>
+        </Stack>
+      </Screen>
+    );
+  }
   if (erreur || tropLong) {
     return (
       <Screen back="/bienvenue" gap={2}>

@@ -96,9 +96,15 @@ page), ou `select verifier_le_profil_production(false);`.
   `/authorize?provider=google` mène à la page de connexion de Google, sans
   erreur de client ni d'adresse. Branding : page d'accueil `app.glisil.com`,
   `/confidentialite`, `/conditions`, sans logo ; Audience **In production**
-  (30/10). L'écran de Google affiche encore `…supabase.co` : le bouton direct
-  de Google (gratuit, montre glisil.com) est à faire ; le domaine
-  `auth.glisil.com` (payant) a été écarté par le propriétaire.
+  (30/10). **Google en direct** (décision du propriétaire : gratuit, l'écran de
+  Google dit « glisil.com » au lieu de `…supabase.co` ; le domaine payant
+  `auth.glisil.com` écarté) : l'application va elle-même chez Google et rend
+  le jeton d'identité à Supabase (`signInWithIdToken`, nonce, état) —
+  `app/src/noyau/google.ts`. Il faut, côté Google, le retour
+  `https://app.glisil.com/bienvenue/retour` dans « Authorized redirect URIs »
+  du client « Glisil web » (en plus de celui de Supabase, gardé pour l'ancien
+  chemin), `VITE_GOOGLE_CLIENT_ID` dans Vercel (étape 11), et pour la coque
+  la mise à jour à distance du pont v3 (`cd coque && npm run update:production`).
 - Migrations déjà appliquées à la production après l'installation : 0043,
   puis 0044, 0045 et 0046 (le 29/10, en une instruction : la base a pris les
   fichiers sur GitHub au commit 4bfb7ea, vérifié leurs empreintes md5, puis
@@ -142,7 +148,7 @@ page), ou `select verifier_le_profil_production(false);`.
 | Dossier | Synchronisé vers | Contenu |
 |---|---|---|
 | `/supabase-fonctions` | secrets des fonctions de `dfixghiwqlwulmzixlpf` (Auto-Sync, **Disable Secret Deletion**) | `XAFE_GRAINE`, `EVM_RPC_KEY` (Alchemy : BNB Chain et Ethereum), `TRONGRID_KEY`, `RESEND_API_KEY`, `COURRIEL_JETON` |
-| `/vercel-app` | Vercel `glisil-app`, Production | `VITE_SUPABASE_URL=https://dfixghiwqlwulmzixlpf.supabase.co`, `VITE_SUPABASE_ANON_KEY`, `VITE_PROFIL=production`, `VITE_SUPPORT_WHATSAPP` |
+| `/vercel-app` | Vercel `glisil-app`, Production | `VITE_SUPABASE_URL=https://dfixghiwqlwulmzixlpf.supabase.co`, `VITE_SUPABASE_ANON_KEY`, `VITE_PROFIL=production`, `VITE_SUPPORT_WHATSAPP`, `VITE_GOOGLE_CLIENT_ID=768722481955-k2b32lpo9gpl1ssbtc0mpnug0mj9pgno.apps.googleusercontent.com` (public : sans lui, Google passe par supabase.co) |
 | `/vercel-admin` | Vercel `glisil-admin`, Production | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_PROFIL=production` |
 | `/outils` | rien (`infisical run` seulement) | `PROD_DB_URL`, `MOTEUR_URL=https://dfixghiwqlwulmzixlpf.supabase.co/rest/v1`, `MOTEUR_CLE` (service), `SUPABASE_ACCESS_TOKEN`, `CLE_ETHERSCAN` (une clé Etherscan API V2 : BscScan et Etherscan), `CLE_DE_MISE_EN_SERVICE` |
 | `/auth`, `/totem` | rien (archive) | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, la clé SMTP Resend ; `XAFE_TERMINAL_CLE` |

@@ -24,16 +24,31 @@ export type MessageDuPont =
 
 /**
  * « Continuer avec Google » : Google refuse une WebView (disallowed_useragent). L'application
- * demande l'adresse à Supabase et la confie à la coque, qui l'ouvre dans un onglet du système ;
- * Google revient par glisil://auth-retour?code=…, que la coque rend à la page (l'événement
- * « glisil:retour-oauth »), où le vérificateur PKCE attend. On n'ouvre QUE la page
- * d'autorisation d'un projet Supabase, en https.
+ * confie l'adresse à la coque, qui l'ouvre dans un onglet du système ; Google revient par
+ * glisil://auth-retour, que la coque rend à la page (l'événement « glisil:retour-oauth »), où
+ * le vérificateur PKCE — ou le nonce du chemin direct — attend. On n'ouvre QUE :
+ *   · la page d'autorisation d'un projet Supabase (l'ancien chemin), en https ;
+ *   · la page de Google elle-même (le chemin direct, pont v3 : l'écran dit « glisil.com »),
+ *     et seulement si le retour demandé est la page de retour DE L'APPLICATION — jamais une
+ *     autre adresse, où un jeton d'identité irait se perdre.
  */
 export function estAdresseGoogleDeSupabase(url: string): boolean {
   try {
     const u = new URL(url);
     return u.protocol === 'https:' && /^[a-z0-9]+\.supabase\.co$/.test(u.hostname) && u.pathname === '/auth/v1/authorize'
       && u.searchParams.get('provider') === 'google';
+  } catch {
+    return false;
+  }
+}
+
+/** Le chemin direct : la page de Google, un jeton d'identité, rendu à la page de retour de l'application. */
+export function estAdresseGoogleDirecte(url: string, baseUrl: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && u.hostname === 'accounts.google.com' && u.pathname === '/o/oauth2/v2/auth'
+      && u.searchParams.get('response_type') === 'id_token'
+      && u.searchParams.get('redirect_uri') === `${baseUrl}/bienvenue/retour`;
   } catch {
     return false;
   }
@@ -60,7 +75,8 @@ export const SCRIPT_INJECTE = `
 (function () {
   if (window.__xafeCoque) return;
   // version 2 : la coque sait ouvrir Google hors de la WebView (connexion-google)
-  window.__xafeCoque = { version: 2, google: true };
+  // version 3 : … y compris la page de Google elle-même (le chemin direct, « glisil.com »)
+  window.__xafeCoque = { version: 3, google: true };
   function poster(m) { try { window.ReactNativeWebView.postMessage(JSON.stringify(m)); } catch (e) {} }
   function enBase64(blob) {
     return new Promise(function (resoudre, rejeter) {
