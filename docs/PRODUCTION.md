@@ -339,8 +339,11 @@ pose tous les rôles et le plafond du jour (1 000 000 000 XAF). Voir
    sans passer par le site de Safe : les trois signataires ci-dessus, seuil
    **2 sur 3**, aucun module, aucun guard, SafeL2 1.5.0 au singleton
    `0xEdd160fEBBD92E350D4D398fb636302fccd67C7e` — l'adresse « canonical » du
-   registre officiel (safe-global/safe-deployments). Sur Ethereum : pas encore
-   activé — à faire avant le contrat Ethereum (un peu d'ETH sur un signataire).
+   registre officiel (safe-global/safe-deployments). **Activé sur Ethereum**
+   le même jour (≈ 0,30 $ de gaz) et relu de même : mêmes trois signataires,
+   2 sur 3, aucun module ni guard ; là, Safe 1.5.0 (la version sans « L2 »,
+   celle de Safe pour Ethereum) au singleton
+   `0xFf51A5898e281Db6DfC7855790607438dF2ca44b`, « canonical » lui aussi.
    C'est l'**admin** des contrats BSC et Ethereum.
 2. [P] Une clé de mise en service NEUVE (`CLE_DE_MISE_EN_SERVICE`, `/outils`),
    financée : ≈ 0,01 BNB ; ≈ 300 TRX ; de l'ETH pour Ethereum (le prix du gaz
