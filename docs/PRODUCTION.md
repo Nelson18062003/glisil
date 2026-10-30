@@ -66,6 +66,14 @@ page), ou `select verifier_le_profil_production(false);`.
   fichier, la fonction prenait la garde « lancé par Node » de
   `chaine/src/veilleur.ts` pour vraie et démarrait le service sans
   `MOTEUR_URL` (corrigé : la garde exige aussi le nom `veilleur.ts`).
+- **Approbation manuelle des comptes (30/10, décision du propriétaire)** :
+  n'importe qui s'inscrit (« Allow new users to sign up » reste ALLUMÉ) et
+  visite tout, mais aucun geste d'argent avant que le super admin approuve le
+  compte (Administration → Clients). 0047 appliquée à `glisil-prod` au commit
+  2b46f82 (empreinte md5 vérifiée par la base, constat vert, interrupteur
+  allumé, huit verrous) ; la fonction `courriel` redéployée avec l'e-mail
+  « compte approuvé ». Vos propres comptes clients s'approuvent aussi, par
+  vous, à l'étape M. Voir [CONNEXION.md](CONNEXION.md).
 - Migrations déjà appliquées à la production après l'installation : 0043,
   puis 0044, 0045 et 0046 (le 29/10, en une instruction : la base a pris les
   fichiers sur GitHub au commit 4bfb7ea, vérifié leurs empreintes md5, puis
@@ -338,6 +346,10 @@ effet immédiat, chaîne par chaîne.
   `VITE_PROFIL=production` vise un autre projet que la production.
 
 ## M [P] Le premier super admin, et vos comptes clients
+
+Depuis 0047, un compte client attend votre approbation avant tout geste
+d'argent : après vous être inscrit comme client, ouvrez Administration →
+Clients → « À approuver » et approuvez-vous.
 
 1. Supabase → Authentication → Users → **Add user** : l'adresse
    d'administration, un mot de passe du gestionnaire, **Auto Confirm**.
