@@ -88,6 +88,14 @@ page), ou `select verifier_le_profil_production(false);`.
   commit d3d3316). Secret GitHub `SUPABASE_ACCESS_TOKEN` : clé limitée à
   glisil-prod, Auth Config + Project Settings en écriture, expire le 28/10/2027.
   Changer un e-mail = modifier `supabase/templates/` ; le robot fait le reste.
+- **Google branché (30/10)** : projet Google Cloud « Glisil » (`glisil-prod`,
+  organisation bonzinilabs.com), audience Externe, domaines autorisés
+  `glisil.com` et `dfixghiwqlwulmzixlpf.supabase.co`, client Web « Glisil web »
+  (origines app et admin, retour `…supabase.co/auth/v1/callback`). Supabase →
+  Google activé ; vérifié : `/auth/v1/settings` dit `google: true`, et
+  `/authorize?provider=google` mène à la page de connexion de Google, sans
+  erreur de client ni d'adresse. Reste : publier l'application (Audience →
+  Publish app, aucune revue pour nom + e-mail), copie dans Infisical `/auth`.
 - Migrations déjà appliquées à la production après l'installation : 0043,
   puis 0044, 0045 et 0046 (le 29/10, en une instruction : la base a pris les
   fichiers sur GitHub au commit 4bfb7ea, vérifié leurs empreintes md5, puis
