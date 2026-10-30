@@ -30,22 +30,23 @@ Le constat du profil se lit à tout moment : admin → Paramètres → « Profil
 production » (pastille rouge **PRODUCTION · argent réel** en tête de chaque
 page), ou `select verifier_le_profil_production(false);`.
 
-## Où on en est (29/10)
+## Où on en est (30/10)
 
 - **F, G faits par Claude** : Glisil est installé sur `glisil-prod` (profil
   « production » posé à 12 h 28 UTC, constat vert, aucun refus, aucun
   avertissement) ; le coffre porte `veilleur_url`, `veilleur_jeton`,
-  `courriel_url`. Reste au propriétaire : `courriel_jeton` (la même valeur que
-  `COURRIEL_JETON` dans Infisical).
+  `courriel_url`, et `courriel_jeton` (posé par le propriétaire le 30/10,
+  la même valeur que `COURRIEL_JETON`).
 - **E fait (29/10)** : la graine (24 mots) créée par le propriétaire sur son
   téléphone Android, hors ligne (page « Glisil Master Seed »), sur papier en
   deux exemplaires, et dans Infisical `prod /supabase-fonctions XAFE_GRAINE`.
   Les wallets chauds (adresses publiques, sommes de contrôle vérifiées) :
   BNB Chain `0x0a0839a23BaF26929531969e043d39c389F09378`, Tron
   `TR2qFhG42j49Tq5eRckkr1M2SP986qndoe`, Ethereum
-  `0x9553a967326482B5f7A2D119e82c4865ca6Ee98E`. À vérifier quand le veilleur
-  lira la graine : il doit dériver exactement ces trois adresses (une faute de
-  frappe dans Infisical les changerait).
+  `0x9553a967326482B5f7A2D119e82c4865ca6Ee98E`. **Vérifié le 30/10** : le
+  veilleur de production, lisant `XAFE_GRAINE`, dérive exactement ces trois
+  adresses (`?chauds=1`, appelé depuis la base par `net.http_post` avec le
+  jeton du coffre — 200, les trois identiques).
 - **D fait (30/10)** : `EVM_RPC_KEY` et `TRONGRID_KEY` déplacés dans
   `/supabase-fonctions` ; la synchronisation Infisical → Supabase
   `glisil-prod-fonctions` (Production, `/supabase-fonctions`, sans les
@@ -55,6 +56,16 @@ page), ou `select verifier_le_profil_production(false);`.
   que glisil-prod : Project Settings (lecture), Edge Function Secrets
   (lecture-écriture), Projects account-wide (lecture, pour la liste des
   projets — sans elle, Infisical reçoit 403).
+- **Courriels et fonctions faits (30/10)** : `RESEND_API_KEY` et
+  `COURRIEL_JETON` dans Infisical, synchronisés ; les cinq fonctions
+  déployées sur `glisil-prod` (`deux-facteurs` avec vérification du JWT, les
+  quatre autres sans : elles vérifient leur propre signature ou jeton). Sans
+  identifiants, `totem-sms`, `totem-commandes`, `courriel` et `deux-facteurs`
+  répondent 401 ; `courriel` répond 200 avec le jeton du coffre. Le premier
+  déploiement du veilleur tombait en 503 à chaque appel : une fois mise en UN
+  fichier, la fonction prenait la garde « lancé par Node » de
+  `chaine/src/veilleur.ts` pour vraie et démarrait le service sans
+  `MOTEUR_URL` (corrigé : la garde exige aussi le nom `veilleur.ts`).
 - Migrations déjà appliquées à la production après l'installation : 0043,
   puis 0044, 0045 et 0046 (le 29/10, en une instruction : la base a pris les
   fichiers sur GitHub au commit 4bfb7ea, vérifié leurs empreintes md5, puis
