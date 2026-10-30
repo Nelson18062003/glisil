@@ -345,6 +345,11 @@ pose tous les rôles et le plafond du jour (1 000 000 000 XAF). Voir
    celle de Safe pour Ethereum) au singleton
    `0xFf51A5898e281Db6DfC7855790607438dF2ca44b`, « canonical » lui aussi.
    C'est l'**admin** des contrats BSC et Ethereum.
+   **Tron (30/10)** — les adresses Tron des mêmes trois appareils (valides,
+   distinctes, pas encore activées) : ordinateur
+   `TTkyGSZDxnP7BGpjQrQV1DTkaAokcGKqG3` (le futur compte 2 sur 3, admin du
+   contrat Tron), `TMpWk7yzBwnzH3pPZjw4KtnCcxSh2HVz1G`, et le **wallet
+   d'urgence** `THxYGvaQgjipCiDcr1WkAqdrTURPV93wma` (pauseur et geleur Tron).
 2. [P] Une clé de mise en service NEUVE (`CLE_DE_MISE_EN_SERVICE`, `/outils`),
    financée : ≈ 0,01 BNB ; ≈ 300 TRX ; de l'ETH pour Ethereum (le prix du gaz
    y change d'heure en heure : Claude calcule le montant le jour même). Le
