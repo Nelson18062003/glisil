@@ -350,6 +350,12 @@ pose tous les rôles et le plafond du jour (1 000 000 000 XAF). Voir
    `TTkyGSZDxnP7BGpjQrQV1DTkaAokcGKqG3` (le futur compte 2 sur 3, admin du
    contrat Tron), `TMpWk7yzBwnzH3pPZjw4KtnCcxSh2HVz1G`, et le **wallet
    d'urgence** `THxYGvaQgjipCiDcr1WkAqdrTURPV93wma` (pauseur et geleur Tron).
+   **Le compte Tron 2 sur 3 (30/10)** : `TTky…KqG3`, permissions changées sur
+   Tronscan (TronLink, 100 TRX) et relues sur la chaîne : owner ET active,
+   seuil 2, les trois adresses ci-dessus à poids 1, un seul groupe active,
+   aucun witness. Il reste ≈ 192 TRX dessus. C'est l'**admin** du contrat
+   Tron. Toute opération de ce compte demande désormais deux signatures
+   (Tronscan → Multisig Transactions), et coûte 1 TRX de plus.
 2. [P] Une clé de mise en service NEUVE (`CLE_DE_MISE_EN_SERVICE`, `/outils`),
    financée : ≈ 0,01 BNB ; ≈ 300 TRX ; de l'ETH pour Ethereum (le prix du gaz
    y change d'heure en heure : Claude calcule le montant le jour même). Le
