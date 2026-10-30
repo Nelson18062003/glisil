@@ -46,8 +46,15 @@ page), ou `select verifier_le_profil_production(false);`.
   `0x9553a967326482B5f7A2D119e82c4865ca6Ee98E`. À vérifier quand le veilleur
   lira la graine : il doit dériver exactement ces trois adresses (une faute de
   frappe dans Infisical les changerait).
-- D en partie : `EVM_RPC_KEY` et `TRONGRID_KEY` déplacés dans
-  `/supabase-fonctions` (29/10). Reste la synchronisation vers Supabase.
+- **D fait (30/10)** : `EVM_RPC_KEY` et `TRONGRID_KEY` déplacés dans
+  `/supabase-fonctions` ; la synchronisation Infisical → Supabase
+  `glisil-prod-fonctions` (Production, `/supabase-fonctions`, sans les
+  sous-dossiers, Auto-Sync, protection contre la suppression) est « Synced » :
+  Supabase porte `EVM_RPC_KEY`, `TRONGRID_KEY`, `XAFE_GRAINE`. La clé
+  Supabase d'Infisical (`infisical-sync`, connexion `supabase-glisil`) ne voit
+  que glisil-prod : Project Settings (lecture), Edge Function Secrets
+  (lecture-écriture), Projects account-wide (lecture, pour la liste des
+  projets — sans elle, Infisical reçoit 403).
 - Migrations déjà appliquées à la production après l'installation : 0043,
   puis 0044, 0045 et 0046 (le 29/10, en une instruction : la base a pris les
   fichiers sur GitHub au commit 4bfb7ea, vérifié leurs empreintes md5, puis
