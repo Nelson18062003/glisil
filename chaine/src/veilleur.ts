@@ -549,5 +549,7 @@ async function principal() {
   }
 }
 
-// lancé par Node (`npm run veilleur`) ; importé ailleurs (la fonction Supabase), il ne démarre rien
-if (typeof process !== "undefined" && process.argv?.[1] && import.meta.url === `file://${process.argv[1]}`) void principal();
+// lancé par Node (`npm run veilleur`) ; importé ailleurs (la fonction Supabase), il ne démarre rien. Le nom du
+// fichier compte aussi : une fois la fonction mise en UN fichier (esbuild), import.meta.url EST le script lancé —
+// la fonction de production démarrait alors ce service, sans MOTEUR_URL, et tombait en 503 à chaque appel.
+if (typeof process !== "undefined" && /\/veilleur\.ts$/.test(process.argv?.[1] ?? "") && import.meta.url === `file://${process.argv[1]}`) void principal();
