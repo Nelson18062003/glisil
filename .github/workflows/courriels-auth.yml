@@ -39,9 +39,13 @@ jobs:
       - name: Envoyer à Supabase, puis relire
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE }}
+        # « bash » : pipefail, donc un échec du script reste un échec malgré le tee
+        shell: bash
+        # ce que le robot a fait se lit aussi en clair sur la page du passage (Summary), sans ouvrir le journal
         run: |
           if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
             echo "::error::Le secret SUPABASE manque : Settings → Secrets and variables → Actions (docs/PRODUCTION.md, étape J)."
             exit 1
           fi
-          node supabase/templates/pousser-vers-supabase.mjs --pousser
+          echo "### E-mails d'Auth → glisil-prod" >> "$GITHUB_STEP_SUMMARY"
+          node supabase/templates/pousser-vers-supabase.mjs --pousser 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
