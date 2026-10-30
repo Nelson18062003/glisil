@@ -141,7 +141,12 @@ export type Client = {
   /** la dernière écriture sur son compte (un mouvement d'argent) */
   derniere_operation: string | null;
   derniere_connexion: string | null;
+  /** 0047 : null = en attente de l'approbation de l'équipe (aucun geste d'argent tant que l'interrupteur est allumé) */
+  approuve_le?: string | null;
+  ferme_le?: string | null;
 };
+/** L'approbation des comptes (0047) : l'interrupteur, la file, et ce que la personne connectée peut en faire. */
+export type Approbation = { manuelle: boolean; en_attente: number; peut_approuver: boolean; peut_regler: boolean };
 export type ClientDetail = {
   compte: Client & {
     a_code: boolean; verrou_jusqua: string | null; verification_pieces: string[] | null; code_verrou_jusqua: string | null;
@@ -149,6 +154,8 @@ export type ClientDetail = {
     /** fermé par le client lui-même (0012) ; desactive_le est posé en même temps */
     ferme_le?: string | null;
     conditions_version?: string | null; conditions_acceptees_le?: string | null; conditions_a_jour?: boolean;
+    /** 0047 : vrai si le compte peut bouger de l'argent ; approuve_par = le nom de l'administrateur, null si d'office */
+    approuve?: boolean; approuve_par?: string | null;
   };
   totaux?: { entre_xaf: number; sorti_xaf: number; ordres: number; retraits_crypto: number };
   retraits_crypto?: { reference: string; actif: string; reseau: string; adresse: string; montant: number; frais: number; etat: string; tx_hash: string | null; cree_le: string }[];

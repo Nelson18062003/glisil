@@ -825,6 +825,32 @@ try {
   await capturer("beta-signaler");
   await page.evaluate(() => { sessionStorage.removeItem("xafe-beta"); globalThis.__xafeEpreuve = {}; });
 
+  etape("Un compte pas encore approuvé (0047) : il visite tout — l'accueil le dit, le marché se regarde —, mais chaque geste d'argent dit « en cours de vérification » AVANT un montant tapé");
+  await page.addInitScript(() => { if (sessionStorage.getItem("xafe-en-attente")) globalThis.__xafeEpreuve = { enAttente: true }; });
+  await page.evaluate(() => sessionStorage.setItem("xafe-en-attente", "1"));
+  await allerA("/");
+  await page.locator("[data-en-attente]").getByText("Compte en cours de vérification").waitFor();
+  await capturer("accueil-en-attente");
+  for (const [adresse, nom] of [
+    ["/entrer/operateur", "entrer-en-attente"],
+    ["/sortir/montant", null],
+    ["/rapide?sens=achat", null],
+    ["/crypto/deposer/USDT", null],
+    ["/crypto/retirer/XAFe/adresse", null],
+  ]) {
+    await allerA(adresse);
+    await voir("Votre compte est en cours de vérification");
+    exiger(await page.getByRole("button", { name: "Continuer" }).count() === 0, `${adresse} : rien à remplir avant l'approbation`);
+    if (nom) await capturer(nom);
+  }
+  await allerA("/marche");
+  await page.locator("[data-en-attente]").waitFor();
+  exiger(await page.getByRole("button", { name: /^Acheter USDT$/ }).count() === 0, "pas de bouton d'achat au ticket avant l'approbation");
+  await capturer("marche-en-attente");
+  await page.evaluate(() => { sessionStorage.removeItem("xafe-en-attente"); globalThis.__xafeEpreuve = {}; });
+  await allerA("/entrer/operateur");
+  await voir("MTN MoMo");
+
   exiger(erreurs.length === 0, `des erreurs ont été vues dans le navigateur :\n  ${erreurs.join("\n  ")}`);
   console.log(`  (${champsDuTicket} champ(s) du ticket d'ordre laissés hors de la règle des formulaires, par choix)`);
   exiger(espacements.length === 0, `${espacements.length} espacement(s) de formulaire hors de la règle :\n  ${espacements.join("\n  ")}`);

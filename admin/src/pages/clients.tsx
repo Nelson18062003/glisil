@@ -2,12 +2,14 @@
  * Les Clients : combien ils sont et combien vivent vraiment, qui vient
  * d'arriver, d'où ils sont ; chercher, filtrer, voir un compte en entier
  * (identité, connexions, tout l'historique), monter ou descendre un palier,
- * valider ou refuser des pièces, désactiver.
+ * valider ou refuser des pièces, désactiver — et, tant que l'interrupteur de
+ * l'approbation est allumé (0047), approuver chaque nouveau compte avant son
+ * premier geste d'argent.
  */
-import { Box, Button, Chip, MenuItem, Paper, Stack, TextField, Tooltip, Typography } from "@mui/material";
+import { Box, Button, Chip, MenuItem, Paper, Stack, Switch, TextField, Tooltip, Typography } from "@mui/material";
 import { useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { useClient, useClients, useGuichet, useRafraichir, useSecurite, useStatistiquesClients } from "../guichet";
+import { useApprobation, useClient, useClients, useGuichet, useRafraichir, useSecurite, useStatistiquesClients } from "../guichet";
 import { enTranches, heure, jourRelatif, numeroEnTranches, prix, quand, xaf } from "../noyau/format";
 import { EVENEMENTS } from "../noyau/securite";
 import { useSession } from "../session/session";
@@ -17,6 +19,7 @@ const PALIERS = ["Palier 0 · e-mail vérifié", "Palier 1 · identité vérifi�
 
 const FILTRES: { cle: string | null; label: string }[] = [
   { cle: null, label: "Tous" },
+  { cle: "a_approuver", label: "À approuver" },
   { cle: "actifs", label: "Actifs (30 j)" },
   { cle: "inactifs", label: "Inactifs" },
   { cle: "nouveaux", label: "Nouveaux (7 j)" },
@@ -59,6 +62,55 @@ function Inscriptions({ jours }: { jours: { jour: string; n: number }[] }) {
   );
 }
 
+/**
+ * L'interrupteur de l'approbation (0047) et la file. Allumé : un nouveau compte visite Glisil, mais
+ * ne bouge pas d'argent avant d'être approuvé. Éteint : ceux qui attendent sont approuvés d'office,
+ * les suivants naissent approuvés ; rallumé, il ne reprend rien à personne.
+ */
+function Approbation({ onVoir }: { onVoir: () => void }) {
+  const { data: a } = useApprobation();
+  const guichet = useGuichet();
+  const rafraichir = useRafraichir();
+  const [ouvert, setOuvert] = useState(false);
+  const [erreur, setErreur] = useState<unknown>(null);
+  const [enCours, setEnCours] = useState(false);
+  if (!a) return null;
+  const basculer = async () => {
+    setEnCours(true); setErreur(null);
+    try { await guichet.reglerApprobation(!a.manuelle); setOuvert(false); await rafraichir(); } catch (e) { setErreur(e); } finally { setEnCours(false); }
+  };
+  return (
+    <Paper data-approbation={a.manuelle ? "allumee" : "eteinte"} sx={{ p: 2.5, borderRadius: 5, bgcolor: a.manuelle ? "#FFF4DC" : "background.paper" }}>
+      <Stack direction="row" gap={2} alignItems="center" flexWrap="wrap">
+        <Stack sx={{ flex: 1, minWidth: 260 }} gap={0.5}>
+          <Typography fontWeight={600}>Approbation manuelle des comptes · {a.manuelle ? "allumée" : "éteinte"}</Typography>
+          <Typography variant="body2">
+            {a.manuelle
+              ? "Un nouveau compte visite Glisil, mais ne peut ni déposer, ni trader, ni retirer avant que vous l'approuviez."
+              : "Un nouveau compte peut bouger de l'argent dès la fin de son inscription."}
+          </Typography>
+        </Stack>
+        {a.en_attente > 0 && <Button variant="contained" onClick={onVoir}>{a.en_attente} compte{a.en_attente > 1 ? "s" : ""} à approuver</Button>}
+        {a.peut_regler && (
+          <Stack direction="row" alignItems="center" gap={0.5}>
+            <Typography variant="body2">{a.manuelle ? "Allumée" : "Éteinte"}</Typography>
+            <Switch checked={a.manuelle} onChange={() => setOuvert(true)} inputProps={{ "aria-label": "Approbation manuelle des comptes" }} />
+          </Stack>
+        )}
+      </Stack>
+      <Dialogue ouvert={ouvert} titre={a.manuelle ? "Éteindre l'approbation manuelle ?" : "Rallumer l'approbation manuelle ?"} onFermer={() => setOuvert(false)}
+        onValider={() => void basculer()} libelle={a.manuelle ? "Éteindre" : "Rallumer"} enCours={enCours}>
+        <Typography variant="body2">
+          {a.manuelle
+            ? `${a.en_attente > 1 ? `Les ${a.en_attente} comptes en attente seront approuvés d'office, et l` : a.en_attente === 1 ? "Le compte en attente sera approuvé d'office, et l" : "L"}es nouveaux comptes pourront bouger de l'argent dès leur inscription. Vous pourrez la rallumer à tout moment.`
+            : "Les comptes ouverts à partir de maintenant attendront votre approbation avant tout geste d'argent. Ceux qui sont déjà approuvés le restent."}
+        </Typography>
+        <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
+      </Dialogue>
+    </Paper>
+  );
+}
+
 function Fiche({ items }: { items: [string, ReactNode][] }) {
   return (
     <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 2 }}>
@@ -83,6 +135,7 @@ export function Clients() {
   const pays = s ? Object.entries(s.par_pays).sort((a, b) => b[1] - a[1]).slice(0, 6) : [];
   return (
     <Coquille titre="Clients">
+      <Approbation onVoir={() => setParams({ filtre: "a_approuver" })} />
       <Stack direction="row" gap={2} flexWrap="wrap">
         <Tuile label="Clients" valeur={s ? enTranches(s.total) : "…"} tone="green" aide={s ? `+${s.nouveaux_7j} cette semaine · +${s.nouveaux_30j} en 30 jours` : undefined} />
         <Tuile label="Actifs (30 jours)" valeur={s ? enTranches(s.actifs_30j) : "…"} tone="blue" aide={s ? `ont bougé de l'argent${pourcent(s.actifs_30j)}` : undefined} />
@@ -139,7 +192,7 @@ export function Clients() {
           c.derniere_operation ? jourRelatif(c.derniere_operation) : "jamais",
           c.derniere_connexion ? `${jourRelatif(c.derniere_connexion)} ${heure(c.derniere_connexion)}` : "—",
           jourRelatif(c.cree_le),
-          <Etat key="e" valeur={c.desactive_le ? "inactif" : "actif"} />,
+          <Etat key="e" valeur={c.desactive_le ? "inactif" : c.approuve_le === null ? "a_approuver" : "actif"} />,
         ])}
         vide="Aucun compte ne correspond."
       />
@@ -155,7 +208,7 @@ export function ClientDetail() {
   const { data } = useClient(id);
   const { data: securite } = useSecurite(id);
   const production = useEnvironnement() === "production";
-  const [dialogue, setDialogue] = useState<"palier" | "verification" | "desactiver" | "doter" | "deux_facteurs" | null>(null);
+  const [dialogue, setDialogue] = useState<"palier" | "verification" | "desactiver" | "doter" | "deux_facteurs" | "approuver" | null>(null);
   const [dotation, setDotation] = useState({ xafe: "1000000", usdt: "0" });
   const [palier, setPalier] = useState(0);
   const [note, setNote] = useState("");
@@ -164,6 +217,9 @@ export function ClientDetail() {
 
   if (!data) return <Coquille titre="Client"><Typography variant="body2">Chargement…</Typography></Coquille>;
   const c = data.compte;
+  /* 0047 : en attente de l'approbation de l'équipe (un compte fermé n'attend plus rien) */
+  const attend = c.approuve === false && !c.ferme_le;
+  const naissance = c.date_naissance ? `${new Date(c.date_naissance).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} · ${age(c.date_naissance)} ans` : "—";
   const agir = async (f: () => Promise<unknown>) => {
     setEnCours(true); setErreur(null);
     try { await f(); setDialogue(null); setNote(""); await rafraichir(); } catch (e) { setErreur(e); } finally { setEnCours(false); }
@@ -172,6 +228,7 @@ export function ClientDetail() {
   return (
     <Coquille titre={c.nom ?? telephoneAffiche(c.telephone)} actions={
       <Stack direction="row" gap={1}>
+        {peut("paliers") && attend && <Button variant="contained" onClick={() => { setNote(""); setDialogue("approuver"); }}>Approuver ce client</Button>}
         {peut("paliers") && c.verification_en_cours && <Button variant="contained" onClick={() => setDialogue("verification")}>Examiner les pièces</Button>}
         {peut("paliers") && <Button variant="outlined" onClick={() => { setPalier(c.palier); setDialogue("palier"); }}>Changer le palier</Button>}
         {/* la bêta : de l'argent de test, refusé par le moteur hors bêta */}
@@ -181,12 +238,25 @@ export function ClientDetail() {
       </Stack>
     }>
       <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
+      {attend && (
+        <Paper data-a-approuver sx={{ p: 2.5, borderRadius: 5, bgcolor: "#FFF4DC" }}>
+          <Stack direction="row" gap={2} alignItems="center" flexWrap="wrap">
+            <Stack sx={{ flex: 1, minWidth: 260 }} gap={0.5}>
+              <Typography fontWeight={600}>Ce compte attend votre approbation</Typography>
+              <Typography variant="body2">
+                Vérifiez son identité ci-dessous : nom, date de naissance, téléphone, résidence. Tant qu'il n'est pas approuvé, il visite Glisil mais ne peut ni déposer, ni trader, ni retirer.
+              </Typography>
+            </Stack>
+            {peut("paliers") && <Button variant="contained" onClick={() => { setNote(""); setDialogue("approuver"); }}>Approuver ce client</Button>}
+          </Stack>
+        </Paper>
+      )}
       <Stack direction="row" gap={2} flexWrap="wrap">
         <Tuile label="XAFe" valeur={xaf(data.soldes.XAFe?.disponible ?? 0)} tone="green" aide={`${xaf(data.soldes.XAFe?.bloque ?? 0)} bloqués`} />
         <Tuile label="USDT" valeur={enTranches(data.soldes.USDT?.disponible ?? 0, 2)} tone="blue" aide={`${enTranches(data.soldes.USDT?.bloque ?? 0, 2)} bloqués`} />
         <Tuile label="USDC" valeur={enTranches(data.soldes.USDC?.disponible ?? 0, 2)} tone="blue" aide={`${enTranches(data.soldes.USDC?.bloque ?? 0, 2)} bloqués`} />
         <Tuile label="Palier" valeur={String(c.palier)} tone="amber" aide={PALIERS[c.palier]} />
-        <Tuile label="Compte" valeur={c.ferme_le ? "fermé" : c.desactive_le ? "désactivé" : "actif"} tone={c.desactive_le ? "red" : "neutral"}
+        <Tuile label="Compte" valeur={c.ferme_le ? "fermé" : c.desactive_le ? "désactivé" : attend ? "à approuver" : "actif"} tone={c.desactive_le ? "red" : attend ? "amber" : "neutral"}
           aide={c.ferme_le ? `fermé par le client ${jourRelatif(c.ferme_le).toLowerCase()}` : `depuis ${jourRelatif(c.cree_le)} · ${c.entreprise ?? "particulier"}${securite && !securite.deux_facteurs ? " · sans double authentification" : ""}`} />
       </Stack>
       <Section titre="Identité et connexions">
@@ -196,11 +266,12 @@ export function ClientDetail() {
             ["Nom de famille", c.nom_de_famille ?? "—"],
             ["E-mail", c.email ?? "—"],
             ["Téléphone", `${telephoneAffiche(c.telephone)} · non vérifié`],
-            ["Date de naissance", c.date_naissance ? `${new Date(c.date_naissance).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })} · ${age(c.date_naissance)} ans` : "—"],
+            ["Date de naissance", naissance],
             ["Résidence", c.ville ? `${c.ville}, ${nomDuPays(c.pays)}` : "—"],
             ["Inscrit", `${quand(c.cree_le)}`],
             ["Dernière connexion", c.derniere_connexion ? quand(c.derniere_connexion) : "—"],
             ["Dernière opération", c.derniere_operation ? quand(c.derniere_operation) : "jamais"],
+            ["Approbation", c.approuve_le ? `${quand(c.approuve_le)} · ${c.approuve_par ?? "d'office"}` : attend ? "en attente" : "—"],
             ["Conditions", c.conditions_version ? `version du ${c.conditions_version}, acceptée ${c.conditions_acceptees_le ? quand(c.conditions_acceptees_le) : ""}${c.conditions_a_jour === false ? " · à réaccepter" : ""}` : "jamais acceptées (compte d'avant les conditions)"],
             ...(c.ferme_le ? [["Fermé", quand(c.ferme_le)] as [string, string]] : []),
           ]} />
@@ -269,6 +340,21 @@ export function ClientDetail() {
         </Stack>
       </Stack>
 
+      <Dialogue ouvert={dialogue === "approuver"} titre={`Approuver ${c.nom ?? "ce client"}`} onFermer={() => setDialogue(null)}
+        onValider={() => void agir(() => guichet.approuverClient(c.id, note))} libelle="Approuver" enCours={enCours}>
+        <Fiche items={[
+          ["Nom", `${c.prenom ?? ""} ${c.nom_de_famille ?? ""}`.trim() || (c.nom ?? "—")],
+          ["Date de naissance", naissance],
+          ["Téléphone", telephoneAffiche(c.telephone)],
+          ["E-mail", c.email ?? "—"],
+          ["Résidence", c.ville ? `${c.ville}, ${nomDuPays(c.pays)}` : "—"],
+          ["Inscrit", quand(c.cree_le)],
+        ]} />
+        <Typography variant="body2">Une fois approuvé, il peut déposer, trader et retirer. Il est prévenu par e-mail et dans l'application.</Typography>
+        <TextField label="Ce que vous avez vérifié (facultatif)" value={note} onChange={(e) => setNote(e.target.value)} fullWidth
+          helperText="Gardé au journal : un appel, une pièce d'identité, une personne que vous connaissez…" />
+        <Erreur erreur={erreur} onFermer={() => setErreur(null)} />
+      </Dialogue>
       <Dialogue ouvert={dialogue === "doter"} titre="Donner de l'argent de test" onFermer={() => setDialogue(null)} libelle="Donner" enCours={enCours}
         desactive={!(Number(dotation.xafe) > 0 || Number(dotation.usdt) > 0)}
         onValider={() => void agir(() => guichet.doter(c.id, Math.round(Number(dotation.xafe) || 0), Math.round((Number(dotation.usdt) || 0) * 100) / 100, note))}>

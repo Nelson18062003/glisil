@@ -424,6 +424,12 @@ function dictionnaire(): Record<string, Entree> {
       argent: t("Rien n'a bougé. Ne payez aucun numéro pour l'instant.", "Nothing has changed. Don't pay any number for now."),
       suite: t("Réessayez dans quelques minutes ou passez par l'autre opérateur.", "Try again in a few minutes, or use the other operator."),
     },
+    "compte en attente d'approbation": { // langue-ok
+      titre: t("Votre compte est en cours de vérification", "Your account is being reviewed"),
+      argent: t("Rien n'a bougé : aucun geste d'argent avant l'approbation de votre compte.", "Nothing has changed: no money transactions until your account is approved."),
+      suite: t("L'équipe Glisil vérifie chaque nouveau compte. Vous recevrez un e-mail dès qu'il est approuvé.", "The Glisil team reviews every new account. You'll get an email as soon as it's approved."),
+      recommencer: false,
+    },
     "compte désactivé": { // langue-ok
       titre: t("Votre compte est suspendu", "Your account is suspended"),
       argent: t("Vos soldes restent à vous ; aucun geste d'argent n'est possible pour l'instant.",

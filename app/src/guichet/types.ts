@@ -45,6 +45,8 @@ export type Compte = {
   langue: "fr" | "en";
   /** fermé par son titulaire : plus aucun geste, l'équipe peut le rouvrir */
   fermeLe: string | null;
+  /** 0047 : approuvé par l'équipe. Faux : le compte visite tout, mais ne commence aucun geste d'argent */
+  approuve: boolean;
   /** suspendu par l'équipe (ou fermé) */
   desactive: boolean;
 };

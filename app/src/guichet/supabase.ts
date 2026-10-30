@@ -151,6 +151,8 @@ function compte(j: J): Compte {
     conditionsAJour: j.conditions_a_jour === undefined ? true : Boolean(j.conditions_a_jour),
     langue: j.langue === "fr" ? "fr" : "en",
     fermeLe: sn(j.ferme_le), desactive: Boolean(j.desactive),
+    /* une base d'avant 0047 ne dit rien de l'approbation : elle n'existait pas, personne n'attend */
+    approuve: j.approuve === undefined ? true : Boolean(j.approuve),
   };
 }
 function retrait(j: J): RetraitCrypto {

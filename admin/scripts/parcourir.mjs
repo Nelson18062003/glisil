@@ -257,6 +257,39 @@ try {
   await voir("Appel vidéo, CNI comparée au selfie du dossier");
   await capturer("client-securite");
 
+  etape("Clients : l'approbation (0047) — la file, l'identité à vérifier, le bouton ; l'interrupteur, éteint puis rallumé");
+  await page.goto(`${BASE}/clients`);
+  await voir("Approbation manuelle des comptes · allumée");
+  await page.getByRole("button", { name: "2 comptes à approuver" }).click();
+  await voir("Rosine Abega");
+  exiger(await page.getByText("Jean Kamdem").count() === 0, "la file ne montre que les comptes en attente");
+  await page.waitForTimeout(400);   // la pastille du filtre finit sa transition de couleur
+  await capturer("clients-a-approuver");
+  await page.getByRole("link", { name: /Rosine Abega/ }).click();
+  await voir("Ce compte attend votre approbation");
+  await capturer("client-a-approuver");
+  await page.getByRole("button", { name: "Approuver ce client" }).first().click();
+  await voir("Approuver Rosine Abega");
+  await page.getByLabel("Ce que vous avez vérifié (facultatif)").fill("Appel vidéo, CNI vue");
+  await page.waitForTimeout(400);   // la fenêtre finit d'apparaître
+  await capturer("client-approuver");
+  await page.getByRole("dialog").getByRole("button", { name: "Approuver", exact: true }).click();
+  await page.getByText("Ce compte attend votre approbation").waitFor({ state: "detached" });
+  exiger(await page.getByRole("button", { name: "Approuver ce client" }).count() === 0, "approuvé : plus de bouton");
+  await page.goto(`${BASE}/clients`);
+  await page.getByRole("button", { name: "1 compte à approuver" }).waitFor();
+  await page.getByLabel("Approbation manuelle des comptes").click();
+  await voir("Éteindre l'approbation manuelle ?");
+  await voir("Le compte en attente sera approuvé d'office");
+  await page.waitForTimeout(400);
+  await capturer("approbation-eteindre");
+  await page.getByRole("dialog").getByRole("button", { name: "Éteindre" }).click();
+  await voir("Approbation manuelle des comptes · éteinte");
+  exiger(await page.getByRole("button", { name: /à approuver/ }).count() === 0, "éteinte : plus personne n'attend");
+  await page.getByLabel("Approbation manuelle des comptes").click();
+  await page.getByRole("dialog").getByRole("button", { name: "Rallumer" }).click();
+  await voir("Approbation manuelle des comptes · allumée");
+
   etape("Marché : deux carnets (0045) ; fermer puis rouvrir l'un ne touche pas l'autre");
   await page.goto(`${BASE}/marche`);
   await voir("Dernières transactions");
@@ -455,6 +488,9 @@ try {
   await voir("Ce que les testeurs signalent");
   exiger((await page.getByLabel("robots en marche").count()) === 0, "le support n'arrête pas les robots");
   exiger((await page.getByRole("button", { name: "Poser un cours" }).count()) === 0, "le support ne pose pas de cours");
+  await page.goto(`${BASE}/clients`);
+  await voir("Approbation manuelle des comptes · allumée");
+  exiger(await page.getByLabel("Approbation manuelle des comptes").count() === 0, "le support ne tient pas l'interrupteur de l'approbation");
   await page.goto(`${BASE}/clients/c5`);
   await voir("Double authentification");
   exiger((await page.getByRole("button", { name: "Réinitialiser la double authentification" }).count()) === 0, "le support ne réinitialise pas la double authentification");

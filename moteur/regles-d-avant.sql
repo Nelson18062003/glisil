@@ -32,3 +32,8 @@ update parametres set valeur = valeur || '{"mode": "totem"}' where cle = 'sortie
 -- Ils jouent la garde en « surveiller » (crédité, signalé) ; la garde elle-même (« exiger ») est éprouvée
 -- par le scénario 11.81, dans sa transaction, et par l'attaque #F1 de rouge-puis-vert.
 update parametres set valeur = valeur || '{"mode": "surveiller"}' where cle = 'continuite';
+
+-- 0047 : un compte attend l'approbation de l'équipe avant tout geste d'argent. Les scénarios d'avant ouvrent
+-- leurs comptes à la main et jouent l'argent aussitôt : ils jouent interrupteur éteint (leurs comptes naissent
+-- approuvés). La règle d'aujourd'hui est éprouvée par le scénario 11.92, dans sa transaction.
+update parametres set valeur = '{"manuelle": false}' where cle = 'approbation';

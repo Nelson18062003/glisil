@@ -238,6 +238,22 @@ function sortieRefusee(d: Donnees, l: Langue, appUrl: string): Rendu {
   };
 }
 
+/** Le compte approuvé par l'équipe (0047) : les gestes d'argent s'ouvrent. */
+function compteApprouve(d: Donnees, l: Langue, appUrl: string): Rendu {
+  const titre = t(l, "Votre compte est approuvé", "Your account is approved");
+  const phrase = t(l,
+    "L'équipe Glisil a vérifié votre compte. Vous pouvez maintenant déposer, acheter et vendre sur le marché, et retirer votre argent.",
+    "The Glisil team has reviewed your account. You can now deposit, buy and sell on the market, and withdraw your money.");
+  const alerte = t(l,
+    "Vous n'avez pas de compte Glisil ? Ignorez cet e-mail et écrivez au support.",
+    "You don't have a Glisil account? Ignore this email and contact support.");
+  return {
+    sujet: t(l, "Glisil · votre compte est approuvé", "Glisil · your account is approved"),
+    html: habit(l, titre, paragraphe(echapper(phrase)) + bouton(t(l, "Ouvrir Glisil", "Open Glisil"), lienDe(d, appUrl)) + paragraphe(echapper(alerte), true)),
+    texte: [titre, "", phrase, "", lienDe(d, appUrl), "", alerte].join("\n"),
+  };
+}
+
 /* Chaque gabarit que la base met en file (les migrations) a son rendu ici : verifier-les-courriels.ts le vérifie. */
 const GABARITS: Record<string, (d: Donnees, l: Langue, appUrl: string) => Rendu> = {
   verification,
@@ -245,6 +261,7 @@ const GABARITS: Record<string, (d: Donnees, l: Langue, appUrl: string) => Rendu>
   deux_facteurs_retires: deuxFacteursRetires,
   sortie_payee: sortiePayee,
   sortie_refusee: sortieRefusee,
+  compte_approuve: compteApprouve,
 };
 
 export const GABARITS_CONNUS = Object.keys(GABARITS);

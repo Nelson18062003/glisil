@@ -105,6 +105,16 @@ const OPERATIONS = {
   ok("le remboursement payé dit chaque ID, ce qui est parti, où et quand ; le refus dit le montant rendu et le motif — échappés");
 }
 
+/* ---------------------------------------------- le compte approuvé (0047) */
+{
+  const fr = rendre("compte_approuve", { lien: "/" }, "fr");
+  const en = rendre("compte_approuve", { lien: "/" }, "en");
+  assert.ok(fr.sujet === "Glisil · votre compte est approuvé" && en.sujet === "Glisil · your account is approved", "l'objet, dans la langue du client");
+  assert.ok(en.texte.includes("deposit") && en.texte.includes("withdraw") && en.html.includes('href="https://app.glisil.com/"'), "il dit ce qui s'ouvre et mène à Glisil");
+  assert.ok(!/\d{6}/.test(en.texte), "aucun code dans cet e-mail");
+  ok("le compte approuvé se dit en français et en anglais, avec le lien vers Glisil");
+}
+
 /* ----------------- chaque e-mail que la base met en file a son rendu */
 {
   /* Lu dans les migrations : le nom écrit juste après le compte dans un appel à _envoyer_courriel (même
@@ -116,8 +126,8 @@ const OPERATIONS = {
   for (const m of sql.matchAll(/_envoyer_courriel\(\$1[^']*'[\s\S]{0,120}?using\s+[\w.]+\s*,\s*'([a-z_]+)'/g)) enFile.add(m[1]);
   assert.ok(enFile.size >= 3 && enFile.has("deux_facteurs_retires"), `les gabarits lus dans les migrations : ${[...enFile].join(", ")}`);
   for (const g of enFile) assert.ok(GABARITS_CONNUS.includes(g), `la base met en file « ${g} », que la fonction ne sait pas écrire`);
-  /* témoin : sans le dernier gabarit ajouté, la vérification le trouve manquant */
-  const sansLui = GABARITS_CONNUS.filter((g) => g !== "deux_facteurs_retires");
+  /* témoin : sans le dernier gabarit ajouté (0047), la vérification le trouve manquant */
+  const sansLui = GABARITS_CONNUS.filter((g) => g !== "compte_approuve");
   assert.ok([...enFile].some((g) => !sansLui.includes(g)), "témoin : un gabarit retiré se voit");
   ok(`chaque e-mail que la base met en file a son rendu (${[...enFile].sort().join(", ")}) — témoin pris`);
 }

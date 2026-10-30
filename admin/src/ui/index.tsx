@@ -206,6 +206,7 @@ const ETATS: Record<string, { label: string; tone: Tone }> = {
   pret: { label: "prêt", tone: "amber" }, ferme: { label: "fermé", tone: "neutral" },
   ouvert: { label: "ouvert", tone: "blue" }, partiel: { label: "partiel", tone: "amber" }, execute: { label: "exécuté", tone: "green" }, muet: { label: "muet", tone: "red" }, demo: { label: "démo", tone: "blue" }, actif: { label: "actif", tone: "green" }, inactif: { label: "en pause", tone: "neutral" },
   nouveau: { label: "nouveau", tone: "amber" }, vu: { label: "vu", tone: "blue" }, regle: { label: "réglé", tone: "green" },
+  a_approuver: { label: "à approuver", tone: "amber" },
 };
 
 export function Etat({ valeur }: { valeur: string }) {

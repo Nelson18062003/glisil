@@ -14,7 +14,7 @@ import RemoveRounded from "@mui/icons-material/RemoveRounded";
 import { Box, Button, ButtonBase, Chip, Divider, IconButton, Menu, MenuItem, Paper, Slider, Snackbar, Stack, Tab, Tabs, Typography, useMediaQuery } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { pairesOuvertes, useCarnet, useCotation, useGuichet, useMesOrdres, useOrdre, usePaire, useRafraichir, useSoldes, useTransactions } from "../../guichet";
+import { pairesOuvertes, useCarnet, useCompte, useCotation, useGuichet, useMesOrdres, useOrdre, usePaire, useRafraichir, useSoldes, useTransactions } from "../../guichet";
 import type { Cote, Execution, Niveau, Ordre, Paire, TypeOrdre } from "../../guichet/types";
 import { baseDe } from "../../guichet/types";
 import { achatMax, arrondi2, bandeDePrix, FRAIS, fraisOrdre, MARCHE, raisonDuRefus, simulerMarche, totalOrdre } from "../../noyau/argent";
@@ -248,6 +248,7 @@ function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean; autoNe
   const { data: cotation } = useCotation();
   const { data: carnet } = useCarnet(30);
   const { data: mesOrdres } = useMesOrdres();
+  const { data: compte } = useCompte();
   const [paire] = usePaire();
   const B = baseDe(paire);
   const [typeOuvert, setTypeOuvert] = useState(false);
@@ -364,9 +365,16 @@ function OrderForm({ onPlace }: { onPlace: (o: Ordre & { rempli: boolean; autoNe
           {marcheVide ? t("Personne en face au carnet : un ordre au marché ne trouverait rien. Posez un ordre limite, il attendra.", "No one on the other side of the order book: a market order would find nothing. Place a limit order and it will wait.") : raison}
         </Typography>
       )}
-      <Button variant="contained" disabled={!valide || enCours} onClick={() => setConfirme(true)} sx={{ bgcolor: couleur(f.cote), minHeight: 44, borderRadius: 2, "&:hover": { bgcolor: couleur(f.cote) } }}>
-        {f.cote === "achat" ? t(`Acheter ${B}`, `Buy ${B}`) : t(`Vendre ${B}`, `Sell ${B}`)}
-      </Button>
+      {/* 0047 : on regarde le carnet et les prix ; on ne place un ordre qu'une fois le compte approuvé */}
+      {compte && !compte.approuve ? (
+        <Typography data-en-attente role="status" sx={{ fontSize: 12, lineHeight: 1.35, color: "#7A4A00", bgcolor: "#FFF3DC", borderRadius: 1.5, px: 1, py: 0.75 }}>
+          {t("Votre compte est en cours de vérification : vous pourrez acheter et vendre dès que l'équipe l'aura approuvé.", "Your account is being reviewed: you can buy and sell as soon as the team approves it.")}
+        </Typography>
+      ) : (
+        <Button variant="contained" disabled={!valide || enCours} onClick={() => setConfirme(true)} sx={{ bgcolor: couleur(f.cote), minHeight: 44, borderRadius: 2, "&:hover": { bgcolor: couleur(f.cote) } }}>
+          {f.cote === "achat" ? t(`Acheter ${B}`, `Buy ${B}`) : t(`Vendre ${B}`, `Sell ${B}`)}
+        </Button>
+      )}
       <Typography component={Link} to="/marche/regles" sx={{ fontSize: 12, color: "text.secondary", textAlign: "center", minHeight: 32, display: "flex", alignItems: "center", justifyContent: "center", textUnderlineOffset: 3 }}>
         {t("Règles du marché", "Market rules")}
       </Typography>

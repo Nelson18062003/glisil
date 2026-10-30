@@ -6,7 +6,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Enrolement, GesteSortie, GuichetAdmin } from "./guichet";
 import { AUTH_VIDE, premierFacteurDe, type EtatAuth } from "../noyau/entree";
-import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets, ReseauRegistre, Beta, Signalement } from "./types";
+import type { Approbation, ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets, ReseauRegistre, Beta, Signalement } from "./types";
 import type { Parite, ProfilDeLaBase, SecuriteUtilisateur } from "./types";
 import { verifierPreuve } from "./preuve";
 
@@ -226,6 +226,9 @@ export class GuichetSupabase implements GuichetAdmin {
   }
   async doter(id: string, xafe: number, usdt: number, motif?: string) { return this.rpc<{ reference: string }>("admin_doter", { p_compte: id, p_xafe: xafe, p_usdt: usdt, p_motif: motif ?? null }); }
   async changerPalier(id: string, palier: number, note?: string) { await this.rpc("admin_changer_palier", { p_id: id, p_palier: palier, p_note: note ?? null }); }
+  approbation() { return this.rpc<Approbation>("admin_approbation"); }
+  async approuverClient(id: string, note?: string) { await this.rpc("admin_approuver_client", { p_id: id, p_note: note ?? null }); }
+  reglerApprobation(manuelle: boolean) { return this.rpc<{ approuves_d_office: number }>("admin_regler_approbation", { p_manuelle: manuelle }); }
   validerVerification(id: string, ok: boolean, note?: string) { return this.rpc<{ palier: number }>("admin_valider_verification", { p_id: id, p_ok: ok, p_note: note ?? null }); }
   async desactiverCompte(id: string, actif: boolean, note?: string) { await this.rpc("admin_desactiver_compte", { p_id: id, p_actif: actif, p_note: note ?? null }); }
   equipe() { return this.rpc<Equipe>("admin_equipe"); }

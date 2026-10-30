@@ -49,7 +49,7 @@ type Tache =
   | { quand: number; type: "retrait"; reference: string }
   | { quand: number; type: "expiration"; reference: string };
 
-type CompteDemo = Omit<Compte, "entreDuJour" | "conditionsAJour" | "langue"> & { conditionsVersion: string | null; langue?: "fr" | "en" };
+type CompteDemo = Omit<Compte, "entreDuJour" | "conditionsAJour" | "langue" | "approuve"> & { conditionsVersion: string | null; langue?: "fr" | "en" };
 
 /** Ce que Supabase Auth tient pour une adresse : son mot de passe, son application, ses codes de secours. */
 type UtilisateurDemo = {
@@ -325,7 +325,15 @@ export class GuichetDemo implements Guichet {
   private compteParId(): Compte {
     const d = this.dossier();
     const { conditionsVersion, ...compte } = d.compte;
-    return { ...compte, entreDuJour: entreDuJour(d), conditionsAJour: conditionsVersion === VERSION_CONDITIONS, langue: compte.langue === "fr" ? "fr" : "en", fermeLe: compte.fermeLe ?? null, desactive: Boolean(compte.desactive) };
+    return { ...compte, entreDuJour: entreDuJour(d), conditionsAJour: conditionsVersion === VERSION_CONDITIONS, langue: compte.langue === "fr" ? "fr" : "en", fermeLe: compte.fermeLe ?? null, desactive: Boolean(compte.desactive),
+             approuve: !this.enAttente() };
+  }
+
+  /** 0047 : la démonstration est approuvée ; l'épreuve la met en attente (couture __xafeEpreuve.enAttente). */
+  private enAttente() { return Boolean((globalThis as { __xafeEpreuve?: { enAttente?: boolean } }).__xafeEpreuve?.enAttente); }
+  /** Comme les verrous de 0047 : aucun geste d'argent ne commence sur un compte en attente. */
+  private exigerApprouve() {
+    if (this.enAttente()) throw new ErreurMoteur("compte en attente d'approbation", "l'équipe Glisil vérifie votre compte : les dépôts, le marché et les retraits s'ouvrent dès qu'il est approuvé");
   }
 
   private reference(d: Dossier, prefixe: string): string {
@@ -867,6 +875,7 @@ export class GuichetDemo implements Guichet {
 
   async preparerVerification(op: OperationAVerifier): Promise<Verification> {
     const d = this.dossier();
+    if (op.operation === "sortie_momo" || op.operation === "retrait_crypto") this.exigerApprouve();
     const email = this.etat.session!.email;
     const verrou = this.verrouDeSortie(email);
     if (verrou) throw new ErreurMoteur("vérifications verrouillées", undefined, { verrouJusqua: iso(verrou) });
@@ -976,6 +985,7 @@ export class GuichetDemo implements Guichet {
   /** On ouvre le dossier d'un dépôt AVANT de payer : il dit où payer. */
   async ouvrirDepot({ operateur, cle }: { operateur: IdOperateur; cle: string }) {
     const d = this.dossier();
+    this.exigerApprouve();
     const deja = d.depots.find((x) => (x as unknown as { cle?: string }).cle === cle);
     if (deja) return deja;
     const dep: Depot & { cle: string } = {
@@ -1324,6 +1334,7 @@ export class GuichetDemo implements Guichet {
 
   async placerOrdre({ cote, type, quantite, prix, cle, paire }: { cote: Cote; type: TypeOrdre; quantite: number; prix?: number; cle: string; paire: Paire }): Promise<ResultatOrdre> {
     const d = this.dossier();
+    this.exigerApprouve();
     const deja = d.ordres.find((x) => (x as unknown as { cle?: string }).cle === cle);
     if (deja) return copie({ ordre: deja, executions: d.executions.filter((e) => e.ordreId === deja.id), autoNegociation: false, deja: true });
     if (!MARCHES[paire].ouvert) throw new ErreurMoteur("marché fermé", paire);
@@ -1386,6 +1397,7 @@ export class GuichetDemo implements Guichet {
   /** L'achat rapide de la démonstration : le même devis que le moteur, sur le carnet synthétique. */
   async devisRapide({ sens, montant, ferme, paire }: { sens: SensRapide; montant: number; ferme: boolean; paire: Paire }) {
     const d = this.dossier();
+    if (ferme) this.exigerApprouve();
     if (!RAPIDE.ouvert) throw new ErreurMoteur("achat rapide fermé");
     if (!MARCHES[paire].ouvert) throw new ErreurMoteur("marché fermé", paire);
     if (!(montant > 0) || Math.round(montant * 100) !== Math.round(montant * 100 * 1e6) / 1e6) throw new ErreurMoteur("montant invalide");
@@ -1448,6 +1460,7 @@ export class GuichetDemo implements Guichet {
 
   async adresseDepot(actif: Actif, reseau: Reseau) {
     const d = this.dossier();
+    this.exigerApprouve();
     const graine = `${d.compte.id}-${actif}-${reseau}`;
     let h = 0;
     for (const c of graine) h = (h * 31 + c.charCodeAt(0)) >>> 0;

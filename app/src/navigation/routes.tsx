@@ -18,7 +18,8 @@ import { Compte, CompteAide, CompteApi, CompteFermer, CompteInformations, Compte
 import { Crypto, CryptoDeposer, CryptoEnvoye, CryptoRetirerAdresse, CryptoRetirerCode, CryptoRetirerMontant, CryptoRetirerVerifier } from "../ecrans/crypto";
 import { EntrerCredite, EntrerMontant, EntrerOperateur, EntrerPayer, EntrerTransaction } from "../ecrans/entrer";
 import { Historique, HistoriqueDetail } from "../ecrans/historique";
-import { SiOuvert } from "../ecrans/bientot";
+import { SiApprouve, SiOuvert } from "../ecrans/bientot";
+import { t } from "../noyau/langue";
 import { CompteFerme, Conditions, ConditionsAReaccepter, Confidentialite } from "../ecrans/legal";
 import { Preuve } from "../ecrans/preuve";
 import { Marche, MarcheCarnet, MarcheExecute, MarcheGraphique, MarcheOrdreDetail, MarcheOrdres, MarcheRegles } from "../ecrans/marche";
@@ -102,20 +103,21 @@ export const routeur = createBrowserRouter([
       { path: "/verrouillage", element: <Navigate to="/" replace /> },
 
       /* les dépôts réels : fermés pendant la bêta, sauf pour un compte autorisé ; le suivi d'un dépôt déjà ouvert reste lisible */
-      { element: <SiOuvert porte="entrees" />, children: [
+      /* 0047 : chaque geste d'argent attend aussi que l'équipe ait approuvé le compte */
+      { element: <SiOuvert porte="entrees" />, children: [{ element: <SiApprouve ecran={() => t("Entrer des XAF", "Add XAF")} />, children: [
         { path: "/entrer/operateur", element: <EntrerOperateur /> },
         { path: "/entrer/montant", element: <EntrerMontant /> },
-      ] },
+      ] }] },
       { path: "/entrer/payer/:ref", element: <EntrerPayer /> },
       { path: "/entrer/transaction/:ref", element: <EntrerTransaction /> },
       { path: "/entrer/credite/:ref", element: <EntrerCredite /> },
 
-      { element: <SiOuvert porte="sorties" />, children: [
+      { element: <SiOuvert porte="sorties" />, children: [{ element: <SiApprouve ecran={() => t("Sortir des XAF", "Withdraw XAF")} />, children: [
         { path: "/sortir/montant", element: <SortirMontant /> },
         { path: "/sortir/destination", element: <SortirDestination /> },
         { path: "/sortir/verifier", element: <SortirVerifier /> },
         { path: "/sortir/code", element: <SortirCode /> },
-      ] },
+      ] }] },
       { path: "/sortir/envoye/:ref", element: <SortirEnvoye /> },
 
       { element: <SiOuvert porte="marche" />, children: [
@@ -128,20 +130,22 @@ export const routeur = createBrowserRouter([
       { path: "/marche/ordres/:id", element: <MarcheOrdreDetail /> },
       { path: "/marche/execute/:id", element: <MarcheExecute /> },
 
-      { element: <SiOuvert porte="rapide" />, children: [
+      { element: <SiOuvert porte="rapide" />, children: [{ element: <SiApprouve ecran={() => t("Acheter ou vendre", "Buy or sell")} />, children: [
         { path: "/rapide", element: <Rapide /> },
         { path: "/rapide/prix", element: <RapidePrix /> },
-      ] },
+      ] }] },
       { path: "/rapide/fait", element: <RapideFait /> },
 
       { element: <SiOuvert porte="crypto" />, children: [{ path: "/crypto", element: <Crypto /> }] },
-      { element: <SiOuvert porte="cryptoDepots" />, children: [{ path: "/crypto/deposer/:actif", element: <CryptoDeposer /> }] },
-      { element: <SiOuvert porte="cryptoRetraits" />, children: [
+      { element: <SiOuvert porte="cryptoDepots" />, children: [{ element: <SiApprouve ecran={() => t("Déposer", "Deposit")} retour="/crypto" />, children: [
+        { path: "/crypto/deposer/:actif", element: <CryptoDeposer /> },
+      ] }] },
+      { element: <SiOuvert porte="cryptoRetraits" />, children: [{ element: <SiApprouve ecran={() => t("Retirer", "Withdraw")} retour="/crypto" />, children: [
         { path: "/crypto/retirer/:actif/adresse", element: <CryptoRetirerAdresse /> },
         { path: "/crypto/retirer/:actif/montant", element: <CryptoRetirerMontant /> },
         { path: "/crypto/retirer/:actif/verifier", element: <CryptoRetirerVerifier /> },
         { path: "/crypto/retirer/:actif/code", element: <CryptoRetirerCode /> },
-      ] },
+      ] }] },
       { path: "/crypto/envoye/:ref", element: <CryptoEnvoye /> },
 
       { path: "/historique", element: <Historique /> },

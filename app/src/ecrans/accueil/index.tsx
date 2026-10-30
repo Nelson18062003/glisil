@@ -7,6 +7,7 @@ import ChevronRightRounded from "@mui/icons-material/ChevronRightRounded";
 import ScienceOutlined from "@mui/icons-material/ScienceOutlined";
 import CurrencyBitcoinRounded from "@mui/icons-material/CurrencyBitcoinRounded";
 import HourglassTopRounded from "@mui/icons-material/HourglassTopRounded";
+import HowToRegOutlined from "@mui/icons-material/HowToRegOutlined";
 import NotificationsNoneRounded from "@mui/icons-material/NotificationsNoneRounded";
 import VerifiedUserOutlined from "@mui/icons-material/VerifiedUserOutlined";
 import VisibilityOffOutlined from "@mui/icons-material/VisibilityOffOutlined";
@@ -111,6 +112,19 @@ export function Accueil() {
       )}
 
       <PremiersPas compte={compte} soldes={soldes} historique={historique} numeros={numeros} sorties={ouvert.sorties} />
+
+      {/* 0047 : l'équipe n'a pas encore approuvé le compte — il visite tout, mais aucun geste d'argent ne part */}
+      {compte && !compte.approuve && (
+        <Stack data-en-attente direction="row" alignItems="center" gap={1.5} sx={{ bgcolor: tones.amber.bg, color: tones.amber.fg, borderRadius: 4, px: 2, py: 1.25 }}>
+          <HowToRegOutlined />
+          <Stack sx={{ flex: 1 }}>
+            <Typography fontWeight={600} sx={{ color: "inherit" }}>{t("Compte en cours de vérification", "Account under review")}</Typography>
+            <Typography variant="body2" sx={{ color: "inherit", opacity: 0.85 }}>
+              {t("Les dépôts, le marché et les retraits s'ouvrent dès que l'équipe l'approuve. Vous recevrez un e-mail.", "Deposits, trading and withdrawals open as soon as the team approves it. You'll get an email.")}
+            </Typography>
+          </Stack>
+        </Stack>
+      )}
 
       {compte?.verificationEnCours && (
         <Stack direction="row" alignItems="center" gap={1.5} sx={{ bgcolor: tones.blue.bg, color: tones.blue.fg, borderRadius: 4, px: 2, py: 1.25 }}>

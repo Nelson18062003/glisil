@@ -93,7 +93,7 @@ test("une erreur du moteur se dit en français", () => {
   assert.equal(lisible(new Error("solde insuffisant")).titre, "Le solde ne suffit pas");
   assert.equal(lisible(new Error("plafond du palier atteint")).recommencer, true);
   /* les phrases du moteur corrigé : chacune a ses trois lignes, aucune ne tombe sur « Ça n'a pas marché » */
-  for (const phrase of ["compte désactivé", "transaction ID déjà utilisé", "transaction ID déjà déclaré", "trop de transaction ID en attente",
+  for (const phrase of ["compte désactivé", "compte en attente d'approbation", "transaction ID déjà utilisé", "transaction ID déjà déclaré", "trop de transaction ID en attente",
     "trop de transaction ID aujourd'hui", "retraits crypto pas encore ouverts", "aucun boîtier en ligne pour cet opérateur",
     "adresse ou mot de passe incorrect", "adresse e-mail non confirmée", "cette adresse a déjà un compte", "cette adresse est déjà utilisée", "mot de passe trop faible",
     "choisissez un mot de passe différent", "confirmation par e-mail nécessaire", "trop de demandes : attendez une minute", "connexion Google annulée",
@@ -107,6 +107,7 @@ test("une erreur du moteur se dit en français", () => {
     assert.notEqual(lisible(new Error(phrase)).titre, "Ça n'a pas marché", phrase);
   }
   assert.equal(lisible(new Error("compte désactivé")).recommencer, false);
+  assert.equal(lisible(new Error("compte en attente d'approbation")).recommencer, false, "attendre l'équipe, pas réessayer");
   assert.equal(lisible(new TypeError("Failed to fetch")).recommencer, false);
   assert.equal(lisible(new Error("quelque chose d'inconnu")).suite, "quelque chose d'inconnu");
 });

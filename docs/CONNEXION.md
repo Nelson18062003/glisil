@@ -62,6 +62,25 @@ values ('votre@adresse.com', 'Votre nom', 'super_admin');
 
 Les suivants s'invitent par `admin_inviter_administrateur(email, nom, rôle)`.
 
+## L'approbation des comptes (0047)
+
+N'importe qui s'inscrit et visite tout Glisil : le marché, les cours, son
+compte. Mais tant que l'équipe n'a pas **approuvé** le compte, aucun geste
+d'argent ne commence — ni dépôt (Mobile Money ou adresse crypto), ni ordre,
+ni achat rapide, ni retrait. L'application le dit avant le premier geste
+(« Votre compte est en cours de vérification ») ; la base refuse de toute
+façon (« compte en attente d'approbation »), par un verrou posé sur les huit
+tables où l'argent commence.
+
+- **Approuver** : Administration → Clients → « N comptes à approuver » →
+  le client → « Approuver ce client » (droit `paliers`, le super admin). Le
+  client est prévenu par e-mail (`compte_approuve`) et dans l'application.
+- **L'interrupteur** : en tête de la page Clients (droit `administrateurs`).
+  Éteint, les comptes en attente sont approuvés d'office et les suivants
+  naissent approuvés. Rallumé, il ne reprend rien : seuls les comptes ouverts
+  après attendent.
+- Chaque approbation et chaque bascule vont au journal, avec qui et quand.
+
 ## Les portes fermées (production, avant l'ouverture)
 
 Sur la production, « Allow new users to sign up » reste **désactivé** jusqu'à

@@ -6,7 +6,7 @@ import type { SecuriteUtilisateur, Sortie as SortieT } from "./types";
 export type Enrolement = { facteurId: string; secret: string; uri: string; qr: string };
 /** Ce que rend un geste sur une sortie manuelle : son état, et ce que dit la puce. */
 export type GesteSortie = { etat: string; reste?: number; a_confirmer?: boolean; deja?: boolean; rapprochement?: SortieT["rapprochement"] };
-import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets, ReseauRegistre, Beta, Signalement } from "./types";
+import type { Approbation, ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Wallets, ReseauRegistre, Beta, Signalement } from "./types";
 
 /** LE GUICHET DE L'ADMINISTRATION : tout ce que les écrans demandent au moteur. */
 export interface GuichetAdmin {
@@ -86,7 +86,7 @@ export interface GuichetAdmin {
 
   /** Les chiffres d'ensemble : total, actifs, connectés, nouveaux, inscriptions inachevées… */
   statistiquesClients(): Promise<StatsClients>;
-  /** filtre : null (tous) · actifs · inactifs · nouveaux · verifications · desactives — cherchés dans TOUS les comptes. */
+  /** filtre : null (tous) · a_approuver · actifs · inactifs · nouveaux · verifications · desactives — cherchés dans TOUS les comptes. */
   clients(recherche?: string, filtre?: string | null): Promise<Client[]>;
   client(id: string): Promise<ClientDetail>;
   /** La double authentification d'une personne : active, codes restants, ce qui s'est passé. */
@@ -94,6 +94,12 @@ export interface GuichetAdmin {
   /** Super admin : après avoir vérifié l'identité, retirer l'application d'une personne (le motif dit comment). */
   reinitialiserDeuxFacteurs(utilisateur: string, motif: string): Promise<{ facteurs: number }>;
   changerPalier(id: string, palier: number, note?: string): Promise<void>;
+  /** 0047 : l'interrupteur et la file des comptes à approuver. */
+  approbation(): Promise<Approbation>;
+  /** Approuver un compte (droit « paliers ») : ses gestes d'argent s'ouvrent, il est prévenu par e-mail. */
+  approuverClient(id: string, note?: string): Promise<void>;
+  /** L'interrupteur (droit « administrateurs ») : éteint, les comptes en attente sont approuvés d'office. */
+  reglerApprobation(manuelle: boolean): Promise<{ approuves_d_office: number }>;
   /** La bêta : donner de l'argent de test à un compte (droit « parametres ») ; refusé hors bêta. */
   doter(id: string, xafe: number, usdt: number, motif?: string): Promise<{ reference: string }>;
   validerVerification(id: string, ok: boolean, note?: string): Promise<{ palier: number }>;

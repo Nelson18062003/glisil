@@ -5,9 +5,10 @@
  * la base refuse de toute façon. Les écrans de suivi (une sortie envoyée, un
  * ordre passé) restent lisibles : ils montrent ce qui existe déjà.
  */
+import HowToRegOutlined from "@mui/icons-material/HowToRegOutlined";
 import ScheduleRounded from "@mui/icons-material/ScheduleRounded";
 import { Outlet } from "react-router-dom";
-import { useOuvertures } from "../guichet";
+import { useCompte, useOuvertures } from "../guichet";
 import { BETA } from "../noyau/argent";
 import { xaf } from "../noyau/format";
 import { t } from "../noyau/langue";
@@ -75,6 +76,30 @@ export function PasEncoreOuvert({ porte }: { porte: Porte }) {
         action={action} secondaire={{ label: t("Retour à l'accueil", "Back to Home"), to: "/" }} />
     </Screen>
   );
+}
+
+/**
+ * 0047 : un compte que l'équipe n'a pas encore approuvé visite tout Glisil — le marché, les cours, son
+ * compte — mais ne commence aucun geste d'argent. L'écran le dit AVANT un montant tapé pour rien ; la
+ * base refuse de toute façon (« compte en attente d'approbation »).
+ */
+export function EnAttenteDApprobation({ ecran, retour = "/" }: { ecran: string; retour?: string }) {
+  return (
+    <Screen title={ecran} back={retour}>
+      <EtatVide icone={<HowToRegOutlined sx={{ fontSize: 36 }} />} tone="amber"
+        titre={t("Votre compte est en cours de vérification", "Your account is being reviewed")}
+        texte={t("L'équipe Glisil vérifie chaque nouveau compte avant sa première opération. Vous recevrez un e-mail dès qu'il est approuvé. En attendant, vous pouvez visiter le marché et suivre les cours.",
+          "The Glisil team reviews every new account before its first transaction. You'll get an email as soon as it's approved. Meanwhile, you can explore the market and follow prices.")}
+        action={{ label: t("Voir le marché", "Explore the market"), to: "/marche" }} secondaire={{ label: t("Retour à l'accueil", "Back to Home"), to: "/" }} />
+    </Screen>
+  );
+}
+
+/** Les gestes d'argent derrière l'approbation : approuvé, l'écran demandé ; en attente, l'écran qui le dit. */
+export function SiApprouve({ ecran, retour }: { ecran: () => string; retour?: string }) {
+  const { data: compte } = useCompte();
+  if (!compte) return null;
+  return compte.approuve ? <Outlet /> : <EnAttenteDApprobation ecran={ecran()} retour={retour} />;
 }
 
 /** Une famille de chemins derrière son interrupteur : ouverte, l'écran demandé ; fermée, « bientôt ». */

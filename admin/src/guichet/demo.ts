@@ -9,7 +9,7 @@ import { ErreurMoteur } from "./supabase";
 import type { Enrolement, GesteSortie, GuichetAdmin } from "./guichet";
 import { AUTH_VIDE, motDePasseValide, type EtatAuth } from "../noyau/entree";
 import type { Beta, LigneParite, Parite, ProfilDeLaBase, PreuvePaiement, Rapprochement, ReseauRegistre, ReleveCours, SecuriteUtilisateur, Signalement } from "./types";
-import type { ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Transfert, Wallets } from "./types";
+import type { Approbation, ATraiter, Client, ClientDetail, Declaration, Entree, LigneJournal, Marche, Parametres, Profil, Retenue, Sortie, SortieNonExpliquee, StatsClients, Equipe, Tableau, Terminal, Transfert, Wallets } from "./types";
 import { verifierPreuve } from "./preuve";
 
 /** le code de démonstration : celui qui « arrive par e-mail », et celui que « l'application d'authentification » affiche */
@@ -57,7 +57,9 @@ type Etat = {
   equipe?: Equipe;
   terminaux: Terminal[];
   floats: (Required<Pick<import("./types").Float, "id" | "operateur" | "numero" | "terminal" | "code_agent" | "actif">> & { titulaire?: string | null })[];
-  clients: (Client & { soldes: Record<string, { disponible: number; bloque: number }>; numeros: ClientDetail["numeros"]; a_code: boolean; date_naissance: string })[];
+  clients: (Client & { soldes: Record<string, { disponible: number; bloque: number }>; numeros: ClientDetail["numeros"]; a_code: boolean; date_naissance: string; approuve_par_nom?: string | null })[];
+  /** 0047 : l'interrupteur de l'approbation (absent d'un état gardé avant : allumé) */
+  approbationManuelle?: boolean;
   entrees: Entree[];
   retenues: Retenue[];
   sorties: Sortie[];
@@ -87,23 +89,26 @@ function graine(): Etat {
     { id: 4, operateur: "om", numero: "699000001", terminal: "bonaberi-2", code_agent: null, actif: false },
     { id: 5, operateur: "mtn", numero: "677000002", terminal: "yaounde-1", code_agent: null, actif: true },
   ];
-  const noms = ["Nelson Soh", "Jean Kamdem", "Aïcha Njoya", "ETS KAMDEM & FILS", "Paul Biya Mbarga", "Chantal Mbarga", "Ibrahim Oumarou", "Société Nouvelle Brasserie du Littoral SARL", "Grace Fotso", "Bob Essomba", "Desk Lagos Trading", "Marie Ngo"];
+  /* les deux derniers viennent de s'inscrire : ils attendent l'approbation de l'équipe (0047) */
+  const noms = ["Nelson Soh", "Jean Kamdem", "Aïcha Njoya", "ETS KAMDEM & FILS", "Paul Biya Mbarga", "Chantal Mbarga", "Ibrahim Oumarou", "Société Nouvelle Brasserie du Littoral SARL", "Grace Fotso", "Bob Essomba", "Desk Lagos Trading", "Marie Ngo", "Rosine Abega", "Kevin Tchoumi"];
   const clients: Etat["clients"] = noms.map((nom, i) => {
     const tel = `6${77 - (i % 3)}${String(100000 + i * 7919).slice(-6)}`;
+    const attend = i >= 12;
+    const ne = attend ? t - (i - 11) * 3 * H : t - (30 - i) * 24 * H;
     return {
       id: `c${i + 1}`, telephone: tel, nom, entreprise: nom.includes("SARL") || nom.startsWith("ETS") || nom.startsWith("Desk") ? nom : null,
-      palier: (i === 4 ? 0 : i === 7 ? 1 : i % 4 === 0 ? 2 : i % 3 === 0 ? 1 : 0) as 0 | 1 | 2, verification_en_cours: i === 4 ? "identite" : i === 7 ? "entreprise" : null,
-      cree_le: iso(t - (30 - i) * 24 * H), desactive_le: i === 11 ? iso(t - 5 * 24 * H) : null,
-      xafe: Math.round((i + 1) * 437_000 + (i % 5) * 12_345), usdt: Math.round((i + 1) * 310.5 * 100) / 100, usdc: i % 3 === 0 ? (i + 1) * 120 : 0,
-      soldes: { XAFe: { disponible: Math.round((i + 1) * 437_000), bloque: (i % 5) * 12_345 }, USDT: { disponible: Math.round((i + 1) * 310.5 * 100) / 100, bloque: 0 }, USDC: { disponible: i % 3 === 0 ? (i + 1) * 120 : 0, bloque: 0 } },
-      numeros: [{ id: `n${i}`, operateur: tel.startsWith("69") ? "om" : "mtn", numero: tel, verifie_le: iso(t - (30 - i) * 24 * H), actif_des: iso(t - (29 - i) * 24 * H), retire_le: null }],
+      palier: (attend || i === 4 ? 0 : i === 7 ? 1 : i % 4 === 0 ? 2 : i % 3 === 0 ? 1 : 0) as 0 | 1 | 2, verification_en_cours: i === 4 ? "identite" : i === 7 ? "entreprise" : null,
+      cree_le: iso(ne), desactive_le: i === 11 ? iso(t - 5 * 24 * H) : null, approuve_le: attend ? null : iso(ne + 2 * H),
+      xafe: attend ? 0 : Math.round((i + 1) * 437_000 + (i % 5) * 12_345), usdt: attend ? 0 : Math.round((i + 1) * 310.5 * 100) / 100, usdc: !attend && i % 3 === 0 ? (i + 1) * 120 : 0,
+      soldes: attend ? ({} as Record<string, { disponible: number; bloque: number }>) : { XAFe: { disponible: Math.round((i + 1) * 437_000), bloque: (i % 5) * 12_345 }, USDT: { disponible: Math.round((i + 1) * 310.5 * 100) / 100, bloque: 0 }, USDC: { disponible: i % 3 === 0 ? (i + 1) * 120 : 0, bloque: 0 } },
+      numeros: attend ? [] : [{ id: `n${i}`, operateur: tel.startsWith("69") ? "om" : "mtn", numero: tel, verifie_le: iso(t - (30 - i) * 24 * H), actif_des: iso(t - (29 - i) * 24 * H), retire_le: null }],
       a_code: true,
       email: `${sansAccents(nom).toLowerCase().replace(/[^a-z]+/g, ".").replace(/^\.|\.$/g, "")}@exemple.cm`,
-      ville: ["Douala", "Yaoundé", "Bafoussam", "Douala", "Garoua", "Douala", "Maroua", "Douala", "Libreville", "Yaoundé", "Lagos", "Paris"][i],
-      pays: ["CM", "CM", "CM", "CM", "CM", "CM", "CM", "CM", "GA", "CM", "NG", "FR"][i],
+      ville: ["Douala", "Yaoundé", "Bafoussam", "Douala", "Garoua", "Douala", "Maroua", "Douala", "Libreville", "Yaoundé", "Lagos", "Paris", "Douala", "Yaoundé"][i],
+      pays: ["CM", "CM", "CM", "CM", "CM", "CM", "CM", "CM", "GA", "CM", "NG", "FR", "CM", "CM"][i],
       /* trois clients n'ont plus bougé depuis plus d'un mois : ils sont « inactifs » */
-      derniere_operation: i === 5 ? null : iso(t - (i >= 8 && i <= 10 ? 45 * 24 * H : (i + 1) * 5 * H)),
-      derniere_connexion: iso(t - (i * 13 + 1) * H),
+      derniere_operation: i === 5 || attend ? null : iso(t - (i >= 8 && i <= 10 ? 45 * 24 * H : (i + 1) * 5 * H)),
+      derniere_connexion: iso(attend ? ne + 20 * 60_000 : t - (i * 13 + 1) * H),
       date_naissance: `${1975 + i * 2}-${String((i % 12) + 1).padStart(2, "0")}-${String((i * 3) % 27 + 1).padStart(2, "0")}`,
     };
   });
@@ -784,6 +789,7 @@ export class GuichetDemo implements GuichetAdmin {
     const bouge = (c: Client) => c.derniere_operation !== null && t - new Date(c.derniere_operation).getTime() < 30 * 24 * H;
     const garde = (c: Client) =>
       !filtre ? true
+      : filtre === "a_approuver" ? !c.approuve_le && !c.ferme_le
       : filtre === "verifications" ? Boolean(c.verification_en_cours)
       : filtre === "desactives" ? Boolean(c.desactive_le)
       : filtre === "nouveaux" ? t - new Date(c.cree_le).getTime() < 7 * 24 * H
@@ -791,26 +797,27 @@ export class GuichetDemo implements GuichetAdmin {
       : filtre === "inactifs" ? !c.desactive_le && !bouge(c)
       : true;
     return copie(this.e.clients.filter(garde).filter((c) => !q || (chiffres.length >= 3 && c.telephone.includes(chiffres)) || (c.nom ?? "").toLowerCase().includes(q) || (c.entreprise ?? "").toLowerCase().includes(q) || (c.email ?? "").includes(q) || (c.ville ?? "").toLowerCase().includes(q))
-      .map(({ soldes: _s, numeros: _n, a_code: _a, date_naissance: _d, ...c }) => c));
+      .map(({ soldes: _s, numeros: _n, a_code: _a, date_naissance: _d, approuve_par_nom: _p, ...c }) => c));
   }
   async client(id: string): Promise<ClientDetail> {
     this.exiger("clients");
     const c = this.e.clients.find((x) => x.id === id);
     if (!c) throw new ErreurMoteur("compte inconnu");
-    const { soldes, numeros, a_code, date_naissance, ...reste } = c;
+    const { soldes, numeros, a_code, date_naissance, approuve_par_nom: _p, ...reste } = c;
     const [prenom, ...nomDeFamille] = (c.entreprise ? "" : c.nom ?? "").split(" ");
     const depots = this.e.entrees.filter((x) => x.compte.id === id);
     const sorties = this.e.sorties.filter((x) => x.compte.id === id);
     return copie({
-      totaux: { entre_xaf: depots.reduce((s, d) => s + d.montant_recu, 0), sorti_xaf: sorties.reduce((s, x) => s + x.montant_envoye, 0), ordres: 1, retraits_crypto: id === "c1" ? 1 : 0 },
+      totaux: { entre_xaf: depots.reduce((s, d) => s + d.montant_recu, 0), sorti_xaf: sorties.reduce((s, x) => s + x.montant_envoye, 0), ordres: c.approuve_le ? 1 : 0, retraits_crypto: id === "c1" ? 1 : 0 },
       retraits_crypto: id === "c1" ? [{ reference: "XAFe-CR-000412", actif: "USDT", reseau: "bep20", adresse: "0x3fA8c19E2b7D4e5F60a1B2c3D4e5F60a1B2c9C21", montant: 500, frais: 1, etat: "envoye", tx_hash: "0x8a1f3c5b…", cree_le: iso(maintenant() - 30 * H) }] : [],
       transferts_crypto: id === "c1" ? [{ id: 1, actif: "USDT", reseau: "trc20", sens: "entree", montant: 1200, adresse: "TEW4N3ZiF23GxHTYu8pen6r8uhHeZpALYZ", tx_hash: "4c1b…e90a", cree_le: iso(maintenant() - 52 * H) }] : [],
-      compte: { ...reste, a_code, verrou_jusqua: null, prenom: prenom || null, nom_de_famille: nomDeFamille.join(" ") || null, date_naissance: c.entreprise ? null : date_naissance, verification_pieces: c.verification_en_cours ? [`${c.id}/${c.verification_en_cours}/piece-1.jpg`, `${c.id}/${c.verification_en_cours}/piece-2.jpg`] : null, code_verrou_jusqua: null, conditions_version: "2026-10-16", conditions_acceptees_le: reste.cree_le, conditions_a_jour: true, ferme_le: null },
+      compte: { ...reste, a_code, verrou_jusqua: null, prenom: prenom || null, nom_de_famille: nomDeFamille.join(" ") || null, date_naissance: c.entreprise ? null : date_naissance, verification_pieces: c.verification_en_cours ? [`${c.id}/${c.verification_en_cours}/piece-1.jpg`, `${c.id}/${c.verification_en_cours}/piece-2.jpg`] : null, code_verrou_jusqua: null, conditions_version: "2026-10-16", conditions_acceptees_le: reste.cree_le, conditions_a_jour: true, ferme_le: null,
+        approuve: Boolean(c.approuve_le) || this.e.approbationManuelle === false, approuve_par: c.approuve_le ? (c.approuve_par_nom ?? null) : null },
       soldes, numeros,
       depots: this.e.entrees.filter((x) => x.compte.id === id).map(({ compte: _c, ...d }) => d),
       sorties: this.e.sorties.filter((x) => x.compte.id === id).map(({ compte: _c, transferts: _t, ...s }) => s),
-      ordres: [{ id: "o1", numero: "ORD-020931", cote: "achat", type: "limite", prix: 618.2, quantite: 1500, executee: 1500, total_xafe: 927_300, etat: "execute", cree_le: iso(maintenant() - 2 * H) }],
-      ecritures: [{ actif: "XAFe", disponible: 250_000, bloque: 0, nature: "depot", source: "XAFe-DP-000501", quand: iso(maintenant() - 2 * H) }, { actif: "USDT", disponible: 1498.5, bloque: 0, nature: "ordre_execute", source: "ORD-020931", quand: iso(maintenant() - 2 * H + 40_000) }],
+      ordres: !c.approuve_le ? [] : [{ id: "o1", numero: "ORD-020931", cote: "achat", type: "limite", prix: 618.2, quantite: 1500, executee: 1500, total_xafe: 927_300, etat: "execute", cree_le: iso(maintenant() - 2 * H) }],
+      ecritures: !c.approuve_le ? [] : [{ actif: "XAFe", disponible: 250_000, bloque: 0, nature: "depot", source: "XAFe-DP-000501", quand: iso(maintenant() - 2 * H) }, { actif: "USDT", disponible: 1498.5, bloque: 0, nature: "ordre_execute", source: "ORD-020931", quand: iso(maintenant() - 2 * H + 40_000) }],
     });
   }
   private dotations = 0;
@@ -826,6 +833,28 @@ export class GuichetDemo implements GuichetAdmin {
     const reference = `XAFe-BT-${String(++this.dotations).padStart(6, "0")}`;
     this.noter("doter", id, { reference, xafe, usdt, motif }); this.emettre();
     return { reference };
+  }
+  async approbation(): Promise<Approbation> {
+    this.exiger("clients");
+    const droits = this.e.profil?.droits ?? [];
+    return { manuelle: this.e.approbationManuelle !== false, en_attente: this.e.clients.filter((c) => !c.approuve_le && !c.ferme_le).length,
+             peut_approuver: droits.includes("paliers" as never), peut_regler: droits.includes("administrateurs" as never) };
+  }
+  async approuverClient(id: string, note?: string) {
+    this.exiger("paliers");
+    const c = this.e.clients.find((x) => x.id === id);
+    if (!c) throw new ErreurMoteur("client inconnu");
+    if (c.approuve_le) return;
+    c.approuve_le = iso(maintenant()); c.approuve_par_nom = this.e.profil?.nom ?? null;
+    this.noter("approuver_client", id, { note: note || null }); this.emettre();
+  }
+  async reglerApprobation(manuelle: boolean) {
+    this.exiger("administrateurs");
+    this.e.approbationManuelle = manuelle;
+    let n = 0;
+    if (!manuelle) for (const c of this.e.clients) if (!c.approuve_le) { c.approuve_le = iso(maintenant()); c.approuve_par_nom = null; n++; }
+    this.noter("regler_approbation", "approbation", { manuelle, approuves_d_office: n }); this.emettre();
+    return { approuves_d_office: n };
   }
   async changerPalier(id: string, palier: number, note?: string) {
     this.exiger("paliers");

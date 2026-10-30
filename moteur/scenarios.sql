@@ -4589,6 +4589,116 @@ begin
 end $$;
 rollback;
 
+-- 11.92 · l'approbation des comptes (0047). N'importe qui s'inscrit et visite ;
+-- tant que l'équipe n'a pas approuvé le compte, aucun geste d'argent ne
+-- COMMENCE : dépôt Mobile Money, adresse crypto, ordre, devis rapide, code de
+-- retrait. Ce qui ne commence rien reste permis (lire, fermer son compte).
+-- Seul le droit « paliers » approuve ; seul « administrateurs » tient
+-- l'interrupteur. Éteint, il approuve d'office ceux qui attendent et les
+-- suivants naissent approuvés ; rallumé, il ne reprend rien à personne.
+-- Témoin : le verrou retiré d'une table, l'ordre passe.
+begin;
+update parametres set valeur = '{"manuelle": true}' where cle = 'approbation';   -- la règle d'aujourd'hui, éteinte par regles-d-avant
+insert into comptes (id, telephone, nom, email) values
+  ('c0000000-0000-0000-0000-00000000c001', '670920001', 'Carole Attente', 'carole@example.com'),
+  ('c0000000-0000-0000-0000-00000000c002', '670920002', 'Denis Attente', 'denis@example.com');
+insert into comptes (id, telephone, nom, genre) values ('c0000000-0000-0000-0000-00000000c0b0', '670920099', 'Robot 92', 'robot');
+insert into adresses_libres (actif, reseau, adresse, indice) values ('USDT', 'bep20', '0x9200000000000000000000000000000000000092', 92);
+do $$
+declare c uuid := 'c0000000-0000-0000-0000-00000000c001'; d uuid := 'c0000000-0000-0000-0000-00000000c002';
+        sa uuid := 'dddddddd-0000-0000-0000-000000000001'; sup uuid := 'dddddddd-0000-0000-0000-000000000003';
+        r jsonb; t text; v_n int;
+begin
+  assert (select approuve_le from comptes where id = c) is null, 'un client neuf attend';
+  assert (select approuve_le from comptes where id = 'c0000000-0000-0000-0000-00000000c0b0') is not null, 'un robot de la maison naît approuvé';
+  assert not exists (select 1 from comptes where maison and approuve_le is null), 'le compte maison n''attend jamais';
+  perform crediter_crypto(c, 'USDT', 'bep20', 500, '0xappro-11.92-c', '0x00000000000000000000000000000000000000c1');
+
+  -- 1. le client attend : il lit, il ne commence aucun geste d'argent
+  perform set_config('xafe.compte', c::text, true);
+  assert not (mon_compte() ->> 'approuve')::boolean, mon_compte();
+  assert (mes_soldes() is not null), 'il lit ses soldes';
+  begin perform ouvrir_depot('mtn', 'k-11.92-d'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'compte en attente d''approbation', 'dépôt : ' || sqlerrm; end;
+  begin perform adresse_depot('USDT', 'bep20'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'compte en attente d''approbation', 'adresse : ' || sqlerrm; end;
+  begin perform placer_ordre('vente', 'limite', 20, 620.00, 'k-11.92-o'); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'compte en attente d''approbation', 'ordre : ' || sqlerrm; end;
+  -- le prix d'un achat rapide se REGARDE (devis non ferme, rien n'est écrit) ; il ne se FIXE pas
+  perform set_config('xafe.compte', '11111111-1111-1111-1111-111111111111', true);
+  perform placer_ordre('achat', 'limite', 20, 618.00, 'k-11.92-a');
+  perform set_config('xafe.compte', c::text, true);
+  assert (devis_rapide('vente', 20, false) ->> 'quantite')::numeric = 20, 'il regarde le prix';
+  begin perform devis_rapide('vente', 20, true); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'compte en attente d''approbation', 'devis : ' || sqlerrm; end;
+  begin perform preparer_verification('retrait_crypto', jsonb_build_object('actif', 'USDT', 'reseau', 'bep20', 'adresse', '0x00000000000000000000000000000000000000c9', 'montant', 100));
+    raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'compte en attente d''approbation', 'code de retrait : ' || sqlerrm; end;
+  assert not exists (select 1 from adresses_crypto where compte_id = c) and not exists (select 1 from ordres where compte_id = c)
+     and not exists (select 1 from depots where compte_id = c) and not exists (select 1 from verifications where compte_id = c), 'rien n''a été commencé';
+  -- le verrou est sur les huit tables où l'argent commence, actif
+  select string_agg(x, ', ') into t from unnest(array['depots', 'depot_declarations', 'adresses_crypto', 'ordres', 'devis_rapides', 'sorties', 'retraits_crypto', 'verifications']) x
+   where not exists (select 1 from pg_trigger g where g.tgrelid = x::regclass and g.tgname = 'verrou_d_approbation' and g.tgenabled = 'O');
+  assert t is null, 'sans verrou : ' || t;
+  -- le témoin : le verrou retiré des ordres, l'ordre passe
+  begin
+    alter table ordres disable trigger verrou_d_approbation;
+    perform placer_ordre('vente', 'limite', 20, 620.00, 'k-11.92-temoin');
+    raise exception 'témoin pris';
+  exception when others then assert sqlerrm = 'témoin pris', sqlerrm; end;
+  assert not exists (select 1 from ordres where compte_id = c);
+
+  -- 2. approuver : le support ne peut pas, le super admin oui, une fois
+  perform set_config('xafe.compte', sup::text, true);
+  begin perform admin_approuver_client(c); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'accès non autorisé', sqlerrm; end;
+  r := admin_approbation();
+  assert (r ->> 'manuelle')::boolean and (r ->> 'en_attente')::int = 2 and not (r ->> 'peut_approuver')::boolean and not (r ->> 'peut_regler')::boolean, r;
+  assert (select count(*) from jsonb_array_elements(admin_clients(null, 100, 'a_approuver'))) = 2, admin_clients(null, 100, 'a_approuver');
+  perform set_config('xafe.compte', c::text, true);
+  begin perform admin_approuver_client(c); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'accès non autorisé', 'un client ne s''approuve pas : ' || sqlerrm; end;
+  perform set_config('xafe.compte', sa::text, true);
+  r := admin_approuver_client(c, 'pièces vues');
+  assert (r ->> 'ok')::boolean and not (r ? 'deja'), r;
+  assert (select approuve_par from comptes where id = c) = sa, 'l''approbateur est noté';
+  assert (admin_client(c) -> 'compte' ->> 'approuve_par') = 'Nelson', admin_client(c) -> 'compte';
+  assert exists (select 1 from journal_admin where action = 'approuver_client' and cible = c::text and admin_id = sa), 'au journal';
+  assert exists (select 1 from notifications where compte_id = c and titre in ('Account approved', 'Compte approuvé')), 'le client est prévenu';
+  assert exists (select 1 from courriels_a_envoyer where compte_id = c and gabarit = 'compte_approuve'), 'par e-mail aussi';
+  assert (admin_approuver_client(c) ->> 'deja')::boolean, 'deux fois : rien de plus';
+  assert (select count(*) from courriels_a_envoyer where compte_id = c and gabarit = 'compte_approuve') = 1, 'un seul e-mail';
+  begin perform admin_approuver_client(compte_maison()); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'client inconnu', sqlerrm; end;
+
+  -- 3. approuvé : les gestes s'ouvrent
+  perform set_config('xafe.compte', c::text, true);
+  assert (mon_compte() ->> 'approuve')::boolean;
+  t := adresse_depot('USDT', 'bep20');   -- lue APRÈS l'appel : dans la même expression, la sous-requête voyait la table d'avant
+  assert t = (select adresse from adresses_crypto where compte_id = c and actif = 'USDT' and reseau = 'bep20'), 'son adresse de dépôt';
+  r := placer_ordre('vente', 'limite', 20, 620.00, 'k-11.92-o');
+  assert exists (select 1 from ordres where compte_id = c), r;
+
+  -- 4. l'interrupteur : seul le super admin le tient ; éteint, il approuve d'office ceux qui attendent
+  perform set_config('xafe.compte', 'dddddddd-0000-0000-0000-000000000002', true);   -- l'opérateur
+  begin perform admin_regler_approbation(false); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'accès non autorisé', sqlerrm; end;
+  perform set_config('xafe.compte', sa::text, true);
+  r := admin_regler_approbation(false);
+  assert (r ->> 'approuves_d_office')::int = 1, r;
+  assert (select approuve_le is not null and approuve_par is null from comptes where id = d), 'Denis, approuvé d''office';
+  insert into comptes (id, telephone, nom) values ('c0000000-0000-0000-0000-00000000c003', '670920003', 'Élise Libre');
+  assert (select approuve_le from comptes where id = 'c0000000-0000-0000-0000-00000000c003') is not null, 'éteint : on naît approuvé';
+  -- rallumé : il ne reprend rien, seuls les comptes ouverts APRÈS attendent
+  r := admin_regler_approbation(true);
+  insert into comptes (id, telephone, nom) values ('c0000000-0000-0000-0000-00000000c004', '670920004', 'Fabrice Après');
+  assert (select count(*) from comptes where id in (c, d, 'c0000000-0000-0000-0000-00000000c003') and approuve_le is not null) = 3, 'personne ne perd son approbation';
+  assert (select approuve_le from comptes where id = 'c0000000-0000-0000-0000-00000000c004') is null, 'rallumé : le suivant attend';
+  assert (select count(*) from journal_admin where action = 'regler_approbation') = 2;
+  raise notice '✓ 11.92 sans approbation, aucun geste d''argent ne commence ; seul le super admin approuve et tient l''interrupteur ; éteint, il approuve d''office, rallumé il ne reprend rien';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

@@ -4,13 +4,14 @@
  */
 import { Chip, Paper, Stack, Typography } from "@mui/material";
 import { Link } from "react-router-dom";
-import { useATraiter, useTableau } from "../guichet";
+import { useApprobation, useATraiter, useTableau } from "../guichet";
 import { enTranches, heure, jourRelatif, numeroEnTranches, prix, xaf } from "../noyau/format";
 import { Coquille, Etat, Section, Tableau as Table, Tuile } from "../ui";
 
 export function Tableau() {
   const { data: t } = useTableau();
   const { data: a } = useATraiter();
+  const { data: ap } = useApprobation();
   if (!t) return <Coquille titre="Tableau"><Typography variant="body2">Chargement…</Typography></Coquille>;
   const xafe = t.soldes.XAFe ?? { disponible: 0, bloque: 0 };
   const usdt = t.soldes.USDT ?? { disponible: 0, bloque: 0 };
@@ -51,6 +52,13 @@ export function Tableau() {
             <Typography variant="body2">Remboursements à payer{a && (a.sorties_en_preuve ?? 0) > 0 ? ` · ${a.sorties_en_preuve} en preuve` : ""}{a && (a.sorties_en_ecart ?? 0) > 0 ? ` · ${a.sorties_en_ecart} en écart` : ""}{a && a.sorties_a_confirmer > 0 ? ` · ${a.sorties_a_confirmer} à confirmer` : ""}</Typography>
             <Typography variant="h5">{a?.sorties_manuelles ?? "—"} · {xaf(a?.montant_a_payer ?? 0)} XAF</Typography>
           </Paper>
+          {/* 0047 : un nouveau compte attend qu'on l'approuve avant son premier geste d'argent */}
+          {ap && ap.manuelle && ap.en_attente > 0 && (
+            <Paper component={Link} to="/clients?filtre=a_approuver" data-a-approuver={ap.en_attente} sx={{ p: 2.5, borderRadius: 5, flex: 1, minWidth: 220, textDecoration: "none", color: "inherit", bgcolor: "#FFE3B5" }}>
+              <Typography variant="body2">Comptes à approuver</Typography>
+              <Typography variant="h5">{ap.en_attente}</Typography>
+            </Paper>
+          )}
           {a && (a.retenues_solde ?? 0) > 0 && (
             <Paper component={Link} to="/entrees?onglet=retenues" data-solde-a-verifier={a.retenues_solde} sx={{ p: 2.5, borderRadius: 5, flex: 1, minWidth: 220, textDecoration: "none", color: "inherit", bgcolor: "#F9DEDC" }}>
               <Typography variant="body2">SMS au solde à vérifier</Typography>
