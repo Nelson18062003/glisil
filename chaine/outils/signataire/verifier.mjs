@@ -2,7 +2,7 @@
 //
 //   node --experimental-strip-types outils/signataire/verifier.mjs   (depuis chaine/, après fabriquer.mjs signataire)
 //
-// Exige : sans appareil choisi, ou en ligne, le bouton reste verrouillé ; hors ligne, 24 mots ; un mot faux
+// Exige : sans appareil choisi, le bouton reste verrouillé (en ligne ou non : décision du 30/10) ; 24 mots ; un mot faux
 // est refusé ; l'adresse MetaMask montrée est celle du compte 1 de MetaMask pour ces mots (le chemin témoin :
 // la phrase bien connue de Hardhat donne 0xf39F…2266), l'adresse TronLink celle de m/44'/195'/0'/0/0 ; la
 // page ne fait aucune requête et n'écrit rien dans le navigateur ; ce qu'on copie ne porte aucun mot ; deux
@@ -31,9 +31,6 @@ const passage = async (appareil) => {
   const erreurs = [];
   page.on("pageerror", (e) => erreurs.push(e.message));
   await page.goto(PAGE);
-  const verrouEnLigne = await page.locator("#creer").isDisabled();
-  await ctx.setOffline(true);
-  await page.waitForTimeout(300);
   const verrouSansAppareil = await page.locator("#creer").isDisabled();
   await page.getByLabel(appareil).check();
   await page.locator("#creer:not([disabled])").waitFor({ timeout: 5000 });
@@ -56,17 +53,16 @@ const passage = async (appareil) => {
   const stockage = await page.evaluate(() => localStorage.length + sessionStorage.length);
   const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute("content");
   await ctx.close();
-  return { verrouEnLigne, verrouSansAppareil, titre, mots, refuse, montrees, copie, stockage, requetes, erreurs, csp };
+  return { verrouSansAppareil, titre, mots, refuse, montrees, copie, stockage, requetes, erreurs, csp };
 };
 
 const a = await passage("Phone 1");
 const b = await passage("Computer");
 await navigateur.close();
 
-verifier(a.verrouEnLigne, "en ligne, le bouton reste verrouillé");
-verifier(a.verrouSansAppareil, "hors ligne mais sans appareil choisi, le bouton reste verrouillé");
+verifier(a.verrouSansAppareil, "sans appareil choisi, le bouton reste verrouillé");
 verifier(a.titre === "GLISIL SIGNER — PHONE 1" && b.titre === "GLISIL SIGNER — COMPUTER", `le titre du papier nomme l'appareil (${a.titre})`);
-verifier(a.mots.length === 24 && new Set(a.mots).size > 12, `hors ligne, 24 mots (${a.mots.length})`);
+verifier(a.mots.length === 24 && new Set(a.mots).size > 12, `en ligne, 24 mots (${a.mots.length})`);
 const phrase = a.mots.join(" ");
 /* l'attendu par un autre chemin du code : Wallet.fromPhrase (compte 1 par défaut, celui de MetaMask) */
 const attenduMetamask = Wallet.fromPhrase(phrase).address;
@@ -79,7 +75,7 @@ verifier(a.refuse, "un mot faux est refusé : on reste sur la vérification");
 verifier(!a.mots.some((m) => new RegExp(`\\b${m}\\b`, "i").test(a.copie.replace(/0x[0-9a-fA-F]+|T[1-9A-Za-z]{33}|Glisil signer — Phone 1|MetaMask|TronLink/g, ""))),
   "ce qu'on copie ne porte que les deux adresses, aucun mot", a.copie);
 verifier(a.copie.includes(a.montrees[0]) && a.copie.includes(a.montrees[1]) && a.copie.includes("Phone 1"), "la copie nomme l'appareil et porte les deux adresses");
-verifier(a.requetes.length === 0 && b.requetes.length === 0, "la page ne fait aucune requête", a.requetes.join(", "));
+verifier(a.requetes.length === 0 && b.requetes.length === 0, "la page ne fait aucune requête, connexion ouverte", a.requetes.join(", "));
 verifier(/default-src 'none'/.test(a.csp ?? ""), "la politique de contenu interdit toute connexion");
 verifier(a.stockage === 0, "rien n'est écrit dans le navigateur (ni localStorage, ni sessionStorage)");
 verifier(a.erreurs.length === 0 && b.erreurs.length === 0, "aucune erreur dans la page", [...a.erreurs, ...b.erreurs].join(" | "));

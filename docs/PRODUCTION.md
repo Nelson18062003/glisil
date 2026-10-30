@@ -306,7 +306,8 @@ pose tous les rôles et le plafond du jour (1 000 000 000 XAF). Voir
      avec sa phrase de récupération sur papier — **24 mots** (décision du
      30/10) : MetaMask n'en crée que 12 mais en importe 24. La page
      `chaine/outils/glisil-signataire.html` (le jumeau de celle de la graine :
-     hors ligne, aucune requête, rien d'écrit) crée les 24 mots SUR l'appareil
+     aucune requête, rien d'écrit ; en ligne permis, décision du propriétaire)
+     crée les 24 mots SUR l'appareil
      qui gardera la clé — jamais les trois au même endroit, sans quoi le 2 sur 3
      ne protège plus de rien — et montre l'adresse que MetaMask (compte 1,
      m/44'/60'/0'/0/0) et TronLink (m/44'/195'/0'/0/0) afficheront après

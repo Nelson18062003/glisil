@@ -63,13 +63,13 @@
   [hidden] { display: none !important; }
 </style>
 <main>
-  <header><div class="logo">G</div><div><b>Glisil</b><span>Signer wallet · works offline, sends nothing</span></div></header>
+  <header><div class="logo">G</div><div><b>Glisil</b><span>Signer wallet · made on this device, sends nothing</span></div></header>
 
   <!-- 1 · avant de commencer -->
   <section class="carte" id="avant">
     <div class="entete">
       <h1>Create a signer wallet</h1>
-      <p class="doux"><b>24 words</b>, made offline. Glisil's contracts are controlled by <b>three</b> signer wallets, and <b>two</b> must agree for any change. Make each one <b>on the device that will keep it</b>: the computer, then phone 1, then phone 2 — never all three on the same device.</p>
+      <p class="doux"><b>24 words</b>, made on this device. Glisil's contracts are controlled by <b>three</b> signer wallets, and <b>two</b> must agree for any change. Make each one <b>on the device that will keep it</b>: the computer, then phone 1, then phone 2 — never all three on the same device.</p>
     </div>
     <p style="font-weight:600;margin-bottom:8px">Which device is this?</p>
     <div class="choix" id="appareils">
@@ -78,9 +78,8 @@
       <label><input type="radio" name="appareil" value="Phone 2"> Phone 2</label>
     </div>
     <ol class="liste">
-      <li><span class="pastille" id="pastille-reseau">1</span><div><b>Go offline</b>: on a computer, turn off the Wi-Fi; on a phone, turn on <b>airplane mode</b>.<div class="doux" id="etat-reseau">Checking…</div></div></li>
-      <li><span class="pastille">2</span><div><b>Be alone</b>, with no camera pointed at the screen.</div></li>
-      <li><span class="pastille">3</span><div><b>Have one sheet of paper and a pen</b> ready.</div></li>
+      <li><span class="pastille">1</span><div><b>Be alone</b>, with no camera pointed at the screen.</div></li>
+      <li><span class="pastille">2</span><div><b>Have one sheet of paper and a pen</b> ready.</div></li>
     </ol>
     <button id="creer" disabled>Create the 24 words</button>
   </section>
@@ -120,7 +119,7 @@
     <ol class="suite">
       <li>Copy the two addresses (button above), and write their <b>first 6 and last 4 characters</b> under the words on your sheet.</li>
       <li><b>Close this page.</b> The words disappear with it.</li>
-      <li>Go back online, and send the two addresses to Claude.</li>
+      <li>Send the two addresses to Claude.</li>
       <li>On <b>this</b> device, in MetaMask: <b>I have an existing wallet</b> → <b>Import using Secret Recovery Phrase</b> → the 24 words from your sheet. Account 1 must show the MetaMask address above.</li>
     </ol>
   </section>
@@ -135,24 +134,20 @@
   const $ = (id) => document.getElementById(id);
   let mots = null, appareil = null;
 
-  /* 1 · on ne crée rien tant que l'appareil se dit en ligne, ni sans savoir lequel c'est */
-  const majReseau = () => {
-    const horsLigne = !navigator.onLine;
+  /* 1 · on ne crée rien sans savoir sur quel appareil. En ligne ou non (décision du propriétaire, 30/10) :
+     les mots naissent ici, et la page ne peut rien envoyer — sa politique de contenu l'interdit. */
+  const majAppareil = () => {
     appareil = (document.querySelector('input[name="appareil"]:checked') || {}).value || null;
-    $("creer").disabled = !horsLigne || !appareil;
+    $("creer").disabled = !appareil;
     $("creer").textContent = appareil ? "Create the 24 words" : "Choose the device first";
-    $("pastille-reseau").className = "pastille " + (horsLigne ? "ok" : "non");
-    $("pastille-reseau").textContent = horsLigne ? "✓" : "1";
-    $("etat-reseau").textContent = horsLigne ? "This device is offline. You can continue." : "This device is still online: the button stays locked until it is offline.";
   };
-  addEventListener("online", majReseau); addEventListener("offline", majReseau);
-  $("appareils").addEventListener("change", majReseau); majReseau();
+  $("appareils").addEventListener("change", majAppareil); majAppareil();
 
   const montrer = (id) => { for (const s of ["avant", "ecran-mots", "ecran-verif", "ecran-fin"]) $(s).hidden = s !== id; scrollTo(0, 0); };
 
   $("creer").onclick = () => {
-    majReseau();
-    if (navigator.onLine || !appareil) return;
+    majAppareil();
+    if (!appareil) return;
     mots = Signataire.nouvelleGraine();
     $("titre-papier").textContent = "GLISIL SIGNER — " + appareil.toUpperCase();
     $("mots").replaceChildren(...mots.map((m, i) => { const d = document.createElement("div"); d.className = "mot"; d.innerHTML = "<i></i><span></span>"; d.firstChild.textContent = (i + 1) + "."; d.lastChild.textContent = m; return d; }));
