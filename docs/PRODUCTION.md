@@ -74,6 +74,14 @@ page), ou `select verifier_le_profil_production(false);`.
   allumé, huit verrous) ; la fonction `courriel` redéployée avec l'e-mail
   « compte approuvé ». Vos propres comptes clients s'approuvent aussi, par
   vous, à l'étape M. Voir [CONNEXION.md](CONNEXION.md).
+- **Mots de passe et sécurité (30/10)** : tableau de bord → Email : 10
+  caractères, minuscule + majuscule + chiffre + symbole, mots de passe fuités
+  refusés, « Secure password change » allumé (l'application et
+  l'administration exigent la même règle). 0048 appliquée au commit 54d6000
+  (empreinte vérifiée, constat vert) : alertes par e-mail et pause des
+  retraits de 24 h après un changement de sécurité ; `courriel` redéployée
+  (v3, gabarit `alerte_securite`). Les parcours, de bout en bout :
+  [CONNEXION.md](CONNEXION.md).
 - Migrations déjà appliquées à la production après l'installation : 0043,
   puis 0044, 0045 et 0046 (le 29/10, en une instruction : la base a pris les
   fichiers sur GitHub au commit 4bfb7ea, vérifié leurs empreintes md5, puis
