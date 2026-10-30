@@ -122,9 +122,14 @@ super admin : le même « Add user », puis l'invitation SQL ci-dessus.
 - Email : activé ; « Confirm email » : activé.
 - **Email OTP Length : 6** · **Email OTP Expiration : 600** secondes.
 
-**Authentication → Emails → Templates** : chaque e-mail part dans UNE langue,
-celle de la personne (anglais par défaut, français si elle l'a choisi). Pour
-chaque modèle, coller le fichier dans « Body » et la ligne dans « Subject » :
+**Authentication → Emails → Templates** : rien à coller à la main. Les modèles
+vivent dans `supabase/templates/`, leurs objets dans `supabase/config.toml`, et
+le robot GitHub `.github/workflows/courriels-auth.yml` les envoie au projet de
+production à chaque changement (script `supabase/templates/pousser-vers-supabase.mjs` :
+il vérifie le code `{{ .Token }}` et les deux langues, envoie, puis relit
+Supabase). Il lui faut une fois le secret GitHub `SUPABASE_ACCESS_TOKEN`
+([PRODUCTION.md](PRODUCTION.md), étape J). Chaque e-mail part dans UNE langue,
+celle de la personne (anglais par défaut, français si elle l'a choisi) :
 
 | Modèle Supabase | Fichier à coller | Objet (Subject) |
 |---|---|---|

@@ -1,0 +1,47 @@
+# Les e-mails d'Auth (code d'inscription, « mot de passe oublié », confirmation d'un changement de mot
+# de passe) vivent dans supabase/templates/ ; ce robot les envoie au projet de production à chaque
+# changement — plus de copier-coller dans le tableau de bord. Il les vérifie d'abord (le code, les deux
+# langues), puis relit Supabase et échoue si ce qui est en ligne n'est pas exactement ce qui est ici.
+#
+# Le secret SUPABASE_ACCESS_TOKEN : une clé Supabase qui ne peut modifier QUE l'authentification de
+# glisil-prod (docs/PRODUCTION.md, étape J). Il n'apparaît jamais au journal.
+name: E-mails d'Auth → Supabase
+
+on:
+  push:
+    branches: [main, claude/keen-einstein-wanhhh]
+    paths:
+      - supabase/templates/**
+      - supabase/config.toml
+      - .github/workflows/courriels-auth.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: courriels-auth
+  cancel-in-progress: false
+
+jobs:
+  envoyer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PROJET: dfixghiwqlwulmzixlpf
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Les e-mails et leur vérification, éprouvés
+        run: node --test supabase/templates/pousser-vers-supabase.test.mjs
+      - name: Envoyer à Supabase, puis relire
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::error::Le secret SUPABASE_ACCESS_TOKEN manque : Settings → Secrets and variables → Actions (docs/PRODUCTION.md, étape J)."
+            exit 1
+          fi
+          node supabase/templates/pousser-vers-supabase.mjs --pousser
