@@ -94,8 +94,11 @@ page), ou `select verifier_le_profil_production(false);`.
   (origines app et admin, retour `…supabase.co/auth/v1/callback`). Supabase →
   Google activé ; vérifié : `/auth/v1/settings` dit `google: true`, et
   `/authorize?provider=google` mène à la page de connexion de Google, sans
-  erreur de client ni d'adresse. Reste : publier l'application (Audience →
-  Publish app, aucune revue pour nom + e-mail), copie dans Infisical `/auth`.
+  erreur de client ni d'adresse. Branding : page d'accueil `app.glisil.com`,
+  `/confidentialite`, `/conditions`, sans logo ; Audience **In production**
+  (30/10). L'écran de Google affiche encore `…supabase.co` : le bouton direct
+  de Google (gratuit, montre glisil.com) est à faire ; le domaine
+  `auth.glisil.com` (payant) a été écarté par le propriétaire.
 - Migrations déjà appliquées à la production après l'installation : 0043,
   puis 0044, 0045 et 0046 (le 29/10, en une instruction : la base a pris les
   fichiers sur GitHub au commit 4bfb7ea, vérifié leurs empreintes md5, puis
