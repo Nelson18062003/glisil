@@ -6,7 +6,7 @@
 // un secret de la fonction du même nom passe avant — en production, XAFE_GRAINE
 // est un secret que le propriétaire saisit lui-même (chaine/README.md).
 import { envDepuisConfiguration, veilleursDepuis, type ConfigurationMoteur } from "../../../chaine/src/service.ts";
-import { estReseau, RESEAUX, variableDuNoeud, type Reseau } from "../../../chaine/src/cles.ts";
+import { CHAUD, deriver, estReseau, graineValide, RESEAUX, variableDuNoeud, type Reseau } from "../../../chaine/src/cles.ts";
 import { entetesDeService } from "../../../chaine/src/moteur.ts";
 
 const env = Deno.env.toObject();
@@ -53,6 +53,15 @@ Deno.serve(async (req) => {
   const jeton = reglages.VEILLEUR_JETON ?? "";
   if (jeton.length < 32 || !memes(req.headers.get("x-veilleur-jeton") ?? "", jeton)) {
     return new Response(JSON.stringify({ erreur: "jeton refusé" }), { status: 401, headers: { "content-type": "application/json" } });
+  }
+  // ?chauds=1 : les wallets chauds que CETTE graine donne (des adresses publiques), sans tour ni réseau. La mise en
+  // service compare avec celles que le propriétaire a notées en créant la graine : une faute de frappe dans
+  // XAFE_GRAINE donnerait d'autres adresses — on le voit avant qu'un client n'y envoie un franc.
+  if (new URL(req.url).searchParams.get("chauds") === "1") {
+    const g = reglages.XAFE_GRAINE ?? "";
+    if (!graineValide(g)) return new Response(JSON.stringify({ erreur: "XAFE_GRAINE manque ou n'est pas une graine valide" }), { status: 503, headers: { "content-type": "application/json" } });
+    const chauds = Object.fromEntries((["bep20", "trc20", "erc20"] as Reseau[]).map((r) => [r, deriver(g, r, CHAUD).adresse]));
+    return new Response(JSON.stringify({ chauds }), { headers: { "content-type": "application/json" } });
   }
   const reseau = new URL(req.url).searchParams.get("reseau");
   if (!estReseau(reseau)) return new Response(JSON.stringify({ erreur: `reseau=${Object.keys(RESEAUX).join("|")}` }), { status: 400 });
