@@ -89,7 +89,7 @@ export async function pousser(modeles, { jeton, projet, fetch: f = fetch }) {
     });
     const texte = await r.text();
     if (!r.ok) {
-      const aide = r.status === 401 ? " — la clé est refusée (expirée, ou mal recopiée dans le secret GitHub)"
+      const aide = r.status === 401 ? " — la clé est refusée (expirée, ou mal recopiée dans le secret GitHub « SUPABASE »)"
         : r.status === 403 ? " — la clé n'a pas le droit de modifier l'authentification de ce projet"
         : r.status === 404 ? " — projet introuvable : vérifiez PROJET" : "";
       throw new Error(`Supabase ${methode} ${r.status}${aide} : ${texte.slice(0, 300)}`);
