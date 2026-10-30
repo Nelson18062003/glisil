@@ -240,7 +240,11 @@ Les réglages exacts sont dans [CONNEXION.md](CONNEXION.md) : SMTP Resend
 « Confirm email » activé, la double authentification TOTP, la protection des
 mots de passe divulgués, au moins 100 e-mails par heure. **Sessions**
 (Authentication → Sessions) : « Inactivity timeout » **7 jours**,
-« Time-box user sessions » **30 jours** (votre décision du 29/10). URL : Site URL
+« Time-box user sessions » **7 jours** aussi (décision du propriétaire du
+30/10, qui remplace les 30 jours du 29/10 : une session volée ne sert pas plus
+d'une semaine) — les cases comptent en HEURES : `168` dans les deux ; « 07 »
+y vaut sept heures. Posé sur `glisil-prod` le 30/10, ainsi que les URL et le
+SMTP Resend ci-dessous. URL : Site URL
 `https://app.glisil.com` ; Redirect URLs `https://app.glisil.com/**`,
 `https://admin.glisil.com/**`, `glisil://auth-retour` (Google dans l'application
 Android : la coque l'ouvre dans un onglet du système et Google revient par
