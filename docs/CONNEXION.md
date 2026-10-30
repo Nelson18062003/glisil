@@ -127,7 +127,10 @@ vivent dans `supabase/templates/`, leurs objets dans `supabase/config.toml`, et
 le robot GitHub `.github/workflows/courriels-auth.yml` les envoie au projet de
 production à chaque changement (script `supabase/templates/pousser-vers-supabase.mjs` :
 il vérifie le code `{{ .Token }}` et les deux langues, envoie, puis relit
-Supabase). Il lui faut une fois le secret GitHub `SUPABASE_ACCESS_TOKEN`
+Supabase). Il lui faut une fois le secret GitHub `SUPABASE_ACCESS_TOKEN` : une clé
+Supabase limitée à glisil-prod, avec **Auth Config** ET **Project Settings** en
+lecture-écriture — Supabase exige les deux pour modifier l'authentification
+(`missing_permissions: project_admin_write` sans la seconde)
 ([PRODUCTION.md](PRODUCTION.md), étape J). Chaque e-mail part dans UNE langue,
 celle de la personne (anglais par défaut, français si elle l'a choisi) :
 
