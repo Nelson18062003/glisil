@@ -103,7 +103,8 @@ page), ou `select verifier_le_profil_production(false);`.
   `app/src/noyau/google.ts`. Il faut, côté Google, le retour
   `https://app.glisil.com/bienvenue/retour` dans « Authorized redirect URIs »
   du client « Glisil web » (en plus de celui de Supabase, gardé pour l'ancien
-  chemin), `VITE_GOOGLE_CLIENT_ID` dans Vercel (étape 11), et pour la coque
+  chemin) — **ajouté et vérifié le 30/10** (Google ouvre sa page de connexion
+  au lieu de `redirect_uri_mismatch`), `VITE_GOOGLE_CLIENT_ID` dans Vercel (étape 11), et pour la coque
   la mise à jour à distance du pont v3 (`cd coque && npm run update:production`).
 - Migrations déjà appliquées à la production après l'installation : 0043,
   puis 0044, 0045 et 0046 (le 29/10, en une instruction : la base a pris les
