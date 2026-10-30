@@ -1,0 +1,199 @@
+<!-- La page du SIGNATAIRE, sans enveloppe : ../graine/fabriquer.mjs en fait le fichier autonome (avec son doctype)
+     et la version publiée en lien. Le jumeau de la page de la graine : mêmes gardes, autre usage. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- La page ne peut RIEN envoyer : aucune connexion, aucun script ni style venus d'ailleurs. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Glisil Signer Wallet</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* une carte par étape, au centre ; les couleurs de Glisil, claires et sombres */
+  :root { --vert: #0B6B3A; --sur-vert: #FFFFFF; --vert-fonce: #06331B; --vert-pale: #CDEFD9; --rouge: #B3261E; --rouge-pale: #F9DEDC; --rouge-fg: #7A1F17;
+          --fond: #F4F7F4; --carte: #FFFFFF; --texte: #191C1A; --doux: #5B615E; --trait: #E3E7E3; --champ: #FFFFFF; --bord-champ: #C4CAC5;
+          --inactif: #DDE2DD; --inactif-fg: #8A908C; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --vert: #6FD49B; --sur-vert: #04210F; --vert-fonce: #CDEFD9; --vert-pale: #12422A; --rouge: #FFB4AB; --rouge-pale: #4A1712; --rouge-fg: #FFDAD5;
+    --fond: #0F1411; --carte: #1A211C; --texte: #E2E8E3; --doux: #A3ACA6; --trait: #2E3731; --champ: #121814; --bord-champ: #46504A;
+    --inactif: #2A322C; --inactif-fg: #77807A; color-scheme: dark } }
+  :root[data-theme="dark"] {
+    --vert: #6FD49B; --sur-vert: #04210F; --vert-fonce: #CDEFD9; --vert-pale: #12422A; --rouge: #FFB4AB; --rouge-pale: #4A1712; --rouge-fg: #FFDAD5;
+    --fond: #0F1411; --carte: #1A211C; --texte: #E2E8E3; --doux: #A3ACA6; --trait: #2E3731; --champ: #121814; --bord-champ: #46504A;
+    --inactif: #2A322C; --inactif-fg: #77807A; color-scheme: dark }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fond); color: var(--texte); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding-block: 32px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
+  .logo { width: 40px; height: 40px; border-radius: 12px; background: var(--vert); color: var(--sur-vert); display: grid; place-items: center; font-weight: 700; font-size: 20px; }
+  header b { font-size: 20px; } header span { color: var(--doux); font-size: 14px; display: block; }
+  .carte { background: var(--carte); border-radius: 24px; padding: 32px 24px; }
+  h1 { font-size: 24px; line-height: 1.25; margin: 0 0 8px; }
+  p { margin: 0; } .doux { color: var(--doux); font-size: 14px; }
+  .entete { margin-bottom: 24px; }
+  ol.liste { margin: 0 0 24px; padding: 0; list-style: none; display: grid; gap: 12px; }
+  ol.liste li { display: flex; gap: 12px; align-items: flex-start; }
+  .pastille { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; background: var(--trait); color: var(--doux); }
+  .pastille.ok { background: var(--vert); color: var(--sur-vert); } .pastille.non { background: var(--rouge); color: var(--carte); }
+  .bandeau { border-radius: 16px; padding: 16px; font-size: 14px; margin-bottom: 24px; }
+  .bandeau.rouge { background: var(--rouge-pale); color: var(--rouge-fg); }
+  button { font: inherit; font-weight: 600; border: 0; border-radius: 100px; min-height: 52px; padding: 0 24px; width: 100%; cursor: pointer; background: var(--vert); color: var(--sur-vert); }
+  button:disabled { background: var(--inactif); color: var(--inactif-fg); cursor: not-allowed; }
+  button:focus-visible { outline: 3px solid var(--vert); outline-offset: 2px; }
+  button.second { background: transparent; color: var(--vert); margin-top: 8px; }
+  .mots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 24px; counter-reset: mot; }
+  @media (max-width: 480px) { .mots { grid-template-columns: repeat(2, 1fr); } }
+  .mot { border: 1px solid var(--trait); border-radius: 12px; padding: 10px 12px; font: 600 17px/1.2 ui-monospace, "SF Mono", Menlo, Consolas, monospace; display: flex; gap: 8px; user-select: none; }
+  .mot i { font-style: normal; font-weight: 400; color: var(--doux); min-width: 22px; text-align: right; }
+  .champs { display: grid; gap: 20px; margin-bottom: 20px; }
+  label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 8px; }
+  input { font: 600 17px ui-monospace, Menlo, Consolas, monospace; width: 100%; height: 52px; border: 1px solid var(--bord-champ); border-radius: 12px; padding: 0 14px; background: var(--champ); color: var(--texte); }
+  input:focus { outline: 2px solid var(--vert); outline-offset: -1px; }
+  .aide { font-size: 13px; margin-top: 4px; color: var(--doux); } .aide.faux { color: var(--rouge); }
+  .adresse { border: 1px solid var(--trait); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; }
+  .adresse small { display: block; color: var(--doux); font-size: 13px; }
+  .adresse code { font: 15px ui-monospace, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+  .suite { margin: 24px 0 0; padding-left: 20px; display: grid; gap: 8px; font-size: 15px; }
+  .choix { display: grid; gap: 8px; margin-bottom: 24px; }
+  .choix label { display: flex; align-items: center; gap: 12px; border: 1px solid var(--trait); border-radius: 12px; padding: 14px; margin: 0; font-size: 16px; cursor: pointer; }
+  .choix input { width: 20px; height: 20px; accent-color: var(--vert); flex: none; outline: none; }
+  .choix label:has(input:checked) { border-color: var(--vert); background: var(--vert-pale); }
+  .choix label:has(input:focus-visible) { outline: 2px solid var(--vert); outline-offset: 2px; }
+  .titre-papier { font: 600 15px ui-monospace, Menlo, Consolas, monospace; border: 1px dashed var(--bord-champ); border-radius: 12px; padding: 10px 14px; margin-bottom: 16px; }
+  [hidden] { display: none !important; }
+</style>
+<main>
+  <header><div class="logo">G</div><div><b>Glisil</b><span>Signer wallet · works offline, sends nothing</span></div></header>
+
+  <!-- 1 · avant de commencer -->
+  <section class="carte" id="avant">
+    <div class="entete">
+      <h1>Create a signer wallet</h1>
+      <p class="doux"><b>24 words</b>, made offline. Glisil's contracts are controlled by <b>three</b> signer wallets, and <b>two</b> must agree for any change. Make each one <b>on the device that will keep it</b>: the computer, then phone 1, then phone 2 — never all three on the same device.</p>
+    </div>
+    <p style="font-weight:600;margin-bottom:8px">Which device is this?</p>
+    <div class="choix" id="appareils">
+      <label><input type="radio" name="appareil" value="Computer"> Computer</label>
+      <label><input type="radio" name="appareil" value="Phone 1"> Phone 1</label>
+      <label><input type="radio" name="appareil" value="Phone 2"> Phone 2</label>
+    </div>
+    <ol class="liste">
+      <li><span class="pastille" id="pastille-reseau">1</span><div><b>Go offline</b>: on a computer, turn off the Wi-Fi; on a phone, turn on <b>airplane mode</b>.<div class="doux" id="etat-reseau">Checking…</div></div></li>
+      <li><span class="pastille">2</span><div><b>Be alone</b>, with no camera pointed at the screen.</div></li>
+      <li><span class="pastille">3</span><div><b>Have one sheet of paper and a pen</b> ready.</div></li>
+    </ol>
+    <button id="creer" disabled>Create the 24 words</button>
+  </section>
+
+  <!-- 2 · les mots -->
+  <section class="carte" id="ecran-mots" hidden>
+    <div class="entete">
+      <h1>Write these 24 words on paper</h1>
+      <p class="doux">In this order, with their numbers. Write this title at the top of the sheet, then keep it in its own place — never with the sheets of the other two devices.</p>
+    </div>
+    <div class="titre-papier" id="titre-papier"></div>
+    <div class="bandeau rouge"><b>Never</b> take a photo, never type them in a document, an e-mail, a chat or Infisical — not even to Claude. The only place they will be typed is MetaMask (and TronLink) <b>on this device</b>.</div>
+    <div class="mots" id="mots" aria-label="The 24 words"></div>
+    <button id="ecrits">I've written them</button>
+  </section>
+
+  <!-- 3 · la vérification -->
+  <section class="carte" id="ecran-verif" hidden>
+    <div class="entete">
+      <h1>Check your paper</h1>
+      <p class="doux">Type the three words asked, reading them from your sheet — not from memory.</p>
+    </div>
+    <div class="champs" id="questions"></div>
+    <button id="verifier">Check</button>
+    <button class="second" id="revoir">Show the words again</button>
+  </section>
+
+  <!-- 4 · la suite -->
+  <section class="carte" id="ecran-fin" hidden>
+    <div class="entete">
+      <h1>Your paper is right ✓</h1>
+      <p class="doux">After you import the words, MetaMask and TronLink must show <b>exactly</b> these addresses. They are <b>public</b>: you can send them to Claude.</p>
+    </div>
+    <div id="adresses"></div>
+    <button id="copier">Copy the two addresses</button>
+    <div class="aide" id="copie" role="status"></div>
+    <ol class="suite">
+      <li>Copy the two addresses (button above), and write their <b>first 6 and last 4 characters</b> under the words on your sheet.</li>
+      <li><b>Close this page.</b> The words disappear with it.</li>
+      <li>Go back online, and send the two addresses to Claude.</li>
+      <li>On <b>this</b> device, in MetaMask: <b>I have an existing wallet</b> → <b>Import using Secret Recovery Phrase</b> → the 24 words from your sheet. Account 1 must show the MetaMask address above.</li>
+    </ol>
+  </section>
+</main>
+<script>/*BUNDLE*/</script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  let mots = null, appareil = null;
+
+  /* 1 · on ne crée rien tant que l'appareil se dit en ligne, ni sans savoir lequel c'est */
+  const majReseau = () => {
+    const horsLigne = !navigator.onLine;
+    appareil = (document.querySelector('input[name="appareil"]:checked') || {}).value || null;
+    $("creer").disabled = !horsLigne || !appareil;
+    $("creer").textContent = appareil ? "Create the 24 words" : "Choose the device first";
+    $("pastille-reseau").className = "pastille " + (horsLigne ? "ok" : "non");
+    $("pastille-reseau").textContent = horsLigne ? "✓" : "1";
+    $("etat-reseau").textContent = horsLigne ? "This device is offline. You can continue." : "This device is still online: the button stays locked until it is offline.";
+  };
+  addEventListener("online", majReseau); addEventListener("offline", majReseau);
+  $("appareils").addEventListener("change", majReseau); majReseau();
+
+  const montrer = (id) => { for (const s of ["avant", "ecran-mots", "ecran-verif", "ecran-fin"]) $(s).hidden = s !== id; scrollTo(0, 0); };
+
+  $("creer").onclick = () => {
+    majReseau();
+    if (navigator.onLine || !appareil) return;
+    mots = Signataire.nouvelleGraine();
+    $("titre-papier").textContent = "GLISIL SIGNER — " + appareil.toUpperCase();
+    $("mots").replaceChildren(...mots.map((m, i) => { const d = document.createElement("div"); d.className = "mot"; d.innerHTML = "<i></i><span></span>"; d.firstChild.textContent = (i + 1) + "."; d.lastChild.textContent = m; return d; }));
+    montrer("ecran-mots");
+  };
+
+  /* 3 · trois mots tirés au hasard, lus sur le papier */
+  let positions = [];
+  $("ecrits").onclick = () => {
+    const p = new Set(); const h = new Uint32Array(8); crypto.getRandomValues(h);
+    for (const x of h) { if (p.size < 3) p.add(x % 24); }
+    while (p.size < 3) p.add(p.size * 8 + 3);
+    positions = [...p].sort((a, b) => a - b);
+    $("questions").replaceChildren(...positions.map((pos) => {
+      const d = document.createElement("div");
+      d.innerHTML = '<label></label><input autocomplete="off" autocapitalize="none" spellcheck="false"><div class="aide"></div>';
+      d.querySelector("label").textContent = "Word number " + (pos + 1);
+      d.querySelector("input").id = "q" + pos; d.querySelector("label").htmlFor = "q" + pos;
+      return d;
+    }));
+    montrer("ecran-verif");
+    $("q" + positions[0]).focus();
+  };
+  $("revoir").onclick = () => montrer("ecran-mots");
+  $("verifier").onclick = () => {
+    let bon = true;
+    for (const pos of positions) {
+      const champ = $("q" + pos), aide = champ.nextElementSibling;
+      const ok = champ.value.trim().toLowerCase() === mots[pos];
+      aide.textContent = ok ? "" : "This is not word " + (pos + 1) + ". Check your sheet (the order matters).";
+      aide.className = "aide" + (ok ? "" : " faux"); bon = bon && ok;
+    }
+    if (!bon) return;
+    const a = Signataire.adressesDuSignataire(mots);
+    const lignes = [["MetaMask · Account 1 (BNB Chain and Ethereum)", a.metamask], ["TronLink (Tron)", a.tronlink]];
+    $("adresses").replaceChildren(...lignes.map(([nom, adr]) => {
+      const d = document.createElement("div"); d.className = "adresse"; d.innerHTML = "<small></small><code></code>";
+      d.firstChild.textContent = nom; d.lastChild.textContent = adr; return d;
+    }));
+    $("copier").onclick = async () => {
+      const texte = "Glisil signer — " + appareil + "\nMetaMask : " + a.metamask + "\nTronLink : " + a.tronlink;
+      try { await navigator.clipboard.writeText(texte); }
+      catch { const t = document.createElement("textarea"); t.value = texte; document.body.append(t); t.select(); document.execCommand("copy"); t.remove(); }
+      $("copie").textContent = "Copied: the two addresses only — never the words.";
+    };
+    montrer("ecran-fin");
+  };
+})();
+</script>

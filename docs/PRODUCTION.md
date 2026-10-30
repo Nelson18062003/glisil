@@ -303,7 +303,16 @@ pose tous les rôles et le plafond du jour (1 000 000 000 XAF). Voir
 
 1. [P + C] **Le patron des contrats, AVANT le déploiement** (décidé le 29/10) :
    - trois comptes MetaMask (votre ordinateur, vos deux téléphones), chacun
-     avec sa phrase de récupération sur papier ;
+     avec sa phrase de récupération sur papier — **24 mots** (décision du
+     30/10) : MetaMask n'en crée que 12 mais en importe 24. La page
+     `chaine/outils/glisil-signataire.html` (le jumeau de celle de la graine :
+     hors ligne, aucune requête, rien d'écrit) crée les 24 mots SUR l'appareil
+     qui gardera la clé — jamais les trois au même endroit, sans quoi le 2 sur 3
+     ne protège plus de rien — et montre l'adresse que MetaMask (compte 1,
+     m/44'/60'/0'/0/0) et TronLink (m/44'/195'/0'/0/0) afficheront après
+     l'import. Ces mots ne vont JAMAIS dans Infisical. La refaire :
+     `node outils/graine/fabriquer.mjs signataire` ; l'éprouver :
+     `node --experimental-strip-types outils/signataire/verifier.mjs` ;
    - un **Safe** sur BNB Chain (app.safe.global) avec ces trois comptes, **2
      signatures sur 3** ; son adresse est l'**admin** du contrat BSC ;
    - le **même Safe sur Ethereum** (app.safe.global, réseau Ethereum, les trois
