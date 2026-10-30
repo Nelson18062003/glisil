@@ -326,6 +326,13 @@ pose tous les rôles et le plafond du jour (1 000 000 000 XAF). Voir
      votre compte TronLink — il faut pouvoir arrêter vite, seul. Sur Ethereum,
      le même compte MetaMask que sur BSC.
    Donner à Claude les adresses PUBLIQUES (Safe, MetaMask, TronLink).
+   **Faits (30/10)** — les trois signataires (wallets créés par le propriétaire
+   sur trois appareils, MetaMask / Trust Wallet ; vérifiés : adresses valides,
+   neuves sur BNB Chain et Ethereum, distinctes) :
+   `0x06f816F5Ee91BA86f53D66ecc2E85a2a3dAF8972`,
+   `0xabdFD708075ab24F292d37DdF04fe1C7C3d7d408`,
+   `0x5C98d25B652938b52Ad14062a0f010e158FA109d` — ce dernier est le
+   **wallet d'urgence** (pauseur et geleur, BSC et Ethereum).
 2. [P] Une clé de mise en service NEUVE (`CLE_DE_MISE_EN_SERVICE`, `/outils`),
    financée : ≈ 0,01 BNB ; ≈ 300 TRX ; de l'ETH pour Ethereum (le prix du gaz
    y change d'heure en heure : Claude calcule le montant le jour même). Le
