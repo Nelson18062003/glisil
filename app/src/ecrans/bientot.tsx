@@ -6,11 +6,12 @@
  * ordre passé) restent lisibles : ils montrent ce qui existe déjà.
  */
 import HowToRegOutlined from "@mui/icons-material/HowToRegOutlined";
+import ShieldOutlined from "@mui/icons-material/ShieldOutlined";
 import ScheduleRounded from "@mui/icons-material/ScheduleRounded";
 import { Outlet } from "react-router-dom";
 import { useCompte, useOuvertures } from "../guichet";
 import { BETA } from "../noyau/argent";
-import { xaf } from "../noyau/format";
+import { quand, xaf } from "../noyau/format";
 import { t } from "../noyau/langue";
 import { EtatVide, Screen } from "../ui";
 
@@ -100,6 +101,25 @@ export function SiApprouve({ ecran, retour }: { ecran: () => string; retour?: st
   const { data: compte } = useCompte();
   if (!compte) return null;
   return compte.approuve ? <Outlet /> : <EnAttenteDApprobation ecran={ecran()} retour={retour} />;
+}
+
+/**
+ * 0048 : après un changement de ce qui garde le compte (mot de passe, application d'authentification), rien ne
+ * SORT pendant 24 h. Si ce n'est pas le client, il a le temps d'écrire au support ; l'e-mail d'alerte le lui a dit.
+ */
+export function SiRetraitsOuverts({ ecran, retour = "/" }: { ecran: () => string; retour?: string }) {
+  const { data: compte } = useCompte();
+  if (!compte) return null;
+  if (!compte.retraitsPauseJusqua || Date.parse(compte.retraitsPauseJusqua) <= Date.now()) return <Outlet />;
+  return (
+    <Screen title={ecran()} back={retour}>
+      <EtatVide icone={<ShieldOutlined sx={{ fontSize: 36 }} />} tone="blue"
+        titre={t("Retraits en pause pour votre sécurité", "Withdrawals paused for your security")}
+        texte={t(`Le mot de passe ou l'application d'authentification de votre compte vient de changer. Pour vous protéger, les retraits reprennent ${quand(compte.retraitsPauseJusqua)}. Vos dépôts et le marché restent ouverts. Ce n'est pas vous ? Écrivez au support tout de suite.`,
+          `Your account's password or authenticator app just changed. To protect you, withdrawals resume ${quand(compte.retraitsPauseJusqua)}. Deposits and trading stay open. Not you? Contact support right away.`)}
+        action={{ label: t("Écrire au support", "Contact support"), to: "/compte/aide" }} secondaire={{ label: t("Retour à l'accueil", "Back to Home"), to: "/" }} />
+    </Screen>
+  );
 }
 
 /** Une famille de chemins derrière son interrupteur : ouverte, l'écran demandé ; fermée, « bientôt ». */

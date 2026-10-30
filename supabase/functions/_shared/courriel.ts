@@ -254,6 +254,39 @@ function compteApprouve(d: Donnees, l: Langue, appUrl: string): Rendu {
   };
 }
 
+/**
+ * Ce qui garde le compte a changé (0048) : le mot de passe, l'application d'authentification, les codes de
+ * secours. Le client le sait tout de suite ; si les retraits sont en pause, l'e-mail dit jusqu'à quand.
+ */
+function alerteSecurite(d: Donnees, l: Langue, appUrl: string): Rendu {
+  const quand = heureDeDouala(d.quand, l, true);
+  const quoi: Record<string, [string, string, string, string]> = {
+    mot_de_passe: ["Votre mot de passe a été changé", "Your password was changed", "Le mot de passe de votre compte Glisil", "The password of your Glisil account"],
+    application: ["Une application d'authentification a été ajoutée", "An authenticator app was added", "Une nouvelle application d'authentification a été ajoutée à votre compte Glisil", "A new authenticator app was added to your Glisil account"],
+    codes: ["De nouveaux codes de secours ont été créés", "New recovery codes were created", "De nouveaux codes de secours ont été créés pour votre compte Glisil", "New recovery codes were created for your Glisil account"],
+  };
+  const q = quoi[String(d.evenement)];
+  if (!q) throw new Error(`événement inconnu : ${String(d.evenement)}`);
+  const titre = t(l, q[0], q[1]);
+  const phrase = d.evenement === "mot_de_passe"
+    ? t(l, `${q[2]} a été changé le ${quand} (heure de Douala).`, `${q[3]} was changed on ${quand} (Douala time).`)
+    : t(l, `${q[2]} le ${quand} (heure de Douala).${d.evenement === "codes" ? " Les anciens ne valent plus rien." : ""}`,
+        `${q[3]} on ${quand} (Douala time).${d.evenement === "codes" ? " The old ones no longer work." : ""}`);
+  const pause = d.pause_jusqua
+    ? t(l, `Pour vous protéger, les retraits sont en pause jusqu'au ${heureDeDouala(d.pause_jusqua, l, true)} (heure de Douala). Vos dépôts et le marché restent ouverts, et votre argent reste sur votre compte.`,
+        `To protect you, withdrawals are paused until ${heureDeDouala(d.pause_jusqua, l, true)} (Douala time). Deposits and trading stay open, and your money stays in your account.`)
+    : null;
+  const alerte = t(l,
+    "Ce n'est pas vous ? Écrivez au support Glisil TOUT DE SUITE (support@glisil.com) : quelqu'un a peut-être accès à votre compte. L'équipe ne vous demandera jamais votre mot de passe ni vos codes.",
+    "Not you? Contact Glisil support RIGHT AWAY (support@glisil.com): someone may have access to your account. The team will never ask for your password or your codes.");
+  return {
+    sujet: t(l, `Glisil · ${q[0].charAt(0).toLowerCase()}${q[0].slice(1)}`, `Glisil · ${q[1].charAt(0).toLowerCase()}${q[1].slice(1)}`),
+    html: habit(l, titre, paragraphe(echapper(phrase)) + (pause ? paragraphe(echapper(pause)) : "") + paragraphe(echapper(alerte))
+      + bouton(t(l, "Voir la sécurité de mon compte", "Review my account security"), lienDe(d, appUrl))),
+    texte: [titre, "", phrase, ...(pause ? ["", pause] : []), "", alerte, "", lienDe(d, appUrl)].join("\n"),
+  };
+}
+
 /* Chaque gabarit que la base met en file (les migrations) a son rendu ici : verifier-les-courriels.ts le vérifie. */
 const GABARITS: Record<string, (d: Donnees, l: Langue, appUrl: string) => Rendu> = {
   verification,
@@ -262,6 +295,7 @@ const GABARITS: Record<string, (d: Donnees, l: Langue, appUrl: string) => Rendu>
   sortie_payee: sortiePayee,
   sortie_refusee: sortieRefusee,
   compte_approuve: compteApprouve,
+  alerte_securite: alerteSecurite,
 };
 
 export const GABARITS_CONNUS = Object.keys(GABARITS);

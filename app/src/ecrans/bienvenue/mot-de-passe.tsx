@@ -7,7 +7,9 @@
  *                       session de récupération, qui demande encore le code de
  *                       l'application (ou un code de secours), puis le
  *                       nouveau mot de passe ; toutes les sessions se ferment,
- *                       et l'on entre de nouveau avec lui.
+ *                       et l'on entre de nouveau avec lui. Le changement part
+ *                       en alerte par e-mail et met les retraits en pause 24 h
+ *                       (0048).
  * Le mot de passe ne s'écrit jamais nulle part : il vit dans l'état de l'écran.
  */
 import KeyRounded from "@mui/icons-material/KeyRounded";
@@ -173,7 +175,7 @@ export function OubliNouveau() {
     <Screen onBack={() => void session.deconnecter()} gap={3}>
       <Stack data-en-tete gap={1}>
         <Typography variant="h5">{t("Votre nouveau mot de passe", "Your new password")}</Typography>
-        <Typography variant="body2">{t("Toutes vos sessions se fermeront, sur tous vos appareils : vous entrerez de nouveau avec ce mot de passe.", "All your sessions will close, on every device: you'll sign in again with this password.")}</Typography>
+        <Typography variant="body2">{t("Toutes vos sessions se fermeront, sur tous vos appareils : vous entrerez de nouveau avec ce mot de passe. Pour votre sécurité, les retraits seront en pause 24 h, et un e-mail vous préviendra.", "All your sessions will close, on every device: you'll sign in again with this password. For your security, withdrawals will be paused for 24 hours, and an email will let you know.")}</Typography>
       </Stack>
       <Box component="form" onSubmit={(e) => { e.preventDefault(); if (nouveauPret(mdp, conf)) void changer(); }} sx={{ display: "flex", flexDirection: "column", gap: 2.5, flex: 1 }}>
         <NouveauMotDePasse valeur={mdp} onChange={setMdp} confirmation={conf} onConfirmation={setConf} />

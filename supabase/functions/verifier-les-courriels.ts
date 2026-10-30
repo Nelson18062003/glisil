@@ -115,6 +115,20 @@ const OPERATIONS = {
   ok("le compte approuvé se dit en français et en anglais, avec le lien vers Glisil");
 }
 
+/* --------------------------------------- les alertes de sécurité (0048) */
+{
+  const mdp = rendre("alerte_securite", { evenement: "mot_de_passe", quand: "2026-10-30T09:00:00Z", pause_jusqua: "2026-10-31T09:00:00Z", lien: "/compte/securite" }, "fr");
+  assert.ok(mdp.sujet === "Glisil · votre mot de passe a été changé", mdp.sujet);
+  assert.ok(mdp.texte.includes("30/10/2026 à 10:00") && mdp.texte.includes("en pause jusqu'au 31/10/2026 à 10:00"), "quand, et la fin de la pause, à l'heure de Douala");
+  assert.ok(mdp.texte.includes("support@glisil.com") && mdp.html.includes('href="https://app.glisil.com/compte/securite"'), "quoi faire si ce n'est pas vous");
+  const codes = rendre("alerte_securite", { evenement: "codes", quand: "2026-10-30T09:00:00Z", lien: "/compte/securite" }, "en");
+  assert.ok(codes.sujet === "Glisil · new recovery codes were created" && !codes.texte.includes("paused") && codes.texte.includes("old ones no longer work"), "de nouveaux codes : pas de pause");
+  const appli = rendre("alerte_securite", { evenement: "application", quand: "2026-10-30T09:00:00Z", pause_jusqua: "2026-10-31T09:00:00Z" }, "en");
+  assert.ok(appli.texte.includes("authenticator app was added") && appli.texte.includes("withdrawals are paused until Oct 31, 2026, 10:00"), appli.texte);
+  assert.throws(() => rendre("alerte_securite", { evenement: "autre", quand: "2026-10-30T09:00:00Z" }, "fr"), /événement inconnu/, "jamais une alerte vide");
+  ok("les alertes de sécurité disent quoi, quand, la pause des retraits, et quoi faire si ce n'est pas vous");
+}
+
 /* ----------------- chaque e-mail que la base met en file a son rendu */
 {
   /* Lu dans les migrations : le nom écrit juste après le compte dans un appel à _envoyer_courriel (même
@@ -126,8 +140,8 @@ const OPERATIONS = {
   for (const m of sql.matchAll(/_envoyer_courriel\(\$1[^']*'[\s\S]{0,120}?using\s+[\w.]+\s*,\s*'([a-z_]+)'/g)) enFile.add(m[1]);
   assert.ok(enFile.size >= 3 && enFile.has("deux_facteurs_retires"), `les gabarits lus dans les migrations : ${[...enFile].join(", ")}`);
   for (const g of enFile) assert.ok(GABARITS_CONNUS.includes(g), `la base met en file « ${g} », que la fonction ne sait pas écrire`);
-  /* témoin : sans le dernier gabarit ajouté (0047), la vérification le trouve manquant */
-  const sansLui = GABARITS_CONNUS.filter((g) => g !== "compte_approuve");
+  /* témoin : sans le dernier gabarit ajouté (0048), la vérification le trouve manquant */
+  const sansLui = GABARITS_CONNUS.filter((g) => g !== "alerte_securite");
   assert.ok([...enFile].some((g) => !sansLui.includes(g)), "témoin : un gabarit retiré se voit");
   ok(`chaque e-mail que la base met en file a son rendu (${[...enFile].sort().join(", ")}) — témoin pris`);
 }

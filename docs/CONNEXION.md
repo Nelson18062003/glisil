@@ -62,6 +62,30 @@ values ('votre@adresse.com', 'Votre nom', 'super_admin');
 
 Les suivants s'invitent par `admin_inviter_administrateur(email, nom, rôle)`.
 
+## Les parcours de sécurité, de bout en bout
+
+| Situation | Ce que fait le client | Ce qui part par e-mail | Retraits |
+|---|---|---|---|
+| **Mot de passe oublié** | « Mot de passe oublié » → l'adresse → le code reçu (10 min, renvoi après 1 min) → **le code de l'application** (ou un code de secours) → le nouveau mot de passe, deux fois. Toutes les sessions se ferment. | le code ; puis l'alerte « mot de passe changé » | en pause 24 h |
+| **Changer son mot de passe** | Compte → Sécurité → le code de l'application → (session de plus de 24 h : un code par e-mail) → le nouveau | l'alerte « mot de passe changé » | en pause 24 h |
+| **Changer de téléphone** | Compte → Sécurité → le code de l'ANCIEN téléphone → le nouveau s'enrôle | l'alerte « application ajoutée » | en pause 24 h |
+| **Téléphone perdu** | À la connexion, « J'ai perdu mon téléphone » → un code de secours → l'application est retirée ; à la connexion suivante, une nouvelle application et dix nouveaux codes | « application retirée », puis « application ajoutée » | en pause 24 h |
+| **Téléphone ET codes perdus** | Le support vérifie l'identité (appel vidéo, pièce) ; Administration → le client → « Réinitialiser la double authentification » (motif obligatoire, au journal) | « application retirée » | en pause 24 h |
+| **Nouveaux codes de secours** | Compte → Sécurité → le code de l'application → dix codes, montrés une fois | l'alerte « nouveaux codes » | — |
+| **Déconnecter tous les appareils** | Compte → Sécurité | — | — |
+| **Changer d'adresse e-mail** | Jamais seul dans l'application : c'est elle qui reçoit les codes et les alertes. Le client écrit au support depuis son adresse actuelle ; s'il l'a perdue, l'équipe vérifie d'abord son identité. | — | — |
+| **Avant chaque sortie d'argent** | Le mot de passe, un code par e-mail qui dit le montant et la destination, le code de l'application ; trop d'essais faux : 1 h de verrou | le code ; le verrou | — |
+
+**La pause de 24 h (0048)** : après un mot de passe changé, une application
+ajoutée ou retirée, aucun retrait — ni Mobile Money, ni crypto — pendant 24 h
+(`parametres.securite.pause_retraits_heures`). Un voleur qui a pris le compte
+n'a pas le temps de le vider ; le vrai client, prévenu par l'e-mail, écrit au
+support. Dépôts, marché et achat rapide restent ouverts. L'écran le dit avant
+le geste (Compte → Sécurité, « mot de passe oublié »), puis sur l'accueil et
+sur chaque retrait. La base refuse de toute façon : un verrou sur les codes de
+sortie, les sorties et les retraits crypto. Pendant l'inscription (le compte
+n'existe pas encore), rien ne part et rien ne se met en pause.
+
 ## L'approbation des comptes (0047)
 
 N'importe qui s'inscrit et visite tout Glisil : le marché, les cours, son

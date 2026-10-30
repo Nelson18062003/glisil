@@ -7,5 +7,8 @@ export const EVENEMENTS: Record<string, string> = {
   deux_facteurs_retires: "Double authentification retirée",
   reinitialisation_demandee: "Réinitialisation autorisée par l'équipe",
   reinitialisation_echouee: "Réinitialisation échouée",
+  mot_de_passe_change: "Mot de passe changé · retraits en pause 24 h",
+  application_ajoutee: "Application d'authentification ajoutée · retraits en pause 24 h",
+  verification_mdp_indisponible: "Vérification du mot de passe indisponible",
 };
 

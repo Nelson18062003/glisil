@@ -4699,6 +4699,83 @@ begin
 end $$;
 rollback;
 
+-- 11.93 · les alertes de sécurité et la pause des retraits (0048). Le mot de
+-- passe qui CHANGE, une application d'authentification ajoutée, une
+-- application retirée : le client est prévenu (sauf l'application retirée,
+-- qui a déjà son e-mail) et rien ne SORT pendant 24 h — ni code, ni sortie,
+-- ni retrait crypto. Le reste reste ouvert. De nouveaux codes de secours :
+-- l'e-mail seul. Pendant l'inscription (pas encore de compte), rien.
+-- Témoin : le verrou retiré des codes de sortie, le code part.
+begin;
+insert into auth.users (id, email, encrypted_password) values
+  ('c0000000-0000-0000-0000-00000000c093', 'gilles@example.com', ''),
+  ('c0000000-0000-0000-0000-00000000c094', 'pas.encore@example.com', 'h1');
+insert into comptes (id, telephone, nom, email) values ('c0000000-0000-0000-0000-00000000c093', '670930093', 'Gilles Garde', 'gilles@example.com');
+do $$
+declare g uuid := 'c0000000-0000-0000-0000-00000000c093'; r jsonb; v_avant int;
+        retrait jsonb := jsonb_build_object('actif', 'USDT', 'reseau', 'bep20', 'adresse', '0x00000000000000000000000000000000000000c9', 'montant', 100);
+begin
+  perform crediter_crypto(g, 'USDT', 'bep20', 500, '0xpause-11.93', '0x00000000000000000000000000000000000000c1');
+  -- 0. le premier mot de passe (un compte Google le choisit après coup) n'est pas un changement
+  update auth.users set encrypted_password = 'h1' where id = g;
+  assert not exists (select 1 from journal_securite where utilisateur_id = g), 'le premier mot de passe ne compte pas';
+  -- l'inscription : pas encore de compte, l'événement s'écrit, rien ne part
+  update auth.users set encrypted_password = 'h2' where id = 'c0000000-0000-0000-0000-00000000c094';
+  assert exists (select 1 from journal_securite where utilisateur_id = 'c0000000-0000-0000-0000-00000000c094' and evenement = 'mot_de_passe_change');
+  assert not exists (select 1 from courriels_a_envoyer where compte_id = 'c0000000-0000-0000-0000-00000000c094'), 'sans compte, aucun e-mail';
+
+  -- 1. le mot de passe change : l'alerte part, les retraits s'arrêtent 24 h
+  perform set_config('xafe.compte', g::text, true);
+  update auth.users set encrypted_password = 'h2' where id = g;
+  assert exists (select 1 from journal_securite where utilisateur_id = g and evenement = 'mot_de_passe_change'), 'au journal';
+  assert exists (select 1 from courriels_a_envoyer where compte_id = g and gabarit = 'alerte_securite'
+                  and donnees ->> 'evenement' = 'mot_de_passe' and donnees ->> 'pause_jusqua' is not null), 'l''alerte, avec la fin de la pause';
+  r := mon_compte();
+  assert (r ->> 'retraits_pause_jusqua')::timestamptz between now() + interval '23 hours 59 minutes' and now() + interval '24 hours 1 minute', r;
+  begin perform preparer_verification('retrait_crypto', retrait); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'retraits en pause après un changement de sécurité', 'code de retrait : ' || sqlerrm; end;
+  -- la sortie elle-même, même avec un code obtenu AVANT le changement (rendu tel quel dans la minute) : refusée à l'écriture
+  begin insert into sorties (compte_id) values (g); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'retraits en pause après un changement de sécurité', 'sortie : ' || sqlerrm; end;
+  begin insert into retraits_crypto (compte_id) values (g); raise exception 'aurait dû refuser';
+  exception when others then assert sqlerrm = 'retraits en pause après un changement de sécurité', 'retrait crypto : ' || sqlerrm; end;
+  -- le reste reste ouvert : le marché
+  perform placer_ordre('vente', 'limite', 20, 640.00, 'k-11.93-o');
+  assert exists (select 1 from ordres where compte_id = g), 'le marché reste ouvert';
+  -- le témoin : sans le verrou des codes de sortie, le code partait
+  begin
+    alter table verifications disable trigger verrou_de_pause;
+    perform preparer_verification('retrait_crypto', retrait || '{"montant": 101}');
+    raise exception 'témoin pris';
+  exception when others then assert sqlerrm = 'témoin pris', sqlerrm; end;
+  -- 24 h plus tard, tout seul
+  update comptes set securite_changee_le = now() - interval '24 hours 1 minute' where id = g;
+  assert mon_compte() ->> 'retraits_pause_jusqua' is null;
+  perform preparer_verification('retrait_crypto', retrait || '{"montant": 102}');
+
+  -- 2. une application ajoutée (nouveau téléphone) : alerte + pause
+  insert into auth.mfa_factors (user_id, factor_type, status) values (g, 'totp', 'unverified');
+  assert not exists (select 1 from journal_securite where utilisateur_id = g and evenement = 'application_ajoutee'), 'pas encore vérifiée : rien';
+  update auth.mfa_factors set status = 'verified' where user_id = g;
+  assert exists (select 1 from courriels_a_envoyer where compte_id = g and gabarit = 'alerte_securite' and donnees ->> 'evenement' = 'application');
+  assert mon_compte() ->> 'retraits_pause_jusqua' is not null, 'nouvelle application : pause';
+
+  -- 3. l'application retirée (code de secours, ou l'équipe) : la pause, sans second e-mail (0035 a le sien)
+  update comptes set securite_changee_le = null where id = g;
+  select count(*) into v_avant from courriels_a_envoyer where compte_id = g;
+  perform _journal_securite(g, 'deux_facteurs_retires', null, '{"cause": "code_de_secours"}');
+  assert mon_compte() ->> 'retraits_pause_jusqua' is not null, 'application retirée : pause';
+  assert (select count(*) from courriels_a_envoyer where compte_id = g) = v_avant, 'pas de doublon d''e-mail';
+
+  -- 4. de nouveaux codes de secours : l'e-mail, pas de pause
+  update comptes set securite_changee_le = null where id = g;
+  perform _journal_securite(g, 'codes_confirmes', null, '{"restants": 10}');
+  assert exists (select 1 from courriels_a_envoyer where compte_id = g and gabarit = 'alerte_securite' and donnees ->> 'evenement' = 'codes');
+  assert mon_compte() ->> 'retraits_pause_jusqua' is null, 'de nouveaux codes ne mettent pas en pause';
+  raise notice '✓ 11.93 un mot de passe changé, une application ajoutée ou retirée : le client est prévenu et rien ne sort pendant 24 h ; de nouveaux codes : prévenu ; l''inscription ne déclenche rien';
+end $$;
+rollback;
+
 -- 11.16 · l'écran lit les paramètres que l'équipe a posés, pas une copie figée.
 begin;
 set local xafe.compte = '22222222-2222-2222-2222-222222222222';

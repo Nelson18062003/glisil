@@ -351,6 +351,12 @@ const faq = (): [string, string][] => [
         "Nothing for now: you receive exactly the amount you withdraw. The withdrawal is split into several transfers if it exceeds the operator's limit; you see all of them.")
     : t(`${pourcent(FRAIS.sortie)} du montant, arrondis au franc supérieur par transfert. Au-delà du plafond de l'opérateur, la sortie part en plusieurs transferts ; vous les voyez tous.`,
         `${pourcent(FRAIS.sortie)} of the amount, rounded up to the nearest franc per transfer. Above the operator's limit, the withdrawal is split into several transfers; you see all of them.`)],
+  [t("J'ai changé mon mot de passe : pourquoi ne puis-je plus retirer ?", "I changed my password: why can't I withdraw?"),
+    t("Après un changement de mot de passe ou d'application d'authentification, les retraits sont en pause pendant 24 heures. Si quelqu'un d'autre a pris votre compte, il n'a pas le temps de le vider, et vous avez reçu un e-mail pour nous prévenir. Vos dépôts et le marché restent ouverts.",
+      "After a password or authenticator app change, withdrawals are paused for 24 hours. If someone else took over your account, they don't have time to empty it, and you received an email so you can warn us. Deposits and trading stay open.")],
+  [t("Comment changer mon adresse e-mail ?", "How do I change my email address?"),
+    t("Pour votre sécurité, l'adresse e-mail d'un compte ne se change pas seule dans l'application : c'est elle qui reçoit vos codes et vos alertes. Écrivez au support depuis votre adresse actuelle ; si vous n'y avez plus accès, l'équipe vérifie d'abord votre identité (appel vidéo, pièce d'identité).",
+      "For your security, an account's email address can't be changed alone in the app: it receives your codes and your alerts. Contact support from your current address; if you can no longer access it, the team first verifies your identity (video call, ID document).")],
   [t("Un transfert a échoué, où est mon argent ?", "A transfer failed. Where is my money?"),
     t("Après trois essais, les XAFe de ce transfert reviennent en disponible sur votre compte. Le détail de l'opération le dit, et vous êtes prévenu.",
       "After three attempts, the XAFe from that transfer return to your available balance. The transaction details show it, and you are notified.")],

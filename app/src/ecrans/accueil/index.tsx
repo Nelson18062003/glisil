@@ -8,6 +8,7 @@ import ScienceOutlined from "@mui/icons-material/ScienceOutlined";
 import CurrencyBitcoinRounded from "@mui/icons-material/CurrencyBitcoinRounded";
 import HourglassTopRounded from "@mui/icons-material/HourglassTopRounded";
 import HowToRegOutlined from "@mui/icons-material/HowToRegOutlined";
+import ShieldOutlined from "@mui/icons-material/ShieldOutlined";
 import NotificationsNoneRounded from "@mui/icons-material/NotificationsNoneRounded";
 import VerifiedUserOutlined from "@mui/icons-material/VerifiedUserOutlined";
 import VisibilityOffOutlined from "@mui/icons-material/VisibilityOffOutlined";
@@ -121,6 +122,20 @@ export function Accueil() {
             <Typography fontWeight={600} sx={{ color: "inherit" }}>{t("Compte en cours de vérification", "Account under review")}</Typography>
             <Typography variant="body2" sx={{ color: "inherit", opacity: 0.85 }}>
               {t("Les dépôts, le marché et les retraits s'ouvrent dès que l'équipe l'approuve. Vous recevrez un e-mail.", "Deposits, trading and withdrawals open as soon as the team approves it. You'll get an email.")}
+            </Typography>
+          </Stack>
+        </Stack>
+      )}
+
+      {/* 0048 : un changement de sécurité vient d'avoir lieu — si ce n'est pas le client, il le voit ici aussi */}
+      {compte?.retraitsPauseJusqua && Date.parse(compte.retraitsPauseJusqua) > Date.now() && (
+        <Stack data-pause-retraits direction="row" alignItems="center" gap={1.5} sx={{ bgcolor: tones.blue.bg, color: tones.blue.fg, borderRadius: 4, px: 2, py: 1.25 }}>
+          <ShieldOutlined />
+          <Stack sx={{ flex: 1 }}>
+            <Typography fontWeight={600} sx={{ color: "inherit" }}>{t("Retraits en pause pour votre sécurité", "Withdrawals paused for your security")}</Typography>
+            <Typography variant="body2" sx={{ color: "inherit", opacity: 0.85 }}>
+              {t(`Votre mot de passe ou votre application d'authentification vient de changer. Les retraits reprennent ${quand(compte.retraitsPauseJusqua)}. Ce n'est pas vous ? Écrivez au support.`,
+                `Your password or authenticator app just changed. Withdrawals resume ${quand(compte.retraitsPauseJusqua)}. Not you? Contact support.`)}
             </Typography>
           </Stack>
         </Stack>

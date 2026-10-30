@@ -49,7 +49,7 @@ type Tache =
   | { quand: number; type: "retrait"; reference: string }
   | { quand: number; type: "expiration"; reference: string };
 
-type CompteDemo = Omit<Compte, "entreDuJour" | "conditionsAJour" | "langue" | "approuve"> & { conditionsVersion: string | null; langue?: "fr" | "en" };
+type CompteDemo = Omit<Compte, "entreDuJour" | "conditionsAJour" | "langue" | "approuve" | "retraitsPauseJusqua"> & { conditionsVersion: string | null; langue?: "fr" | "en" };
 
 /** Ce que Supabase Auth tient pour une adresse : son mot de passe, son application, ses codes de secours. */
 type UtilisateurDemo = {
@@ -326,7 +326,18 @@ export class GuichetDemo implements Guichet {
     const d = this.dossier();
     const { conditionsVersion, ...compte } = d.compte;
     return { ...compte, entreDuJour: entreDuJour(d), conditionsAJour: conditionsVersion === VERSION_CONDITIONS, langue: compte.langue === "fr" ? "fr" : "en", fermeLe: compte.fermeLe ?? null, desactive: Boolean(compte.desactive),
-             approuve: !this.enAttente() };
+             approuve: !this.enAttente(), retraitsPauseJusqua: this.pauseJusqua() };
+  }
+
+  /** 0048 : la démonstration n'est pas en pause ; l'épreuve l'y met (couture __xafeEpreuve.pauseJusqua). */
+  private pauseJusqua(): string | null {
+    const j = (globalThis as { __xafeEpreuve?: { pauseJusqua?: string } }).__xafeEpreuve?.pauseJusqua;
+    return j && Date.parse(j) > Date.now() ? j : null;
+  }
+  /** Comme les verrous de 0048 : rien ne sort pendant la pause. */
+  private exigerPasDePause() {
+    const j = this.pauseJusqua();
+    if (j) throw new ErreurMoteur("retraits en pause après un changement de sécurité", j);
   }
 
   /** 0047 : la démonstration est approuvée ; l'épreuve la met en attente (couture __xafeEpreuve.enAttente). */
@@ -875,7 +886,7 @@ export class GuichetDemo implements Guichet {
 
   async preparerVerification(op: OperationAVerifier): Promise<Verification> {
     const d = this.dossier();
-    if (op.operation === "sortie_momo" || op.operation === "retrait_crypto") this.exigerApprouve();
+    if (op.operation === "sortie_momo" || op.operation === "retrait_crypto") { this.exigerApprouve(); this.exigerPasDePause(); }
     const email = this.etat.session!.email;
     const verrou = this.verrouDeSortie(email);
     if (verrou) throw new ErreurMoteur("vérifications verrouillées", undefined, { verrouJusqua: iso(verrou) });
@@ -1157,6 +1168,7 @@ export class GuichetDemo implements Guichet {
 
   async demanderSortie({ montant, numeroId, cle, preuve, nom }: { montant: number; numeroId: string; cle: string; preuve: PreuveDeVerification; nom?: string }) {
     const d = this.dossier();
+    this.exigerPasDePause();
     /* la clé d'abord : une réponse perdue puis rejouée rend la sortie déjà faite, même si sa vérification a servi */
     const deja = d.sorties.find((x) => (x as unknown as { cle?: string }).cle === cle);
     if (deja) { this.cloreRejouee("sortie_momo", preuve.verification); return copie(deja); }
@@ -1472,6 +1484,7 @@ export class GuichetDemo implements Guichet {
 
   async demanderRetraitCrypto({ actif, reseau, adresse, montant, cle, preuve }: { actif: Actif; reseau: Reseau; adresse: string; montant: number; cle: string; preuve: PreuveDeVerification }) {
     const d = this.dossier();
+    this.exigerPasDePause();
     const deja = d.retraits.find((x) => (x as unknown as { cle?: string }).cle === cle);
     if (deja) { this.cloreRejouee("retrait_crypto", preuve.verification); return copie(deja); }
     this.controlerRetraitCrypto(d, actif, reseau, adresse, montant);

@@ -47,6 +47,8 @@ export type Compte = {
   fermeLe: string | null;
   /** 0047 : approuvé par l'équipe. Faux : le compte visite tout, mais ne commence aucun geste d'argent */
   approuve: boolean;
+  /** 0048 : après un changement de sécurité (mot de passe, application), plus aucun retrait jusqu'à cette heure */
+  retraitsPauseJusqua: string | null;
   /** suspendu par l'équipe (ou fermé) */
   desactive: boolean;
 };

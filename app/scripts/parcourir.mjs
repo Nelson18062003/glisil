@@ -851,6 +851,24 @@ try {
   await allerA("/entrer/operateur");
   await voir("MTN MoMo");
 
+  etape("Le mot de passe vient de changer (0048) : l'accueil le dit, les retraits (MoMo et crypto) sont en pause jusqu'à une heure dite ; les dépôts restent ouverts");
+  await page.addInitScript(() => { if (sessionStorage.getItem("xafe-pause")) globalThis.__xafeEpreuve = { pauseJusqua: new Date(Date.now() + 23 * 3600_000).toISOString() }; });
+  await page.evaluate(() => sessionStorage.setItem("xafe-pause", "1"));
+  await allerA("/");
+  await page.locator("[data-pause-retraits]").getByText("Retraits en pause pour votre sécurité").waitFor();
+  await capturer("accueil-pause-retraits");
+  for (const [adresse, nom] of [["/sortir/montant", "sortir-pause"], ["/crypto/retirer/XAFe/adresse", null]]) {
+    await allerA(adresse);
+    await voir("Les retraits reprennent");
+    exiger(await page.getByRole("button", { name: "Continuer" }).count() === 0, `${adresse} : rien à remplir pendant la pause`);
+    if (nom) await capturer(nom);
+  }
+  await allerA("/entrer/operateur");
+  await voir("MTN MoMo");
+  await page.evaluate(() => { sessionStorage.removeItem("xafe-pause"); globalThis.__xafeEpreuve = {}; });
+  await allerA("/sortir/montant");
+  exiger(await page.getByText("Les retraits reprennent").count() === 0, "la pause finie, la sortie se rouvre");
+
   exiger(erreurs.length === 0, `des erreurs ont été vues dans le navigateur :\n  ${erreurs.join("\n  ")}`);
   console.log(`  (${champsDuTicket} champ(s) du ticket d'ordre laissés hors de la règle des formulaires, par choix)`);
   exiger(espacements.length === 0, `${espacements.length} espacement(s) de formulaire hors de la règle :\n  ${espacements.join("\n  ")}`);

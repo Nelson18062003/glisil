@@ -424,6 +424,13 @@ function dictionnaire(): Record<string, Entree> {
       argent: t("Rien n'a bougé. Ne payez aucun numéro pour l'instant.", "Nothing has changed. Don't pay any number for now."),
       suite: t("Réessayez dans quelques minutes ou passez par l'autre opérateur.", "Try again in a few minutes, or use the other operator."),
     },
+    "retraits en pause après un changement de sécurité": { // langue-ok
+      titre: t("Retraits en pause pour votre sécurité", "Withdrawals paused for your security"),
+      argent: t("Rien n'est sorti : votre argent reste sur votre compte.", "Nothing has left: your money stays in your account."),
+      suite: t("Le mot de passe ou l'application d'authentification de votre compte vient de changer : les retraits reprennent 24 h après. Ce n'est pas vous ? Écrivez au support tout de suite.",
+        "Your account's password or authenticator app just changed: withdrawals resume 24 hours later. Not you? Contact support right away."),
+      recommencer: false,
+    },
     "compte en attente d'approbation": { // langue-ok
       titre: t("Votre compte est en cours de vérification", "Your account is being reviewed"),
       argent: t("Rien n'a bougé : aucun geste d'argent avant l'approbation de votre compte.", "Nothing has changed: no money transactions until your account is approved."),

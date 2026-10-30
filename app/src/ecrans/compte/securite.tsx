@@ -111,7 +111,8 @@ function ChangerMotDePasse({ onFini }: { onFini: () => void }) {
   const [nonce, setNonce] = useState("");
   const { lancer, enCours, erreur, effacerErreur } = useGesteUnique();
 
-  if (!prouve) return <CodeFrais texte={t("D'abord, le code affiché maintenant par votre application.", "First, the code shown now in your app.")} onProuve={() => setProuve(true)} />;
+  /* 0048 : on le dit AVANT — un mot de passe changé met les retraits en pause 24 h */
+  if (!prouve) return <CodeFrais texte={t("D'abord, le code affiché maintenant par votre application. Bon à savoir : après un changement de mot de passe, les retraits sont en pause 24 h, pour votre sécurité.", "First, the code shown now in your app. Good to know: after a password change, withdrawals are paused for 24 hours, for your security.")} onProuve={() => setProuve(true)} />;
 
   const pret = nouveauPret(mdp, conf) && (!nonceDemande || nonce.length === 6) && !enCours;
   const changer = () => lancer(async () => {
@@ -181,7 +182,7 @@ function ChangerDeTelephone({ onFini }: { onFini: () => void }) {
   const { lancer, enCours, erreur, effacerErreur } = useGesteUnique();
 
   if (!prouve) {
-    return <CodeFrais texte={t("D'abord, le code de l'application sur votre ANCIEN téléphone. Vous l'avez perdu ? Déconnectez-vous, puis à la connexion choisissez « J'ai perdu mon téléphone » et utilisez un code de secours.", "First, the app code from your OLD phone. Lost it? Sign out, then at sign-in choose \"I lost my phone\" and use a recovery code.")}
+    return <CodeFrais texte={t("D'abord, le code de l'application sur votre ANCIEN téléphone. Vous l'avez perdu ? Déconnectez-vous, puis à la connexion choisissez « J'ai perdu mon téléphone » et utilisez un code de secours. Bon à savoir : après un changement de téléphone, les retraits sont en pause 24 h.", "First, the app code from your OLD phone. Lost it? Sign out, then at sign-in choose \"I lost my phone\" and use a recovery code. Good to know: after a phone change, withdrawals are paused for 24 hours.")}
       onProuve={() => { setProuve(true); void lancer(async () => setEnrolement(await guichet.commencerChangementDeTelephone())); }} />;
   }
   const terminer = () => lancer(async () => {

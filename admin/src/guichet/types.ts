@@ -156,6 +156,8 @@ export type ClientDetail = {
     conditions_version?: string | null; conditions_acceptees_le?: string | null; conditions_a_jour?: boolean;
     /** 0047 : vrai si le compte peut bouger de l'argent ; approuve_par = le nom de l'administrateur, null si d'office */
     approuve?: boolean; approuve_par?: string | null;
+    /** 0048 : après un changement de sécurité, plus aucun retrait jusqu'à cette heure */
+    retraits_pause_jusqua?: string | null;
   };
   totaux?: { entre_xaf: number; sorti_xaf: number; ordres: number; retraits_crypto: number };
   retraits_crypto?: { reference: string; actif: string; reseau: string; adresse: string; montant: number; frais: number; etat: string; tx_hash: string | null; cree_le: string }[];

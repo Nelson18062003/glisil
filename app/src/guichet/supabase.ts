@@ -153,6 +153,7 @@ function compte(j: J): Compte {
     fermeLe: sn(j.ferme_le), desactive: Boolean(j.desactive),
     /* une base d'avant 0047 ne dit rien de l'approbation : elle n'existait pas, personne n'attend */
     approuve: j.approuve === undefined ? true : Boolean(j.approuve),
+    retraitsPauseJusqua: sn(j.retraits_pause_jusqua),
   };
 }
 function retrait(j: J): RetraitCrypto {

@@ -18,7 +18,7 @@ import { Compte, CompteAide, CompteApi, CompteFermer, CompteInformations, Compte
 import { Crypto, CryptoDeposer, CryptoEnvoye, CryptoRetirerAdresse, CryptoRetirerCode, CryptoRetirerMontant, CryptoRetirerVerifier } from "../ecrans/crypto";
 import { EntrerCredite, EntrerMontant, EntrerOperateur, EntrerPayer, EntrerTransaction } from "../ecrans/entrer";
 import { Historique, HistoriqueDetail } from "../ecrans/historique";
-import { SiApprouve, SiOuvert } from "../ecrans/bientot";
+import { SiApprouve, SiOuvert, SiRetraitsOuverts } from "../ecrans/bientot";
 import { t } from "../noyau/langue";
 import { CompteFerme, Conditions, ConditionsAReaccepter, Confidentialite } from "../ecrans/legal";
 import { Preuve } from "../ecrans/preuve";
@@ -112,12 +112,13 @@ export const routeur = createBrowserRouter([
       { path: "/entrer/transaction/:ref", element: <EntrerTransaction /> },
       { path: "/entrer/credite/:ref", element: <EntrerCredite /> },
 
-      { element: <SiOuvert porte="sorties" />, children: [{ element: <SiApprouve ecran={() => t("Sortir des XAF", "Withdraw XAF")} />, children: [
+      /* 0048 : et rien ne sort pendant la pause qui suit un changement de sécurité */
+      { element: <SiOuvert porte="sorties" />, children: [{ element: <SiApprouve ecran={() => t("Sortir des XAF", "Withdraw XAF")} />, children: [{ element: <SiRetraitsOuverts ecran={() => t("Sortir des XAF", "Withdraw XAF")} />, children: [
         { path: "/sortir/montant", element: <SortirMontant /> },
         { path: "/sortir/destination", element: <SortirDestination /> },
         { path: "/sortir/verifier", element: <SortirVerifier /> },
         { path: "/sortir/code", element: <SortirCode /> },
-      ] }] },
+      ] }] }] },
       { path: "/sortir/envoye/:ref", element: <SortirEnvoye /> },
 
       { element: <SiOuvert porte="marche" />, children: [
@@ -140,12 +141,12 @@ export const routeur = createBrowserRouter([
       { element: <SiOuvert porte="cryptoDepots" />, children: [{ element: <SiApprouve ecran={() => t("Déposer", "Deposit")} retour="/crypto" />, children: [
         { path: "/crypto/deposer/:actif", element: <CryptoDeposer /> },
       ] }] },
-      { element: <SiOuvert porte="cryptoRetraits" />, children: [{ element: <SiApprouve ecran={() => t("Retirer", "Withdraw")} retour="/crypto" />, children: [
+      { element: <SiOuvert porte="cryptoRetraits" />, children: [{ element: <SiApprouve ecran={() => t("Retirer", "Withdraw")} retour="/crypto" />, children: [{ element: <SiRetraitsOuverts ecran={() => t("Retirer", "Withdraw")} retour="/crypto" />, children: [
         { path: "/crypto/retirer/:actif/adresse", element: <CryptoRetirerAdresse /> },
         { path: "/crypto/retirer/:actif/montant", element: <CryptoRetirerMontant /> },
         { path: "/crypto/retirer/:actif/verifier", element: <CryptoRetirerVerifier /> },
         { path: "/crypto/retirer/:actif/code", element: <CryptoRetirerCode /> },
-      ] }] },
+      ] }] }] },
       { path: "/crypto/envoye/:ref", element: <CryptoEnvoye /> },
 
       { path: "/historique", element: <Historique /> },

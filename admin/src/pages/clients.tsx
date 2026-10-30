@@ -271,6 +271,7 @@ export function ClientDetail() {
             ["Inscrit", `${quand(c.cree_le)}`],
             ["Dernière connexion", c.derniere_connexion ? quand(c.derniere_connexion) : "—"],
             ["Dernière opération", c.derniere_operation ? quand(c.derniere_operation) : "jamais"],
+            ...(c.retraits_pause_jusqua ? [["Retraits", `en pause jusqu'au ${quand(c.retraits_pause_jusqua)} (changement de sécurité)`] as [string, string]] : []),
             ["Approbation", c.approuve_le ? `${quand(c.approuve_le)} · ${c.approuve_par ?? "d'office"}` : attend ? "en attente" : "—"],
             ["Conditions", c.conditions_version ? `version du ${c.conditions_version}, acceptée ${c.conditions_acceptees_le ? quand(c.conditions_acceptees_le) : ""}${c.conditions_a_jour === false ? " · à réaccepter" : ""}` : "jamais acceptées (compte d'avant les conditions)"],
             ...(c.ferme_le ? [["Fermé", quand(c.ferme_le)] as [string, string]] : []),
