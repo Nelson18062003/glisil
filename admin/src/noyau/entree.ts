@@ -68,7 +68,10 @@ export function phaseAdmin(e: EtatAuth, recuperationEnCours: boolean): PhaseAdmi
 }
 
 /** La règle d'Auth (supabase/config.toml), la même que app/src/noyau/motDePasse.ts : dix caractères au
-    moins, des lettres et des chiffres ASCII (Auth ne compte qu'eux), 72 octets au plus (bcrypt ignore la suite). */
+    moins, une minuscule, une majuscule, un chiffre (ASCII : Auth ne compte qu'eux) et un des 32 symboles
+    d'Auth (l'espace n'en est pas), 72 octets au plus (bcrypt ignore la suite). */
 export const MOT_DE_PASSE_MIN = 10;
+const SYMBOLES = "!@#$%^&*()_+-=[]{};'\\:\"|<>?,./`~";
 export const motDePasseValide = (m: string): boolean =>
-  m.length >= MOT_DE_PASSE_MIN && new TextEncoder().encode(m).length <= 72 && /[A-Za-z]/.test(m) && /[0-9]/.test(m);
+  m.length >= MOT_DE_PASSE_MIN && new TextEncoder().encode(m).length <= 72
+  && /[a-z]/.test(m) && /[A-Z]/.test(m) && /[0-9]/.test(m) && [...m].some((c) => SYMBOLES.includes(c));

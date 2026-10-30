@@ -77,8 +77,8 @@ function dictionnaire(): Record<string, Entree> {
     "mot de passe trop faible": { // langue-ok
       titre: t("Ce mot de passe est trop faible", "This password is too weak"),
       argent: rienNaChange(),
-      suite: t("Dix caractères au moins, avec des lettres et des chiffres, et qui n'a jamais fuité ailleurs. Une petite phrase marche bien.",
-        "At least ten characters, with letters and digits, never leaked elsewhere. A short sentence works well."),
+      suite: t("Dix caractères au moins, avec une minuscule, une majuscule, un chiffre et un symbole (! @ # - …), et qui n'a jamais fuité ailleurs. Une petite phrase marche bien : « Ma-boutique-2026! ».",
+        "At least ten characters, with a lowercase letter, an uppercase letter, a digit and a symbol (! @ # - …), never leaked elsewhere. A short phrase works well: “My-shop-2026!”."),
     },
     "choisissez un mot de passe différent": { // langue-ok
       titre: t("C'est déjà votre mot de passe", "That's already your password"),

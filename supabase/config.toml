@@ -35,6 +35,12 @@ verify_jwt = false
 # de passe ont aussi leur code. Les modèles ne montrent que le code. Sur le
 # projet en ligne, ces réglages se recopient dans le tableau de bord
 # (Authentication → Emails et → Providers → Email) — voir docs/CONNEXION.md.
+# La règle des mots de passe, la même qu'en production (tableau de bord → Sign In / Providers → Email,
+# décision du 30/10) et que l'écran (app/src/noyau/motDePasse.ts, admin/src/noyau/entree.ts).
+[auth]
+minimum_password_length = 10
+password_requirements = "lower_upper_letters_digits_symbols"
+
 [auth.email]
 enable_signup = true
 otp_length = 6

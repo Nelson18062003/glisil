@@ -53,14 +53,16 @@ export function ChampMotDePasse({
   );
 }
 
-/** La règle d'Auth, cochée à mesure : dix caractères, des lettres, des chiffres. Elle se lit comme l'aide de
+/** La règle d'Auth, cochée à mesure : dix caractères, minuscule, majuscule, chiffre, symbole. Elle se lit comme l'aide de
  *  son champ : posée dans un groupe de champs (20 px), elle remonte à 4 px de lui. */
 export function RegleDuMotDePasse({ valeur }: { valeur: string }) {
   const manques = manquesDuMotDePasse(valeur);
   const lignes: { ok: boolean; texte: string }[] = [
     { ok: !manques.includes("longueur"), texte: t(`${MOT_DE_PASSE_MIN} caractères au moins`, `At least ${MOT_DE_PASSE_MIN} characters`) },
-    { ok: !manques.includes("lettres"), texte: t("des lettres", "letters") },
-    { ok: !manques.includes("chiffres"), texte: t("des chiffres", "digits") },
+    { ok: !manques.includes("minuscules"), texte: t("une minuscule", "a lowercase letter") },
+    { ok: !manques.includes("majuscules"), texte: t("une majuscule", "an uppercase letter") },
+    { ok: !manques.includes("chiffres"), texte: t("un chiffre", "a digit") },
+    { ok: !manques.includes("symboles"), texte: t("un symbole (! @ # - …)", "a symbol (! @ # - …)") },
   ];
   return (
     <Stack direction="row" gap={1.5} flexWrap="wrap" role="status" aria-live="polite" sx={{ mt: "-16px" }}>

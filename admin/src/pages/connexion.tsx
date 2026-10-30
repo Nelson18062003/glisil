@@ -192,7 +192,7 @@ function ChampMdp({ valeur, onChange, nouveau }: { valeur: string; onChange: (v:
   return (
     <TextField label={nouveau ? "Nouveau mot de passe" : "Mot de passe"} type="password" value={valeur} onChange={(e) => onChange(e.target.value.slice(0, 200))} fullWidth
       autoComplete={nouveau ? "new-password" : "current-password"} error={faible}
-      helperText={nouveau ? `${MOT_DE_PASSE_MIN} caractères au moins, des lettres et des chiffres` : " "} />
+      helperText={nouveau ? `${MOT_DE_PASSE_MIN} caractères au moins : une minuscule, une majuscule, un chiffre et un symbole (! @ # - …)` : " "} />
   );
 }
 

@@ -40,14 +40,15 @@ test("le premier facteur se lit dans amr, sous ses deux formes", () => {
 
 test("le mot de passe suit la règle d'Auth", () => {
   assert.equal(motDePasseValide("Glisil-2026"), true);
-  assert.equal(motDePasseValide("glisil2026"), true);
+  assert.equal(motDePasseValide("glisil2026"), false, "TÉMOIN : la règle d'avant l'acceptait — ni majuscule ni symbole");
+  assert.equal(motDePasseValide("Glisil 2026x"), false, "l'espace n'est pas un symbole pour Auth");
   assert.equal(motDePasseValide("court1"), false);
   assert.equal(motDePasseValide("seulementdeslettres"), false);
   assert.equal(motDePasseValide("1234567890"), false);
   assert.equal(motDePasseValide("éééééééééé1"), false, "Auth ne compte que les lettres ASCII");
   assert.equal(motDePasseValide("a1" + "x".repeat(71)), false, "plus de 72 octets");
   /* la même règle que l'application cliente, sur les mêmes essais */
-  const essais = ["Glisil-2026", "court1", "1234567890", "éééééééééé1", "seulementdeslettres", "a1" + "x".repeat(71)];
+  const essais = ["Glisil-2026", "glisil2026", "Glisil2026", "glisil-2026", "GLISIL-2026", "Glisil 2026x", "Glisil~2026", "court1", "1234567890", "éééééééééé1", "seulementdeslettres", "Aa1-" + "x".repeat(69)];
   return import("../../../app/src/noyau/motDePasse.ts").then((client) => {
     for (const e of essais) assert.equal(motDePasseValide(e), client.motDePasseValide(e), `même verdict pour « ${e.slice(0, 20)} »`);
   });
