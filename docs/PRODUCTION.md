@@ -82,6 +82,12 @@ page), ou `select verifier_le_profil_production(false);`.
   retraits de 24 h après un changement de sécurité ; `courriel` redéployée
   (v3, gabarit `alerte_securite`). Les parcours, de bout en bout :
   [CONNEXION.md](CONNEXION.md).
+- **E-mails d'Auth en ligne (30/10)** : le robot `courriels-auth.yml` a envoyé
+  les 4 modèles (inscription, connexion par code, mot de passe oublié,
+  réauthentification) à glisil-prod et les a relus à l'identique (passage n° 3,
+  commit d3d3316). Secret GitHub `SUPABASE_ACCESS_TOKEN` : clé limitée à
+  glisil-prod, Auth Config + Project Settings en écriture, expire le 28/10/2027.
+  Changer un e-mail = modifier `supabase/templates/` ; le robot fait le reste.
 - Migrations déjà appliquées à la production après l'installation : 0043,
   puis 0044, 0045 et 0046 (le 29/10, en une instruction : la base a pris les
   fichiers sur GitHub au commit 4bfb7ea, vérifié leurs empreintes md5, puis
